@@ -10,7 +10,7 @@ use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
-    fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
+    fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
@@ -21,7 +21,7 @@ type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
 
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
     match value {
-        Some(Value::Str(s)) => Ok(s.as_str()),
+        Some(Value::Str(s)) => Ok(s.as_ref()),
         _ => Err(InterpError::TypeError {
             msg: format!("{what} requires a Symbol argument"),
         }),
@@ -33,7 +33,7 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
         msg: format!("{what} requires a lexeme argument"),
     })?;
     match val {
-        Value::Str(s) => Ok(s.clone()),
+        Value::Str(s) => Ok(s.to_string()),
         _ => {
             let items = crate::v1_interpreter::free_monoid_to_vec(val).ok_or_else(|| {
                 InterpError::TypeError {
@@ -65,7 +65,7 @@ pub fn eval_symbol_intern_lexeme(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let spelling = expect_string_lexeme(args.first().map(|(_, v)| v), "symbol_intern_lexeme")?;
-    Ok(Value::Str(spelling))
+    Ok(str_value(spelling))
 }
 
 pub fn eval_symbol_lexeme(
@@ -73,7 +73,7 @@ pub fn eval_symbol_lexeme(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let sym = expect_symbol(args.first().map(|(_, v)| v), "symbol_lexeme")?;
-    Ok(Value::Str(sym.to_string()))
+    Ok(str_value(sym))
 }
 
 pub(crate) fn type_item_by_name<'a>(
@@ -119,10 +119,7 @@ fn atom_connective_variant(ctx: &InterpContext, identity: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym("Atom"),
-        fields: Rc::new(vec![(
-            ctx.sym("identity"),
-            Value::Str(identity.to_string()),
-        )]),
+        fields: Rc::new(vec![(ctx.sym("identity"), str_value(identity.to_string()))]),
     }
 }
 
@@ -165,7 +162,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
+                    fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -388,8 +385,8 @@ fn concept_decl_record(
     Ok(Value::Record {
         type_name: ctx.sym("ConceptDecl"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("name"), str_value(name.to_string())),
             (ctx.sym("node"), node),
         ])),
     })
@@ -480,10 +477,10 @@ pub fn eval_data_decl_type_facts(
         rows.push(Value::Record {
             type_name: ctx.sym("DataDeclTypeFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("module_path"), Value::Str(decl.module_path.clone())),
-                (ctx.sym("decl_name"), Value::Str(decl.name.clone())),
-                (ctx.sym("type_name"), Value::Str(data_decl_type_name(decl))),
-                (ctx.sym("rel_path"), Value::Str(decl.rel_path.clone())),
+                (ctx.sym("module_path"), str_value(decl.module_path.clone())),
+                (ctx.sym("decl_name"), str_value(decl.name.clone())),
+                (ctx.sym("type_name"), str_value(data_decl_type_name(decl))),
+                (ctx.sym("rel_path"), str_value(decl.rel_path.clone())),
             ])),
         });
     }
@@ -872,7 +869,7 @@ fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     Value::Record {
         type_name: ctx.sym("FnArrowParam"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("name"), Value::Str(param_name.to_string())),
+            (ctx.sym("name"), str_value(param_name.to_string())),
             (ctx.sym("node"), atom_identity_node(ctx, param_name)),
         ])),
     }
@@ -923,8 +920,8 @@ fn fn_arrow_decl_record(
     Some(Value::Record {
         type_name: ctx.sym("FnArrowDecl"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("name"), str_value(name.to_string())),
             (ctx.sym("output"), output),
             (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
         ])),
@@ -1026,10 +1023,10 @@ fn data_init_decl_record(
     Some(Value::Record {
         type_name: ctx.sym("DataInitDecl"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-            (ctx.sym("module"), Value::Str(module_name.to_string())),
-            (ctx.sym("name"), Value::Str(name.to_string())),
-            (ctx.sym("literal_fp"), Value::Str(literal_fp)),
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("module"), str_value(module_name.to_string())),
+            (ctx.sym("name"), str_value(name.to_string())),
+            (ctx.sym("literal_fp"), str_value(literal_fp)),
         ])),
     })
 }
@@ -1285,11 +1282,11 @@ pub fn eval_export_signature_facts(
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
-                (ctx.sym("name"), Value::Str(fact.name)),
+                (ctx.sym("qualified_name"), str_value(fact.qualified_name)),
+                (ctx.sym("name"), str_value(fact.name)),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
-                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+                (ctx.sym("rel_path"), str_value(fact.rel_path)),
             ])),
         });
     }
@@ -1322,12 +1319,12 @@ fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpRes
             fields: Rc::new(sorted_fields(vec![
                 (
                     ctx.sym("qualified_name"),
-                    Value::Str(fact.qualified_name.clone()),
+                    str_value(fact.qualified_name.clone()),
                 ),
-                (ctx.sym("name"), Value::Str(fact.name.clone())),
+                (ctx.sym("name"), str_value(fact.name.clone())),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
-                (ctx.sym("rel_path"), Value::Str(fact.rel_path.clone())),
+                (ctx.sym("rel_path"), str_value(fact.rel_path.clone())),
             ])),
         });
     }
@@ -1556,7 +1553,7 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
+                fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason.to_string()))]),
             }]),
         )]),
     }
