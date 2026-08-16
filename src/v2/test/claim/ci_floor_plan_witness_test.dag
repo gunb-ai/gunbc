@@ -70,7 +70,7 @@ import v2.workflow.ci_floor_plan {
   v1_claim_scoped_known_red_probe_batch_enrolled,
 }
 import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster, known_red_probe_corpus_fast_budget_roster, known_red_probe_corpus_long_budget_roster, known_red_probe_corpus_pre_verdict_fast_budget_roster, known_red_probe_corpus_pre_verdict_long_budget_roster }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries, bin_witness_wet_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries, bin_witness_wet_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_known_red_entries,
@@ -333,37 +333,37 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
   }
 }
 
-test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
-  let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
-  (length(xs: scoped_witness_batches) == 1)
-    && ((v1_claim_scoped_witness_entries |> count) > 0)
-    && (v1_claim_scoped_witness_entries |> all(e => e.function == ""))
-    && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
-    && (v1_claim_scoped_witness_batch.scan_dirs == [])
-    && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
-    && (v1_claim_scoped_witness_batch.execution_authority == InheritedWalkSourceRoots {})
-    && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
-    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
-    && match runnable_batch_clamp_source(r: target) {
-      RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 720) && (millisecond_count(m: clamp.per_unit) == 0)
-      _ => false
-    }
-    && witness_layer_roots == ["dag", "src/v2"]
-}
-
-test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Bool {
+// witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned IS RETIRED WITH ITS SUBJECT.
+// It pinned the shape of v1_claim_scoped_witness_batch — file-grain rows, dag plus src/v1
+// envelope, inherited execution authority, SequentialChildProcess, and a batch-owned 720s
+// clamp. The v1 cut deleted every .dag under src/v1, so the batch has no subject and is
+// retired; receipt: gunbc.ci_layer_roots v1_claim_scoped_witness_retirement_receipt. The
+// generic ScopedWitnessBatch carrier is untouched, so a future instance re-pins its own shape.
+// RENAMED from witness_scoped_batch_is_singleton_and_outside_positional_clamps: there is no
+// scoped batch any more, so the old name asserted a singleton that does not exist and would
+// have been a name stating a claim its body no longer tests. What survives is everything that
+// was never about the scoped instance — the compile-clean gate's batch position, the known-red
+// v1-envelope enrollment coupling, and the clamp-table arithmetic.
+//
+// THE ARITHMETIC MOVED FOR A NAMED REASON, not by re-measuring. It read
+// params == batches - 1, where the 1 was EXACTLY the one clamp-owning batch: the scoped batch
+// declared its own 720s clamp and therefore consumed no positional row. With it retired every
+// scheduled batch draws from the positional table, so the identity is params == batches. The
+// structural invariant this derives from is unchanged and lives at its own authority,
+// v2.workflow.ci_floor_plan witness_floor_batch_clamp_params_cover_schedule, which counts
+// positional-clamp batches directly rather than subtracting a remembered constant.
+test fn witness_floor_batches_all_draw_positional_clamps() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
-  let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   let v1_envelope_known_red_enrolled = v1_claim_scoped_known_red_probe_batch_enrolled()
   (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1)
-    && (runnable_batch_index(batches: batches, target: target) >= 0)
+    && (length(xs: scoped_witness_batches) == 0)
     && (v1_envelope_known_red_enrolled == (length(xs: known_red_probe_v1_envelope_roster()) > 0))
     && (!v1_envelope_known_red_enrolled || fold(batches, init: false, f: fn(found, batch) {
       found || fold(batch, init: false, f: fn(inner, r) {
         inner || v1_claim_scoped_known_red_probe_batch_holds(r: r)
       })
     }))
-    && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - 1)
+    && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches))
 }
 
 fn v1_claim_scoped_known_red_probe_batch_holds(r: Runnable) -> Bool {
@@ -569,11 +569,13 @@ test fn witness_ordinary_floor_batches_run_the_whole_roster() -> Bool {
 // If a later change widens the flip to either, this reds and the widening becomes a
 // decision instead of a side effect.
 test fn witness_selection_flip_scope_is_exactly_the_ordinary_corpus() -> Bool {
-  (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
-    && discovery_batch_selection_is(
+  // The scoped-batch half of this boundary retired with the batch (receipt:
+  // gunbc.ci_layer_roots v1_claim_scoped_witness_retirement_receipt). The falsifier's
+  // predict-only cold control is the remaining declared non-flipped lane.
+  discovery_batch_selection_is(
          r: gunbc_falsifier_ordinary_batches().first().first(),
-         expected: SelectionPredictOnly
-       )
+    expected: SelectionPredictOnly
+  )
 }
 
 test fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {

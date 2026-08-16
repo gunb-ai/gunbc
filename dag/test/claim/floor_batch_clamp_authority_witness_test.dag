@@ -8,7 +8,6 @@ import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, second_count, millisecond_count }
 import std.types { NonEmptyStr }
 import gunbc.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
-import gunbc.ci_layer_roots { v1_claim_scoped_witness_batch }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -24,8 +23,29 @@ fn positional_clamp_row_zero() -> RunnableBatchClamp {
   }
 }
 
+// DECLARED RUNG DROP, and it is a real reduction rather than a climb. This population used to
+// be the LIVE clamp of v1_claim_scoped_witness_batch — the only batch in the tree that owned
+// its clamp instead of drawing a positional row. The v1 cut retired that batch with its subject
+// (receipt: gunbc.ci_layer_roots v1_claim_scoped_witness_retirement_receipt), and no other
+// clamp-owning batch exists, so there is nothing live to point this half at.
+//
+// WHAT IS LOST, stated exactly: the claim that some ACTUAL scheduled batch correctly cites its
+// own declaration. That claim has no subject today and is not asserted anywhere.
+// WHAT IS KEPT: the MECHANISM claim — that a batch-owned clamp and the positional row are
+// distinguishable by authority and by value, so a refusal citing the wrong one is decidable.
+// That is what the class was ever about and it stays real for the next clamp-owning batch.
+// The synthetic carrier is deliberately NOT given ci_spec's module path or the positional row's
+// 240-second overhead, because the whole discrimination is that the two differ on both axes.
+// Restore-on: the next batch that owns a clamp repoints scoped_clamp at it and this note goes.
 fn scoped_clamp() -> RunnableBatchClamp {
-  v1_claim_scoped_witness_batch.resource_profile.clamp
+  RunnableBatchClamp {
+    overhead: second(count: 720),
+    per_unit: millisecond(count: 0),
+    authority: decl_ref(
+      module_path: "test.claim.floor_batch_clamp_authority_witness",
+      decl_name: "scoped_clamp",
+    ),
+  }
 }
 
 test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
@@ -35,10 +55,10 @@ test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
     && (second_count(s: c.overhead) == 240)
 }
 
-test fn scoped_batch_clamp_cites_its_own_declaration_not_the_positional_list() -> Bool {
+test fn a_batch_owned_clamp_cites_its_own_declaration_not_the_positional_list() -> Bool {
   let c = scoped_clamp()
-  (c.authority.module_path as String == "gunbc.ci_layer_roots")
-    && (c.authority.decl_name as String == "v1_claim_scoped_witness_batch")
+  (c.authority.module_path as String != "gunbc.ci_spec")
+    && (c.authority.decl_name as String != "gunbc_ci_floor_batch_clamp_params")
     && (second_count(s: c.overhead) == 720)
     && (millisecond_count(m: c.per_unit) == 0)
 }
