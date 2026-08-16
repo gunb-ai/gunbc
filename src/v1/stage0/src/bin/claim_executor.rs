@@ -31,7 +31,7 @@ use v1_compiler::memory_governor::{
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
+    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, str_value, ExecutionMode,
     InterpContext, Value,
 };
 
@@ -599,7 +599,7 @@ fn plan_uses_floor_batch_stop_policy(plan_ctx: &InterpContext, plan_function: &s
         "gunbc_ci_floor_plan_uses_batch_stop_policy",
         &[(
             Some("plan_function".to_string()),
-            Value::Str(plan_function.to_string()),
+            str_value(plan_function.to_string()),
         )],
         true,
     ) {
@@ -631,7 +631,7 @@ fn resolve_floor_batch_stop_policy(
     match run_in_context_with_args(
         plan_ctx,
         "gunbc_ci_floor_batch_stop_policy_for_github_event",
-        &[(Some("event".to_string()), Value::Str(event))],
+        &[(Some("event".to_string()), str_value(event))],
         true,
     ) {
         Ok(Value::Variant { variant_name, .. }) => {
@@ -900,7 +900,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
     let mut out = Vec::new();
     for elem in free_monoid_elems(value, ctx)? {
         match elem {
-            Value::Str(s) => out.push(s.clone()),
+            Value::Str(s) => out.push(s.to_string()),
             other => {
                 return Err(format!(
                     "expected a List<String> element, got {}",
@@ -919,7 +919,7 @@ fn str_field(
     ctx: &InterpContext,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         Some(other) => Err(format!(
             "{}.{} is {}, not String",
             owner,
@@ -1189,7 +1189,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 )],
                 false,
             ) {
-                Ok(Value::Str(digest)) if !digest.is_empty() => digest,
+                Ok(Value::Str(digest)) if !digest.is_empty() => digest.to_string(),
                 Ok(other) => {
                     return Err(format!(
                         "scoped_witness_source_roots_digest_for_wire returned {}, expected String",
@@ -1472,7 +1472,7 @@ fn pre_walk_execution_from_value(
     }
     let string_field = |name: &str| -> Result<String, String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.to_string()),
             other => Err(format!(
                 "TypedClaimSubprocess.{name} must be a non-empty String, got {other:?}"
             )),
@@ -1614,7 +1614,7 @@ fn string_field_from_record(
     field: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, field) {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         other => Err(format!("expected {field}: String, got {other:?}")),
     }
 }
@@ -2745,7 +2745,7 @@ fn native_bundle_string_list(value: &Value, ctx: &InterpContext) -> Result<Vec<S
     free_monoid_elems(value, ctx)?
         .into_iter()
         .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
+            Value::Str(s) => Ok(s.to_string()),
             other => Err(format!(
                 "native bundle argv element must be String, got {}",
                 other.type_label_public()
@@ -2892,7 +2892,9 @@ fn native_transport_observation(
     // The transport's phase vocabulary is closed; an unknown phase is malformed wire,
     // not a new kind of leg the receipt should silently carry.
     let phase = match ctx.field(fields, "phase") {
-        Some(Value::Str(s)) if matches!(s.as_str(), "build" | "run" | "run_cached") => s.clone(),
+        Some(Value::Str(s)) if matches!(s.as_ref(), "build" | "run" | "run_cached") => {
+            s.to_string()
+        }
         Some(Value::Str(s)) => {
             return Err(format!(
                 "native transport phase `{s}` is outside build|run|run_cached"
@@ -3618,7 +3620,7 @@ fn render_timing_histogram(
             &ctx,
             "render_percentile_box",
             &[
-                (Some("title".to_string()), Value::Str(title.to_string())),
+                (Some("title".to_string()), str_value(title.to_string())),
                 (
                     Some("p50".to_string()),
                     Value::Int(clamp_nanos_to_i64(p.p50)),
@@ -3646,7 +3648,7 @@ fn render_timing_histogram(
         )
         .map_err(|e| format!("render_percentile_box eval failed: {e}"))?;
         match value {
-            Value::Str(s) => Ok(s),
+            Value::Str(s) => Ok(s.to_string()),
             other => Err(format!(
                 "render_percentile_box returned non-string: {other}"
             )),
@@ -3682,7 +3684,7 @@ fn str_list_value(lines: &[String]) -> Value {
         lines
             .iter()
             .cloned()
-            .map(Value::Str)
+            .map(str_value)
             .collect::<Vec<_>>()
             .into(),
     ))
@@ -3714,9 +3716,9 @@ fn render_slowest_witnesses(
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
                 (
                     Some("function".to_string()),
-                    Value::Str(row.function.clone()),
+                    str_value(row.function.clone()),
                 ),
-                (Some("entry".to_string()), Value::Str(row.entry.clone())),
+                (Some("entry".to_string()), str_value(row.entry.clone())),
                 (
                     Some("eval_ns".to_string()),
                     Value::Int(clamp_nanos_to_i64(row.eval_wall_nanos)),
@@ -3734,7 +3736,7 @@ fn render_slowest_witnesses(
         )
         .map_err(|e| format!("slowest_witness_row eval failed: {e}"))?;
         match line {
-            Value::Str(s) => body_lines.push(s),
+            Value::Str(s) => body_lines.push(s.to_string()),
             other => return Err(format!("slowest_witness_row returned non-string: {other}")),
         }
     }
@@ -3754,7 +3756,7 @@ fn render_slowest_witnesses(
     )
     .map_err(|e| format!("render_slowest_witnesses_box eval failed: {e}"))?;
     match value {
-        Value::Str(s) => Ok(s),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "render_slowest_witnesses_box returned non-string: {other}"
         )),
@@ -4695,11 +4697,11 @@ fn run_pre_walk_execution(
             ),
             (
                 Some("claim_entry".to_string()),
-                Value::Str(claim_entry.clone()),
+                str_value(claim_entry.clone()),
             ),
             (
                 Some("claim_function".to_string()),
-                Value::Str(claim_function.clone()),
+                str_value(claim_function.clone()),
             ),
         ],
         false,
@@ -4797,7 +4799,7 @@ fn render_phase_concluded_line(
         &ctx,
         "phase_concluded_line",
         &[
-            (Some("phase".to_string()), Value::Str(phase.to_string())),
+            (Some("phase".to_string()), str_value(phase.to_string())),
             (
                 Some("elapsed_ms".to_string()),
                 Value::Int(elapsed_ms as i64),
@@ -4812,7 +4814,7 @@ fn render_phase_concluded_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s),
+        Value::Str(s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -5555,15 +5557,15 @@ fn floor_component_row_value(
     };
     let constructor = "floor_component_row_of_failure_mode";
     let args: Vec<(Option<String>, Value)> = vec![
-        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("run_id".to_string()), str_value(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
-        (Some("label".to_string()), Value::Str(label.to_string())),
+        (Some("label".to_string()), str_value(label.to_string())),
         (Some("witnesses".to_string()), Value::Int(witnesses)),
         (
             Some("failure_mode".to_string()),
-            Value::Str(failure_mode.to_string()),
+            str_value(failure_mode.to_string()),
         ),
-        (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("detail".to_string()), str_value(detail.to_string())),
         (Some("wall".to_string()), wall),
     ];
     let out = run_in_context_with_args(ctx, constructor, &args, false);
@@ -5615,14 +5617,14 @@ fn floor_component_row_not_concluded_value(
 ) -> Option<Value> {
     let constructor = "floor_component_row_not_concluded";
     let args: Vec<(Option<String>, Value)> = vec![
-        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("run_id".to_string()), str_value(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
-        (Some("label".to_string()), Value::Str(label.to_string())),
+        (Some("label".to_string()), str_value(label.to_string())),
         (
             Some("failure_mode".to_string()),
-            Value::Str(failure_mode.to_string()),
+            str_value(failure_mode.to_string()),
         ),
-        (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("detail".to_string()), str_value(detail.to_string())),
     ];
     let out = run_in_context_with_args(ctx, constructor, &args, false);
     match out {
@@ -5677,17 +5679,17 @@ fn write_floor_component_receipt_document(
         let args: Vec<(Option<String>, Value)> = vec![
             (
                 Some("workflow_name".to_string()),
-                Value::Str(workflow_name.to_string()),
+                str_value(workflow_name.to_string()),
             ),
-            (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+            (Some("run_id".to_string()), str_value(run_id.to_string())),
             (
                 Some("head_sha".to_string()),
-                Value::Str(head_sha.to_string()),
+                str_value(head_sha.to_string()),
             ),
             (Some("rows".to_string()), rows_list),
             (
                 Some("run_terminal_cause".to_string()),
-                Value::Str(unreached.failure_mode().to_string()),
+                str_value(unreached.failure_mode().to_string()),
             ),
             (
                 Some("concluded_count".to_string()),
@@ -5700,7 +5702,7 @@ fn write_floor_component_receipt_document(
         ];
         let constructor = "floor_component_receipt_document_incomplete";
         match run_in_context_with_args(ctx, constructor, &args, false) {
-            Ok(Value::Str(s)) => Some(s),
+            Ok(Value::Str(s)) => Some(s.to_string()),
             Ok(other) => {
                 eprintln!(
                     "claim_executor: floor component receipt REFUSED — \
@@ -5722,18 +5724,18 @@ fn write_floor_component_receipt_document(
             &[
                 (
                     Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.to_string()),
+                    str_value(workflow_name.to_string()),
                 ),
-                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+                (Some("run_id".to_string()), str_value(run_id.to_string())),
                 (
                     Some("head_sha".to_string()),
-                    Value::Str(head_sha.to_string()),
+                    str_value(head_sha.to_string()),
                 ),
                 (Some("rows".to_string()), rows_list),
             ],
             false,
         ) {
-            Ok(Value::Str(s)) => Some(s),
+            Ok(Value::Str(s)) => Some(s.to_string()),
             Ok(other) => {
                 eprintln!(
                     "claim_executor: floor component receipt REFUSED — \
@@ -6244,10 +6246,7 @@ fn witness_row_cost_verdict_via_authority(
                     (Some("observed_clock".to_string()), observed_clock),
                     (Some("basis_clock".to_string()), basis_clock),
                     (Some("basis_eval".to_string()), basis_eval),
-                    (
-                        Some("run_ref".to_string()),
-                        Value::Str(b.run_ref.clone().into()),
-                    ),
+                    (Some("run_ref".to_string()), str_value(b.run_ref.clone())),
                 ],
             )
         }
@@ -14429,7 +14428,7 @@ mod tests {
             &ctx,
             "phase_begin_line",
             &[
-                (Some("phase".to_string()), Value::Str(phase.to_string())),
+                (Some("phase".to_string()), str_value(phase.to_string())),
                 (
                     Some("overhead_ms".to_string()),
                     Value::Int(overhead_ms as i64),
@@ -14440,7 +14439,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14510,7 +14509,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14547,7 +14546,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14616,7 +14615,7 @@ mod tests {
             &[
                 (
                     Some("module_path".to_string()),
-                    Value::Str(module_path.to_string()),
+                    str_value(module_path.to_string()),
                 ),
                 (
                     Some("elapsed_ms".to_string()),
@@ -14632,7 +14631,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14695,7 +14694,7 @@ mod tests {
             &ctx,
             "seed_peak_rss_line",
             &[
-                (Some("label".to_string()), Value::Str(label.to_string())),
+                (Some("label".to_string()), str_value(label.to_string())),
                 (Some("rss_bytes".to_string()), Value::Int(rss_bytes as i64)),
                 (
                     Some("rss_available".to_string()),
@@ -14707,7 +14706,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14770,10 +14769,10 @@ mod tests {
             &ctx,
             "shell_effect_failed_line",
             &[
-                (Some("intent".to_string()), Value::Str(intent.to_string())),
+                (Some("intent".to_string()), str_value(intent.to_string())),
                 (
                     Some("argv_collapsed".to_string()),
-                    Value::Str(argv_collapsed.to_string()),
+                    str_value(argv_collapsed.to_string()),
                 ),
                 (Some("exit_code".to_string()), Value::Int(exit_code as i64)),
                 (
@@ -14790,7 +14789,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14857,7 +14856,7 @@ mod tests {
                 (Some("batch_index".into()), Value::Int(0)),
                 (
                     Some("batch_label".into()),
-                    Value::Str(batch_label.to_string()),
+                    str_value(batch_label.to_string()),
                 ),
                 (Some("entry_index".into()), Value::Int(entry_index as i64)),
                 (Some("entry_total".into()), Value::Int(entry_total as i64)),
@@ -14885,7 +14884,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -15585,7 +15584,7 @@ mod tests {
                 "non-integer signal",
                 Some(variant(
                     "ProcessSignaled",
-                    vec![("signal", Value::Str("9".to_string()))],
+                    vec![("signal", str_value("9".to_string()))],
                 )),
             ),
         ];

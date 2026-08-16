@@ -125,6 +125,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/vendor/amphenol.dag",
+  "dag/extdeps/vendor/lotes.dag",
   "dag/extdeps/vendor/microchip_technology.dag",
   "dag/extdeps/vendor/macronix.dag",
   "dag/extdeps/vendor/samtec.dag",
@@ -149,6 +150,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/rust/cargo_message.dag",
   "dag/extdeps/ipc/dpmx.dag",
   "dag/extdeps/ucamco/gerber.dag",
+  "dag/extdeps/cpu/ampere_altra_memory_controller.dag",
   "dag/extdeps/cpu/ampere_altra_package.dag",
   "dag/extdeps/cpu/ampere_altra_package_table4_raw.dag",
   "dag/extdeps/cpu/ampere_altra_package_contacts.dag",

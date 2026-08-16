@@ -24,10 +24,16 @@ import product.pcb.physical { ComponentPlacement, PhysicalRefusalSet }
 // those refs resolve. Capabilities that have no row type yet (stackup, footprints, pads, routes,
 // nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs
 // none from a board whose routing has not been modeled from a board whose routing completed at
-// zero. Each of those fields is a capability standing, pending with a nonempty obligation or
-// refused with a cause. There is no Established arm here because there is no consumer and no row
-// type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline
-// constructed; it is not an admitted board.
+// zero. Each of those fields is a capability standing, pending with a nonempty obligation,
+// refused with a cause, or established with a DeclarationRef naming where the delivered value
+// lives. The established arm carries a REF and not the value because one standing type serves all
+// six capabilities and they have six different value shapes; asking whether the stackup is settled
+// is a different question from asking what the stackup is, and a world needs only the first. That
+// ref is an identity like the others above -- nothing here checks that it resolves, and an
+// established standing is a claim about modelling progress, not a verified citation. NO capability
+// is established today: every field on every world this repository builds is still pending, so the
+// arm changes what the type can express rather than what any board carries. A PARTIAL world is a
+// preview whose outline constructed; it is not an admitted board.
 type PcbBoard {
   frame: CoordinateFrameIdentity
   outline: AxisAlignedRectangle2
@@ -71,9 +77,22 @@ type NonemptyCapabilityObligations {
   rest: List<PcbCapabilityObligation>
 }
 
+// THE ESTABLISHED ARM, which this type did not have. Its absence is why AdmittedPcbWorld was
+// unreachable for every world this repository can build -- a capability could be owed or refused
+// and never delivered, so "the stackup exists" was not merely unmodelled but UNREPRESENTABLE.
+//
+// IT CARRIES A DeclarationRef, NOT THE VALUE. Two reasons, and the first is the weaker one: it
+// matches EstablishedEnvelopeRead a few lines below, which already points at where an established
+// physical fact lives rather than copying it. The load-bearing reason is that PcbCapabilityStanding
+// is one type used for stackup, footprints, pads, routes, nets and manufacturing artifacts, which
+// are six different value shapes. Carrying values would make this generic in six places and force
+// PcbWorld to grow type parameters for facts it only needs to know the STANDING of; a world asking
+// "is the stackup settled" is a different question from "what is the stackup", and fusing them is
+// what makes a status record start impersonating the thing it reports on.
 type PcbCapabilityStanding
   = CapabilityPending { owed: NonemptyCapabilityObligations }
   | CapabilityRefused { cause: NonEmptyStr }
+  | CapabilityEstablished { authority: DeclarationRef }
 
 // FOUR ARMS, BECAUSE "CHECKED" WAS HIDING A REFUSAL. The subset arm previously carried only a
 // count, and the projection that produced it discarded the nested geometry result -- so a world
@@ -160,17 +179,24 @@ fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
 // which read a world whose stackup, footprints, pads, routes, nets and artifacts had all been
 // REFUSED as a world with nothing outstanding -- the empty-observation narrow DESIGN names, and
 // the worse half of it, because the narrow is silently uncovered rather than merely expensive.
-// PcbCapabilityStanding carries no established arm at all today, so the honest consequence is
-// that AdmittedPcbWorld is unreachable for every world this repository can currently build; that
-// is what this function makes true by construction instead of leaving it to whichever unrelated
-// check happens to fail first.
+// PcbCapabilityStanding now HAS an established arm, so AdmittedPcbWorld is reachable in principle
+// rather than by construction impossible. That is a change in what the type can express and not a
+// claim about any world: every capability the Altra board carries is still pending, and this
+// function is what keeps that fact deciding admission rather than whichever unrelated check
+// happens to fail first.
 fn unsettled_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> PcbWorldRefusal? {
   match s {
     CapabilityPending { owed: _ } => Present { value: PcbCapabilityStillPending { capability: name } }
     CapabilityRefused { cause: c } =>
       Present { value: PcbCapabilityRefused { capability: name, cause: c } }
+    CapabilityEstablished { authority: _ } => Absent
   }
 }
+
+fn capability_established(authority: DeclarationRef) -> PcbCapabilityStanding {
+  CapabilityEstablished { authority: authority }
+}
+
 
 fn first_present_refusal(a: PcbWorldRefusal?, b: PcbWorldRefusal?) -> PcbWorldRefusal? {
   match a {
