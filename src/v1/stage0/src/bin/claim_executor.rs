@@ -31,7 +31,6 @@ use v1_compiler::derived_realization_schedule::{RealizationConcurrency, Realizat
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
-    render_governor_hold_line_mirror, HoldReason,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
@@ -3350,7 +3349,7 @@ fn run_batch_unit(
             selector_function,
             execution_mode,
         } => {
-            let mut slot =
+            let slot =
                 RealizationSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
             let result =
                 run_native_bundle_unit(&source_roots, entry, selector_function, execution_mode);
@@ -3459,8 +3458,7 @@ fn run_batch_unit(
             // A gate unit's resolved graph is a real memory resident: take a governor
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
-            let mut slot =
-                RealizationSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
+            let slot = RealizationSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
             let results = run_shared_entry_claims(
                 &source_roots,
                 &entry,
@@ -4362,7 +4360,7 @@ fn run_discovery_batch_node(
     node_frontier_selection: NodeFrontierSelectionMode,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
-    governor: Arc<RealizationConcurrency>,
+    _governor: Arc<RealizationConcurrency>,
     execution_mode: ExecutionMode,
     spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
