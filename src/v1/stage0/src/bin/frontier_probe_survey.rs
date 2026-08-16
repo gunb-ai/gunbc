@@ -11,7 +11,7 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::std_content_hash::{content_hash_atom, content_hash_combine_structural};
 use v1_compiler::v1_interpreter::{
-    self, free_monoid_symbol_value_to_dotted_string, str_value, ExecutionMode, InterpContext, Value,
+    self, free_monoid_symbol_value_to_dotted_string, ExecutionMode, InterpContext, Value,
 };
 
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag";

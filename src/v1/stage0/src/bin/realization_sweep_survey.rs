@@ -21,7 +21,7 @@ use v1_compiler::cli_run::{
     emit_source_ref_dag_for_path, emit_source_root_ingest_manifest,
     parse_source_root_entry_admission, resolve_entry_graph,
 };
-use v1_compiler::v1_interpreter::{self, str_value, ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/realization_sweep_probe_entry.dag";
 const PROBE_RECEIPT_FN: &str = "realization_sweep_entry_receipt";
