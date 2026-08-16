@@ -125,3 +125,36 @@ green drift gate is not proof that emission is unchanged where it should be.
 are read as area maps only. Both were reasoned while the per-binding authority was alive, so
 their sequencing carries its gravity; per the 2026-08-15 ruling an existing design is evidence
 about X, never authority over Y.
+
+## Standing: decision-complete, producer-incomplete
+
+Classified against DESIGN §3's three-way — *surviving obligation* / *existing reliance* /
+*obsolete behaviour* — not a two-way retain-or-delete. The two-way reading fails toward
+"cut complete", which is the comfortable arm.
+
+| | |
+|---|---|
+| **superseded, discharged** | the per-binding *decision* — `make_decision` → `value_site_verdicts`, landed and witnessed |
+| **deleted with obligations open** | the *producer* — nothing derives `ValueUsage` from the emitter's graph |
+
+Every `ValueUsage` in the tree is authored by a witness. The emitter still consults the deleted
+authority's shape, and these are the counted sites:
+
+```
+src/v1/05_emit_rust.dag   build_movable_set call            (ownership_index construction)
+src/v1/05_emit_rust.dag   fn_movable lookup                 (per-fn movable read)
+src/v1/04_emit_info.dag   movable: empty_set()
+src/v1/04_infer.dag       movable: empty_set()
+src/v1/05_emit_rust.dag   movable: empty_set()
+```
+
+**The obligation, stated so it is countable rather than implied:** derive `ValueUsage`
+(per-site `access` + `site`) from the emitter's graph, so `value_site_verdicts` has a real
+producer and the three `empty_set()` constructions are replaced by a derivation rather than by
+a default. Owned by this cutting lane — not by any retention roster, since *a retention row says
+someone may still build an artifact; an open obligation says someone must still earn a behaviour
+somewhere else*, and parking the second inside the first hides it from the lane that owes it.
+
+> **A landed decision is not a landed producer.** Evidence that the right answer is computable is
+> not evidence that anything computes it on the real input. The fold landed green with a
+> discriminating RED, which is exactly what made this invisible.
