@@ -1,13 +1,16 @@
 module test.claim.cpu_socket_termination_witness
 
 import std.logic { Bool }
+import std.types { NonEmptyStr }
 import extdeps.cpu.types { CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
-import extdeps.cpu.types { SocketFactCitation }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cpu.types { CpuModelCatalogRow, SocketFactCitation }
 import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.amd {
+  amd_ryzen_5_3600_authority,
   socket_am5_authority,
-  socket_am5_citations,
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,
@@ -87,14 +90,39 @@ test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
   cpu_socket_eq(a: a, b: b)
 }
 
-// THE CORRECTED TERMINATION IS CITED ON BOTH AXES. An uncited socket field is what allowed a wrong
-// package to sit beside a right contact count with nothing to check it against, so the repair is
-// not complete until the claim points at a document -- and the citation must cover the axis that
-// was wrong, not merely the row it lived in.
-test fn w_the_am5_socket_fields_cite_an_authority() -> Bool {
-  let cites_package = socket_am5_citations
-    |> filter(c => c.field == "package" && c.authority == socket_am5_authority)
-  let cites_count = socket_am5_citations
-    |> filter(c => c.field == "contact_count" && c.authority == socket_am5_authority)
-  count(cites_package) == 1 && count(cites_count) == 1
+// THE CATALOG ROWS CITE, NOT A LIST BESIDE THEM. The first cut of this asserted that
+// socket_am5_citations existed and pointed at the authority, which a row carrying structurally
+// uncited socket fields would have satisfied -- the evidence could stay green while the thing it
+// claimed to cover was untouched. These read the citations THROUGH the rows, so a row that dropped
+// its citation edge reds here rather than passing beside an orphaned list.
+//
+// Both axes are checked because the package axis is the one that was wrong: a citation covering
+// only the row would not have covered the field that carried the defect.
+fn row_cites_socket_field(row: CpuModelCatalogRow, field: NonEmptyStr, authority: ExternalAuthority) -> Bool {
+  count(row.socket_citations |> filter(c => c.field == field && c.authority == authority)) == 1
+}
+
+test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
+  row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, field: "package", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, field: "contact_count", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "package", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "contact_count", authority: socket_am5_authority)
+}
+
+// EVERY CATALOG ROW CITES ITS SOCKET, not only the ones this PR touched. The field is required by
+// the row type, so an uncited socket is unwritable -- this pins that the requirement is met with
+// real authorities rather than empty lists, which is the one way the type could be satisfied
+// vacuously.
+test fn w_every_catalog_row_carries_a_nonempty_socket_citation() -> Bool {
+  count(ryzen_5_3600_catalog.socket_citations) == 2
+    && count(ryzen_7_pro_8700ge_catalog.socket_citations) == 2
+    && count(ryzen_9_7950x3d_catalog.socket_citations) == 2
+    && count(altra_max_m12830_catalog.socket_citations) == 2
+}
+
+// RED control: the join is discriminating. A field the rows do not cite, and an authority that did
+// not issue the claim, must both answer false -- otherwise the checks above would pass on any row.
+test fn w_red_an_uncited_field_or_foreign_authority_does_not_satisfy_the_join() -> Bool {
+  !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "platform_owner", authority: socket_am5_authority)
+    && !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "package", authority: amd_ryzen_5_3600_authority)
 }

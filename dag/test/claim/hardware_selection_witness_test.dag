@@ -7,14 +7,7 @@ import extdeps.memory.types {
   dram_module_is_realizable, dram_module_required_die_density,
 }
 import extdeps.memory.jedec { ddr4_generation_catalog }
-import extdeps.cpu.ampere {
-  ampere_altra_l1_cache_geometry,
-  ampere_altra_l1_cache_citations,
-  ampere_altra_l2_cache_geometry,
-  ampere_altra_l2_cache_citations,
-  ampere_altra_max_l3_cache_geometry,
-  ampere_altra_max_l3_cache_citations,
-}
+import extdeps.cpu.ampere { ampere_altra_l1_cache_citations, ampere_altra_l1_cache_geometry, ampere_altra_l2_cache_citations, ampere_altra_l2_cache_geometry, ampere_altra_max_l3_cache_citations, ampere_altra_max_l3_cache_geometry, socket_lga4926_citations }
 import extdeps.cpu.types {
   CpuModelCatalogRow, CpuSocket, LandGridArray,
 }
@@ -111,6 +104,7 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
+  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(250),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,

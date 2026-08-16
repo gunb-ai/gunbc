@@ -93,6 +93,7 @@ type CpuModelCatalogRow {
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
+  socket_citations: List<SocketFactCitation>
   tdp_watts: Watt
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<CacheGeometryCitation>
