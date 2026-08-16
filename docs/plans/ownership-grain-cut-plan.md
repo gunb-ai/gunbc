@@ -97,11 +97,25 @@ green drift gate is not proof that emission is unchanged where it should be.
 - **This is not the fix for the 90-minute CI run.** Reconcile is the ~10-minute shared
   preparation item; per-witness resolve is the rest, where `reconcile_assembly` measures 1–3%.
   The payoff is corpus-wide, not reconcile-specific.
-- **Mechanism measured, share unmeasured.** A benchmark replicating the emitted fold shape
-  (`Rc<HashMap<K,Rc<V>>>` threaded through `rc_map_insert(acc.clone(), ..)` vs. moving `acc`)
-  gives clone slope 2.0 against move slope 1.0, 638× at m=4000. That establishes the
-  **mechanism** is quadratic and says nothing about its share of any phase wall. The two
-  claims never travel in one sentence.
+- **Mechanism confirmed, magnitude corrected, share unmeasured.** The shape is real and fires:
+  `acc.clone()` holds the strong count at 2 across the insert, so `Rc::make_mut` copies on every
+  iteration (`strong_count == 2`, allocation moves — measured). The **magnitude is ~9×, a
+  constant factor, not an order of magnitude.**
+
+  A benchmark of mine reported 638× at m=4000 and is **WITHDRAWN as evidence about the emitted
+  fold**: it used `std::collections::HashMap`, while `v1_rt.rs:6` reads
+  `use im::{HashMap, OrdSet as BTreeSet, Vector as Vec}`. A whole-container copy is O(m) in
+  `std` and O(log m) in an `im` persistent map — which is why `im` exists. Same mechanism,
+  different cost class. Measured side by side on one binary: `im` holds ~8–9× flat from
+  n=1000 to n=4000 while `std` climbs 196× → 817×.
+
+  **The repro trap, stated so it is not repeated:** a repro reproduces the code you *read*, and
+  the imports are not in the code you read. Re-authoring a `use` line as the std default is the
+  Rust reflex, and here the std default is the slower asymptotic — so the bias inflates. Assert
+  the repro's type against the subject's type before running any grid.
+
+  Mechanism and share still never travel in one sentence: none of this measures the defect's
+  share of any phase wall.
 - **Behavioral equivalence, never byte-matching** (§7). A byte-identical fixed point would
   force the replacement to reproduce the seed's accidents.
 
