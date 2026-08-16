@@ -3,7 +3,7 @@ use crate::resolved_graph_cache::{
     FaithfulResolvedGraphProbeParts,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
-use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
+use crate::v1_interpreter::{self, str_value, ExecutionMode, InterpContext, Value};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -101,7 +101,7 @@ fn wire_digest_str(hex: &str) -> Result<Value, String> {
     if fnv1a64_structural_hex_digest(hex.to_string()).is_none() {
         return Err(format!("invalid fnv1a64 structural wire digest `{hex}`"));
     }
-    Ok(Value::Str(hex.to_string()))
+    Ok(str_value(hex))
 }
 
 fn wire_fnv1a64_content_hash_value(ctx: &InterpContext, hex: &str) -> Result<Value, String> {
@@ -114,7 +114,7 @@ fn wire_fnv1a64_content_hash_value(ctx: &InterpContext, hex: &str) -> Result<Val
 fn wire_content_hash_to_hex(ctx: &InterpContext, hash: &Value) -> Result<String, String> {
     let args = [(Some("hash".to_string()), hash.clone())];
     match v1_interpreter::run_in_context_with_args(ctx, "wire_content_hash_to_hex", &args, false) {
-        Ok(Value::Str(hex)) => Ok(hex),
+        Ok(Value::Str(hex)) => Ok(hex.to_string()),
         Ok(other) => Err(format!(
             "wire_content_hash_to_hex returned `{}`, expected String",
             ctx.format_value(&other)
@@ -138,7 +138,7 @@ fn lookup_fold_outcome(
         v1_interpreter::run_in_context_with_args(ctx, "provider_lookup_outcome_tag", &args, false)
             .map_err(|e| format!("provider_lookup_outcome_tag: {e}"))?;
     match outcome {
-        Value::Str(tag) => match tag.as_str() {
+        Value::Str(tag) => match tag.as_ref() {
             "hit" => Ok(ResolvedGraphProviderOutcome::Hit),
             "miss" => Ok(ResolvedGraphProviderOutcome::Miss),
             "kind_mismatch" => Ok(ResolvedGraphProviderOutcome::RefusedKindMismatch),
@@ -162,7 +162,7 @@ fn lookup_fold_outcome(
                 let missing = items
                     .iter()
                     .map(|item| match item {
-                        Value::Str(s) => Ok(s.clone()),
+                        Value::Str(s) => Ok(s.to_string()),
                         other => Err(format!(
                             "lookup_refused_incomplete_missing element `{}` is not String",
                             ctx.format_value(other)

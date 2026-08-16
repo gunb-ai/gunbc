@@ -62,7 +62,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
     let mut out = Vec::new();
     for elem in free_monoid_elems(value, ctx)? {
         match elem {
-            Value::Str(s) => out.push(s.clone()),
+            Value::Str(s) => out.push(s.to_string()),
             other => {
                 return Err(format!(
                     "expected a List<String> element, got {}",
@@ -117,7 +117,7 @@ fn int_from_value(value: &Value) -> Result<i64, String> {
 
 fn str_from_value(value: &Value) -> Result<String, String> {
     match value {
-        Value::Str(s) => Ok(s.clone()),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "expected String, got {}",
             other.type_label_public()
@@ -726,7 +726,7 @@ fn symbol_to_manifest(sym: &str) -> String {
 
 fn value_symbol_name(value: &Value) -> Result<String, String> {
     match value {
-        Value::Str(s) => Ok(symbol_to_manifest(s)),
+        Value::Str(s) => Ok(symbol_to_manifest(s.as_ref())),
         other => Err(format!(
             "expected symbol String, got {}",
             other.type_label_public()
@@ -829,7 +829,7 @@ fn blocker_variant_emit(blocker: &Value, ctx: &InterpContext) -> Result<String, 
 
 fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeReceiptRow, String> {
     let module_path = match record_field(ctx, value, "module_path")? {
-        Value::Str(s) => s.clone(),
+        Value::Str(s) => s.to_string(),
         other => {
             return Err(format!(
                 "module_path not String: {}",

@@ -131,7 +131,7 @@ fn sweep_rows_for_entry(
     let value =
         v1_interpreter::run_in_context(&ctx, receipt_fn, true).map_err(|e| format!("{e}"))?;
     match value {
-        Value::Str(tsv) => Ok(tsv),
+        Value::Str(tsv) => Ok(tsv.to_string()),
         other => Err(format!(
             "receipt fn returned {}, expected String",
             other.type_label_public()
