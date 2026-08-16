@@ -17,9 +17,6 @@ import std.primitive_identity {
   primitive_d0_derived_rows_are_from_authority,
   primitive_d0_host_unspecified_traversal_classified,
   primitive_d0_index_by_registry_algebra_gap_holds,
-  primitive_d0_interpreter_rows_are_from_authority,
-  primitive_d0_interpreter_census_matches_roster,
-  primitive_d0_interpreter_surface_row_count,
   primitive_d0_map_keys_five_surface_join_holds,
   primitive_d0_open_denominator_receipt_holds,
   primitive_d0_open_surface_authority_count,
@@ -43,11 +40,6 @@ import std.primitive_identity {
   surface_row,
 }
 import std.decl_ref { decl_ref }
-import gunbc.v1_interpreter_primitive_surface {
-  authored_spelling_count,
-  distinct_arm_identity_count,
-  v1_interpreter_row_count,
-}
 import std.primitives { builtin_registry_surface_names }
 import std.types { Bool, List, String }
 
@@ -55,18 +47,12 @@ data primitive_identity_join_witness_note: String = "D0/D1 slice (NOT closing co
 
 test fn w_open_denominator_counted_receipt() -> Bool {
   primitive_d0_open_denominator_receipt_holds()
-    && primitive_d0_derived_surface_authority_count == 5
+    && primitive_d0_derived_surface_authority_count == 4
     && primitive_d0_parallel_roster_surface_authority_count == 2
     && primitive_d0_open_surface_authority_count == 0
     && primitive_d0_derived_rows_missing_identity_count() > 0
 }
 
-test fn w_interpreter_census_consumes_roster_authority() -> Bool {
-  primitive_d0_interpreter_census_matches_roster()
-    && primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
-    && distinct_arm_identity_count() < v1_interpreter_row_count()
-    && authored_spelling_count() < distinct_arm_identity_count()
-}
 
 test fn w_derived_surface_census_population() -> Bool {
   let registry_rows = count(builtin_registry_surface_names())
@@ -74,9 +60,6 @@ test fn w_derived_surface_census_population() -> Bool {
   derived_rows > registry_rows && derived_rows > 100
 }
 
-test fn w_interpreter_surface_rows_marked_derived_from_authority() -> Bool {
-  primitive_d0_interpreter_rows_are_from_authority()
-}
 
 test fn w_derived_rows_marked_derived_from_authority() -> Bool {
   primitive_d0_derived_rows_are_from_authority()

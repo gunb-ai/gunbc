@@ -11,10 +11,6 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, d
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { rt_function_registry }
-import gunbc.v1_interpreter_primitive_surface {
-  v1_interpreter_primitive_arms,
-  v1_interpreter_row_count,
-}
 
 data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1 (interpreter-primitive-roster consumption): measurement scaffold deleted; primitive_surface_census_derived reads the roster authority. Population-wide identity join closure remains the terminal acceptance bar."
 
@@ -24,9 +20,9 @@ data primitive_identity_d0_note: String = "D0 (primitive-identity-join first sli
 
 data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface drift audit (review 45947 class): AlgebraTemplate — CLOSED, all_algebra_field_templates flat_maps all_algebra_profiles (2c9c01351). EmitHandler — single authority, rt_function_registry with derived rt_functions/rt_ref_map_functions projections (no parallel roster). BuiltinRegistry — OPEN parallel enumeration: builtin_registry_surface_names hand list beside builtin_function_registry Map (witness cannot map_keys Node at runtime; builtin_registry_surface_names_note). PrimitiveContractRow — OPEN parallel enumeration: primitive_contract_roster hand list beside *_contract data rows (primitive_contract_roster_note). D0 mutation control on those two surfaces discovers drift only when the hand list is updated, not when the primary authority grows alone."
 
-data primitive_d0_open_denominator_receipt_note: String = "Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch); open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count). primitive_d0_interpreter_census_matches_roster links census to roster authority. derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status."
+data primitive_d0_open_denominator_receipt_note: String = "Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch); open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count). primitive_d0_interpreter_census_matches_roster links census to roster authority. derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status. **NARROWED FIVE TO FOUR BY THE INTERPRETER CUT, 2026-08-16, AND DECLARED RATHER THAN TAKEN SILENTLY.** The InterpreterDispatch DERIVED surface is gone: gunbc.v1_interpreter_primitive_surface was deleted with the interpreter, so v1_interpreter_primitive_arms and v1_interpreter_row_count no longer exist and primitive_interpreter_surface_rows had no authority left to derive from. Removing it without saying so would be the empty-observation narrow -- a census that quietly stops counting one of its authorities reports a smaller denominator as though the world had shrunk. **What was LOST is one DERIVED authority and the census-versus-roster join that checked it (primitive_d0_interpreter_census_matches_roster, primitive_d0_interpreter_surface_row_count, primitive_d0_interpreter_rows_are_from_authority, all deleted with their subject). What SURVIVES is the InterpreterDispatch authority VARIANT and its hand-authored primitive_d0_definitions rows, which never derived from the deleted module** -- so the five-surface map_keys join still holds at the definitions grain while the derived census now spans four. Those two grains must not be blurred: the join is unchanged, the denominator is not. **This is a rung lowering with no restoration trigger of its own, because the subject is gone rather than deferred; the successor question is the PrimitiveDefinition identity join, which DESIGN already names as the dissolve-on for the forked primitive denominator, and this cut narrows that fork by one member without closing it.**"
 
-data primitive_d0_derived_surface_authority_count: Int = 5
+data primitive_d0_derived_surface_authority_count: Int = 4
 
 data primitive_d0_open_surface_authority_count: Int = 0
 
@@ -34,7 +30,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 
 data primitive_d0_mutation_control_coverage_note: String = "D1 mutation-control coverage: DISCOVERED on AlgebraTemplate, EmitHandler, and InterpreterDispatch — new template, emit-handler, or interpreter-dispatch row without identity join appears on primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when builtin_function_registry or a *_contract data row grows alone; see primitive_d0_derived_surface_drift_audit_note. Counted: open_surface_authority_count=0. Derived does not mean complete; parallel roster does not mean single-authority."
 
-data primitive_interpreter_dispatch_roster_note: String = "Interpreter dispatch is seven dispatch symbols in v1_interpreter (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner; eval_call (bridge families plus native fold intercept); try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from v1_interpreter_primitive_arms with provenance DerivedFromAuthority."
+data primitive_interpreter_dispatch_roster_note: String = "Interpreter dispatch is seven dispatch symbols in v1_interpreter (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner; eval_call (bridge families plus native fold intercept); try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from v1_interpreter_primitive_arms with provenance DerivedFromAuthority. **SUPERSEDED 2026-08-16 (interpreter cut): every counter this note names -- v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count -- and the roster authority they lived on are DELETED, and primitive_interpreter_surface_rows is deleted with them. The note is retained rather than removed because it is the only surviving description of what the seven dispatch symbols were, which the successor PrimitiveDefinition join will need; it is now a historical description and not a live pointer.**"
 
 data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner — explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable sooner; five other sites remain hand-declared until macro dissolves them."
 
@@ -374,24 +370,6 @@ fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
     )
 }
 
-fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
-  v1_interpreter_primitive_arms()
-    |> map(arm =>
-      surface_row(
-        authority: InterpreterDispatch,
-        authored_symbol: arm.authored_spelling as String,
-        authority_ref: decl_ref(
-          module_path: "gunbc.v1_interpreter_primitive_surface",
-          decl_name: "v1_interpreter_primitive_arms",
-        ),
-        primitive: primitive_identity_lookup(
-          authority: InterpreterDispatch,
-          authored_symbol: arm.authored_spelling as String,
-        ),
-        provenance: DerivedFromAuthority,
-      )
-    )
-}
 
 fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
   concat(
@@ -405,7 +383,7 @@ fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
       ),
       primitive_emit_surface_rows()
     ),
-    primitive_interpreter_surface_rows()
+    []
   )
 }
 
@@ -606,18 +584,10 @@ fn primitive_d0_derived_rows_missing_identity_count() -> Int {
   count(primitive_surface_rows_missing_identity_violations(rows: primitive_surface_census_derived()))
 }
 
-fn primitive_d0_interpreter_surface_row_count() -> Int {
-  count(primitive_interpreter_surface_rows())
-}
-
-fn primitive_d0_interpreter_census_matches_roster() -> Bool {
-  primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
-}
 
 fn primitive_d0_open_denominator_receipt_holds() -> Bool {
-  primitive_d0_derived_surface_authority_count == 5
+  primitive_d0_derived_surface_authority_count == 4
     && primitive_d0_open_surface_authority_count == 0
-    && primitive_d0_interpreter_census_matches_roster()
     && primitive_d0_derived_rows_missing_identity_count() > 0
 }
 
@@ -715,10 +685,6 @@ fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
     && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
 }
 
-fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
-  primitive_interpreter_surface_rows()
-    |> all(fn(row) { row.provenance == DerivedFromAuthority })
-}
 
 fn primitive_d0_derived_rows_are_from_authority() -> Bool {
   primitive_surface_census_derived()
