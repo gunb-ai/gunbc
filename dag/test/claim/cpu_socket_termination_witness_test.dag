@@ -3,8 +3,11 @@ module test.claim.cpu_socket_termination_witness
 import std.logic { Bool }
 import extdeps.cpu.types { CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
+import extdeps.cpu.types { SocketFactCitation }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.amd {
+  socket_am5_authority,
+  socket_am5_citations,
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,
@@ -82,4 +85,16 @@ test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
   let a = CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 }
   let b = CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 }
   cpu_socket_eq(a: a, b: b)
+}
+
+// THE CORRECTED TERMINATION IS CITED ON BOTH AXES. An uncited socket field is what allowed a wrong
+// package to sit beside a right contact count with nothing to check it against, so the repair is
+// not complete until the claim points at a document -- and the citation must cover the axis that
+// was wrong, not merely the row it lived in.
+test fn w_the_am5_socket_fields_cite_an_authority() -> Bool {
+  let cites_package = socket_am5_citations
+    |> filter(c => c.field == "package" && c.authority == socket_am5_authority)
+  let cites_count = socket_am5_citations
+    |> filter(c => c.field == "contact_count" && c.authority == socket_am5_authority)
+  count(cites_package) == 1 && count(cites_count) == 1
 }

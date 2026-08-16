@@ -2,7 +2,7 @@ module extdeps.cpu.amd
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cpu.types { CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray }
+import extdeps.cpu.types { CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SocketFactCitation }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
@@ -82,6 +82,20 @@ data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
   CacheGeometryCitation {
     field: "capacity",
     authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+// THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
+// correct 1718 count; an uncited socket field is what let a wrong termination sit beside a right
+// number without anything to check it against.
+data socket_am5_citations: List<SocketFactCitation> = [
+  SocketFactCitation {
+    field: "package",
+    authority: socket_am5_authority,
+  },
+  SocketFactCitation {
+    field: "contact_count",
+    authority: socket_am5_authority,
   },
 ]
 

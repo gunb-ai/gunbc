@@ -64,6 +64,14 @@ type CpuL3CacheGeometry {
   line_size: ByteSize
 }
 
+// A SOCKET FACT CITES ITS SOURCE THE SAME WAY A CACHE FACT DOES. The termination is the axis this
+// corpus already got wrong once -- AM5 carried PGA because 1718 looked right beside it -- and the
+// defect survived precisely because nothing tied the claim to a document anyone could check.
+type SocketFactCitation {
+  field: NonEmptyStr
+  authority: ExternalAuthority
+}
+
 type CacheGeometryCitation {
   field: NonEmptyStr
   authority: ExternalAuthority
