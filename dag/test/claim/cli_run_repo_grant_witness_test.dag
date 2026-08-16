@@ -1,0 +1,59 @@
+module test.claim.cli_run_repo_grant_witness
+
+import std.types { Bool, String }
+import std.access { AccessDecision, Permit, Deny }
+import std.effect_grant {
+  Read, Write, verb_eq,
+}
+import gunbc.cli_run_repo_grant {
+  cli_run_repo_read_admissible,
+  cli_run_repo_write_admissible,
+  cli_run_repo_frame,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cli_run_repo_grant_witness_note: String = "P-B discriminating witnesses for gunbc.cli_run_repo_grant (docs/plans/effect-namespace-grants.md 6). Repo-relative paths under the abstract repo subtree Permit Read+Write; escaping paths (`..` segment or absolute outside repo projection) are located std.access.Deny refusals from EffectRequest — the modeled authority the src/v1/stage0/src/cli_run.rs repo_relative_path HAND-RUST gate derives from."
+
+data in_repo_rel: String = "dag/std/effect_grant.dag"
+data escaping_rel: String = "../outside.dag"
+data absolute_outside: String = "/etc/passwd"
+
+fn is_refused(a: AccessDecision) -> Bool {
+  match a {
+    Permit => false
+    Deny { refusal: refusal } => true
+  }
+}
+
+fn is_admitted(a: AccessDecision) -> Bool {
+  match a {
+    Permit => true
+    Deny { refusal: refusal } => false
+  }
+}
+
+test fn cli_run_repo_grant_admits_in_repo_path_holds() -> Bool {
+  is_admitted(a: cli_run_repo_read_admissible(rel: in_repo_rel))
+    && is_admitted(a: cli_run_repo_write_admissible(rel: in_repo_rel))
+}
+
+test fn cli_run_repo_grant_refuses_escaping_path_holds() -> Bool {
+  is_refused(a: cli_run_repo_write_admissible(rel: escaping_rel))
+    && is_refused(a: cli_run_repo_read_admissible(rel: escaping_rel))
+}
+
+test fn cli_run_repo_grant_refuses_absolute_outside_holds() -> Bool {
+  is_refused(a: cli_run_repo_write_admissible(rel: absolute_outside))
+}
+
+test fn cli_run_repo_grant_refusal_is_located() -> Bool {
+  match cli_run_repo_write_admissible(rel: escaping_rel) {
+    Deny { refusal: refusal } =>
+      refusal.location.profile == "EffectRequest"
+        && refusal.location.subject == cli_run_repo_frame.name
+        && refusal.location.action == "write"
+    Permit => false
+  }
+}

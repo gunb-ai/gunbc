@@ -1,0 +1,40 @@
+module test.claim.compile_clean_shard_entry_paths_fast_hand_rust_witness
+
+import std.dissolution { dissolution_description }
+
+import tools.dag_compile_clean_shard_roster {
+  compile_clean_shard_entry_paths_fast_hand_rust_scaffold,
+  compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger,
+  compile_clean_shard_entry_paths_fast_hand_rust_loc_delta_net,
+  compile_clean_shard_entry_paths_fast_hand_rust_paths,
+  compile_clean_shard_entry_paths_fast_hand_rust_receipt_census,
+  compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor,
+  compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry,
+  compile_clean_shard_entry_paths_fast_hand_rust_roadmap_lane_anchor,
+  witness_roster_build_refuses_synthetic_duplicate_facts
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool }
+import v2.std.algebra { length }
+
+data compile_clean_shard_entry_paths_fast_hand_rust_witness_note: String = "HAND-RUST receipt for src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast (review 47271): host floor-CI mirror of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from via std.keyed_roster.keyed_roster_build — not a parallel authority. Rust duplicate-refusal test must stay aligned with witness_roster_build_refuses_synthetic_duplicate_facts on the same fixture."
+
+test fn compile_clean_shard_entry_paths_fast_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match compile_clean_shard_entry_paths_fast_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn compile_clean_shard_entry_paths_fast_hand_rust_receipt_is_checkable() -> Bool {
+  !(dissolution_description(condition: compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger) == "")
+    && !(compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor == "")
+    && !(compile_clean_shard_entry_paths_fast_hand_rust_roadmap_lane_anchor == "")
+    && (compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry == "dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag")
+    && (compile_clean_shard_entry_paths_fast_hand_rust_receipt_census == "rg '^pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER' src/v1/stage0/src/cli_run.rs == 1")
+    && (compile_clean_shard_entry_paths_fast_hand_rust_loc_delta_net == length(xs: compile_clean_shard_entry_paths_fast_hand_rust_paths))
+}
+
+test fn compile_clean_shard_entry_paths_fast_hand_rust_fixture_duplicate_semantics_align() -> Bool {
+  witness_roster_build_refuses_synthetic_duplicate_facts()
+}
