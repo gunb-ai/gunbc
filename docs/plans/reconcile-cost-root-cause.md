@@ -98,9 +98,11 @@ A(module, name)  = name ∈ ancestry_str_bindings          ← now explicit, was
 
 Three constraints, each with a receipt:
 
-- Derive the kernel set from `compiler_kernel_type_env(...).str_bindings`, **not** `kernel_type_set`
-  — `Optional` is constructed by the kernel environment and is not a row of that table, yet it is
-  the joint-highest count (766/768). A hand-authored list would have dropped it.
+- Derive the kernel set from `compiler_kernel_type_env(...).str_bindings`, **not** `kernel_type_set`.
+  Precisely: `Float` *is* a row of that table; `Optional` is **not** — it is constructed separately
+  by the synthetic kernel environment, and it is nevertheless the second-highest count (766/768).
+  So `Optional` alone is the proof that deriving from the table is incomplete, and a hand-authored
+  list would have dropped the largest name the table cannot supply.
 - Keep the candidate relation **closure-global** (built from this reconcile's typed closure), never
   the repo census or `SymbolIndex.global_bare`, or a homonym outside the closure flips uniqueness.
 - Do not retain `direct_import_exporter_counts` — it enumerates every exported name of every direct
@@ -140,10 +142,20 @@ So the divergence is **ordering at every level; content is stable**. (A first co
 `modules` unequal — that canonicalization sorted object keys but not nested lists, so a permutation
 *inside* a module entry read as a difference. The instrument, not the artifact.)
 
-One bound on the claim: deep-sorting erases intended order as well as incidental order, so this
-establishes content-identity up to ordering, not that every varying order is semantically inert. It
-does not need to — DESIGN already rules map traversal order unspecified, so any consumer relying on
-it is itself the defect.
+Two bounds on the claim. **Deep-sorting erases intended order as well as incidental order**, so this
+establishes content-identity up to ordering, not that every varying order is semantically inert —
+and a globally-sorting comparison can *erase the first order-sensitive boundary it is being used to
+find*. A sounder ladder for the next such question: canonicalize object-key order only → compare
+cardinalities → compare records as keyed multisets where a stable key exists → locate the first
+differing JSON path → only then classify (pure permutation / generated-name renumbering / real field
+difference). And identical byte lengths are *consistent with* a permutation, not proof of one:
+equal-length substitution preserves length too.
+
+**Third, independent defect, recorded rather than parsed away:** `dag-artifact.json` contains raw
+control characters, so `json.load` refuses it in strict mode (`Invalid control character at line 3
+column 5631573`). `strict=False` was an investigative recovery route; it does not make the artifact
+valid JSON. If this file claims to be standard JSON rather than throwaway telemetry, that is a
+serialization defect of its own.
 
 **Consequence: emitted-artifact byte digests are not a valid equivalence oracle on this path.** Any
 drift gate or cache keyed on them rests on a false premise, and a semantic fingerprint is required
