@@ -42204,7 +42204,41 @@ fn floor_resource_sample() -> String {
         })
         .map(|pages| pages * 4)
         .unwrap_or(0);
-    format!("cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt}")
+    // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
+    // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
+    // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
+    // behind what its envelope was doing when it died.
+    //
+    // rss_kb and cur_kb are DIFFERENT COUNTERS and are printed side by side so they are never
+    // silently substituted for one another: RSS is this process's resident anonymous + mapped
+    // pages, while memory.current is the cgroup's total charge including page cache and every
+    // other process in it. Comparing RSS against a cgroup limit is what produced the standing
+    // contradiction this instrument exists to settle — a CI run observed at 14.69 GiB RSS,
+    // above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
+    //
+    // ev_high/ev_max are the reclaim and kill counters for THIS level. Nonzero ev_high is
+    // throttling actually happening rather than inferred from a declared row; both zero beside
+    // a death means the ceiling that killed it was somewhere else.
+    let cg = |name: &str, idx: usize| -> String {
+        std::fs::read_to_string(format!("/sys/fs/cgroup/{name}"))
+            .ok()
+            .and_then(|s| {
+                if idx == usize::MAX {
+                    s.trim().parse::<u64>().ok().map(|v| (v / 1024).to_string())
+                } else {
+                    s.lines()
+                        .nth(idx)
+                        .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
+                }
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let cur_kb = cg("memory.current", usize::MAX);
+    let ev_high = cg("memory.events", 1);
+    let ev_max = cg("memory.events", 2);
+    format!(
+        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} ev_high={ev_high} ev_max={ev_max}"
+    )
 }
 
 pub fn floor_seam(name: &str) {
@@ -42255,11 +42289,80 @@ fn spawn_floor_heartbeat() {
     });
 }
 
+/// THE ENVELOPE THE PROCESS ACTUALLY HAS, read from the kernel, at every visible level.
+///
+/// Every envelope figure this lane has reasoned with — 13.00 GiB high, 14.00 GiB max — came
+/// from the DECLARED rows in `gunbc.runner_slot_allocation`: a nominal limit, read before the
+/// run, describing what was requested rather than what binds. Two measurements say that is not
+/// good enough.
+///
+/// The first is a live contradiction in the timed-out CI run: it entered admission-decode at
+/// rss_kb=15402396 (14.69 GiB), ABOVE both the declared high and the declared max, and was not
+/// killed — it ran 151 more minutes. Either those rows are not what binds in that slot, or
+/// process RSS overstates the cgroup charge enough to break the comparison, or both. Nobody
+/// has measured which.
+///
+/// The second is that reading the nominal limit is a mistake with a receipt. A local run was
+/// launched on the premise that this container's `memory.max` of 31.27 GiB and `memory.high`
+/// of `max` made it a headroom arm; it was OOM-killed at 12.77 GB RSS. The counters afterwards
+/// read `max 0`, `high 0`, `oom_kill 16` — its own limits were never reached, so the kill came
+/// from an ancestor. The nominal limit described nothing that mattered.
+///
+/// Hence: the PATH as well as the values, and every readable ancestor, because a cgroup that
+/// never hits its own maximum can still be killed from above and the honest reading requires
+/// knowing where the ceiling lives. `memory.events` is the load-bearing field — `max`/`high`
+/// nonzero means this level acted; all-zero beside a kill means some other level did.
+///
+/// Emitted at entry and again at exit so the peak and the event counters bound the whole run.
+/// This reads `/proc` and `/sys` and writes nothing; an unreadable file is reported as absent
+/// rather than defaulted, since a fabricated zero here would re-create the exact class of
+/// error the function exists to end.
+fn floor_cgroup_envelope(when: &str) {
+    let rel = std::fs::read_to_string("/proc/self/cgroup")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.rsplit("::").next().map(|p| p.to_string()))
+        })
+        .unwrap_or_else(|| "<unreadable>".to_string());
+    eprintln!("[floor-cgroup] when={when} path={rel}");
+    let field = |dir: &str, name: &str| -> String {
+        std::fs::read_to_string(format!("{dir}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "<absent>".to_string())
+    };
+    // Walk from the leaf up to the cgroup root, reporting each level that is readable. Under a
+    // container this is often just the root, and that itself is the finding: if no ancestor is
+    // visible from inside, the process cannot observe the limit that binds it and the ceiling
+    // has to be read from the host side.
+    let mut dir = std::path::PathBuf::from("/sys/fs/cgroup");
+    for seg in rel.trim_matches('/').split('/').filter(|s| !s.is_empty()) {
+        dir.push(seg);
+    }
+    loop {
+        let d = dir.to_string_lossy().to_string();
+        if std::fs::metadata(format!("{d}/memory.current")).is_ok() {
+            eprintln!(
+                "[floor-cgroup] when={when} level={d} max={} high={} current={} peak={} events=[{}]",
+                field(&d, "memory.max"),
+                field(&d, "memory.high"),
+                field(&d, "memory.current"),
+                field(&d, "memory.peak"),
+                field(&d, "memory.events"),
+            );
+        }
+        if d == "/sys/fs/cgroup" || !dir.pop() {
+            break;
+        }
+    }
+}
+
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    floor_cgroup_envelope("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
@@ -42296,6 +42399,13 @@ pub fn run_required_floor(
     //     compile.normalize    2s
     //     compile.reconcile    8min      <- 520s of a 569s phase
     //     compile.analyses     1s
+    //
+    // READ THE FIRST SET, NOT THE FIRST MATCH. A floor run emits these marks TWICE: once for
+    // this preparation, and again for the published-mock projection below, where the same four
+    // names appear at 33ms/4ms/41ms/1ms. The small set is a second, tiny compile — not this one
+    // — and grepping `compile.reconcile` finds whichever the reader looks at first. That is not
+    // hypothetical: the 41ms reading is why these marks were dismissed as belonging to the mock
+    // projection for weeks while they were the whole preparation answer.
     //
     // Cross-read against a 5s heartbeat (`GUNBC_FLOOR_HEARTBEAT_SECS`), reconcile spans
     // t=45s..565s and RSS 3.53 GB -> 9.28 GB, so it owns ~91% of the wall AND essentially all
