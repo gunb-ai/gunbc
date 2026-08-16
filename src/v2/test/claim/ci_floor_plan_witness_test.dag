@@ -564,16 +564,16 @@ test fn witness_ordinary_floor_batches_run_the_whole_roster() -> Bool {
     && !discovery_batch_selection_is(r: bin_witness_corpus_runnable_for(), expected: SelectionApplied)
 }
 
-// The declared scope boundary of the flip, asserted rather than described: the falsifier's
-// cold control still carries its predict-only arm, and the v1 scoped batch still selects.
-// If a later change widens the flip to either, this reds and the widening becomes a
+// The declared scope boundary of the flip, asserted rather than described. It used to name TWO
+// non-flipped lanes — the falsifier's predict-only cold control, and the v1 scoped batch which
+// "still selects". That second clause is now FALSE: the scoped batch retired with its subject in
+// the v1 cut (gunbc.ci_layer_roots v1_claim_scoped_witness_retirement_receipt), so the boundary
+// has one side left and this block says so rather than describing a lane that no longer exists.
+// If a later change widens the flip to the remaining lane, this reds and the widening becomes a
 // decision instead of a side effect.
 test fn witness_selection_flip_scope_is_exactly_the_ordinary_corpus() -> Bool {
-  // The scoped-batch half of this boundary retired with the batch (receipt:
-  // gunbc.ci_layer_roots v1_claim_scoped_witness_retirement_receipt). The falsifier's
-  // predict-only cold control is the remaining declared non-flipped lane.
   discovery_batch_selection_is(
-         r: gunbc_falsifier_ordinary_batches().first().first(),
+    r: gunbc_falsifier_ordinary_batches().first().first(),
     expected: SelectionPredictOnly
   )
 }
