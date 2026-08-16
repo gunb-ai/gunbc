@@ -160,6 +160,19 @@ test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
   }
 }
 
+// new_root names the boundary in CONSUMER terms, not in one realization's
+// vocabulary. Asserted against both fields at once with distinct constants: a
+// realization name reappearing in new_root fails the first conjunct, and the
+// contract silently drifting toward a realization fails the second. Neither can
+// be satisfied by a default or an unpopulated field.
+test fn new_root_names_the_boundary_not_a_realization() -> Bool {
+  let cut = interpreter_replacement_cut()
+  (cut.new_root as String)
+      == "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"
+    && (cut.contract as String)
+      == "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"
+}
+
 // The covered region is the exact set that leaves, and the old root is not in it.
 test fn covered_region_is_the_deleted_set_and_excludes_the_old_root() -> Bool {
   let cut = interpreter_replacement_cut()
