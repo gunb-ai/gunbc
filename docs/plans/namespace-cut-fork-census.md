@@ -569,3 +569,52 @@ is the blocker this branch documents -- would be exactly the unverifiable repair
 the rule warns about. Recorded so the next reader does not mistake its passing
 for evidence about the fallback path; `zero_on_chain` is the test that carries
 that claim.
+
+### The discriminating condition lives in the fixture, and nothing asserts it
+
+A third pass over this file, on the rule that a control whose NAME does the
+discriminating is not a control. All six tests here fail it in the same way, and
+the failure is one step removed from the name: the name states a condition, the
+FIXTURE encodes it, and no predicate checks the fixture still has it.
+
+`namespace_only_unique_on_chain_still_resolves` is the sharpest case. Its name
+claims exactly one binder on the referencing chain and another off it -- a
+homonym that must nonetheless resolve, because the strict rule is unique-on-chain
+rather than no-homonyms-anywhere. Its body asserts one thing: that no error
+diagnostics were produced. **Delete `fixother.dag` from the fixture and `Duo` is
+declared once in the whole pool -- no homonym exists at all -- and the test still
+passes, now proving only that a uniquely-declared type resolves.** That is
+trivially true and says nothing about the rule the test is named for.
+
+The same gap is present in all six: `zero_on_chain` never asserts `Stray` has two
+pool binders, `fn_chain_homonym` never asserts both `pick` binders are ancestors.
+Each fixture is correct as authored today -- verified by reading -- so this is
+drift exposure, not a present falsehood.
+
+**The general form, which is worth more than the instance:**
+
+> A fixture is an UNASSERTED PREMISE. The name states the condition, the fixture
+> encodes it, the predicate consumes it -- and nothing anywhere checks the
+> encoding still holds. A future edit to the fixture silently changes what the
+> test proves, while the name goes on claiming the original.
+
+**The pending assertions**, one per test, so this is one step from done when the
+v1 test builder is unblocked:
+
+| test | assertion the fixture premise needs |
+|---|---|
+| `..._unique_on_chain_still_resolves` | exactly 2 `Duo` declarations, exactly 1 on the `fixchain.mid.leaf` chain |
+| `zero_on_chain_...` | exactly 2 `Stray` declarations, exactly 0 on the chain |
+| `..._refuses_fn_parent_homonym_at_call_site` | exactly 2 `pick` declarations, both on the chain |
+| `..._does_not_reach_off_chain_fn_homonyms_at_all` | exactly 2 `pick` declarations, both off the chain |
+| `..._refuses_chain_homonym_on_type_path` | exactly 2 `Homonym` declarations, both on the chain |
+| `..._keeps_genuinely_unbound_as_unresolved...` | exactly 0 declarations of the name |
+
+Note these are **distinct constants over one structure**, not booleans, so they
+validate each other: a fixture helper returning a fixed count cannot satisfy
+`2 on-chain`, `1 on-chain` and `0 on-chain` simultaneously.
+
+Not added now, deliberately and for the same reason as the previous section: the
+v1 test builder is this branch's blocker, so these assertions cannot be executed
+here. Adding unverifiable assertions to a branch already red would hand someone
+else a red they cannot reproduce.
