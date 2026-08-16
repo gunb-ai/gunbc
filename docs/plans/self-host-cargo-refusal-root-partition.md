@@ -185,8 +185,8 @@ Found via the side channel; verified in tree before use. Its existence means **H
 there is no single global top-three root. But grouping the signatures shows far fewer roots than
 233, and the top one is not what the by-code view suggested.
 
-**Root A — the emitter does not emit trait bounds on generic parameters (~590, the largest).**
-One root wearing five signatures:
+**Root A — the emitter does not emit trait bounds on generic parameters (~590 as of 2026-07-28
+— SIZE NOW SUSPECT, see below).** One root wearing five signatures:
 
 ```
 206  E0599: no method `clone` found for type parameter `T`
@@ -200,6 +200,27 @@ One root wearing five signatures:
 Emit `fn f<T>(…)` where the body clones a `T`, or hand a `T` to a container that requires
 `Clone`, and rustc refuses at every use site. "exists but its trait bounds were not satisfied"
 is rustc naming this directly. Mechanically uniform and closure-wide, so it is floor.
+
+> **THE 590 IS STALE AND MUST NOT BE PLANNED AGAINST.** The cause-signature TSV is dated
+> 2026-07-28. gunbc#7691 — *"Propagate item Clone bounds as a fixpoint over the declared-type
+> graph"* — landed **2026-08-02**, five days later, and wires
+> `emit_item_type_params_with_clone_bounds` + `emit_item_clone_bound_refusal` into
+> `emit_type_def_from_connective`, which is exactly this root's site. So a fix targeting Root A
+> landed *after* the measurement that sized it, and Root A's live size is **unknown**.
+>
+> Two further consequences. The July E0277 census's central claim — that
+> `emit_type_def_from_connective` "renders generic params via the plain `emit_type_params` with
+> no Clone-bound logic at all" — is **stale**: that path now branches into clone-bound emission
+> when `capability_surface.impl_bodies == ""` and the item has no fn fields. And what #7691
+> emits is a **struct-level** `T: Clone` (via `v1_emit_type_params_with_clone_bounds`), which is
+> the shape review 43338 argued *against* as over-constraint — selective rather than blanket,
+> since it is gated on `emit_info.clone_bounded_type_params`, but still type-level rather than
+> per-derive-impl. Whether that is correct-enough in practice or is itself producing new
+> failures is unmeasured.
+>
+> **Nothing proceeds on Root A until a live cause breakdown replaces the July numbers.** This is
+> the receipt-staleness failure this document exists to stop, caught one step before it produced
+> a fix aimed at a root that may already be substantially closed.
 
 **Root B — primitive representation fork (~196).** DESIGN's open thread, now with counts:
 
