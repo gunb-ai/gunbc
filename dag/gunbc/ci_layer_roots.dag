@@ -72,6 +72,10 @@ data excl_bin_wet_reason: String = "bin-execution witness class: fns run compile
 
 data excl_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)")
 
+data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found 2026-08-16, PR #8286 CI red, run 31922786399, batch 3 discovery-corpus, 3 of 9782): every fn in this file invokes the compiled `gunbc` seed as a SUBPROCESS and reads the status of that process, so the hermetic envelope refuses them — 'no mock_response for operation Run' and 'for operation IsExecutable', the class excl_install_media_reason names. The refusal is correct and the file cannot be made hermetic: the subject IS the process exit status, which no in-process assertion can observe, and mocking the invocation would let the witness pass against a fabricated status — precisely the defect it exists to detect. The file was authored into dag/test/claim/ and so was swept into unshrunk hermetic discovery by path; the witnesses were right and the enrolment was wrong. Per DESIGN 'witness cost derives from purpose', this row alone would only remove them from hermetic discovery, which is NOT an executing consumer — so all three fns are ALSO enrolled in bin_witness_wet_entries below, which is their real per-PR executing consumer under WitnessHasExecutingConsumer standing. Size is derived, not chosen: three subprocess invocations of a three-constructor fixture, one per arm of the driver's verdict map."
+
+data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
+
 data excl_rehomed_bin_wet_reason: String = "bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they run as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in falsifier_rehomed_bin_wet_rows)"
 
 data excl_rehomed_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet")
@@ -569,6 +573,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_expectation_frontier_reason,
     dissolution: excl_expectation_frontier_dissolve},
   WitnessExclusionRow {
+    pattern: "run_verdict_exit_status_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_run_verdict_exit_status_reason,
+    dissolution: excl_run_verdict_exit_status_dissolve},
+  WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
@@ -955,6 +964,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "changing_only_the_source_bytes_names_exactly_the_artifact_axis"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
+  bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_failure_verdict_reaches_nonzero_exit"),
+  bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_success_verdict_reaches_zero_exit"),
+  bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_non_process_exit_return_refuses"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),

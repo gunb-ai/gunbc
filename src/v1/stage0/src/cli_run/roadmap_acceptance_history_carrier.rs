@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::v1_interpreter::{list_value, sorted_fields, InterpContext, InterpResult, Value};
+use crate::v1_interpreter::{
+    list_value, sorted_fields, str_value, InterpContext, InterpResult, Value,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RoadmapAcceptanceEventHistoryParse {
@@ -82,7 +84,7 @@ fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
-        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), str_value(digest))])),
     }
 }
 
@@ -101,9 +103,9 @@ fn red_control_value(red_control: JsonRedControl, ctx: &InterpContext) -> Result
             type_name: ctx.sym("RedControlEvidence"),
             variant_name: ctx.sym("RedControlExecuted"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("witness_module"), Value::Str(witness_module)),
-                (ctx.sym("witness_fn"), Value::Str(witness_fn)),
-                (ctx.sym("executed_on"), Value::Str(executed_on)),
+                (ctx.sym("witness_module"), str_value(witness_module)),
+                (ctx.sym("witness_fn"), str_value(witness_fn)),
+                (ctx.sym("executed_on"), str_value(executed_on)),
             ])),
         },
     })
@@ -123,13 +125,13 @@ fn handback_value(handback: JsonHandback, ctx: &InterpContext) -> Result<Value, 
             type_name: ctx.sym("HandbackEvidence"),
             variant_name: ctx.sym("HandbackDelivered"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("first_artifact"), Value::Str(first_artifact)),
+                (ctx.sym("first_artifact"), str_value(first_artifact)),
                 (
                     ctx.sym("further_artifacts"),
                     list_value(
                         further_artifacts
                             .into_iter()
-                            .map(Value::Str)
+                            .map(str_value)
                             .collect::<Vec<_>>(),
                     ),
                 ),
@@ -143,7 +145,7 @@ fn receipt_value(receipt: JsonReceipt, ctx: &InterpContext) -> Result<Value, Str
     Ok(Value::Record {
         type_name: ctx.sym("RoadmapAcceptanceReceipt"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("node"), Value::Str(receipt.node)),
+            (ctx.sym("node"), str_value(receipt.node)),
             (
                 ctx.sym("criteria_digest"),
                 fnv1a64_structural_value(receipt.criteria_digest, ctx),
@@ -153,8 +155,8 @@ fn receipt_value(receipt: JsonReceipt, ctx: &InterpContext) -> Result<Value, Str
                 red_control_value(receipt.red_control, ctx)?,
             ),
             (ctx.sym("handback"), handback_value(receipt.handback, ctx)?),
-            (ctx.sym("accepted_by"), Value::Str(receipt.accepted_by)),
-            (ctx.sym("accepted_on"), Value::Str(receipt.accepted_on)),
+            (ctx.sym("accepted_by"), str_value(receipt.accepted_by)),
+            (ctx.sym("accepted_on"), str_value(receipt.accepted_on)),
         ])),
     })
 }
@@ -194,9 +196,9 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
                         receipt_value(exact_prior_receipt, ctx)?,
                     ),
                     (ctx.sym("disposition"), disposition_value),
-                    (ctx.sym("reason"), Value::Str(reason)),
-                    (ctx.sym("revoked_by"), Value::Str(revoked_by)),
-                    (ctx.sym("revoked_on"), Value::Str(revoked_on)),
+                    (ctx.sym("reason"), str_value(reason)),
+                    (ctx.sym("revoked_by"), str_value(revoked_by)),
+                    (ctx.sym("revoked_on"), str_value(revoked_on)),
                 ])),
             }
         }
@@ -224,7 +226,7 @@ fn field_value<'a>(
 
 fn field_str(value: &Value, field: &str, ctx: &InterpContext) -> Result<String, String> {
     match field_value(value, field, ctx)? {
-        Value::Str(s) => Ok(s.clone()),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "field `{field}` must be String, got {}",
             other.type_label_public()
@@ -271,7 +273,7 @@ fn handback_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonHandback, 
             let further = field_list(value, "further_artifacts", ctx)?
                 .into_iter()
                 .map(|item| match item {
-                    Value::Str(s) => Ok(s),
+                    Value::Str(s) => Ok(s.to_string()),
                     other => Err(format!(
                         "further_artifacts element must be String, got {}",
                         other.type_label_public()
@@ -295,7 +297,7 @@ fn receipt_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonReceipt, St
                 .iter()
                 .find(|(k, _)| *k == sym)
                 .and_then(|(_, v)| match v {
-                    Value::Str(s) => Some(s.clone()),
+                    Value::Str(s) => Some(s.to_string()),
                     _ => None,
                 })
                 .ok_or_else(|| "criteria_digest.digest must be String".to_string())?
@@ -409,7 +411,7 @@ pub fn parse_roadmap_acceptance_event_history_jsonl_builtin(
         RoadmapAcceptanceEventHistoryParse::Refused { detail } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceEventHistoryParse"),
             variant_name: ctx.sym("RoadmapAcceptanceEventHistoryParseRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
         },
     })
 }

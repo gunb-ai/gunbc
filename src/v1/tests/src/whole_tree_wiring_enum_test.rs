@@ -55,7 +55,7 @@ fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
                 },
                 "qualified_name",
             ) {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 other => panic!("expected qualified_name Str, got {other:?}"),
             }
         })

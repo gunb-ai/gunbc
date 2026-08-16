@@ -100,11 +100,6 @@ path = "src/bin/frontier_probe_survey.rs"
 name = "realization_sweep_survey"
 path = "src/bin/realization_sweep_survey.rs"
 
-# Whole-tree v2 parse regression scanner (host transport; one harness, N files).
-[[bin]]
-name = "v2_whole_tree_parse_scan"
-path = "src/bin/v2_whole_tree_parse_scan.rs"
-
 # Whole-tree wiring-liveness scan (gunbc#5364 widening): runs
 # wiring_liveness_corpus_dead_wires over a context built across the WHOLE
 # source-root corpus in one pass, so a dead wire ANYWHERE (not just inside a
@@ -259,16 +254,16 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
 
-# SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
-# gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
-# top of the same closure-scoped census the gate itself consumes. Not a CI consumer —
-# resolution_divergence_census --closure-scoped is the gate's own binary; this is for
-# human triage of a red run. DISSOLUTION: delete when the falsifier_silent_pick_gate
-# telemetry class dissolves (§13 unique-on-chain resolution ships, per
-# falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / STR-RC-0) — local measurement transport
+# for `extdeps.languages.json.parse` `parse_json` interpreter scaling. NOT floor-enrolled.
+# Modes: `scaling` (sub-40KB grid, fixed-cost dominated) and `large` (100/200/507KB
+# decisive regime — post must survive sizes pre reportedly OOM'd on, or refute).
+# CHECKABLE RECEIPT: large-mode TSV rows `ok` vs host kill; not a sub-40KB exponent claim.
+# DISSOLUTION: delete when STR-RC-0 enrolls a floor witness or large-regime refutes and reverts.
+# Carrier: `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER` in json_parse_scaling_probe.rs.
 [[bin]]
-name = "silent_pick_crosscheck"
-path = "src/bin/silent_pick_crosscheck.rs"
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
 
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under
