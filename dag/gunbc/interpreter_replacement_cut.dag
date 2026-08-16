@@ -3,7 +3,7 @@ module gunbc.interpreter_replacement_cut
 import std.types { String, NonEmptyStr, Bool, List }
 import gunbc.replacement_cut {
   ReplacementCutId,
-  CoverageClaim, Covered, CoverageOpen,
+  CoverageOpen,
   ConsumerDisposition, RetainSameContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
   BoundaryConsumer,
   BoundaryCensus, ConsumersEnumerated,
@@ -20,8 +20,6 @@ data interpreter_replacement_cut_note: String = "THE FIRST PRODUCTION Replacemen
 data interpreter_cut_identity: ReplacementCutId = "cut-v1-interpreter" as ReplacementCutId
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
-
-fn covered_by(authority: String) -> CoverageClaim { Covered { by: nes(s: authority) } }
 
 fn consumer(name: String, disposition: ConsumerDisposition) -> BoundaryConsumer {
   BoundaryConsumer { consumer: nes(s: name), disposition: disposition }
