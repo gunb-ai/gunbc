@@ -286,8 +286,7 @@ fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpo
   )
 }
 
-data tailscale_serve_scope_grounding_note: String = "LANDED (KEYING-0 follow-on, node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control."
-
+// KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
 data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = KeyRelation {
   scope_of: tailscale_serve_route_scope_of,
   key_of: tailscale_serve_route_key_of,
