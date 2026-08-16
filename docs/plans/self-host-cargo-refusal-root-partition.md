@@ -222,6 +222,38 @@ is rustc naming this directly. Mechanically uniform and closure-wide, so it is f
 > the receipt-staleness failure this document exists to stop, caught one step before it produced
 > a fix aimed at a root that may already be substantially closed.
 
+**The fork is already declared, and its author already named the hazard in the fix.**
+`v1.trait_derive_emit` `trait_derive_emit_item_clone_bound_contract_fork_note` is a counted
+model-realization fork stating: supplemental generic bounds are modeled at
+`v2.std.compilers.target_model` `target_derive_supplemental_generic_bound_contract` with cited
+upstream impl authorities and consumed by v2 translate; **"that carrier has no consumer in v1
+seed emit today"**; and v1's structural rule is *"a separate interim authority … an
+approximation of cited upstream requirements pending v2 emitter subsumption at that grain."*
+
+Its dissolution clause is the wire-through this lane proposed — and it carries a warning worth
+quoting exactly: *"dissolution re-grounds onto upstream impl requirements, **not a mechanical
+lift of the same predicate — the two can disagree at the edges**."*
+
+That disagreement has a name now. **v1's rule is item/type-level** (`T: Clone` onto the struct's
+generic list); **v2's contracts are per-derive-impl** (Debug needs Clone, Serialize needs Clone,
+Clone needs nothing extra). So the wire-through changes the **grain**, not merely the source of
+truth, and the failure mode to guard is unioning the per-derive requirements back onto the whole
+type declaration — which would reproduce v1's over-constraint while claiming v2's authority.
+Any wire-through must keep per-derive bounds per-derive, and its discriminating control is a
+type whose Debug impl needs `Clone` but whose construction does not: correct output bounds the
+derive, not the type.
+
+**No bootstrap cycle.** Checked rather than assumed: `src/v1/05_emit_rust.dag` already
+references `v2.std.compilers.target_model` and `v2.extdeps.languages.rust`, and eight other v1
+modules reference v2. The v1→v2 edge exists today, so consuming this authority adds no new
+direction. (DESIGN §3: the only structural law on the import graph is acyclicity; the former
+layer-direction rule was deleted 2026-07-24.)
+
+**Ownership is assigned by generated file, not by entry module.** The floor files
+(`v2_std_algebra.rs`, `std_measure.rs`, `v2_std_compilers_target_model.rs`) appear in every
+module's closure, so "05_eval's errors" is not a meaningful unit of work — a shared-file failure
+belongs to whoever owns that file's root, never to the lane that happened to compile it.
+
 **Root B — primitive representation fork (~196).** DESIGN's open thread, now with counts:
 
 ```
