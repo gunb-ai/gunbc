@@ -9,9 +9,9 @@ import gunbc.stage0_seed_retention {
   seed_retention_exclusions,
   seed_retention_arms_disjoint,
   seed_retention_dispositions_are_closed,
-  seed_retention_rung_drops,
-  seed_retention_rung_drop_basenames,
-  seed_retention_rung_drops_are_retained,
+  seed_retention_frozen_properties,
+  seed_retention_frozen_property_basenames,
+  seed_retention_frozen_properties_are_retained,
 }
 
 data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -56,12 +56,12 @@ test fn w_exclusion_dispositions_are_closed() -> Bool {
     && length(seed_retention_exclusions) > 0
 }
 
-test fn w_rung_drops_name_retained_modules() -> Bool {
-  seed_retention_rung_drops_are_retained()
-    && length(seed_retention_rung_drops) > 0
+test fn w_frozen_properties_name_retained_modules() -> Bool {
+  seed_retention_frozen_properties_are_retained()
+    && length(seed_retention_frozen_properties) > 0
 }
 
-test fn w_rung_drop_modules_are_still_declared() -> Bool {
+test fn w_frozen_property_modules_are_still_declared() -> Bool {
   let src = stage0_lib_source()
-  seed_retention_rung_drop_basenames() |> all(b => module_is_declared(src: src, basename: b))
+  seed_retention_frozen_property_basenames() |> all(b => module_is_declared(src: src, basename: b))
 }

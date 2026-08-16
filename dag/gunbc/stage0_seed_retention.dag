@@ -239,45 +239,39 @@ fn seed_retention_dispositions_are_closed() -> Bool {
              || (e.disposition as String) == "Undecided")
 }
 
-data stage0_seed_retention_rung_drop_note: String = "WHY A RUNG DROP IS A SEPARATE ARM AND NOT A FIELD ON EVERY ROW (operator question, 2026-08-16). Freezing an artifact and LOWERING A GUARANTEE are different facts about it. Most retained rows lost no fixable-at-authority defect, so a regression field on all 134 would be empty in nearly every one, and an empty required field invites an author to fill it with something plausible - the fabricated-plausible-output failure aimed at a safety ledger. Worse, it would conflate frozen with regressed, when the authority note above is explicit that membership asserts retention AND NOTHING ELSE. So a rung drop is its own list keyed by basename, joined to the retention roster, leaving the retention row neutral.
+data stage0_seed_retention_frozen_property_note: String = "WHY THERE IS NO RUNG-DROP ARM HERE, DERIVED FROM A MEASUREMENT RATHER THAN FROM A READING. This roster briefly carried one, on the premise that freezing an artifact whose authority was deleted must lower a DESIGN section 4b guarantee. Its single occupant was reclassified twice and then dissolved the premise: no correctness refusal was shown to become an accepted false value, and slower-but-correct is not on the ladder at all. Rather than delete the arm on anyone's say-so - the author's or the coordinator's, both of which had already produced a wrong classification for that row - the population was asked directly.
 
-DESIGN section 4b (3) permits lowering a rung only by declaring previous rung, temporary rung, reason, bounded population and restoration trigger. The rows below are that declaration.
+THE CENSUS, and the discriminator that settled it. All 60 AuthorityDeleted rows resolve to their deleted .dag authority at merge-base 8a799b61c4d, and 9 of them carried guarantee-shaped machinery with corpus reach. But the question a proxy grep cannot answer is whether freezing LOWERED anything, so it was answered by execution: a sole_constructor violation was authored in a NEW file that did not exist when the authority was deleted, and the frozen checker REFUSED it - typed and located - exactly as it would have before. The wall still fires, over corpus that postdates its own authority, because the frozen realization is data-driven over the parsed tree rather than over a roster fixed at emit time.
 
-THIS IS THE INTERIM HOME, NOT THE TERMINAL ONE, and the row must not read as fully modeled. No section 4b rung-drop carrier exists anywhere in the tree; that absence is an open escalation to the operator. Until one lands, these fields are prose in a typed row rather than a modeled guarantee ledger, and a reader should treat them as a debt marker for the real carrier. DISSOLVE-ON: the rung-drop carrier landing, at which point these rows migrate to it and this arm deletes."
+SO NOTHING DESCENDED. Existing error classes hold at their previous rung; a frozen wall still walls. What the cut removed is the ability to ADD or STRENGTHEN a wall, which is a CEILING ON FUTURE CLIMBING and not a descent - section 4b's own distinction between cannot-climb-further and lowered-in-place. An arm with no occupant would be an inert carrier implying a safety claim nobody made, so it is deleted rather than kept warm, and its content moved below where it belongs.
 
-type SeedRetentionRungDrop {
+WHAT REPLACES IT is deliberately weaker vocabulary: a FROZEN PROPERTY records something true about a retained artifact that the freeze makes unfixable, with no implication that any guarantee moved. NEXT TRIGGER, so the absence is not read as permanent: if a later change freezes an artifact whose wall is NOT data-driven - one whose enforcement scope was fixed when it was emitted - that IS a lowered guarantee and this roster needs the arm back."
+
+type SeedRetentionFrozenProperty {
   basename: NonEmptyStr
-  previous_rung: NonEmptyStr
-  temporary_rung: NonEmptyStr
-  reason: NonEmptyStr
-  bounded_population: NonEmptyStr
-  magnitude: NonEmptyStr
-  restoration_trigger: NonEmptyStr
+  what_freezes: NonEmptyStr
+  verified: NonEmptyStr
+  measured: NonEmptyStr
+  not_established: NonEmptyStr
+  dissolves_on: NonEmptyStr
 }
 
-data seed_retention_rung_drops: List<SeedRetentionRungDrop> = [
-  SeedRetentionRungDrop {
+data seed_retention_frozen_properties: List<SeedRetentionFrozenProperty> = [
+  SeedRetentionFrozenProperty {
     basename: "v1_compiler_emit_rust",
-    previous_rung: "MechanicallyPreventable",
-    temporary_rung: "Mitigatable",
-    reason: "The clone-at-accumulator default. The emitter clones a value at its use site rather than moving it at its last use, so every fold threading a persistent container calls Rc::make_mut with another strong Rc live, taking the clone arm on EVERY element and copying the whole container per iteration. It was fixable at src/v1/05_emit_rust.dag, where the clone-versus-move decision is made; that authority is deleted by this cut and the artifact is frozen, so no file an author could edit reaches the built compiler. The per-binding ownership authority that fed the decision was deleted as the root of a grain error - clone-versus-move is a use-site property - and its replacement landed in std, where value_materialization folds over per-site UseSiteVerdicts; but the emitter that would CONSUME those verdicts is frozen, so the correction cannot reach the binary. Measurements authored by fierce-raven-463, which vouches for the numbers.",
-    bounded_population: "42 clone-at-accumulator sites in v1_compiler_emit_rust.rs; 1 more in v1_compiler_compile.rs; 359 across all 28 emitted files. Counted at faa1539954 by matching rc_map_insert / rc_map_merge / rc_set_insert / rc_list_push / rc_list_concat applied to an identifier's .clone() - the shape where the accumulator is cloned at the call site. NOT A BURN-DOWN: per the operator verdict of 2026-07-29 on dag/tools/e0599_emitter_decision_census.dag, the count records where the emitter INSERTED a clone and never that any site is removable.",
-    magnitude: "MECHANISM CONFIRMED, MAGNITUDE ~9x CONSTANT FACTOR - and the 638x this row first carried is WITHDRAWN, along with the quadratic characterization that came with it. The mechanism is real and separately witnessed: acc.clone() holds the strong count at 2 across the insert, so Rc::make_mut copies on every iteration - receipt is strong_count=2 with allocation_moved=true on every iteration of the clone arm, against 1 and false on the moved arm. What changed is only the size, and that is exactly why the row must not keep the larger number: the defect is still real and still ONE emitter fix rather than 113 edits.
-
-THE WITHDRAWN FIGURE WAS MEASURED AGAINST THE WRONG CONTAINER. The benchmark's first line read use std::collections::HashMap, while the subject reads use im::HashMap - v1_rt.rs line 6, and verified independently against this row's own subject: v1_compiler_emit_rust.rs imports im::HashMap at its use line and contains ZERO occurrences of the std one; corpus-wide 143 emitted files import im::HashMap and exactly two import std's, neither of them this file. im::HashMap is a HAMT with O(1) clone, so against the container the emitter actually uses the ratio is ~9x and FLAT across a 16x span of n, with the fixed term measured at 0.007ms. That is a constant factor, NOT a complexity-class difference.
-
-WHY IT SURVIVED AS LONG AS IT DID, recorded because the reasoning generalizes past this row. Two INDEPENDENT implementations of the same benchmark agreed - 638x at m=4000 against 816.9x at the same n, the residual explained by String keys versus interned i64 - and that agreement read as corroboration. It was not. AGREEMENT ACROSS INSTRUMENTS THAT SHARE AN ASSUMPTION MEASURES THE ASSUMPTION. Both had copied the same wrong use line, and three independent instances of that same confusion surfaced in one night, which places the trap in the code's shape rather than in anyone's care: reproducing a function by copying its body carries the body and not the imports, and the imports are the universe.
-
-AND THE SCOPE QUALIFIER STILL BINDS at the corrected size: ~9x measures the MECHANISM IN ISOLATION, not this emitter's runtime.",
-    restoration_trigger: "v2 self-hosts the emit stage, at which point the decision is authored in v2, consumes the per-site verdicts directly, and this row dissolves with the artifact. Self-emission is measured by v2.compiler.self_host.frontier and is deliberately not restated here."
+    what_freezes: "The clone-at-accumulator default. The emitter emits .clone() where the .dag authors a plain accumulator, so a fold threading a persistent container calls Rc::make_mut with another strong Rc live and takes the copying arm each iteration. It was reachable at src/v1/05_emit_rust.dag, where the clone-versus-move decision is made; that authority is deleted and the artifact is frozen, so no file an author could edit reaches the built compiler. NOT A DEFECT ON CURRENT EVIDENCE: the emitter clones DEFENSIVELY because it lacks an ownership proof, and a defensive clone is slower and CORRECT. DESIGN section 5's subject is silent wrongness, and no correctness refusal here becomes an accepted false value, so filing this under section 5 would borrow a severity the evidence does not carry. This is QUARRY for v2's ownership-aware emitter, not an open obligation against the seed.",
+    verified: "The emitter emits .clone() at those sites: 42 in v1_compiler_emit_rust.rs, 1 in v1_compiler_compile.rs, 359 across all 28 emitted files, counted at faa1539954 by matching rc_map_insert / rc_map_merge / rc_set_insert / rc_list_push / rc_list_concat applied to an identifier's .clone(). This is a SYNTACTIC denominator, NOT a roster of hot call sites, and per the operator verdict of 2026-07-29 on dag/tools/e0599_emitter_decision_census.dag it records where the emitter INSERTED a clone, never that any site is removable.",
+    measured: "~9x CONSTANT FACTOR on an isolated im::HashMap fold, flat across a 16x span of n, fixed term 0.007ms. Not a complexity class. The mechanism is separately witnessed: strong_count=2 and allocation_moved=true on the clone arm, 1 and false on the moved arm. WITHDRAWN, with the reasoning kept because it generalizes: an earlier 638x and a quadratic characterization were measured against std::collections::HashMap while the subject uses im::HashMap, a HAMT with O(1) clone - verified against this subject, which imports im::HashMap and contains ZERO occurrences of the std one, against a corpus where 143 emitted files import im::HashMap and exactly two import std's. Two INDEPENDENT benchmarks agreed at 638x and 816.9x and that agreement read as corroboration; it was not. AGREEMENT ACROSS INSTRUMENTS THAT SHARE AN ASSUMPTION MEASURES THE ASSUMPTION - both had copied the same wrong use line. Three instances of that confusion surfaced in one night, which places the trap in the code's shape: copying a function carries its body and not its imports, and the imports are the universe.",
+    not_established: "That removing the clone is sound per site; that this is a fault rather than a semantics-preserving realization of persistent values; that it recovers any share of any real phase. Removal is not free to prove - a blanket emitter change must establish, PER GENERATED SITE, that the argument is at its terminal use, that moving preserves value semantics, that no sibling branch needs the same binding, that closure capture does not require retention, that the type really is an owned persistent map, and that the callee's ownership contract accepts a move. That is precisely the ownership proof the emitter does not have, which is WHY it clones.",
+    dissolves_on: "v2 self-hosts the emit stage, at which point the decision is authored in v2, consumes the per-site verdicts directly, and this property dissolves with the artifact. Self-emission is measured by v2.compiler.self_host.frontier and is deliberately not restated here."
   }
 ]
 
-fn seed_retention_rung_drop_basenames() -> List<String> {
-  seed_retention_rung_drops |> map(r => r.basename as String)
+fn seed_retention_frozen_property_basenames() -> List<String> {
+  seed_retention_frozen_properties |> map(r => r.basename as String)
 }
 
-fn seed_retention_rung_drops_are_retained() -> Bool {
-  seed_retention_rung_drop_basenames()
+fn seed_retention_frozen_properties_are_retained() -> Bool {
+  seed_retention_frozen_property_basenames()
     |> all(b => seed_retained_basenames() |> any(r => r == b))
 }
