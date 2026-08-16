@@ -105,11 +105,6 @@ path = "src/bin/frontier_probe_survey.rs"
 name = "realization_sweep_survey"
 path = "src/bin/realization_sweep_survey.rs"
 
-# Whole-tree v2 parse regression scanner (host transport; one harness, N files).
-[[bin]]
-name = "v2_whole_tree_parse_scan"
-path = "src/bin/v2_whole_tree_parse_scan.rs"
-
 # Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
 # SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
@@ -273,17 +268,6 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "json_parse_scaling_probe"
 path = "src/bin/json_parse_scaling_probe.rs"
-
-# SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
-# gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
-# top of the same closure-scoped census the gate itself consumes. Not a CI consumer —
-# resolution_divergence_census --closure-scoped is the gate's own binary; this is for
-# human triage of a red run. DISSOLUTION: delete when the falsifier_silent_pick_gate
-# telemetry class dissolves (§13 unique-on-chain resolution ships, per
-# falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
-[[bin]]
-name = "silent_pick_crosscheck"
-path = "src/bin/silent_pick_crosscheck.rs"
 
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under
