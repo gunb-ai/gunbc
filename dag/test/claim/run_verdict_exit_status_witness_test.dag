@@ -1,6 +1,5 @@
 module test.claim.run_verdict_exit_status_witness_test
 
-import tools.host_prelude { run_witness_bin }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -40,6 +39,8 @@ THE FIX IS THE UNCONFLATED ROUTE, already in the tree: the failure row now calls
 
 DISSOLVE-ON: run_witness_bin returns a result that distinguishes an unexecuted invocation from a nonzero exit, at which point rows may use the helper without the polarity hazard. Rewriting an assertion does not discharge this; changing the return type does.
 
+THE HAZARD IS NOW STRUCTURALLY ABSENT FROM THIS FILE RATHER THAN AVOIDED BY CARE. No row calls the helper, so the import is gone — and a construction that is not imported cannot be written by a later editor who has not read this note, which is the difference DESIGN draws between construction and validation. The note is retained because the RULE is general and the receipt above is the measured evidence for it, not because this file is still exposed. Keeping the rule while removing the exposure is the intended end state, not a leftover.
+
 STRENGTHENED 2026-08-16, AND THE DEFECT WAS INTRODUCED BY THE FIX ABOVE. Moving the refusal row onto the unconflated route left it asserting result.success == false — which is what the failure row already asserted. TWO ROWS, ONE PREDICATE, DIFFERENT SUBJECTS: one claims a DECLARED ExitFailure code reaches the process status, the other claims a value carrying no verdict is REFUSED. Both are satisfied by 'exited nonzero for any reason', so neither could tell it had exercised its own arm, and both would pass against a driver that exited 1 for everything — a fabricated plausible output one level up from the one this file exists to catch. The failure row in particular tested nothing about the CODE, which is the half that makes the mapping a mapping.
 
 THE FIX IS TO ASSERT THE CODE, because the three arms have three distinct ones and the driver is the single authority for each: ExitSuccess -> 0, an ExitFailure -> its own declared code passing through exit_status_for, NotProcessExit -> 2. So the rows now read exit_code == 3 and exit_code == 2 against a fixture declaring 3, and the three rows answer differently rather than two answering identically.
@@ -66,10 +67,20 @@ test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
 
 // The positive control. Without it the row above is satisfiable by a seam that fails on
 // everything, which would be just as wrong and far more visible.
+//
+// ON THE ROUTE, and it is the same route as its two siblings deliberately. An earlier
+// revision called run_witness_bin, which was SOUND on polarity — its refusal yields false
+// and this row expects true, so a refusal could not satisfy it. It was wrong on two other
+// axes. It resolved the binary from the GUNBC env var by name while the sibling rows resolve
+// an explicit bin_path under git.Inspect.Toplevel, so the three rows could invoke DIFFERENT
+// BINARIES and would still all pass — a trio that is supposed to compare three arms of one
+// driver must reach one driver. And it asserted a Bool, which cannot participate in the
+// self-evidencing property the other two have.
 test fn run_success_verdict_reaches_zero_exit() -> Bool {
-  run_witness_bin(
-    var_name: "GUNBC",
-    bin_name: "gunbc",
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [
       "run",
       "--source-root", "dag",
@@ -77,13 +88,14 @@ test fn run_success_verdict_reaches_zero_exit() -> Bool {
       "--function", "verdict_success"
     ]
   )
+  result.exit_code == 0
 }
 
 // A non-ProcessExit return must REFUSE rather than print-and-succeed. The host cannot
 // derive a status from a value that carries none, and guessing zero is a fabricated
 // plausible output.
 //
-// ON THE ROUTE: this row calls gunbc.WitnessBin.Run and reads result.success from a
+// ON THE ROUTE: this row calls gunbc.WitnessBin.Run and reads result.exit_code from a
 // RECORD, for the reason the polarity note above states. An earlier revision of THIS row
 // asserted run_witness_bin(...) == false — the exact construction that note forbids, three
 // functions below the note forbidding it. Its refusal path and its expected value are the
