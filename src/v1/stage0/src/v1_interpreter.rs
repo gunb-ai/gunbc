@@ -2878,7 +2878,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                         return Err(InterpError::StringRealizationStraddle { detail });
                     }
                     record_push(result.len());
-                    result.push(str_value(s.to_string()));
+                    result.push(Value::Str(s.clone()));
                     return Ok(list_value((result)));
                 }
             }
@@ -5602,7 +5602,7 @@ fn cast_identity_result(
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
         if kernel.is_empty() || kernel == "String" {
-            return Some(str_value(s.clone()));
+            return Some(Value::Str(s.clone()));
         }
     }
     None
@@ -11344,7 +11344,7 @@ macro_rules! v1_builtin_arms {
                         (l, Value::Str(s)) => match free_monoid_to_vec(l) {
                             Some(mut result) => {
                                 record_push(result.len());
-                                result.push(str_value(s.to_string()));
+                                result.push(Value::Str(s.clone()));
                                 Ok(Some(list_value((result))))
                             }
                             None => Ok(None),
