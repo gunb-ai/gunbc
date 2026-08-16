@@ -7,7 +7,7 @@ cd "$ROOT"
 
 POST_DIR="$ROOT"
 PRE_DIR="/tmp/charat0-main-measure"
-SIZES=(40000 80000)
+SIZES=(20000 40000 80000)
 TIMEOUT_SEC=600
 
 git fetch origin main --depth=1
@@ -20,6 +20,8 @@ cargo build --release -p v1-compiler --bin json_parse_scaling_probe
 POST_BIN="$ROOT/target/release/json_parse_scaling_probe"
 
 rm -rf "$PRE_DIR"
+git worktree remove --force "$PRE_DIR" 2>/dev/null || true
+git worktree prune 2>/dev/null || true
 git worktree add --detach "$PRE_DIR" "$MAIN_REF"
 PROBE_SRC="$ROOT/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 cp "$PROBE_SRC" "$PRE_DIR/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
