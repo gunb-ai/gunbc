@@ -1,6 +1,7 @@
 //! Derived realization schedule: fixed concurrency from `std.realize_pack` over a
 //! host budget and a derived space bound — replacing the retired AIMD memory governor.
 
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::memory_governor::read_host_budget_bytes;
@@ -22,13 +23,13 @@ fn render_schedule_info_line(text: &str, emoji: bool) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedScheduleWidth {
     pub width: usize,
-    pub verdict: String,
+    pub verdict: Rc<str>,
     pub max_derived_bound_bytes: Option<i64>,
 }
 
 impl DerivedScheduleWidth {
     pub fn refuse_if_budget_unreadable(&self) -> Option<String> {
-        if self.verdict == "BudgetRefused" || self.width == 0 {
+        if self.verdict.as_ref() == "BudgetRefused" || self.width == 0 {
             Some(format!(
                 "RealizationScheduleBudgetRefused: host memory budget unreadable — \
                  std.realize_pack refuses to fabricate a width (witness-realization P4)"
@@ -91,8 +92,8 @@ pub fn realize_pack_width_from_scalars(
                 _ => -1,
             };
             let verdict = match realize_ctx.field(&fields, "verdict") {
-                Some(Value::Str(s)) => s.to_string(),
-                _ => "unknown".to_string(),
+                Some(Value::Str(s)) => Rc::clone(s),
+                _ => Rc::from("unknown"),
             };
             Ok(DerivedScheduleWidth {
                 width: width.max(0) as usize,
@@ -129,8 +130,8 @@ pub fn derive_discovery_schedule_width(
         realize_pack_width_from_scalars(source_roots, None, budget_i64, independence)?;
     if derived.width > DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX {
         derived.width = DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX;
-        if derived.verdict != "BudgetRefused" {
-            derived.verdict = "DiscoverySerialUntilSharedIndex".to_string();
+        if derived.verdict.as_ref() != "BudgetRefused" {
+            derived.verdict = Rc::from("DiscoverySerialUntilSharedIndex");
         }
     }
     Ok(derived)
@@ -142,7 +143,7 @@ pub struct RealizationConcurrency {
     max_width: usize,
     budget_bytes: Option<u64>,
     budget_source: String,
-    verdict: String,
+    verdict: Arc<str>,
     max_derived_bound_bytes: Option<i64>,
     active: Mutex<usize>,
     admissions: Mutex<u64>,
@@ -186,7 +187,7 @@ impl RealizationConcurrency {
             max_width: width,
             budget_bytes,
             budget_source,
-            verdict: derived.verdict.clone(),
+            verdict: Arc::from(derived.verdict.as_ref()),
             max_derived_bound_bytes: derived.max_derived_bound_bytes,
             active: Mutex::new(0),
             admissions: Mutex::new(0),
