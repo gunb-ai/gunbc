@@ -1,6 +1,7 @@
 # Namespace cut — the multi-declarer fork census
 
-**Status:** measured, undecided. No qualification has been applied to any name below.
+**Status:** pass 1 applied (1504 edits, 632 files). Remaining work is blocked on a
+compiler defect, not on effort — see the result and boundary at the end.
 **Instrument:** `gunbc compile --source-root dag --source-root src/v2 --target dag`,
 baseline SHA `0fad0cec741`, 2360 resolved sources / 1353 indexed-not-compiled.
 Declarer counts from a `^type` / `^fn|func` index validated in both directions
@@ -152,11 +153,28 @@ diagnostic" is the standard, and a span that names a reference's container has l
 the wrong thing. The root fix belongs in `04_infer` — report the reference's own span —
 and it converges with the repair already owed there.
 
-**Until then the pass is iterative, not one-shot**, which is the fail-closed shape
-anyway: qualify only the sites whose span verifies, re-run the census, and let the
-newly-resolving declarations expose the residue with fresh spans. Each round edits
-only what it can prove and re-measures rather than modelling the remainder. A round
-that stops shrinking is the signal to fix the spans rather than to widen the rewriter.
+**The pass converges in ONE round, and the reason refutes the obvious plan.** The
+expectation was an iterative loop — qualify what verifies, re-run, let newly-resolving
+declarations expose the residue with fresh spans. Measured, pass 2 yields **four edits**,
+because span accuracy does not refresh; it **depletes**:
+
+| class | accuracy before pass 1 | after |
+|---|---|---|
+| `function` | 30% | **1%** |
+| `undefined variable` | 70% | 36% |
+| `unresolved type` | 62% | 11% |
+| all | — | 11% (281 of 2412) |
+
+A pass can only edit the accurately-located sites, so it consumes exactly those and
+leaves the inaccurate residue behind. The stopping condition ("a round that stops
+shrinking") was right; the mechanism was wrong — it stops **immediately and
+structurally**, not through diminishing returns. Whatever the spans can locate is
+extracted in one pass, and everything else is blocked until the spans are fixed.
+
+The safety clause survives unchanged and matters more, not less: **a round that stops
+shrinking is the signal to fix the spans, never to widen the rewriter.** A rewriter
+widened past its own verification is the absorbing fallback with an edit attached, and
+it would write corruption at precisely the sites where the instrument is least reliable.
 
 ## The right declaration index already exists — do not re-model it a fourth time
 
@@ -191,3 +209,49 @@ precisely what makes that difference unobservable again. `OccurrenceId` is the l
 example — mechanical per-site, but only because each site's subject is determined by
 what the site is about, and a site that cannot say which occurrence space it inhabits
 must be reported rather than qualified.
+
+## Result and boundary
+
+Pass 1: **1504 edits removed 2033 diagnostics**, 4801 → 2768 (42%). The denominator was
+stable across both runs — 2360 resolved / 1353 census-only — so this is a real reduction
+rather than a shrinking measurement.
+
+The echo held, confirmed a second time and at scale, on names **never edited**:
+
+```
+LiveTreeDisposition   582 → 8     575 edits, qualified directly
+SubstrateInputsOnly   509 → 7     not edited — collapsed with its annotation
+ReadsLiveTree          70 → 1     not edited
+```
+
+571 arm diagnostics vanished for free. The arm bucket was never independent work and the
+expected-type filter was never missing.
+
+By class: `unresolved type` 1744→731 · `function` 1673→1183 · `undefined variable`
+1074→498 · `no field` 230→213 · `method` 52→46. Note `no field` went **down**, so the
+newly-revealed-defect effect is smaller than the single-file probe suggested; it is not
+claimed as a rise that cannot be seen.
+
+**The remaining 2768 partition by blocker, not by effort:**
+
+| count | blocker |
+|---|---|
+| 1708 | span mismatch — hard-blocked on the `04_infer` locatedness defect |
+| 659 | no declarer — coproduct arms; needs the arm-aware `DeclarationIndex` |
+| 41 | undispositioned multi-declarer — the small fork candidates above |
+| 4 | available now; not worth a census run alone |
+
+So the span defect is not a side finding. It is the **sole blocker on 1708 sites**, and
+with the arm index accounts for 2367 of the 2768 — the critical path, not a §4b row for
+someone to file eventually.
+
+**Stopped deliberately here.** Both remaining moves are a different kind of work from a
+migration edit: the span fix changes `04_infer`, a pipeline stage the brief names
+load-bearing; the arm index means restoring a deleted probe or writing a bin, both
+net-new inside a deletion lane. Each is a decision, not a default.
+
+Applied-pass audit: zero edits inside `//` annotation lines, zero declarations rewritten,
+zero self-qualifications. That last check took two attempts — the first used **unescaped
+dots**, so `extdeps.github.app.` matched the diff's own `+++ b/dag/extdeps/github/app.dag`
+header and reported three false positives. The check was a model of the thing it checked,
+and it was wrong before the code was.
