@@ -811,15 +811,15 @@ rather than joining the nearest root.
 | E — unreachable patterns (lint) | 42 | 2.2 | 33 | 9 |
 | T5b — deref of a non-pointer (`Option<_>`) | 33 | 1.8 | 4 | 29 |
 | T2 — text carrier (`String` vs `Vector<i64>`/`FreeMonoid`) | 31 | 1.7 | 4 | 27 |
-| R2 — Optional *variant* surface (`Present`/`Absent` vs `Option`) | 29 | 1.5 | 6 | 23 |
-| T4 — record emitted as a tuple (`(Rc<Node>, Rc<Node>)`) | 27 | 1.4 | 10 | 17 |
-| L — borrow lifetime (E0597) | 26 | 1.4 | 15 | 11 |
-| R3 — function-value carrier (`Rc<dyn Fn>` vs closure / `Fn` bound) | 23 | 1.2 | 3 | 20 |
-| B2 — `Bool` vs `bool` | 20 | 1.1 | 11 | 9 |
+| R2 — Optional *variant* surface (`Present`/`Absent` vs `Option`) | 29 | 1.5 | 10 | 19 |
+| T4 — record emitted as a tuple (`(Rc<Node>, Rc<Node>)`) | 27 | 1.4 | 0 | 27 |
+| L — borrow lifetime (E0597) | 26 | 1.4 | 5 | 21 |
+| R3 — function-value carrier (`Rc<dyn Fn>` vs closure / `Fn` bound) | 23 | 1.2 | 1 | 22 |
+| B2 — `Bool` vs `bool` | 20 | 1.1 | 2 | 18 |
 | F — type annotations needed (E0282) | 19 | 1.0 | 5 | 14 |
 | N — argument count (E0061) | 19 | 1.0 | 1 | 18 |
 | M — struct-literal missing fields (E0063) | 18 | 1.0 | 16 | 2 |
-| R5 — duplicate type authority across emitted modules | 16 | 0.9 | 2 | 14 |
+| R5 — duplicate type authority across emitted modules | 16 | 0.9 | 8 | 8 |
 | O — misc generics (E0392/E0631/E0271/E0310) | 4 | 0.2 | 1 | 3 |
 | P — emitter refusal embedded in the source | 2 | 0.1 | 2 | 0 |
 
