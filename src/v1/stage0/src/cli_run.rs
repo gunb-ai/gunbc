@@ -29,6 +29,8 @@ use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
 use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
+use crate::v1_interpreter::str_value;
+use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
@@ -441,7 +443,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
         RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
             variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
         },
     })
 }
@@ -1219,13 +1221,13 @@ mod cli_run_arg_channel_tests {
         let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
-        assert!(matches!(&got[0].1, Value::Str(s) if s == "roadmap-7"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
     }
 
     #[test]
     fn value_may_contain_further_equals_signs() {
         let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
-        assert!(matches!(&got[0].1, Value::Str(s) if s == "a=b=c"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
@@ -2349,7 +2351,15 @@ pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> b
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
-pub(crate) fn witness_layer_roots() -> Vec<String> {
+///
+/// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a §3 one
+/// rather than a convenience. The driver seam in `main.rs` is a separate crate, so it could
+/// not see this; the alternative was to spell `["dag", "src/v2"]` as a literal beside the
+/// `ci` verb, which forks a live authority that is READ FROM `.dag` at runtime into a
+/// hand-written constant that cannot track it. Exposing the existing single authority is
+/// not new investment in the frozen engine — nothing here is re-homed, reshaped, or
+/// reimplemented, and the body is untouched.
+pub fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
         .get_or_init(|| witness_layer_roots_from_source(ci_layer_roots_authority_content()))
@@ -2485,7 +2495,7 @@ pub fn free_monoid_symbol_value_from_dotted_string(
         qn = fm_variant(
             "Cons",
             sorted_fields(vec![
-                (ctx.sym("head"), Value::Str(seg.to_string())),
+                (ctx.sym("head"), str_value(seg.to_string())),
                 (ctx.sym("tail"), qn),
             ]),
         );
@@ -3063,10 +3073,7 @@ fn call_compile_clean_bool_list_fn(
     let (graph, indices) = resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
         .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    let values: Vec<v1_interpreter::Value> = paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let values: Vec<v1_interpreter::Value> = paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [(Some(arg_name.to_string()), list_value_from_vec(values))];
     match v1_interpreter::run_in_context_with_args(&ctx, fn_name, &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -3194,15 +3201,13 @@ fn compile_clean_scope_plan_from_touched_paths(
     let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
         .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let paths: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        touched_paths.iter().map(|s| str_value(s.clone())).collect();
     let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
     departed_sorted.sort();
     let departed: Vec<v1_interpreter::Value> = departed_sorted
         .into_iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .map(|s| str_value(s.clone()))
         .collect();
     let args = [
         (
@@ -3239,7 +3244,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => "no compile-clean entry affected".to_string(),
             };
             Ok(CompileCleanScopePlan::SkipNoAffected { reason })
@@ -3250,7 +3255,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "RequireWholeTree") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => "whole-tree baseline required".to_string(),
             };
             eprintln!("compile-clean scope: {reason}");
@@ -3262,7 +3267,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => {
                     return Err(
                         "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
@@ -4583,13 +4588,6 @@ pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
 #[cfg(test)]
 fn reset_regen_verify_gate_failure_detail_for_test() {
     if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
-    }
-}
-
-#[cfg(test)]
-fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         *guard = None;
     }
 }
@@ -6287,20 +6285,9 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-#[cfg(test)]
-pub(crate) fn reset_module_path_index_cache_for_test() {
-    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().clear());
-}
-
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
-}
-
-#[cfg(test)]
-pub(crate) fn reset_module_graph_facts_cache_for_test() {
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
-    reset_module_path_index_cache_for_test();
 }
 
 pub(crate) fn build_module_graph_facts_live_uncached(
@@ -6624,7 +6611,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
@@ -6666,7 +6653,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
                     panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
                 };
                 match record_field(&ctx, fields, "module") {
-                    Some(Value::Str(s)) => s.clone(),
+                    Some(Value::Str(s)) => s.to_string(),
                     other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
                 }
             })
@@ -8102,13 +8089,6 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-fn load_sources(
-    source_roots: &[String],
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mei = build_multi_entry_index(source_roots);
-    load_compile_clean_entry_sources(source_roots, &mei, None)
-}
-
 /// Which budget a `ClaimOutcome::TimedOut` blew. The two are measured on different
 /// clocks and are not interchangeable: `Cpu` is thread CPU time (the stride-poll
 /// metric, so a witness slowed by cold I/O or governor time-slicing is not
@@ -8537,21 +8517,13 @@ pub fn build_live_read_selection_manifest(
         .map(|req| v1_interpreter::Value::Record {
             type_name: ctx.sym("LiveReadSelectionRequest"),
             fields: Rc::new(vec![
-                (
-                    ctx.sym("entry_path"),
-                    v1_interpreter::Value::Str(req.entry_path.clone()),
-                ),
-                (
-                    ctx.sym("fn_name"),
-                    v1_interpreter::Value::Str(req.fn_name.clone()),
-                ),
+                (ctx.sym("entry_path"), str_value(req.entry_path.clone())),
+                (ctx.sym("fn_name"), str_value(req.fn_name.clone())),
             ]),
         })
         .collect();
-    let root_values: Vec<v1_interpreter::Value> = source_roots
-        .iter()
-        .map(|r| v1_interpreter::Value::Str(r.clone()))
-        .collect();
+    let root_values: Vec<v1_interpreter::Value> =
+        source_roots.iter().map(|r| str_value(r.clone())).collect();
 
     let args = vec![
         (
@@ -8605,7 +8577,7 @@ pub fn build_live_read_selection_manifest(
             ));
         };
         let key = match ctx.field(fields, "key") {
-            Some(v1_interpreter::Value::Str(k)) => k.clone(),
+            Some(Value::Str(k)) => k.to_string(),
             other => {
                 return Err(format!(
                     "LIVE-READ MANIFEST REFUSAL cause=RowKeyUnexpected got={other:?} — a row \
@@ -8694,7 +8666,7 @@ fn decode_live_read_selection_row(
     })?;
     if ctx.sym_eq(variant_name, "LiveReadSelectionRefused") {
         let cause = match ctx.field(fields, "cause") {
-            Some(v1_interpreter::Value::Str(c)) => c.clone(),
+            Some(Value::Str(c)) => c.to_string(),
             _ => "typed refusal without a String cause".to_string(),
         };
         return Ok(LiveReadSelectionRow::Refused { cause });
@@ -8787,7 +8759,7 @@ fn decode_live_read_carrier(
     if ctx.sym_eq(name, "DeclFactsReflection") {
         let home =
             match ctx.field(fields, "home") {
-                Some(v1_interpreter::Value::Str(h)) => h.clone(),
+                Some(Value::Str(h)) => h.to_string(),
                 _ => return Err(
                     "LIVE-READ MANIFEST REFUSAL cause=CarrierHomeUnexpected — DeclFactsReflection \
                      without a String home."
@@ -8830,7 +8802,7 @@ fn decode_live_read_path_pattern(
     }
     if ctx.sym_eq(name, "LiteralPath") {
         return match ctx.field(fields, "path") {
-            Some(v1_interpreter::Value::Str(p)) => Ok(LiveReadPathPattern::LiteralPath(p.clone())),
+            Some(Value::Str(p)) => Ok(LiveReadPathPattern::LiteralPath(p.to_string())),
             _ => Err(
                 "LIVE-READ MANIFEST REFUSAL cause=LiteralPathUnexpected — LiteralPath without a \
                  String path. Treating it as unknown would silently widen; refusing keeps the \
@@ -8841,7 +8813,7 @@ fn decode_live_read_path_pattern(
     }
     if ctx.sym_eq(name, "ParamRef") {
         return match ctx.field(fields, "name") {
-            Some(v1_interpreter::Value::Str(n)) => Ok(LiveReadPathPattern::ParamRef(n.clone())),
+            Some(Value::Str(n)) => Ok(LiveReadPathPattern::ParamRef(n.to_string())),
             _ => Err(
                 "LIVE-READ MANIFEST REFUSAL cause=ParamRefUnexpected — ParamRef without a String \
                  name."
@@ -8868,7 +8840,7 @@ mod live_read_selection_manifest_producer_tests {
         LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
         LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
 
     fn source_roots() -> Vec<String> {
@@ -9090,7 +9062,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "LiteralPath",
-            vec![("path", Value::Str("dag/gunbc/ci_spec.dag".to_string()))],
+            vec![("path", str_value("dag/gunbc/ci_spec.dag".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
@@ -9107,7 +9079,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "ParamRef",
-            vec![("name", Value::Str("roster_path".to_string()))],
+            vec![("name", str_value("roster_path".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
@@ -9151,7 +9123,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "LiveReadCarrier",
             "DeclFactsReflection",
-            vec![("home", Value::Str("v2.std.decl_index".to_string()))],
+            vec![("home", str_value("v2.std.decl_index".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![carrier]),
@@ -9168,7 +9140,7 @@ mod live_read_selection_manifest_producer_tests {
         let ctx = ctx_for_decoding();
         let err = decode_live_read_selection_row(
             &ctx,
-            &classified(&ctx, vec![Value::Str("v2.lens.module_graph".to_string())]),
+            &classified(&ctx, vec![str_value("v2.lens.module_graph".to_string())]),
         )
         .expect_err("a String carrier was accepted");
         assert!(
@@ -10530,10 +10502,6 @@ pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
 
 const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
 
-fn measurement_emoji() -> bool {
-    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-}
-
 fn measurement_human_bytes(bytes: u64) -> String {
     // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
     let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
@@ -11799,15 +11767,6 @@ pub fn p1_experimental_arm_shared_typed_store(scheduled_width: usize) -> bool {
     }
 }
 
-fn discovery_scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
-    match width_policy {
-        DiscoveryWidthPolicy::Serial => 1,
-        DiscoveryWidthPolicy::ControlledWidthTwo => 2,
-        DiscoveryWidthPolicy::DerivedSchedule => 1,
-        DiscoveryWidthPolicy::FixedWidth(w) => *w,
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn emit_p1_cohort_entry_line(
     group_idx: usize,
@@ -11947,7 +11906,7 @@ fn selection_degradation_dag_args(
     vec![
         (
             Some("selection_mode_tag".to_string()),
-            v1_interpreter::Value::Str(snapshot.selection_mode_tag.clone()),
+            str_value(snapshot.selection_mode_tag.clone()),
         ),
         (
             Some("selected".to_string()),
@@ -11963,7 +11922,7 @@ fn selection_degradation_dag_args(
         ),
         (
             Some("categorization_reason".to_string()),
-            v1_interpreter::Value::Str(snapshot.categorization_reason.clone()),
+            str_value(snapshot.categorization_reason.clone()),
         ),
     ]
 }
@@ -11980,7 +11939,7 @@ fn eval_selection_degradation_fn(
         &selection_degradation_dag_args(snapshot),
         false,
     ) {
-        Ok(v1_interpreter::Value::Str(line)) => Ok(line),
+        Ok(Value::Str(line)) => Ok(line.to_string()),
         Ok(other) => Err(format!(
             "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
              (entry {entry})",
@@ -12206,23 +12165,6 @@ pub fn resolve_entry_with_index_for_discovery_corpus(
         entry_file,
         ResolveTypecheckGate::DiscoveryCorpusAdvisory,
     )
-}
-
-fn resolve_entry_graph_with_index(
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    set_phase(FloorPhase::Resolve, entry_file);
-    let sources = load_sources_for_entry_with_index(index, facts, entry_file)?;
-    set_phase(FloorPhase::Typecheck, entry_file);
-    resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
 /// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
@@ -14390,63 +14332,6 @@ fn try_reconcile_all_cache_hits(
     .map(Some)
 }
 
-fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
-    if !name.contains('.') {
-        return None;
-    }
-    name.rfind('.').and_then(|pos| {
-        if pos > 0 {
-            Some(name[..pos].to_string())
-        } else {
-            None
-        }
-    })
-}
-
-fn collect_qualified_projection_module_paths_from_node(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut HashSet<String>,
-) {
-    let name = authored_name_at(source_indices.clone(), node.clone());
-    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
-        out.insert(prefix);
-    }
-    for child in node.children.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            child.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    for param in node.params.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            param.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(inferred) = &node.inferred {
-        if let Some(inner) = inferred_to_node(inferred.clone()) {
-            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
-        }
-    }
-    if let Some(type_annotation) = &node.type_annotation {
-        collect_qualified_projection_module_paths_from_node(
-            type_annotation.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(body) = &node.body {
-        collect_qualified_projection_module_paths_from_node(
-            body.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-}
-
 /// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
 /// snapshot within a process, so first sight is authoritative). This is the source-hash
 /// key term of `typed_module_content_key`; it is recorded exactly where the content is
@@ -15342,7 +15227,7 @@ fn render_batch_summary_line(
             arg("batch_index", batch_index),
             (
                 Some("batch_label".to_string()),
-                Value::Str(batch_label.to_string()),
+                str_value(batch_label.to_string()),
             ),
             (Some("work".to_string()), work),
             arg("declared_population", declared_population),
@@ -15355,7 +15240,7 @@ fn render_batch_summary_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s),
+        Value::Str(s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -15587,7 +15472,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
     };
     let str_field = |name: &str| -> Option<String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Str(s)) => Some(s.to_string()),
             _ => None,
         }
     };
@@ -15603,7 +15488,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
             fields: vf,
             ..
         }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Str(s)) => Some(s.to_string()),
             _ => None,
         },
         _ => None,
@@ -16243,7 +16128,7 @@ pub fn run_witness_verdict_diagnostic(
     function: &str,
 ) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(Value::Str(s)) => s.to_string(),
         Ok(other) => format!(
             "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -16286,7 +16171,7 @@ pub fn seed_runner_bool_false_failure_detail(
 /// function that way; that variant is deleted and the one honest arm now covers it.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(Value::Str(s)) => s.to_string(),
         Ok(other) => format!(
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -16408,12 +16293,9 @@ fn eval_census_string_fn(
     fn_name: &str,
     entry: &str,
 ) -> Result<String, String> {
-    let args = [(
-        Some("entry".to_string()),
-        v1_interpreter::Value::Str(entry.to_string()),
-    )];
+    let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(v1_interpreter::Value::Str(s)) => Ok(s),
+        Ok(Value::Str(s)) => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{fn_name}({entry:?}) returned {}, expected String",
             ctx.format_value(&other)
@@ -16808,83 +16690,6 @@ pub fn run_value(
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
-pub fn handle_ci() {
-    handle_run_with_options(
-        witness_layer_roots(),
-        "main".to_string(),
-        Some("dag/tools/gunbc_ci.dag".to_string()),
-        false,
-        false,
-        Vec::new(),
-    );
-}
-
-/// Thin CLI transport handler for `gunbc converge --host <h>`: argv parse ->
-/// in-process `.dag` interpreter call -> stdout/exit-code projection, no
-/// converge logic here. Disposition receipt (DESIGN §3 transport-is-a-handler,
-/// §7 typed self-host frontier): `gunbc.fleet_converge_cli`'s
-/// `gunbc_converge_cli_stage0_receiver_disposition`.
-pub fn handle_converge(host: String) {
-    let roots = witness_layer_roots();
-    let (graph, indices) =
-        match resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
-        };
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let args = [(
-        Some("host".to_string()),
-        v1_interpreter::Value::Str(host.clone()),
-    )];
-    let result =
-        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("runtime error: {e}");
-                std::process::exit(1);
-            }
-        };
-    let v1_interpreter::Value::Record { fields, .. } = &result else {
-        eprintln!(
-            "error: converge_cli_output returned an unexpected shape: {:?}",
-            result
-        );
-        std::process::exit(1);
-    };
-    let line = match ctx.field(fields, "line") {
-        Some(v1_interpreter::Value::Str(s)) => s.clone(),
-        _ => {
-            eprintln!("error: converge_cli_output.line was not a String");
-            std::process::exit(1);
-        }
-    };
-    let converged = matches!(
-        ctx.field(fields, "converged"),
-        Some(v1_interpreter::Value::Bool(true))
-    );
-    let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant {
-            variant_name,
-            fields: vf,
-            ..
-        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
-            _ => None,
-        },
-        _ => None,
-    };
-    println!("{line}");
-    if let Some(reason) = &reason {
-        eprintln!("{reason}");
-    }
-    if !converged {
-        std::process::exit(1);
-    }
-}
-
 #[path = "pre_push.rs"]
 mod pre_push;
 
@@ -16894,77 +16699,10 @@ pub fn handle_pre_push() -> std::process::ExitCode {
     pre_push::run()
 }
 
-pub fn handle_run(
-    source_roots: Vec<String>,
-    function: String,
-    entry_file: Option<String>,
-    claim_run: bool,
-) {
-    handle_run_with_options(
-        source_roots,
-        function,
-        entry_file,
-        false,
-        claim_run,
-        Vec::new(),
-    );
-}
-
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
 /// (env `GUNBC_FLATTEN_SITE_DUMP_SECS`) and once, deterministically, right
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
-fn dump_residual_hunt_instrumentation() {
-    let mut sites = v1_interpreter::flatten_by_site_snapshot();
-    sites.sort_by(|a, b| b.3.cmp(&a.3));
-    eprintln!("--- free_monoid_to_vec by call site (top 15 by items cloned) ---");
-    for (file, line, calls, total) in sites.iter().take(15) {
-        eprintln!("  {}:{}  calls={}  items={}", file, line, calls, total);
-    }
-    let (cons_calls, cons_len_sum) = v1_interpreter::list_cons_tail_split_snapshot();
-    eprintln!(
-        "--- list Cons-match tail split (hypothesis B): calls={} receiver_len_sum={} ---",
-        cons_calls, cons_len_sum
-    );
-    let mut freq = v1_interpreter::call_frequency_snapshot();
-    freq.sort_by(|a, b| a.0.cmp(b.0));
-    eprintln!("--- hypothesis A call frequency ---");
-    for (name, calls) in freq.iter() {
-        eprintln!("  {}  calls={}", name, calls);
-    }
-    let mut big_folds = v1_interpreter::big_fold_by_dag_site_snapshot();
-    big_folds.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- fold_list receivers >1000 items, by .dag closure site (top 10) ---");
-    for (site, calls, total) in big_folds.iter().take(10) {
-        eprintln!("  {}  calls={}  items={}", site, calls, total);
-    }
-    let mut times = v1_interpreter::builtin_time_snapshot();
-    times.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- builtin inclusive wall time (top 15 by nanos) ---");
-    for (name, calls, nanos) in times.iter().take(15) {
-        eprintln!("  {}  calls={}  ms={}", name, calls, nanos / 1_000_000);
-    }
-    let mut self_times = v1_interpreter::dag_fn_self_time_snapshot();
-    self_times.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- .dag fn self time (top 20 by ms) ---");
-    for (name, calls, nanos) in self_times.iter().take(20) {
-        eprintln!("  {}  calls={}  self_ms={}", name, calls, nanos / 1_000_000);
-    }
-    let (memo_lookups, memo_hits, memo_distinct) = v1_interpreter::parse_memo_global_snapshot();
-    eprintln!(
-        "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
-        memo_lookups, memo_hits, memo_distinct
-    );
-    let mut callers = v1_interpreter::fold_caller_snapshot();
-    callers.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- LARGE fold_list callers (items>=100/call), top 15 by total items; .dag fn [left|right], elem type ---");
-    for (caller, calls, total, maxlen, elem) in callers.iter().take(15) {
-        eprintln!(
-            "  {}  calls={}  total_items={}  max_len={}  elem={}",
-            caller, calls, total, maxlen, elem
-        );
-    }
-}
 
 /// Parse repeated `--arg name=value` into the interpreter's named-argument
 /// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
@@ -16980,10 +16718,9 @@ fn dump_residual_hunt_instrumentation() {
 fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
     raw.iter()
         .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => Ok((
-                Some(name.to_string()),
-                v1_interpreter::Value::Str(value.to_string()),
-            )),
+            Some((name, value)) if !name.is_empty() => {
+                Ok((Some(name.to_string()), str_value(value.to_string())))
+            }
             Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
             None => Err(format!(
                 "--arg `{spec}`: expected `name=value` (named arguments only)"
@@ -17058,19 +16795,19 @@ impl ScopedRunObservation {
         let mut args = vec![
             (
                 Some("entry_file".to_string()),
-                Value::Str(self.entry_file.clone()),
+                str_value(self.entry_file.clone()),
             ),
             (
                 Some("module_path".to_string()),
-                Value::Str(self.module_path.clone()),
+                str_value(self.module_path.clone()),
             ),
             (
                 Some("function".to_string()),
-                Value::Str(self.function.clone()),
+                str_value(self.function.clone()),
             ),
         ];
         if let Some((name, value)) = detail {
-            args.push((Some(name.to_string()), Value::Str(value.to_string())));
+            args.push((Some(name.to_string()), str_value(value.to_string())));
         }
         if measured {
             let wall_ns = self.started.elapsed().as_nanos();
@@ -17112,7 +16849,7 @@ impl ScopedRunObservation {
             || (measured && self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredRefused"))
         {
             let cause = match self.ctx.field(fields, "cause") {
-                Some(Value::Str(cause)) => cause.clone(),
+                Some(Value::Str(cause)) => cause.to_string(),
                 _ => "typed refusal without a String cause".to_string(),
             };
             if projection != "scoped_run_projection_refusal_write" {
@@ -17278,86 +17015,9 @@ impl ScopedRunObservation {
 }
 
 #[cfg(unix)]
-fn capture_scoped_run_stderr<T>(f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
-    use std::fs::File;
-    use std::io::{Read, Write};
-    use std::os::fd::FromRawFd;
-    use std::os::raw::c_int;
-
-    unsafe extern "C" {
-        fn pipe(fds: *mut c_int) -> c_int;
-        fn dup(fd: c_int) -> c_int;
-        fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
-        fn close(fd: c_int) -> c_int;
-    }
-
-    struct RestoreStderr(c_int);
-    impl Drop for RestoreStderr {
-        fn drop(&mut self) {
-            unsafe {
-                dup2(self.0, 2);
-                close(self.0);
-            }
-        }
-    }
-
-    std::io::stderr()
-        .flush()
-        .map_err(|e| format!("flush before scoped stderr capture: {e}"))?;
-    let mut fds = [-1, -1];
-    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
-        return Err(format!(
-            "open scoped stderr capture pipe: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    let saved = unsafe { dup(2) };
-    if saved < 0 || unsafe { dup2(fds[1], 2) } < 0 {
-        unsafe {
-            close(fds[0]);
-            close(fds[1]);
-            if saved >= 0 {
-                close(saved);
-            }
-        }
-        return Err(format!(
-            "redirect scoped stderr capture: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    unsafe {
-        close(fds[1]);
-    }
-    let restore = RestoreStderr(saved);
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let mut file = unsafe { File::from_raw_fd(fds[0]) };
-        file.read_to_end(&mut bytes).map(|_| bytes)
-    });
-    let value = f();
-    std::io::stderr()
-        .flush()
-        .map_err(|e| format!("flush scoped stderr capture: {e}"))?;
-    drop(restore);
-    let bytes = reader
-        .join()
-        .map_err(|_| "scoped stderr capture reader panicked".to_string())?
-        .map_err(|e| format!("read scoped stderr capture: {e}"))?;
-    Ok((value, bytes))
-}
-
 #[cfg(not(unix))]
 fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
     Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
-}
-
-fn replay_scoped_run_stderr(bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
-    }
-    use std::io::Write;
-    let mut stderr = std::io::stderr().lock();
-    let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
 /// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
@@ -17378,441 +17038,6 @@ fn replay_scoped_run_stderr(bytes: &[u8]) {
 /// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
 /// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
 /// a substitute for it.
-fn emit_run_eval_profile(function: &str) {
-    use crate::v1_interpreter::{
-        cast_lookup_counters, eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
-    };
-    let prof = eval_profile_snapshot();
-    let total_ns: u128 = prof.self_nanos.iter().sum();
-    let total_count: u64 = prof.counts.iter().sum();
-    if total_count == 0 {
-        return;
-    }
-    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
-        .filter(|&i| prof.counts[i] > 0)
-        .collect();
-    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
-    eprintln!(
-        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
-        function,
-        total_count,
-        total_ns as f64 / 1.0e6,
-    );
-    for i in rows {
-        let ns = prof.self_nanos[i];
-        let count = prof.counts[i];
-        eprintln!(
-            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
-            expr_variant_name(i),
-            count,
-            ns as f64 / 1.0e6,
-            if total_ns == 0 {
-                0.0
-            } else {
-                100.0 * ns as f64 / total_ns as f64
-            },
-            if count == 0 {
-                0.0
-            } else {
-                ns as f64 / count as f64
-            },
-        );
-    }
-    // The cast cost center is a SCAN, not a per-cast constant: each alias-chain hop walks
-    // every item of every module extracting authored source text. Printing the three
-    // counters together is what turns "casts are expensive" into a named multiplier —
-    // items-per-lookup is the corpus-denominated term, and it grows with the closure.
-    let (kernel_calls, lookup_calls, lookup_items) = cast_lookup_counters();
-    if kernel_calls > 0 || lookup_calls > 0 {
-        eprintln!(
-            "[eval-profile] cast-kernel walks: {}  type-lookups: {}  items scanned: {}  ({:.1} lookups/walk, {:.0} items/lookup)",
-            kernel_calls,
-            lookup_calls,
-            lookup_items,
-            if kernel_calls == 0 {
-                0.0
-            } else {
-                lookup_calls as f64 / kernel_calls as f64
-            },
-            if lookup_calls == 0 {
-                0.0
-            } else {
-                lookup_items as f64 / lookup_calls as f64
-            },
-        );
-    }
-}
-
-pub fn handle_run_with_options(
-    source_roots: Vec<String>,
-    function: String,
-    entry_file: Option<String>,
-    dry_run: bool,
-    claim_run: bool,
-    args: Vec<String>,
-) {
-    if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
-    }
-
-    // Refuse a malformed --arg before the compile, so the diagnostic is the
-    // first thing printed rather than the last.
-    let run_args = match parse_run_args(&args) {
-        Ok(parsed) => parsed,
-        Err(message) => {
-            eprintln!("error: {message}");
-            std::process::exit(2);
-        }
-    };
-
-    if claim_run && entry_file.is_none() {
-        eprintln!(
-            "error: --claim-run requires --entry <file.dag> (scoped import closure; \
-             loading the whole --source-root tree is too large for witness runs)"
-        );
-        std::process::exit(1);
-    }
-
-    // Same install as claim_executor / claim_batch: without it, host-effect traces
-    // fall back to Full and effectful merge-admission success stages dump every
-    // Ambient Begin/Done as emoji shell noise (operator live-log
-    // 2026-07-25). Install before any Wet eval so ShellTrace Suppressed-at-Normal
-    // collapses Ambient scaffolding; Anomaly Failed still surfaces via disposition.
-    install_output_policy(&source_roots);
-    install_group_syntax(&source_roots);
-
-    let mut scoped_periodic_dump = None;
-    let mut scoped_periodic_secs = None;
-    if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
-        if let Ok(secs) = secs.parse::<u64>() {
-            if entry_file.is_some() {
-                // The producer is started only after capture_scoped_run_stderr
-                // has installed fd 2.  Starting it here leaves a timeout window
-                // between Begin and capture in which raw diagnostics can corrupt
-                // the Open dynamic line.
-                scoped_periodic_secs = Some(secs);
-            } else {
-                std::thread::spawn(move || loop {
-                    std::thread::sleep(std::time::Duration::from_secs(secs));
-                    dump_residual_hunt_instrumentation();
-                });
-            }
-        }
-    }
-
-    let sources = match entry_file.as_deref() {
-        Some(path) => match load_sources_for_entry(&source_roots, path) {
-            Ok(sources) => sources,
-            Err(msg) => {
-                eprintln!("error: {}", msg);
-                std::process::exit(1);
-            }
-        },
-        None => match load_sources(&source_roots) {
-            Ok(sources) => sources,
-            Err(msg) => {
-                eprintln!("error: {}", msg);
-                std::process::exit(1);
-            }
-        },
-    };
-    eprintln!("resolved {} sources", sources.len());
-
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-
-    let has_errors = result
-        .diagnostics
-        .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if has_errors {
-        let si: HashMap<String, Rc<NewlineIndex>> = result
-            .newline_indices
-            .iter()
-            .map(|idx| (idx.file.clone(), idx.clone()))
-            .collect();
-        for d in result.diagnostics.iter() {
-            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                continue;
-            }
-            let span = diagnostic_to_span(d.diagnostic.clone());
-            let loc = match si.get(&span.file) {
-                Some(idx) => {
-                    let lc = byte_to_line_col(idx.clone(), span.start);
-                    format!("{}:{}:{}", span.file, lc.line, lc.col)
-                }
-                None => span.file.clone(),
-            };
-            eprintln!(
-                "{}: error: {}",
-                loc,
-                diagnostic_to_message(d.diagnostic.clone())
-            );
-        }
-        std::process::exit(1);
-    }
-
-    let graph = match result.graph.as_ref() {
-        Some(g) => g,
-        None => {
-            eprintln!("error: compilation produced no graph");
-            std::process::exit(1);
-        }
-    };
-
-    let execution_mode = if dry_run {
-        v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_interpreter::ExecutionMode::Wet
-    };
-    let ctx =
-        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
-    let scoped_identity = entry_file.as_ref().map(|_| {
-        let module_path_index = build_module_path_index(&source_roots);
-        ctx.selected_function_identity(&function, &module_path_index)
-            .filter(|identity| !identity.bare_name_ambiguous || function.contains('.'))
-            .unwrap_or_else(|| {
-                eprintln!(
-                    "error: scoped run function `{function}` has no unique runtime-selected declaration identity"
-                );
-                std::process::exit(1);
-            })
-    });
-    let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        let identity = scoped_identity
-            .as_ref()
-            .expect("scoped identity exists for scoped entry");
-        ScopedRunObservation::resolve(
-            entry,
-            &identity.module_path,
-            &identity.decl_name,
-            std::time::Instant::now(),
-        )
-        .unwrap_or_else(|cause| {
-            eprintln!("error: {cause}");
-            std::process::exit(1);
-        })
-    });
-    if let Some(observation) = scoped_observation.as_mut() {
-        observation.begin().unwrap_or_else(|cause| {
-            eprintln!("error: {cause}");
-            std::process::exit(1);
-        });
-    } else {
-        eprintln!("running {}()...", function);
-    }
-    v1_interpreter::with_active_context(&ctx, || {
-        // One path, not two: with an empty `--arg` list this is byte-identical
-        // to `run_in_context`, which passes the same empty slice.
-        let mut run = || {
-            if let Some(secs) = scoped_periodic_secs {
-                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-                let (armed_tx, armed_rx) = std::sync::mpsc::channel();
-                let periodic_ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                let tick_count = periodic_ticks.clone();
-                let witness = std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some();
-                let handle = std::thread::spawn(move || loop {
-                    if witness && secs == 0 {
-                        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
-                            stop_rx.recv_timeout(std::time::Duration::ZERO)
-                        {
-                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            dump_residual_hunt_instrumentation();
-                        }
-                        let _ = armed_tx.send(());
-                        break;
-                    }
-                    let _ = armed_tx.send(());
-                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
-                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            let tick =
-                                tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            dump_residual_hunt_instrumentation();
-                            if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some()
-                                && tick == 0
-                            {
-                                break;
-                            }
-                        }
-                    }
-                });
-                if witness {
-                    let _ = armed_rx.recv();
-                }
-                scoped_periodic_dump = Some((stop_tx, handle, periodic_ticks));
-            }
-            let outcome =
-                v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
-            if let Some((stop, handle, periodic_ticks)) = scoped_periodic_dump.take() {
-                let _ = stop.send(());
-                let _ = handle.join();
-                if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some() {
-                    eprintln!(
-                        "[scoped-periodic-ticks={}]",
-                        periodic_ticks.load(std::sync::atomic::Ordering::Relaxed)
-                    );
-                }
-            }
-            v1_interpreter::print_eval_recompute_trace(&ctx);
-            if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
-                dump_residual_hunt_instrumentation();
-            }
-            outcome
-        };
-        let (run_outcome, mut deferred_stderr) = if scoped_observation.is_some() {
-            capture_scoped_run_stderr(run).unwrap_or_else(|cause| {
-                if let Some(observation) = scoped_observation.as_mut() {
-                    observation
-                        .failed(&cause)
-                        .unwrap_or_else(|projection_cause| {
-                            eprintln!("error: {projection_cause}");
-                            std::process::exit(1);
-                        });
-                }
-                std::process::exit(1);
-            })
-        } else {
-            (run(), Vec::new())
-        };
-        if !deferred_stderr.is_empty() {
-            if let Some(observation) = scoped_observation.as_mut() {
-                observation
-                    .close_before_deferred()
-                    .unwrap_or_else(|projection_cause| {
-                        eprintln!("error: {projection_cause}");
-                        std::process::exit(1);
-                    });
-            }
-            replay_scoped_run_stderr(&deferred_stderr);
-            deferred_stderr.clear();
-        }
-        match run_outcome {
-            Ok(val) => {
-                if claim_run {
-                    match &val {
-                        v1_interpreter::Value::Bool(false) => {
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation.failed("claim returned false").unwrap_or_else(
-                                    |cause| {
-                                        eprintln!("error: {cause}");
-                                        std::process::exit(1);
-                                    },
-                                );
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            std::process::exit(1)
-                        }
-                        v1_interpreter::Value::Bool(true) => {
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation.finish().unwrap_or_else(|cause| {
-                                    eprintln!("error: {cause}");
-                                    std::process::exit(1);
-                                });
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            return;
-                        }
-                        other => {
-                            let cause = format!(
-                                "function `{}` returned `{}`, not Bool; --claim-run requires Bool",
-                                function, other
-                            );
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation
-                                    .refused(&cause)
-                                    .unwrap_or_else(|projection_cause| {
-                                        eprintln!("error: {projection_cause}");
-                                        std::process::exit(1);
-                                    });
-                            } else {
-                                eprintln!(
-                                    "error: function `{}` returned `{}`, not `Bool`. \
-                                     With --claim-run the entry must return Bool (false → exit 1).",
-                                    function, other
-                                );
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            std::process::exit(2);
-                        }
-                    }
-                }
-                emit_run_eval_profile(&function);
-                match classify_exit(&val, &ctx) {
-                    ExitClass::Success => {
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation.finish().unwrap_or_else(|cause| {
-                                eprintln!("error: {cause}");
-                                std::process::exit(1);
-                            });
-                        }
-                    }
-                    ExitClass::Failure { code, reason } => {
-                        let cause = reason
-                            .clone()
-                            .unwrap_or_else(|| format!("process exited {code}"));
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation
-                                .failed(&cause)
-                                .unwrap_or_else(|projection_cause| {
-                                    eprintln!("error: {projection_cause}");
-                                    std::process::exit(1);
-                                });
-                        } else if let Some(message) = &reason {
-                            eprintln!("{message}");
-                        }
-                        replay_scoped_run_stderr(&deferred_stderr);
-                        println!("{}", val);
-                        std::process::exit(code);
-                    }
-                    ExitClass::NotProcessExit { type_name } => {
-                        let cause = format!(
-                            "function `{}` returned `{}`, not ProcessExit",
-                            function, type_name
-                        );
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation
-                                .refused(&cause)
-                                .unwrap_or_else(|projection_cause| {
-                                    eprintln!("error: {projection_cause}");
-                                    std::process::exit(1);
-                                });
-                        } else {
-                            eprintln!(
-                                "error: function `{}` returned `{}`, not `ProcessExit`. \
-                                 Functions invoked via `dag run` must return std/process.dag's \
-                                 ProcessExit so the host can map success/failure to an exit code. \
-                                 Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                                 --claim-run for Bool witness entry points under src/v2.",
-                                function, type_name
-                            );
-                        }
-                        replay_scoped_run_stderr(&deferred_stderr);
-                        println!("{}", val);
-                        std::process::exit(2);
-                    }
-                }
-                replay_scoped_run_stderr(&deferred_stderr);
-                println!("{}", val);
-            }
-            Err(e) => {
-                if let Some(observation) = scoped_observation.as_mut() {
-                    observation.failed(&e.to_string()).unwrap_or_else(|cause| {
-                        eprintln!("error: {cause}");
-                        std::process::exit(1);
-                    });
-                } else {
-                    eprintln!("runtime error: {}", e);
-                }
-                replay_scoped_run_stderr(&deferred_stderr);
-                std::process::exit(1);
-            }
-        }
-    });
-}
 
 /// `gunbc serve` — the thin host seam for the gunbc-served dashboard
 /// (docs/plans/gunbc-served-dashboard-design.md). Compile the entry closure
@@ -17833,12 +17058,6 @@ pub fn handle_run_with_options(
 /// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
 /// back from some other process. Same rule, two boundaries, and the boundary
 /// each guards is the reason it cannot be deleted in favour of the other.
-fn release_revision_text_valid(text: &str) -> bool {
-    text.len() == 40
-        && text
-            .chars()
-            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
-}
 
 /// The process-wide evaluation budget this serve process enforces.
 ///
@@ -17859,247 +17078,10 @@ pub struct ServeEvaluationBudget {
 /// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
 /// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
 /// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
-    elapsed_nanos: u128,
-    limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
-}
 
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
-fn serve_json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-pub fn handle_serve(
-    source_roots: Vec<String>,
-    entry_file: String,
-    function: String,
-    host: String,
-    port: u16,
-    release_revision: String,
-    serve_budget: ServeEvaluationBudget,
-) {
-    if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
-    }
-    // Bound BEFORE the graph is compiled and before the listener binds: a
-    // process that cannot say which release it is must never reach a state
-    // where something can route traffic to it and read its identity back.
-    if !release_revision_text_valid(&release_revision) {
-        eprintln!(
-            "error: --release-revision must be exactly 40 lowercase hex digits \
-             (git object name); got {:?} ({} chars). This is the identity this \
-             process publishes through /healthz and that deployment ordering \
-             reads back — a branch name, an abbreviated sha, or an empty value \
-             is not a revision.",
-            release_revision,
-            release_revision.chars().count()
-        );
-        std::process::exit(1);
-    }
-    let index = process_shared_index(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        ResolveTypecheckGate::Strict,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    ) {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    if compile_clean_diags
-        .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
-            eprintln!("error: {}", format_error_node(d, &source_indices));
-        }
-        std::process::exit(1);
-    }
-    let ctx = v1_interpreter::InterpContext::new(
-        &graph,
-        source_indices.clone(),
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
-            std::process::exit(1);
-        }
-    };
-    // The budget is announced at startup because "unset" is a policy state that must be visible.
-    // A process serving with no bound and a process serving with a bound are different
-    // operational facts, and the difference has to be readable without inspecting argv.
-    eprintln!(
-        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
-        function,
-        release_revision,
-        serve_budget
-            .cpu_limit_ms
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-    );
-    v1_interpreter::with_active_context(&ctx, || {
-        for stream in listener.incoming() {
-            let mut stream = match stream {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("serve: accept error: {}", e);
-                    continue;
-                }
-            };
-            match serve_read_request(&mut stream) {
-                Err(reason) => serve_write_response(
-                    &mut stream,
-                    400,
-                    "text/plain; charset=utf-8",
-                    &format!("bad request: {}\n", reason),
-                ),
-                Ok((method, path, body)) => {
-                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
-                        (
-                            Some("method".to_string()),
-                            v1_interpreter::Value::Str(method),
-                        ),
-                        (Some("path".to_string()), v1_interpreter::Value::Str(path)),
-                        (Some("body".to_string()), v1_interpreter::Value::Str(body)),
-                        // Captured once above and cloned per request: the value
-                        // is fixed for the process lifetime, so no request can
-                        // observe a different release than any other request.
-                        (
-                            Some("release_revision".to_string()),
-                            v1_interpreter::Value::Str(release_revision.clone()),
-                        ),
-                    ];
-                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
-                    // Before this existed the serve path armed nothing, so a route evaluation
-                    // that did not return also prevented the `Err` arm below from ever running:
-                    // the 500 existed and was unreachable, and because the loop is serial the
-                    // stuck request held the accept queue for every later one. The guard both
-                    // arms and restores — a leaked deadline would be worse than none here,
-                    // since `ctx` outlives every request and a stale CPU baseline would refuse
-                    // all subsequent requests for the life of the process.
-                    let result = {
-                        let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
-                        );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
-                    };
-                    match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
-                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                            // the evaluation that would have rendered it is the one that was
-                            // just aborted, so asking it to describe its own abort would put
-                            // recovery behind the evaluator that failed.
-                            //
-                            // 500, not 503: this request is deterministic against a fixed
-                            // policy, so it will cross again on retry. A status meaning
-                            // "temporary capacity" would assert something the model does not
-                            // know, and no `Retry-After` is attached for the same reason
-                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
-                            serve_write_response(
-                                &mut stream,
-                                500,
-                                "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
-                            )
-                        }
-                        Err(e) => serve_write_response(
-                            &mut stream,
-                            500,
-                            "text/plain; charset=utf-8",
-                            &format!("handler error: {}\n", e),
-                        ),
-                        Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
-                                &mut stream,
-                                status,
-                                &content_type,
-                                &resp_body,
-                            ),
-                            None => serve_write_response(
-                                &mut stream,
-                                500,
-                                "text/plain; charset=utf-8",
-                                &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
-                                    ctx.format_value(&val)
-                                ),
-                            ),
-                        },
-                    }
-                }
-            }
-        }
-    });
-}
 
 /// Read one HTTP/1.1 request: request line + headers (only Content-Length is
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
@@ -18108,150 +17090,24 @@ pub fn handle_serve(
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
-fn serve_read_request(
-    stream: &mut std::net::TcpStream,
-) -> Result<(String, String, String), String> {
-    use std::io::{BufRead, Read};
-    const MAX_HEAD: usize = 16 << 10;
-    const MAX_BODY: usize = 1 << 20;
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
-        .map_err(|e| format!("set_read_timeout: {}", e))?;
-    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
-    let mut request_line = String::new();
-    let mut head_bytes = reader
-        .read_line(&mut request_line)
-        .map_err(|e| format!("read request line: {}", e))?;
-    if head_bytes > MAX_HEAD {
-        return Err(format!(
-            "request line of {} bytes exceeds the {} byte serve head limit",
-            head_bytes, MAX_HEAD
-        ));
-    }
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().ok_or("empty request line")?.to_string();
-    let target = parts.next().ok_or("missing request target")?.to_string();
-    if !target.starts_with('/') {
-        return Err(format!(
-            "request target must be origin-form, got {:?}",
-            target
-        ));
-    }
-    let mut content_length: Option<usize> = None;
-    loop {
-        let mut line = String::new();
-        let n = reader
-            .read_line(&mut line)
-            .map_err(|e| format!("read header: {}", e))?;
-        if n == 0 {
-            return Err("connection closed before end of headers".to_string());
-        }
-        head_bytes += n;
-        if head_bytes > MAX_HEAD {
-            return Err(format!(
-                "headers of {} bytes exceed the {} byte serve head limit",
-                head_bytes, MAX_HEAD
-            ));
-        }
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                if content_length.is_some() {
-                    return Err("duplicate Content-Length header".to_string());
-                }
-                content_length = Some(
-                    value
-                        .trim()
-                        .parse()
-                        .map_err(|e| format!("bad Content-Length: {}", e))?,
-                );
-            }
-        }
-    }
-    let content_length = content_length.unwrap_or(0);
-    if content_length > MAX_BODY {
-        return Err(format!(
-            "body of {} bytes exceeds the {} byte serve limit",
-            content_length, MAX_BODY
-        ));
-    }
-    let mut body_bytes = vec![0u8; content_length];
-    reader
-        .read_exact(&mut body_bytes)
-        .map_err(|e| format!("read body: {}", e))?;
-    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok((method, target, body))
-}
-
-fn serve_write_response(
-    stream: &mut std::net::TcpStream,
-    status: u16,
-    content_type: &str,
-    body: &str,
-) {
-    use std::io::Write;
-    let reason = match status {
-        200 => "OK",
-        400 => "Bad Request",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        409 => "Conflict",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        _ => "",
-    };
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        status,
-        reason,
-        content_type,
-        body.len(),
-        body
-    );
-    if let Err(e) = stream.write_all(response.as_bytes()) {
-        eprintln!("serve: write error: {}", e);
-    }
-}
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response).
-fn serve_wire_fields(
-    val: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
-    if let v1_interpreter::Value::Record { type_name, fields } = val {
-        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
-            return None;
-        }
-        let status = match ctx.field(fields, "status") {
-            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
-            _ => return None,
-        };
-        let content_type = match ctx.field(fields, "content_type_label") {
-            Some(v1_interpreter::Value::Str(s)) => s.clone(),
-            _ => return None,
-        };
-        let body = match ctx.field(fields, "body") {
-            Some(v1_interpreter::Value::Str(s)) => s.clone(),
-            _ => return None,
-        };
-        return Some((status, content_type, body));
-    }
-    None
-}
 
-enum ExitClass {
+/// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
+/// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
+/// seam in `main.rs` must map that value to a process exit code. Reimplementing the match
+/// in the driver would fork the one place that knows the variant shape. Body untouched.
+pub enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
-fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> ExitClass {
+pub fn classify_exit(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> ExitClass {
     match val {
         v1_interpreter::Value::Variant {
             type_name,
@@ -18271,7 +17127,7 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
                     _ => 1,
                 };
                 let reason = match ctx.field(fields, "reason") {
-                    Some(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+                    Some(Value::Str(s)) if !s.is_empty() => Some(s.to_string()),
                     _ => None,
                 };
                 ExitClass::Failure { code, reason }
@@ -19406,7 +18262,7 @@ fn witness_cost_string_field(
     name: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(v1_interpreter::Value::Str(value)) if !value.is_empty() => Ok(value.clone()),
+        Some(Value::Str(value)) if !value.is_empty() => Ok(value.to_string()),
         Some(other) => Err(format!(
             "[witness-row-cost] REFUSED: projected {name} is {}, expected NonEmptyStr",
             other.type_label_public()
@@ -19575,7 +18431,7 @@ pub fn project_witness_cost_receipt(
                     &ctx,
                     "witness_cost_entry_resolve_event",
                     &[
-                        (Some("entry".to_string()), Value::Str(entry_name.clone())),
+                        (Some("entry".to_string()), str_value(entry_name.clone())),
                         (Some("resolve".to_string()), entry_wall),
                     ],
                     false,
@@ -19593,14 +18449,14 @@ pub fn project_witness_cost_receipt(
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
-                (Some("entry".to_string()), Value::Str(outcome.entry.clone())),
+                (Some("entry".to_string()), str_value(outcome.entry.clone())),
                 (
                     Some("module_path".to_string()),
-                    Value::Str(outcome.module_path.clone()),
+                    str_value(outcome.module_path.clone()),
                 ),
                 (
                     Some("function".to_string()),
-                    Value::Str(outcome.function.clone()),
+                    str_value(outcome.function.clone()),
                 ),
                 (Some("eval".to_string()), eval),
             ];
@@ -19609,21 +18465,21 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::Fail => {
                     args.push((
                         Some("error".to_string()),
-                        Value::Str("returned Bool(false)".to_string()),
+                        str_value("returned Bool(false)".to_string()),
                     ));
                     "witness_cost_seed_failed_event"
                 }
                 ClaimOutcome::NotBool { got } => {
                     args.push((
                         Some("diagnostic".to_string()),
-                        Value::Str(format!("returned `{got}`, not Bool")),
+                        str_value(format!("returned `{got}`, not Bool")),
                     ));
                     "witness_cost_seed_refused_event"
                 }
                 ClaimOutcome::RuntimeError { message } => {
                     args.push((
                         Some("error".to_string()),
-                        Value::Str(format!("runtime error: {message}")),
+                        str_value(format!("runtime error: {message}")),
                     ));
                     "witness_cost_seed_failed_event"
                 }
@@ -20374,8 +19230,6 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // is emitted or natively realized (then the source-scan helpers go), the classification path
 // follows it (then the rest goes), or the frozen population reaches zero (then all of it goes with
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
-pub(crate) const CLI_RUN_WITNESS_DEFERRAL_FREEZE_SCAFFOLD_MARKER: &str =
-    "cli_run_witness_deferral_freeze";
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
 /// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
@@ -21227,10 +20081,10 @@ fn owned_data_decl_record_to_value(
             type_name: ctx.sym("OwnedDataDeclInitializer"),
             variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("witness_entry"), Value::Str(witness_entry.clone())),
+                (ctx.sym("witness_entry"), str_value(witness_entry.clone())),
                 (
                     ctx.sym("witness_function"),
-                    Value::Str(witness_function.clone()),
+                    str_value(witness_function.clone()),
                 ),
             ])),
         },
@@ -21247,8 +20101,8 @@ fn owned_data_decl_record_to_value(
                 Value::Record {
                     type_name: ctx.sym("ResolvedDeclRef"),
                     fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("module"), Value::Str(resolved.module.clone())),
-                        (ctx.sym("name"), Value::Str(resolved.name.clone())),
+                        (ctx.sym("module"), str_value(resolved.module.clone())),
+                        (ctx.sym("name"), str_value(resolved.name.clone())),
                     ])),
                 },
             )])),
@@ -21257,9 +20111,9 @@ fn owned_data_decl_record_to_value(
     Value::Record {
         type_name: ctx.sym("OwnedDataDeclRecord"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("entry"), Value::Str(rec.entry.clone())),
-            (ctx.sym("module"), Value::Str(rec.module.clone())),
-            (ctx.sym("decl_name"), Value::Str(rec.decl_name.clone())),
+            (ctx.sym("entry"), str_value(rec.entry.clone())),
+            (ctx.sym("module"), str_value(rec.module.clone())),
+            (ctx.sym("decl_name"), str_value(rec.decl_name.clone())),
             (ctx.sym("initializer"), initializer),
         ])),
     }
@@ -21306,15 +20160,15 @@ fn discovery_row_from_floor_discovery_row_value(
         ));
     };
     let label = match ctx.field(fields, "label") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `label`".to_string()),
     };
     let entry = match ctx.field(fields, "entry") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `entry`".to_string()),
     };
     let function = match ctx.field(fields, "function") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `function`".to_string()),
     };
     let reads_live_tree = match ctx.field(fields, "reads_live_tree") {
@@ -21374,7 +20228,7 @@ fn parse_floor_discovery_producer_result(
             && ctx.sym_eq(*variant_name, "FloorDiscoveryRefused") =>
         {
             let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => "floor discovery refused (no reason)".to_string(),
             };
             Err(reason)
@@ -21422,13 +20276,11 @@ fn invoke_floor_discovery_producer_over_corpus(
     let (graph, indices) = resolve_workspace_entry(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
         .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let source_root_values: Vec<v1_interpreter::Value> =
+        corpus_roots.iter().map(|s| str_value(s.clone())).collect();
     let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
         .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .map(|s| str_value(s.clone()))
         .collect();
     let owned_values: Vec<v1_interpreter::Value> = owned_data_records
         .iter()
@@ -21584,34 +20436,6 @@ impl SelectedEntryClosureOverlap {
 }
 
 /// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
-fn closure_overlap_membership_for_entries(
-    index: &MultiEntryIndex,
-    selected_entries: &[String],
-) -> Result<(usize, usize, Vec<(String, usize)>), String> {
-    let mut sum_closure_memberships: usize = 0;
-    let mut fanout: HashMap<String, usize> = HashMap::new();
-    for entry in selected_entries {
-        let mut members: HashSet<String> = HashSet::new();
-        for source in load_sources_for_entry_with_pool(index, entry)? {
-            let Some(name) = extract_module_path(&source.content) else {
-                return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module \
-                     header (fail-closed)",
-                    source.path, entry
-                ));
-            };
-            members.insert(name);
-        }
-        sum_closure_memberships += members.len();
-        for m in members {
-            *fanout.entry(m).or_insert(0) += 1;
-        }
-    }
-    let union_modules = fanout.len();
-    let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
-    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    Ok((sum_closure_memberships, union_modules, fanout_by_module))
-}
 
 pub fn measure_selected_entry_closure_overlap(
     source_roots: &[String],
@@ -22127,7 +20951,7 @@ fn floor_git_diff_range() -> Result<String, String> {
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => match ctx.field(fields, "text") {
-            Some(Value::Str(s)) => Ok(s.clone()),
+            Some(Value::Str(s)) => Ok(s.to_string()),
             _ => Err("UnifiedDiffOk missing `text` field".to_string()),
         },
         Value::Variant {
@@ -22135,7 +20959,7 @@ fn floor_git_diff_range() -> Result<String, String> {
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff observation failed (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22173,7 +20997,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
             .map_err(|e| format!("floor_observe_diff_comparison_readout_for_ci: {e}"))?;
     let str_field = |fields: &_, name: &str| -> Result<String, String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) => Ok(s.clone()),
+            Some(Value::Str(s)) => Ok(s.to_string()),
             _ => Err(format!("comparison readout missing `{name}`")),
         }
     };
@@ -22227,7 +21051,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
             ..
         } if ctx.sym_eq(*variant_name, "ComparisonReadoutRefused") => {
             match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => Err(r.clone()),
+                Some(Value::Str(r)) => Err(r.to_string()),
                 _ => Err("comparison readout refused (no reason)".to_string()),
             }
         }
@@ -22256,11 +21080,11 @@ fn floor_diff_baseline_readout() -> Result<(String, String), String> {
             ..
         } if ctx.sym_eq(*variant_name, "BaselineReadout") => {
             let base = match ctx.field(fields, "ref") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => return Err("BaselineReadout missing `ref`".to_string()),
             };
             let event = match ctx.field(fields, "event_name") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => return Err("BaselineReadout missing `event_name`".to_string()),
             };
             Ok((base, event))
@@ -22271,7 +21095,7 @@ fn floor_diff_baseline_readout() -> Result<(String, String), String> {
             ..
         } if ctx.sym_eq(*variant_name, "BaselineReadoutRefused") => match ctx.field(fields, "reason")
         {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("baseline readout refused (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22287,7 +21111,7 @@ fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Ve
         Value::List(items) => items
             .iter()
             .map(|v| match v {
-                Value::Str(s) => Ok(s.clone()),
+                Value::Str(s) => Ok(s.to_string()),
                 other => Err(format!("{field} entry not a String: `{other:?}`")),
             })
             .collect(),
@@ -22329,7 +21153,7 @@ fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), 
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "NameStatusDiffFail") => match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff --name-status observation failed (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22702,7 +21526,6 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
-const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
 // deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
@@ -22714,54 +21537,6 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // import-closure realization; the fn-arrow chain stays in `.dag`
 // (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
 // namespace-only terminal step re-decides the grain.
-
-fn call_entry_affected_by_touched_paths(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    pool_roots: &[String],
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("entry_affected_by_touched_paths")
-    {
-        return Err(
-            "entry_affected_by_touched_paths missing from module_graph context".to_string(),
-        );
-    }
-    let roots: Vec<v1_interpreter::Value> = pool_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let touched: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("entry_path".to_string()),
-            v1_interpreter::Value::Str(entry_path.to_string()),
-        ),
-        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(touched),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "entry_affected_by_touched_paths",
-        &args,
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "entry_affected_by_touched_paths returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("entry_affected_by_touched_paths: {e}")),
-    }
-}
 
 fn call_floor_kernel_would_skip(
     ctx: &v1_interpreter::InterpContext,
@@ -22775,10 +21550,8 @@ fn call_floor_kernel_would_skip(
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("changed_paths".to_string()),
@@ -22843,10 +21616,8 @@ fn call_floor_row_would_skip(
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("reads_live_tree".to_string()),
@@ -22904,10 +21675,8 @@ fn call_floor_row_precompute_would_skip(
             "floor_row_precompute_would_skip missing from floor runner context".to_string(),
         );
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("live_row_count".to_string()),
@@ -23530,7 +22299,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const EFFECT_REACH_STD_ENTRY: &str = "src/v2/std/effect_reach.dag";
@@ -23555,7 +22324,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         items
             .iter()
             .map(|item| match item {
-                Value::Str(s) => s.clone(),
+                Value::Str(s) => s.to_string(),
                 other => panic!(
                     "effect_reach_host_sink_callee_symbols_v0 entry is not a String: {other:?}"
                 ),
@@ -24182,7 +22951,7 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                         _ => -1,
                     };
                     let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.clone(),
+                        Some(Value::Str(s)) => s.to_string(),
                         _ => String::new(),
                     };
                     let db = derived
@@ -26489,7 +25258,7 @@ mod floor_witness_a_prove {
         parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, resolve_entry_with_index,
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use im::HashMap;
     use std::path::PathBuf;
 
@@ -26576,7 +25345,7 @@ mod floor_witness_a_prove {
         Value::Record {
             type_name: ctx.sym("FloorDiffLineTouch"),
             fields: Rc::new(vec![
-                (ctx.sym("path"), Value::Str(path.to_string())),
+                (ctx.sym("path"), str_value(path.to_string())),
                 (ctx.sym("start_line"), int_value(start)),
                 (ctx.sym("end_line"), int_value(end)),
             ]),
@@ -26601,7 +25370,7 @@ mod floor_witness_a_prove {
             ),
             (
                 Some("file_path".to_string()),
-                Value::Str(file_path.to_string()),
+                str_value(file_path.to_string()),
             ),
             (Some("test_fn_decl_line".to_string()), int_value(decl_line)),
             (
@@ -26732,7 +25501,7 @@ mod floor_witness_a_prove {
     ) -> Result<v1_interpreter::Value, String> {
         let args = [(
             Some("changed".to_string()),
-            Value::Str(changed_path.to_string()),
+            str_value(changed_path.to_string()),
         )];
         v1_interpreter::run_in_context_with_args(
             prove_ctx,
@@ -27058,7 +25827,7 @@ mod module_grain_affected_equivalence_tests {
         resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
         MultiEntryIndex,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::time::Instant;
@@ -27119,7 +25888,7 @@ mod module_grain_affected_equivalence_tests {
         v1_interpreter::list_value(
             items
                 .iter()
-                .map(|s| Value::Str(s.clone()))
+                .map(|s| str_value(s.clone()))
                 .collect::<Vec<_>>(),
         )
     }
@@ -27136,7 +25905,7 @@ mod module_grain_affected_equivalence_tests {
         let args = [
             (
                 Some("entry_path".to_string()),
-                Value::Str(entry_rel.to_string()),
+                str_value(entry_rel.to_string()),
             ),
             (Some("pool_roots".to_string()), str_list_value(roots)),
             (Some("touched_paths".to_string()), str_list_value(touched)),
@@ -27482,10 +26251,7 @@ mod module_grain_affected_equivalence_tests {
         );
 
         let args = [
-            (
-                Some("entry_path".to_string()),
-                Value::Str(entry.to_string()),
-            ),
+            (Some("entry_path".to_string()), str_value(entry.to_string())),
             (Some("pool_roots".to_string()), str_list_value(&rel_roots)),
             (Some("touched_paths".to_string()), str_list_value(&touched)),
             (
@@ -29390,14 +28156,6 @@ pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
     source_root_ingest_symbol_from_stem(stem)
 }
 
-fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("host_sr");
-    source_root_ingest_symbol_from_stem(stem)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRootEntryAdmission {
     pub subject: Vec<String>,
@@ -29691,17 +28449,6 @@ pub fn discover_source_root_reads_for_entry(
     Ok(records)
 }
 
-fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
-    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
-    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
-    Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
-        dag_embedded_dag_source_escape(&rec.source),
-        dag_manifest_scalar_escape(&rec.file_path)?,
-        rec.source_root,
-    ))
-}
-
 fn emit_source_content_hash_dag_for_text(source: &str) -> String {
     let digest = crate::v1_rt::atom_identity_hash(source.to_string());
     format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
@@ -29754,18 +28501,6 @@ pub fn emit_source_ref_dag_for_path(
         .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
         .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
     emit_source_ref_dag(rec)
-}
-
-fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
-    let mut witness_nodes: Vec<String> = records
-        .iter()
-        .map(emit_source_root_read_witness)
-        .collect::<Result<_, _>>()?;
-    let mut out = String::from("Empty");
-    while let Some(head) = witness_nodes.pop() {
-        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
-    }
-    Ok(out)
 }
 
 fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
@@ -34843,7 +33578,7 @@ mod reference_edge_producer_tests {
         super::list_value_from_vec(
             items
                 .iter()
-                .map(|s| crate::v1_interpreter::Value::Str(s.clone()))
+                .map(|s| crate::v1_interpreter::str_value(s.clone()))
                 .collect(),
         )
     }
@@ -34856,11 +33591,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -35361,7 +34096,7 @@ fn commit_witness_field_str(
     name: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(v1_interpreter::Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         other => Err(format!("{name} not a String: {other:?}")),
     }
 }
@@ -40490,14 +39225,6 @@ fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
     })
 }
 
-fn read_extdeps_module_source_text(path: &str) -> String {
-    let resolved = resolve_extdeps_module_source_path(path);
-    let path_str = resolved.to_string_lossy();
-    std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
-        panic!("read_extdeps_module_source_text: failed to read {path_str}: {e}")
-    })
-}
-
 thread_local! {
     /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
     /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
@@ -41736,13 +40463,13 @@ pub fn value_to_wire_json(
         v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
         v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
-        v1_interpreter::Value::Str(s) => {
+        Value::Str(s) => {
             if s.starts_with('[') || s.starts_with('{') {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
                     return Ok(parsed);
                 }
             }
-            Ok(serde_json::Value::String(s.clone()))
+            Ok(serde_json::Value::String(s.to_string()))
         }
         v1_interpreter::Value::List(items) => {
             let mut arr = Vec::with_capacity(items.len());
@@ -41761,7 +40488,7 @@ pub fn value_to_wire_json(
             let mut obj = serde_json::Map::new();
             for (k, v) in m.iter() {
                 let key = match k.value_ref() {
-                    v1_interpreter::Value::Str(s) => s.clone(),
+                    Value::Str(s) => s.to_string(),
                     other => {
                         return Err(format!(
                             "cannot serialize map with non-string key to JSON (got {other:?} key)"

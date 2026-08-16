@@ -127,8 +127,35 @@ enum Commands {
     },
 }
 
+/// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization
+/// output, not source: a corpus copy materialized under it must never enter a module
+/// index alongside the tree it was copied from. A source root passed FROM inside
+/// `target/` is still walked — only DESCENT into the output dir is refused.
+fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path) -> bool {
+    child.file_name().and_then(|n| n.to_str()) == Some("target")
+        && parent.join("Cargo.toml").is_file()
+}
+
 /// Recursively find all .dag files under a directory.
 /// Fail-closed: panics on unreadable directory entries.
+///
+/// THE GUARD BELOW IS RESTORED FROM THE COPY THIS CUT DELETES, and the direction is
+/// the point: `cli_run` carried its own `collect_dag_files` WITH the target-dir refusal
+/// while this one has always lacked it, so the dying copy was the SAFER one. Deleting
+/// `cli_run` without moving the guard here would have made the cut silently lower
+/// safety — a regression introduced by a deletion, which is the one outcome delete-first
+/// must not produce. This is not porting `cli_run`; it is refusing to drop a rule while
+/// keeping the branch that needs it.
+///
+/// Without it, a whole-root compile (the no-`--entry` branch, which is what calls this)
+/// walks into `target/` and ingests emitted or materialized `.dag` as SOURCE, alongside
+/// the tree it was copied from — duplicate module paths, resolved by collision panic or
+/// by silent shadowing depending on which the index hits first.
+///
+/// RUNG, HONESTLY: this restores a guard, it does not prove a live bug. `find target
+/// -name '*.dag'` returns 0 in this worktree today, so I cannot exhibit the failure. The
+/// hazard is evidenced by the deleted code's own comment naming a concrete case it was
+/// written for — a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
@@ -138,6 +165,9 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
@@ -157,6 +187,40 @@ fn extract_module_path(content: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Report `.dag` files dropped from the compile entry set for carrying no `module`
+/// declaration — counted, and each one located by path.
+///
+/// The deleted `cli_run` pair split this across `moduleless_dag_entry_paths` (a filter)
+/// and `report_moduleless_dag_entry_skips` (a printer), and the filter carried its own
+/// private copy of `extract_module_path` — a second implementation of the concept this
+/// file already owns above. Two copies of one rule is the §3 fork, and it decides which
+/// files get compiled, so a divergence between them would silently change the compiled
+/// population. One function reading the one local authority.
+///
+/// OBSERVED, NOT CHANGED: a skip here does not affect the exit code, so a tree containing
+/// a `.dag` with no `module` declaration compiles green while that file is silently
+/// absent from the compiled set. It is counted and located on stderr rather than truly
+/// silent, which is why this is an observation and not a repair — turning it into a
+/// refusal is a behavior change beyond this cut, and it belongs to whoever owns the
+/// compile entry policy rather than to the driver deletion.
+fn report_moduleless_dag_entry_skips(entry_files: &[(String, String)]) {
+    let skipped: Vec<&String> = entry_files
+        .iter()
+        .filter(|(_, content)| extract_module_path(content).is_none())
+        .map(|(path, _)| path)
+        .collect();
+    if skipped.is_empty() {
+        return;
+    }
+    eprintln!(
+        "skipped {} module-less .dag file(s) from compile entry set (no `module` declaration):",
+        skipped.len()
+    );
+    for path in skipped {
+        eprintln!("  {path}");
+    }
 }
 
 /// Extract import module paths from a .dag file's import declarations.
@@ -367,6 +431,7 @@ fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compil
 
 fn main() {
     let cli = Cli::parse();
+    let dry_run = cli.dry_run;
     let _result = match cli.command {
         Commands::Compile {
             source_roots,
@@ -435,8 +500,7 @@ fn main() {
                         }
                     }
                 }
-                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
-                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
+                report_moduleless_dag_entry_skips(&entry_files);
 
                 // Namespace Rule-1 (emit_import_closure_root): with imports
                 // stripped, a namespace-only module's cross-module deps are
@@ -587,7 +651,7 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
-                if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref()) {
+                if has_blocking_diagnostics(result.diagnostics.as_ref()) {
                     std::process::exit(1);
                 }
             } else {
@@ -619,8 +683,7 @@ fn main() {
                     render_diagnostics(&result);
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
-                    if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref())
-                    {
+                    if has_blocking_diagnostics(result.diagnostics.as_ref()) {
                         std::process::exit(1);
                     }
                 }
@@ -649,55 +712,145 @@ fn main() {
             }
         }
 
-        Commands::Ci {} => {
-            cli_run::handle_ci();
-        }
-
+        // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
+        //
+        // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not
+        // sketch it: a CLI model authored before its consumer exists is shaped by the CLI
+        // we have, not the one we are building. So until that lands these verbs have a
+        // decoder and no dispatcher.
+        //
+        // This REFUSES rather than degrading. It prints a typed, located reason and exits
+        // nonzero; it does not fall back to a partial run, does not guess a default verb,
+        // and does not print a plausible success. A cut that leaves a verb unimplemented
+        // must say so loudly at the boundary — an absorbing fallback here would be the
+        // exact §5 failure this deletion exists to remove, reintroduced by the deletion.
+        //
+        // NOT a scaffold with a trigger standing in for a decision: the terminal
+        // construction is named, its two halves exist, and the missing piece is the
+        // wiring between them.
         Commands::Run {
             source_roots,
             function,
             entry,
             claim_run,
             args,
-        } => {
-            cli_run::handle_run_with_options(
-                source_roots,
-                function,
-                entry,
-                cli.dry_run,
-                claim_run,
-                args,
-            );
-        }
+        } => run_verb(
+            &source_roots,
+            &function,
+            entry.as_deref(),
+            dry_run,
+            claim_run,
+            &args,
+        )
+        .apply(),
+        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
+        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
+        // path would fork one route into two that must then be kept equal by hand.
+        // The roots come from `cli_run::witness_layer_roots`, which reads the single
+        // `.dag` authority live rather than a literal spelled here.
+        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
+        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
+        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
+        // base, not one this seam introduces, and changing it would alter a verb's
+        // semantics under cover of a restoration.
+        Commands::Ci {} => run_verb(
+            &cli_run::witness_layer_roots(),
+            "main",
+            Some("dag/tools/gunbc_ci.dag"),
+            false,
+            false,
+            &[],
+        )
+        .apply(),
 
-        Commands::Converge { host } => {
-            cli_run::handle_converge(host);
+        // The refusal names a CONDITION, not a branch. An earlier revision said "not
+        // available on integration/cli-run-cut", which the merge itself would have
+        // falsified — the code would keep naming a branch it no longer ran on, the §3
+        // stale-citation decay that needs no edit to break. The PR reference stays: a PR
+        // is historical after merge, not false.
+        // Converge is NOT wired here. The terminal route is the modeled convergence
+        // spine — gunbc.fleet_converge_timer -> fleet_converge_apply ->
+        // host_effect_realize host_effect_apply — consuming modeled desired state and
+        // native host-effect realizations. An earlier revision of this seam implemented
+        // it as resolve-a-.dag-entry + build-an-interpreter-context + run, which is the
+        // cheapest implementation available while the frozen engine stands and exactly
+        // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
+        // capability at the moment two lanes are deleting it, converting removable debt
+        // into an architectural dependency.
+        Commands::Converge { .. } | Commands::Serve { .. } => Verdict {
+            status: 2,
+            message: Some(
+                "error: `converge` and `serve` are not wired to the retained engine.\n  \
+                 cause: their cli_run handlers are deleted, and neither may be rebuilt \
+                 on the frozen v1 engine. Converge's terminal route is the modeled \
+                 convergence spine (fleet_converge_timer -> fleet_converge_apply -> \
+                 host_effect_realize); serve is a desired SERVICE OCCURRENCE that \
+                 convergence observes and reconciles, not a command. Implementing \
+                 either through resolve+interpret would pin the interpreter that is \
+                 being removed.\n  \
+                 status: declared Y-incomplete for both verbs, not a runtime failure. \
+                 See PR #8286."
+                    .to_string(),
+            ),
         }
-
-        Commands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
-        }
+        .apply(),
     };
+}
+
+/// Severity of one diagnostic, as a TOTAL partition.
+///
+/// The deleted `cli_run` pair asked two independent questions — `..._is_hard` and an
+/// `..._is_advisory` ALLOWLIST — and its own comment recorded the consequence: a
+/// non-blocking variant absent from the allowlist was counted by NEITHER, so it rendered
+/// to the terminal while every count the gate reported read zero for it. A frontier
+/// claiming to be counted while nothing counts it is the silent-wrongness §5 forbids, and
+/// it was reachable by adding a variant and forgetting a list.
+///
+/// One classification with no third arm makes that unwritable rather than checked:
+/// `hard + advisory == diagnostics.len()` holds by construction, not by assertion.
+///
+/// `is_interpreter_blocking_diagnostic` is the whole native answer. `cli_run` differed
+/// from it in exactly one arm — `UnlistedImportUse`, which it could escalate to blocking
+/// via a policy read that reached a full source resolve, entry-graph build and interpreter
+/// run to decide. That is the escape-hatch mechanism this cut exists to remove: a
+/// projection owning a compiler invocation. The base predicate already answers `false`
+/// for that variant, and import-list enforcement is being deleted at its root, so the
+/// override has no referent in the terminal model.
+/// A NOTE ON THE PARAMETER TYPE, because I got it wrong in both directions before the
+/// compiler could speak. `PipelineResult.diagnostics` is declared `Rc<Vec<Rc<ErrorNode>>>`
+/// — but `v1_compiler_compile.rs` opens with `use im::{.., Vector as Vec}`, so inside that
+/// file `Vec` MEANS `im::Vector`, and the field is an `im::Vector`. Reading the struct
+/// declaration is not enough; the imports of the file it lives in are part of the type.
+/// The deleted helpers' `compile_clean_im_vector_*` name was accurate, and I "corrected"
+/// my signatures away from it on the strength of a declaration that reads as std `Vec`.
+enum DiagnosticSeverity {
+    Blocking,
+    Advisory,
+}
+
+fn classify_diagnostic(d: &Rc<v1_compiler::v1_std_core::ErrorNode>) -> DiagnosticSeverity {
+    if v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+        DiagnosticSeverity::Blocking
+    } else {
+        DiagnosticSeverity::Advisory
+    }
+}
+
+fn blocking_diagnostic_count(
+    diagnostics: &im::Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
+        .count()
+}
+
+fn has_blocking_diagnostics(
+    diagnostics: &im::Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> bool {
+    diagnostics
+        .iter()
+        .any(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
 }
 
 fn render_diagnostics(result: &PipelineResult) {
@@ -715,8 +868,10 @@ fn render_diagnostics(result: &PipelineResult) {
         render_one_diagnostic(d, &index_map, "");
     }
 
-    let hard = cli_run::compile_clean_im_vector_hard_error_count(result.diagnostics.as_ref());
-    let advisory = cli_run::compile_clean_im_vector_advisory_count(result.diagnostics.as_ref());
+    let hard = blocking_diagnostic_count(result.diagnostics.as_ref());
+    // Derived, not separately scanned: the two counts partition one population, so they
+    // cannot disagree with the total or with each other.
+    let advisory = result.diagnostics.len() - hard;
     if advisory > 0 {
         eprintln!(
             "\n{hard} blocking error(s), {advisory} advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
@@ -731,10 +886,9 @@ fn render_one_diagnostic(
     index_map: &HashMap<String, Rc<NewlineIndex>>,
     indent: &str,
 ) {
-    let severity = if cli_run::compile_clean_diagnostic_is_advisory(d) {
-        "advisory"
-    } else {
-        "error"
+    let severity = match classify_diagnostic(d) {
+        DiagnosticSeverity::Advisory => "advisory",
+        DiagnosticSeverity::Blocking => "error",
     };
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
@@ -800,5 +954,295 @@ mod tests {
             extract_module_path("module v1.test.fixture\n"),
             Some("v1.test.fixture".to_string())
         );
+    }
+}
+
+/// Decode `--arg name=value` into the interpreter's named-argument shape.
+///
+/// This is DRIVER work and lives here rather than in the retained engine: argv is the
+/// driver's subject.
+/// A missing `=` REFUSES with the offending spec rather than guessing a positional —
+/// the deleted handler's own rule, kept because it is right, not because it was there.
+fn decode_run_args(
+    raw: &[String],
+) -> Result<Vec<(Option<String>, v1_compiler::v1_interpreter::Value)>, String> {
+    raw.iter()
+        .map(|spec| match spec.split_once('=') {
+            Some((name, value)) if !name.is_empty() => Ok((
+                Some(name.to_string()),
+                v1_compiler::v1_interpreter::str_value(value),
+            )),
+            _ => Err(format!(
+                "--arg expects name=value, got `{spec}` (a missing `=` is refused, not \
+                 interpreted as a positional argument)"
+            )),
+        })
+        .collect()
+}
+
+/// `gunbc run` — argv → modeled intent → the RETAINED resolve/eval engine → exit code.
+///
+/// This is the seam the cut's declared boundary was missing. It calls the engine
+/// (`cli_run::resolve_entry_graph`, `cli_run::make_eval_context`) and the interpreter
+/// (`run_in_context_with_args`); it does not re-home either, and it adds no policy of
+/// its own beyond decoding argv and mapping an outcome to a status.
+///
+/// Every failure arm REFUSES with a typed, located reason and a nonzero status. There is
+/// no arm that widens, defaults, or prints a plausible success — including the
+/// whole-tree case, which is declared unsupported here rather than silently approximated
+/// by loading everything under `--source-root`.
+/// A verb's OUTCOME, returned rather than acted on.
+///
+/// This is the construction half, and it exists because a pure mapping function was not
+/// enough: the defect a planted-drift control caught was an arm that PRINTED AND FELL
+/// THROUGH — it never called any mapping, so no amount of totality in the mapping could
+/// have stopped it. A driver can always decline to call a function.
+///
+/// Making the verdict the RETURN TYPE removes the ability to decide at all. Every arm of
+/// `run_verb` must produce a `Verdict`, one place maps it to a process status, and an arm
+/// that forgets to report a failure is a TYPE ERROR rather than a silent zero exit.
+struct Verdict {
+    status: i32,
+    message: Option<String>,
+}
+
+impl Verdict {
+    /// The ONE place a verdict becomes a process status. Nothing else in this file calls
+    /// `std::process::exit` for a verb outcome.
+    fn apply(self) -> ! {
+        if let Some(message) = self.message {
+            eprintln!("{message}");
+        }
+        std::process::exit(self.status);
+    }
+}
+
+fn run_verb(
+    source_roots: &[String],
+    function: &str,
+    entry: Option<&str>,
+    dry_run: bool,
+    claim_run: bool,
+    args: &[String],
+) -> Verdict {
+    if source_roots.is_empty() {
+        return Verdict {
+            status: 1,
+            message: Some(format!("error: provide at least one --source-root")),
+        };
+    }
+
+    // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
+    // printed rather than the last thing after a minute of resolution.
+    let run_args = match decode_run_args(args) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
+        }
+    };
+
+    let Some(entry_file) = entry else {
+        return Verdict {
+            status: 2,
+            message: Some(format!(
+                "error: --entry <file.dag> is required.\n  \
+             cause: this seam resolves an entry's import closure; the whole-tree run the \
+             deleted handler also served is not implemented here.\n  \
+             status: refused rather than approximated — loading every file under \
+             --source-root would answer a different question with the same exit code."
+            )),
+        };
+    };
+
+    if claim_run && entry.is_none() {
+        return Verdict {
+            status: 2,
+            message: Some(format!("error: --claim-run requires --entry <file.dag>")),
+        };
+    }
+
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return Verdict {
+                status: 1,
+                message: Some(format!(
+                    "error: resolve failed for {entry_file}\n  cause: {cause}"
+                )),
+            };
+        }
+    };
+
+    // The SAME total classification the compile path uses — blocking vs advisory, with
+    // advisory derived as (total - blocking) so no diagnostic is counted by neither.
+    if has_blocking_diagnostics(graph.diagnostics.as_ref()) {
+        let blocking = blocking_diagnostic_count(graph.diagnostics.as_ref());
+        let advisory = graph.diagnostics.len() - blocking;
+        return Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: {entry_file} has {blocking} blocking diagnostic(s) ({advisory} advisory); \
+             refusing to evaluate"
+            )),
+        };
+    }
+
+    // Exactly the deleted handler's selection: `--dry-run` means Hermetic, which REFUSES
+    // host operations rather than mocking them silently, and absence means Wet.
+    let execution_mode = if dry_run {
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
+    } else {
+        v1_compiler::v1_interpreter::ExecutionMode::Wet
+    };
+    let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
+
+    match v1_compiler::v1_interpreter::run_in_context_with_args(
+        &ctx, function, &run_args, !claim_run,
+    ) {
+        // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
+        // claim run a Bool is an ordinary value and says nothing about success.
+        Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
+            status: 1,
+            message: Some(format!("FAIL {function}")),
+        },
+        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => {
+            println!("PASS {function}");
+            Verdict {
+                status: 0,
+                message: None,
+            }
+        }
+        // The verdict a `.dag` entry returns IS the run's outcome. `cli_run::classify_exit`
+        // is the single authority for reading the ProcessExit variant; `exit_status_for`
+        // is the total map from that class to a status.
+        Ok(value) => {
+            let (status, message) = exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+            Verdict { status, message }
+        }
+        Err(err) => Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: evaluating {function} in {entry_file}\n  cause: {err:?}"
+            )),
+        },
+    }
+}
+
+/// TOTAL map from a run's verdict to a process status, plus the message that explains it.
+///
+/// This is a pure function on purpose, and the purpose is §5 construction-over-validation.
+/// The first version of the seam inlined this decision in a `match` arm and DROPPED the
+/// failure case — it printed `ExitFailure { code: 1, reason: "…drift…" }` and exited 0,
+/// which would have reported green for every consumer of `gunbc run` regardless of content.
+/// A planted-drift control caught it; nothing else could have, because a clean run and a
+/// malformed-argv refusal are both satisfiable by a seam that always exits 0.
+///
+/// Made total and pure, the arm has nowhere to drop a verdict: every `ExitClass` yields a
+/// status, `Failure` cannot yield 0 (its own code is the status, and the .dag side cannot
+/// construct `ExitFailure` with code 0 — see the assertion below), and the only way to
+/// re-introduce the defect is to edit THIS function rather than to forget a case.
+///
+/// RUNG, HONESTLY: this is a construction, not an enrolled check. The tests below are Rust,
+/// and CI on this repository runs no Rust suite (removed 2026-07-11, operator ruling,
+/// local-only). So the class is `mechanically preventable` ONLY where the suite is run by
+/// hand; in CI it rests on the totality above. The planted-drift control is the executed
+/// evidence and it is a manual procedure, recorded in the PR rather than enrolled.
+fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
+    match class {
+        cli_run::ExitClass::Success => (0, None),
+        // A `Failure` carrying code 0 would say "failed" and report success. Refuse rather
+        // than pass it through: the .dag authority cannot express it, so reaching here means
+        // the classifier changed, and the safe reading of an impossible verdict is not 0.
+        cli_run::ExitClass::Failure { code: 0, reason } => (
+            1,
+            Some(format!(
+                "error: `{function}` returned ExitFailure with code 0, which claims failure \
+                 and reports success.\n  status: refused — exiting 1 rather than honoring a \
+                 status that contradicts its own variant.{}",
+                reason
+                    .map(|r| format!("\n  reason: {r}"))
+                    .unwrap_or_default()
+            )),
+        ),
+        cli_run::ExitClass::Failure { code, reason } => (code, reason),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            2,
+            Some(format!(
+                "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
+                 cause: the host maps a run's verdict to an exit code, and only ProcessExit \
+                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                 status: refused — printing the value and exiting 0 would report success for \
+                 a run whose outcome is unknown."
+            )),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod exit_status_tests {
+    use super::*;
+
+    #[test]
+    fn success_is_zero() {
+        assert_eq!(exit_status_for(cli_run::ExitClass::Success, "main").0, 0);
+    }
+
+    /// THE REGRESSION CONTROL for the defect the planted-drift run caught. If this ever
+    /// returns 0, every consumer of `gunbc run` reports green regardless of content.
+    #[test]
+    fn failure_is_never_zero() {
+        for code in [1, 2, 42, 127] {
+            let (status, _) = exit_status_for(
+                cli_run::ExitClass::Failure {
+                    code,
+                    reason: Some("drift".to_string()),
+                },
+                "main",
+            );
+            assert_eq!(status, code);
+            assert_ne!(status, 0, "a Failure verdict must never exit 0");
+        }
+    }
+
+    #[test]
+    fn failure_with_zero_code_refuses_rather_than_reporting_success() {
+        let (status, message) = exit_status_for(
+            cli_run::ExitClass::Failure {
+                code: 0,
+                reason: None,
+            },
+            "main",
+        );
+        assert_eq!(status, 1);
+        assert!(message.unwrap().contains("contradicts its own variant"));
+    }
+
+    #[test]
+    fn non_process_exit_refuses_rather_than_printing_and_succeeding() {
+        let (status, message) = exit_status_for(
+            cli_run::ExitClass::NotProcessExit {
+                type_name: "Bool".to_string(),
+            },
+            "main",
+        );
+        assert_eq!(status, 2);
+        assert!(message.unwrap().contains("not `ProcessExit`"));
+    }
+
+    /// The failure's own reason must SURVIVE to the message — a located diagnostic that the
+    /// driver swallows is the same silence as a wrong exit code, one channel over.
+    #[test]
+    fn failure_reason_is_carried_not_dropped() {
+        let (_, message) = exit_status_for(
+            cli_run::ExitClass::Failure {
+                code: 1,
+                reason: Some("drift: docs/plans/x.md".to_string()),
+            },
+            "main",
+        );
+        assert_eq!(message.as_deref(), Some("drift: docs/plans/x.md"));
     }
 }

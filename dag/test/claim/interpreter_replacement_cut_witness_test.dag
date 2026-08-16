@@ -72,8 +72,8 @@ fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool)
 // The plan refuses, and that is the authored outcome rather than a defect.
 test fn interpreter_cut_plan_refuses_with_open_decisions() -> Bool {
   let causes = causes_of(admission: interpreter_cut_admission())
-  list_length(items: causes) == 6
-    && count_matching(causes: causes, p: is_undecided_consumer) == 3
+  list_length(items: causes) == 4
+    && count_matching(causes: causes, p: is_undecided_consumer) == 1
     && count_matching(causes: causes, p: is_uncovered_surviving) == 3
 }
 
@@ -134,17 +134,17 @@ fn is_replaced(d: ConsumerDisposition) -> Bool {
 
 // A row whose subject leaves with X needs no coverage authority. Asserted as the
 // ARITHMETIC that distinguishes the arms rather than by re-stating the cause
-// counts: four consumers are retired-or-replaced, ten are enumerated, and exactly
-// the other six produce causes. Three DIFFERENT constants (3, 1, 10) can only hold
+// counts: six consumers are retired-or-replaced, ten are enumerated, and exactly
+// the other four produce causes. Three DIFFERENT constants (5, 1, 10) can only hold
 // together if the disposition field genuinely varies per row -- a constant or an
 // unpopulated field cannot satisfy them at once.
 test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
   let rows = census_rows(census: interpreter_replacement_cut().boundary_census)
   let causeless = count_consumers(rows: rows, p: is_causeless_disposition)
   list_length(items: rows) == 10
-    && count_consumers(rows: rows, p: is_retire) == 3
+    && count_consumers(rows: rows, p: is_retire) == 5
     && count_consumers(rows: rows, p: is_replaced) == 1
-    && causeless == 4
+    && causeless == 6
     && list_length(items: causes_of(admission: interpreter_cut_admission()))
        == list_length(items: rows) - causeless
 }
@@ -158,6 +158,19 @@ test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
     OutermostBoundary => false
     DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
   }
+}
+
+// new_root names the boundary in CONSUMER terms, not in one realization's
+// vocabulary. Asserted against both fields at once with distinct constants: a
+// realization name reappearing in new_root fails the first conjunct, and the
+// contract silently drifting toward a realization fails the second. Neither can
+// be satisfied by a default or an unpopulated field.
+test fn new_root_names_the_boundary_not_a_realization() -> Bool {
+  let cut = interpreter_replacement_cut()
+  (cut.new_root as String)
+      == "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"
+    && (cut.contract as String)
+      == "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"
 }
 
 // The covered region is the exact set that leaves, and the old root is not in it.

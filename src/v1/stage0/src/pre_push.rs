@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 use super::{make_eval_context, resolve_entry_graph_shared, witness_layer_roots};
-use crate::v1_interpreter::{self, ExecutionMode, Value};
+use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
 
 const PLAN_ENTRY: &str = "dag/gunbc/githooks_pre_push_plan.dag";
 
@@ -77,7 +77,7 @@ fn run_inner() -> Result<ExitCode, String> {
 
 fn load_zero_sha(plan: &PlanCtx) -> Result<String, String> {
     match eval_fn(plan, "pre_push_zero_sha_authority")? {
-        Value::Str(s) => Ok(s),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "pre_push_zero_sha_authority not a String: {other:?}"
         )),
@@ -118,7 +118,7 @@ fn load_active_gates(plan: &PlanCtx, changed: &[String]) -> Result<Vec<ActiveGat
 
 fn string_list_to_value(items: &[String]) -> Value {
     Value::List(std::rc::Rc::new(
-        items.iter().cloned().map(Value::Str).collect(),
+        items.iter().cloned().map(str_value).collect(),
     ))
 }
 
@@ -127,7 +127,7 @@ fn string_list_from_value(val: &Value, field: &str) -> Result<Vec<String>, Strin
         Value::List(items) => items
             .iter()
             .map(|v| match v {
-                Value::Str(s) => Ok(s.clone()),
+                Value::Str(s) => Ok(s.to_string()),
                 other => Err(format!("{field} entry not a String: {other:?}")),
             })
             .collect(),
@@ -177,7 +177,7 @@ fn field_str(
     name: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         other => Err(format!("{name} not a String: {other:?}")),
     }
 }
@@ -230,7 +230,7 @@ fn execute_cargo_fmt_gate(plan: &PlanCtx) -> Result<(), String> {
                 plan,
                 "pre_push_fmt_spawn_refusal_recipe",
                 "cause",
-                Value::Str(e.to_string()),
+                str_value(e.to_string()),
             )?;
             eprintln!("[pre-push] {recipe}");
             return Err("cargo fmt could not run".to_string());
@@ -278,7 +278,7 @@ fn eval_fmt_recipe(
     match v1_interpreter::run_in_context_with_args(&plan.eval_ctx, function, &args, false)
         .map_err(|e| format!("{function}: {e}"))?
     {
-        Value::Str(s) => Ok(s),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!("{function} not a String: {other:?}")),
     }
 }
@@ -367,7 +367,7 @@ fn resolve_claim_executor(root: &Path) -> Result<PathBuf, String> {
 fn run_witness_corpus(root: &Path, plan: &PlanCtx, fail_recipe: &str) -> Result<(), String> {
     let executor = resolve_claim_executor(root)?;
     let entry = match eval_fn(plan, "pre_push_witness_corpus_plan_entry_authority")? {
-        Value::Str(s) => s,
+        Value::Str(s) => s.to_string(),
         other => {
             return Err(format!(
                 "pre_push_witness_corpus_plan_entry_authority not a String: {other:?}"
@@ -375,7 +375,7 @@ fn run_witness_corpus(root: &Path, plan: &PlanCtx, fail_recipe: &str) -> Result<
         }
     };
     let function = match eval_fn(plan, "pre_push_witness_corpus_plan_fn_authority")? {
-        Value::Str(s) => s,
+        Value::Str(s) => s.to_string(),
         other => {
             return Err(format!(
                 "pre_push_witness_corpus_plan_fn_authority not a String: {other:?}"
