@@ -386,7 +386,7 @@ starting.
   exist in the tree).
 
 
-## 10. THE CLOSURE-SHAPE FORK — a candidate meta-root above A and B (2026-08-16)
+## 10. THE CLOSURE-SHAPE FORK — THREE confirmed instances (2026-08-16)
 
 Two lanes independently hit the same underlying fact from different roots, and it may explain
 why "the seed compiles and v2 modules do not" better than any per-root mechanism.
@@ -431,9 +431,68 @@ emits wrong Rust" — it is substantially **"the emitter has never been exercise
 closure,"** and two independent places change behaviour silently when it is.
 
 If that holds, several roots are downstream projections of one fact, and the per-root sizes are
-measuring symptoms of it. **This is a hypothesis with two confirmed instances, not a finding.**
-Falsified by: a third closure-shape branch that does NOT correlate, or by fixing the repr switch
-and finding Root B's population unchanged.
+measuring symptoms of it.
+
+**THIRD INSTANCE (gentle-dove-833, measured; verified in tree by smart-ram-730), and it is the
+strongest, because nobody wrote an `if` about closures — it is emergent from a fold.**
+
+`v1.compiler.emit_info` `derive_variant_to_enum` folds the CLOSURE's type summaries into
+variant-name → owning-enum, and on a collision inserts the **empty string as an ambiguity
+sentinel**:
+
+```
+match map_get(inner, vn) {
+  Present { value: _ } => map_insert(inner, vn, "")        // ambiguous
+  Absent               => map_insert(inner, vn, summary.name)
+}
+```
+
+`v1.compiler.emit_rust` `is_value_variant_type_arg` then reads it with
+`map_contains_key(variant_to_enum, name)` — **which ignores the value.** So an ambiguous name
+tests positive as a value-variant and `rust_type_arg_renders_as_unit` collapses the type
+argument to `()`.
+
+That is DESIGN's **state-space conflation** verbatim: the map's value carries three states —
+absent (not a variant), a name (variant of that enum), and `""` (ambiguous) — and the consumer
+collapses all present cases into one. And *whether a name is ambiguous is a function of which
+modules are in the closure*, so this is a closure-shape branch that no one authored as one.
+
+Measured on `05_emit`, live tree `3473e57962` — the two dominant names are exactly the two
+carrying the sentinel:
+
+```
+Absent            owner ""                  91 positives
+Optional          owner ""                  68
+AlgebraPrimitive  owner CanonicalOperation  28      <- real owner
+Time              owner Quantity            24      <- real owner
+```
+
+Confirmed declarers: `Optional` is a variant of `v2.std.grammar` `GrammarExpr` AND of
+`dag/std/constructors` `Cardinality`; `Absent` of `v2.std.optional` AND of
+`dag/std/upsert_decision`. Ordinary §3 nickname collisions, invisible until the emitter reads them.
+
+Effect, both ways on one entry: **666 coded errors → 527**, E0308 **286 → 128**, with E0425
+appearing at 25. One predicate.
+
+**The 25 new E0425 are the honest residue, not a regression.** With the collapse gone, a type
+argument genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not exist.
+The mis-spelling was always there and unit-collapse was **fabricating plausible output over it**
+(§5). So a second defect is now typed and located instead of masked.
+
+**A retraction that came with it (gentle-dove-833's own):** their earlier explanation — that the
+emitter receives the body's constructed variant type rather than the declared `Optional` — is
+NOT the cause of the collapse. Site D proves a correctly spelled `Optional` collapses too, for
+the ambiguity reason. The arity evidence was real and remains unexplained as a *separate* defect;
+fixing inference alone would have moved 91 events between buckets and fixed nothing.
+
+**Fix shape, construction-first, and it is two things:** rename the colliding variants so the
+ambiguous population is empty (single authority — deletes the class), AND land the emitter guard
+as a **typed refusal** rather than the non-empty-owner test the measurement used, because today
+an ambiguous name silently produces `()` instead of a located diagnostic. The guard is required
+regardless of the renames.
+
+**Not claimed:** that the seed closure lacks these collisions. That is the next measurement and
+it would make this instance structurally identical to Root B rather than merely analogous.
 
 **Two further facts from the same run, recorded because they cut against tidy stories:**
 
