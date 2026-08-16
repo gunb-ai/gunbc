@@ -350,18 +350,41 @@ reads `type Hash = Fnv1a64Structural` becoming `String` as a choice.
 | directly attributable to name-keying | **286** |
 | exposed-but-not-caused | 110 |
 | **not** attributable (shape, ownership, required traits) | ~1,470 |
-| **corpus denominator** | **1,874** |
+| **corpus denominator (fixed, M=11)** | **1,883** |
 
-**Name-keying is ~15.3% of the wall. It is not the wall.** Four independent structural
+**Name-keying is ~15% of the wall. It is not the wall.** Four independent structural
 confirmations (`Bool`, the `Nat`/algebra carrier, `Hash`, and the `Witness` rows below) do not
 change that denominator, and this receipt does not claim otherwise.
 
 **The basis, so the attribution is checkable rather than flattering** (`smart-ibex-716`'s own
-statement of its limits): seven entry modules — `05_emit`, `06_translate`, `04_infer`, `03_ingest`,
-`emit_host`, `01_tokenize`, `materialization_carriers` — not twenty; **one head, no before/after**;
-`unreachable_patterns` counted as errors because the crate denies them; and the denominator is
-distinct `(file, line, col, code, signature)` sites. The *sum* over those modules is 5,156, so
-comparing 1,874 against a summed figure compares two different denominators.
+statement of its limits): eleven entry modules; **one head, no before/after**;
+`unreachable_patterns` counted as errors because the crate denies them; denominator is distinct
+`(file, line, col, code, signature)` sites.
+
+**The denominator rule this receipt is measured under (program rule, 2026-08-16).** Diagnostic
+totals inflate with the *number of entries probed*, because every entry re-counts the same shared
+floor:
+
+| entries probed (M) | distinct sites | summed | inflation |
+|---:|---:|---:|---:|
+| 7 | 1,874 | 5,156 | 2.75× |
+| 11 | 1,883 | 7,846 | 4.17× |
+
+So "N diagnostics across M modules" is largely a statement about M, and it misleads in **both**
+directions: a wall that shrank after a fix is not evidence of the fix if M fell, and one that grew
+is not evidence of regression if M rose. The fixed denominator is the eleven-module census —
+**1,883 distinct sites**, same route, same head, distinct `(file, line, col, code, signature)`
+grain. The summed figure is never the denominator.
+
+**How this receipt complies, stated so a reader can check rather than trust.** The §6.2 before/after
+is **M=1** — one entry, `src/v2/compiler/06_translate.dag`, same route and same head on both sides,
+differing only in the forced switch. The delta is therefore attributable; what it is *not* is a
+corpus share, and the 74 is never divided by anything here. Any share claim uses 1,883.
+
+**Why the partition can be planned against now.** Going from seven entries to eleven added 2,690
+diagnostics and **nine** new distinct sites, and every root size held to within one (B1 509, A 142,
+C 167, K 132, D 116, T7 105). The marginal entry returns roughly two new defects, so this is close
+to the whole wall rather than a sample of it — no broader census is owed before planning.
 
 **Why the figure rose from 253 to 286.** 33 of Root D's 116 sites — `missing generics for enum
 Witness` — come from this same table, which carries `{ dag_name: "Witness", target_type: "Witness" }`
@@ -374,5 +397,22 @@ argument — and belong to `vivid-wren-870`.
 Two consequences I hold myself to. The 110 exposed-but-not-caused sites are **not** mine to annex:
 §6.3 measured them appearing when the mask came off, which makes them evidence of ordering defects
 underneath the carrier, not members of this population. And the corpus denominator is
-`smart-ibex-716`'s seven-module census, not my 74 — which came from `06_translate` because that is
+`smart-ibex-716`'s eleven-module census (1,883), not my 74 — which came from `06_translate` because that is
 where I probed. Both are site-grain, so they **compose; they do not average**.
+
+## 10. Why every root here survived review — the diagnostic instruction
+
+Recorded because it is the most useful thing anyone said about this wall, and because my own two
+specimens are exactly its shape (`smart-ram-730`, 2026-08-16):
+
+**Each root is a correct local answer to a question nobody asked at that site.** The checkpoint row
+is not wrong about the seed's `Hash`. The closure switch is not wrong about a seed corpus. The
+variant sentinel correctly records an ambiguity. The derive trigger is not wrong about enum
+declarations. **Not one is a bug read alone — the defect lives in the relation between two sites
+that are each individually right.**
+
+The instruction that follows: **a reader looking for a wrong line will not find one.** Ask instead
+which question each site is answering, and whether anyone asked it *there*. That is precisely why
+`type Hash = Fnv1a64Structural` losing its RHS took a trace rather than a read — the row is a true
+statement about one declaration being applied to a different one, and both halves look correct in
+isolation.
