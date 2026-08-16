@@ -11536,7 +11536,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         None => eprintln!(
             "{}",
             v1_compiler::cli_run::render_peak_rss_line_mirror(
-                "floor peak RSS (adaptive width)",
+                "floor peak RSS (derived schedule width)",
                 None,
                 std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
             )
