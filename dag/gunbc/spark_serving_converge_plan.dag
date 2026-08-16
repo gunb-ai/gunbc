@@ -218,6 +218,6 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
   ) {
     Present { value: EnableLingerForOwnAccount }
   } else {
-    Absent
+    none
   }
 }
