@@ -614,7 +614,22 @@ Note these are **distinct constants over one structure**, not booleans, so they
 validate each other: a fixture helper returning a fixed count cannot satisfy
 `2 on-chain`, `1 on-chain` and `0 on-chain` simultaneously.
 
-Not added now, deliberately and for the same reason as the previous section: the
-v1 test builder is this branch's blocker, so these assertions cannot be executed
-here. Adding unverifiable assertions to a branch already red would hand someone
-else a red they cannot reproduce.
+**ADDED AND VERIFIED. The reason given here for deferring them was false, and
+the correction is the useful part of this section.**
+
+I wrote that "the v1 test builder is this branch's blocker, so these assertions
+cannot be executed." The suite *builds* -- it compiles in seconds and reaches
+`running 21 tests`. One test does not *finish*. Those are different blockers,
+and the difference decides what is possible: a crate that builds can run a
+FILTERED test, so these six controls were executable the whole time. Measured:
+all six pass in **0.01s** once filtered, against a 4m16s one-off cold build.
+
+The premise was not merely unlucky, it was never checked. I had read the
+failing CI log closely enough to write `running 21 tests` into a PR comment,
+and still carried "builder blocked" as the working summary for hours, because
+a blocker once named is not re-derived -- it is quoted. **A blocker is a claim
+like any other and decays like any other; re-establish it before it is allowed
+to license a refusal.**
+
+The guards are now in the file as `declaration_census`, asserting
+`(declarations, on_chain)` per fixture.

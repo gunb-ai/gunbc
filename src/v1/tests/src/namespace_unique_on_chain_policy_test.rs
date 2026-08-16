@@ -45,6 +45,45 @@ fn src(path: &str, content: &str) -> Rc<SourceFile> {
     })
 }
 
+/// The module every fixture below references from.
+const LEAF: &str = "fixchain.mid.leaf";
+
+/// Premise guard. Each test's NAME states a condition its FIXTURE encodes -- two
+/// binders on the chain, exactly one on the chain, none on the chain -- and until
+/// this existed no predicate checked the encoding still held, so an edit to a
+/// fixture could silently change what a test proved while its name went on
+/// claiming the original.
+///
+/// Returns `(declarations_of_name, how_many_declare_from_an_ancestor_of chain_of)`.
+/// A module is on the chain if it IS `chain_of` or is a proper prefix of it.
+fn declaration_census(sources: &[Rc<SourceFile>], name: &str, chain_of: &str) -> (usize, usize) {
+    let mut total = 0usize;
+    let mut on_chain = 0usize;
+    for source in sources {
+        let mut module_path = String::new();
+        for line in source.content.lines() {
+            if let Some(rest) = line.strip_prefix("module ") {
+                module_path = rest.trim().to_string();
+                continue;
+            }
+            let declared = line
+                .strip_prefix("type ")
+                .or_else(|| line.strip_prefix("fn "))
+                .and_then(|rest| {
+                    rest.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .next()
+                });
+            if declared == Some(name) {
+                total += 1;
+                if module_path == chain_of || chain_of.starts_with(&format!("{module_path}.")) {
+                    on_chain += 1;
+                }
+            }
+        }
+    }
+    (total, on_chain)
+}
+
 fn error_diag_messages(sources: Vec<Rc<SourceFile>>) -> Vec<String> {
     let resolved = compile_to_resolved(Rc::new(sources.into()));
     resolved
@@ -148,6 +187,11 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 
 #[test]
 fn namespace_only_refuses_chain_homonym_on_type_path() {
+    assert_eq!(
+        declaration_census(&homonym_fixture(), "Homonym", LEAF),
+        (2, 2),
+        "fixture premise: both Homonym binders must be ON the chain -- that is the state this refusal is about"
+    );
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let homonym_refusals: Vec<&String> = diags
@@ -168,6 +212,11 @@ fn namespace_only_refuses_chain_homonym_on_type_path() {
 
 #[test]
 fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
+    assert_eq!(
+        declaration_census(&fn_chain_homonym_fixture(), "pick", LEAF),
+        (2, 2),
+        "fixture premise: both pick binders must be ON the chain, else this is not the silent-pick class"
+    );
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(fn_chain_homonym_fixture());
     let pick_refusals: Vec<&String> = diags
@@ -195,6 +244,11 @@ fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
 /// members of a sibling module are reachable as `fixfns.one.pick`, never bare.
 #[test]
 fn namespace_only_does_not_reach_off_chain_fn_homonyms_at_all() {
+    assert_eq!(
+        declaration_census(&homonym_fixture(), "pick", LEAF),
+        (2, 0),
+        "fixture premise: both pick binders must be OFF the chain -- an on-chain one would make this the ambiguity case"
+    );
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     assert!(
@@ -214,6 +268,11 @@ fn namespace_only_does_not_reach_off_chain_fn_homonyms_at_all() {
 
 #[test]
 fn namespace_only_unique_on_chain_still_resolves() {
+    assert_eq!(
+        declaration_census(&unique_on_chain_fixture(), "Duo", LEAF),
+        (2, 1),
+        "fixture premise: a homonym must exist (2 binders) with exactly ONE on the chain; drop the off-chain one and this test proves only that a uniquely-declared type resolves"
+    );
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unique_on_chain_fixture());
     assert!(
@@ -225,6 +284,11 @@ fn namespace_only_unique_on_chain_still_resolves() {
 
 #[test]
 fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
+    assert_eq!(
+        declaration_census(&zero_on_chain_fixture(), "Stray", LEAF),
+        (2, 0),
+        "fixture premise: two pool binders, none on the chain -- two is what gives a whole-pool fallback something to fabricate an ambiguity FROM"
+    );
     let import_scoped = {
         let _guard = ResolutionPolicyGuard::set(false);
         error_diag_messages(zero_on_chain_fixture())
@@ -257,6 +321,11 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
 
 #[test]
 fn namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous() {
+    assert_eq!(
+        declaration_census(&unbound_fixture(), "NoSuchTypeAnywhere", LEAF),
+        (0, 0),
+        "fixture premise: the name must be declared NOWHERE; with zero binders there is no candidate set, which is why this row is weaker than zero_on_chain and must not be read as covering it"
+    );
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unbound_fixture());
     assert!(
