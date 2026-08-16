@@ -3,7 +3,6 @@ module test.claim.altra_minimal_design_witness
 import std.types { Bool, String, List }
 import std.integer { Int }
 import product.altra_motherboard.minimal_design {
-  ActiveDdrChannelCount,
   AltraMinimalMotherboard,
   ChannelCountExceedsControllerPopulation,
   DebugOnlyChannelCountUnderProductionIntent,
@@ -21,26 +20,29 @@ import product.altra_motherboard.minimal_design {
   DdrChannel3,
   DdrChannelIdentity,
   DimmSlotPosition,
-  EightChannels,
   FirstDimmOnChannel,
   SecondDimmOnChannel,
   EngineeringBringUp,
-  FourChannels,
   MemoryConfiguration,
-  OneChannel,
   PcieLanesExceedPackage,
   Production,
-  SixChannels,
-  TwoChannels,
-  active_channel_count,
   admit_design,
   altra_1p_minimum,
-  channel_count_is_production_qualified,
   design_refusal_count,
   topology_channel_count,
   total_dimms,
 }
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count, altra_pcie_gen4_lane_count }
+import extdeps.cpu.ampere_altra_memory_controller {
+  ActiveDdrChannelCount,
+  OneChannel,
+  TwoChannels,
+  FourChannels,
+  SixChannels,
+  EightChannels,
+  active_channel_count,
+  channel_count_is_production_qualified,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
