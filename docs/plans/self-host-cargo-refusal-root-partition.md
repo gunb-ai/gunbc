@@ -1568,3 +1568,38 @@ coproducts should bound the parameters flowing into `CacheProbe`/`ShowEffectiveR
 `Outcome` and leave the `im::Vector<T>` ones standing, because `im::Vector` has no corpus declaration
 to seed from. If both move, the seeding gap was not the mechanism; if neither moves, the fix did not
 reach fn signatures at all.
+
+### 14.5 Why the two-map fix still does not close A on its own
+
+Working the construction one step further than §14.2, because "two records instead of a kind
+filter" is necessary and **not sufficient**, and the reason is worth stating before someone
+implements the easy half.
+
+The two records are:
+
+| record | fact | why a declaration prints it |
+|---|---|---|
+| `clone_bounded_type_params` (today) | **naming** `G<A..>` requires `P: Clone` | well-formedness — naming an ill-formed type is an error whether or not you clone |
+| new: clone-impl requirement | **cloning** `G<A..>` requires `P: Clone` | `derive(Clone)` emits `impl<P: Clone>` |
+
+Seeding coproducts into the *new* record is correct and puts `T` into `Outcome`'s entry. The
+temptation is then to point the existing fn trigger `v1_fn_param_wf_needs_clone` at the new record
+and stop. **That over-bounds, for a reason that is not true.**
+
+The wf trigger is unconditional because naming a bounded declared type is ill-formed on its own —
+no usage required. That justification does not transfer: `enum Outcome<T>` declares **no** bound,
+so `fn f<T>(o: Outcome<T>)` that never clones is perfectly well-formed, and bounding its `T` would
+be a fabricated requirement. It also cascades — every caller then needs `T: Clone` too, which is
+exactly the cascade the existing narrow structural trigger (`bare-generic return or direct
+container element`) was scoped to avoid.
+
+**So the clone-impl record must be consulted under a usage condition: does this fn body actually
+clone a value of that type.** That fact is the open item from §14.3, and the place to look for it
+is wherever body emission decides to insert a `.clone()` — if the emitter knows it emitted the
+clone, it knows the requirement. Nothing in the current fn triggers reads a body; both are
+signature-shaped.
+
+Stated as a bound on the work rather than a plan: **the two-record split is mechanical, the usage
+gate is not, and landing the split without the gate would trade 34 refusals for an unmeasured
+population of over-bounded functions and their callers.** That trade has not been priced and
+should not be made by default.
