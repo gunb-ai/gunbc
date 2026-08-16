@@ -33,6 +33,11 @@ import gunbc.spark_serving_realization {
   EnableLingerForOwnAccount,
   PullModelArtifact,
   WriteSystemUnitFile,
+  ReloadSystemManager,
+  EnableSystemUnit,
+  InstallRuntimePackage,
+  GrantContainerRuntimeAccess,
+  RunContainerAsOwnUser,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -149,4 +154,33 @@ test fn w_member_realization_member_changed_action_matches_effect_replace() -> B
         )
     Absent => false
   }
+}
+
+// SYSTEM-SCOPE EFFECTS MUST EQUAL THEMSELVES. The deleted hand-rolled matcher
+// (spark_serving_install_effect_eq) gave six of the twelve ServingInstallEffect variants an
+// unconditional `=> false` arm — every system-scope, privileged one — so include() answered
+// "no" for an effect the list demonstrably contained. This is RED against that matcher on all
+// six, and it is the control that keeps the coproduct's own equality in place if anyone
+// reintroduces a hand-written predicate beside it (DESIGN section 2, predicate dissolution).
+//
+// It also records why the bug survived: the existing negative assertions of the form
+// !include(effects, WriteSystemUnitFile) passed VACUOUSLY under the matcher, since that arm
+// could not return true for any input. A negative assertion over a predicate that is false by
+// construction proves nothing, and three of them were standing.
+test fn w_system_scope_install_effects_equal_themselves() -> Bool {
+  spark_serving_install_effects_include(effects: [WriteSystemUnitFile], needle: WriteSystemUnitFile)
+    && spark_serving_install_effects_include(effects: [ReloadSystemManager], needle: ReloadSystemManager)
+    && spark_serving_install_effects_include(effects: [EnableSystemUnit], needle: EnableSystemUnit)
+    && spark_serving_install_effects_include(effects: [InstallRuntimePackage], needle: InstallRuntimePackage)
+    && spark_serving_install_effects_include(effects: [GrantContainerRuntimeAccess], needle: GrantContainerRuntimeAccess)
+    && spark_serving_install_effects_include(effects: [RunContainerAsOwnUser], needle: RunContainerAsOwnUser)
+}
+
+// Positive control for the negative direction: include() must still distinguish variants, so
+// the fix above is not "return true for everything". Without this, an equality that always
+// answered true would satisfy the claim above and break every !include assertion silently.
+test fn w_install_effects_include_still_discriminates_between_variants() -> Bool {
+  !spark_serving_install_effects_include(effects: [WriteSystemUnitFile], needle: EnableSystemUnit)
+    && !spark_serving_install_effects_include(effects: [EnableLingerForOwnAccount], needle: WriteUserUnitFile)
+    && !spark_serving_install_effects_include(effects: [], needle: WriteSystemUnitFile)
 }

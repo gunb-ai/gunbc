@@ -5,7 +5,6 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   fleet_converge_plan_artifact_bundle_admits,
 }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_converge_realize {
   realize_spark_serving_install_effects_argv,
@@ -18,7 +17,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
-import gunbc.host_effect { FleetSsh }
+import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 
 data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv; actuation routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
@@ -70,11 +69,20 @@ fn spark_serving_apply_reads_frozen_typed_rows(
   }
 }
 
-fn spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
+// TAKES THE TRANSPORT, DOES NOT PICK IT. The earlier signature took a context plus a
+// target and assembled FleetSsh itself, which fixed one transport inside a function whose
+// name then had to claim it. That made the operator-workstation credential path the only
+// reachable one, and it is the path spark_credential_access_token_frontier_note says fails
+// at runtime on GHA runner slots — so the CI dispatch mode this lane adds was wired to a
+// route that cannot execute there. The transport is now the caller's decision, and the two
+// callers hold visibly different preconditions: FleetSsh cannot be constructed without a
+// context whose anchor passed a content readback, while SshShell carries no trust facts and
+// relies on the runner job having established them out of band. Fusing them is what let the
+// stronger name stand over the weaker guarantee.
+fn spark_serving_exec_frozen_typed_rows(
   artifact: FleetConvergePlanArtifact,
   claimed_bundle_hex: String,
-  context: FleetSshExecutionContext,
-  target: SshTarget,
+  transport: HostEffectTransport,
 ) -> SparkServingFrozenRemoteExecResult {
   match spark_serving_apply_reads_frozen_typed_rows(
     artifact: artifact,
@@ -91,10 +99,7 @@ fn spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
         }
       } else {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: run_typed_argv_transport(
-            argv: argv,
-            transport: FleetSsh { target: target, context: context },
-          ),
+          exec_outcome: run_typed_argv_transport(argv: argv, transport: transport),
         }
       }
   }

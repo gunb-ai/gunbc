@@ -5,21 +5,17 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
-import extdeps.ssh.session { ssh_session_exec_portable_words, SshSessionExecResult }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
-  KnownHostsMaterializationOutcome,
   fleet_ssh_execution_context_of,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   fleet_ssh_attempt_identity,
   SshTarget,
-  portable_remote_words,
-  shape_fleet_ssh_exec,
 }
 import gunbc.fleet_multi_principal_probe {
   fleet_ssh_attempt_raw_from_env,
@@ -31,6 +27,8 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetRefused,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host_effect { HostEffectTransport, FleetSsh, SshShell }
+import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
@@ -40,7 +38,7 @@ import gunbc.spark_serving_converge_plan {
 }
 import gunbc.spark_serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
-  spark_serving_exec_frozen_typed_rows_over_fleet_ssh,
+  spark_serving_exec_frozen_typed_rows,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
   SparkServingFrozenRemoteExecApplied,
@@ -79,25 +77,54 @@ fn spark_serving_linger_enabled_from_stdout(stdout: String) -> Bool? {
   }
 }
 
-fn spark_serving_probe_linger(
-  context: FleetSshExecutionContext,
+// THE TWO CREDENTIAL LOCI THIS SLICE CAN RUN UNDER, kept apart because their preconditions
+// differ and the difference is exactly what went wrong. AnchoredContext is the
+// operator-workstation route: it cannot be constructed without a context whose anchor passed
+// a content readback, and it reaches the Spark through FleetSsh. RunnerAgent is the GHA
+// self-hosted route: those hosts carry no gcloud, so the Secret Manager fetch behind
+// AnchoredContext fails at runtime there (spark_credential_workflow
+// spark_credential_access_token_frontier_note), and the key instead lives in the in-run
+// ssh-agent the job materialized. RunnerAgent therefore carries NO trust facts of its own and
+// is honest about it; the job establishes them out of band, exactly as the enrolled
+// fleet_multi_principal_probe_wet does. Naming the locus in the receipt is not decoration —
+// it is the only way a reader can tell which preconditions a given run actually held.
+type SparkServingSliceCredentialLocus =
+    SparkServingSliceAnchoredContext { context: FleetSshExecutionContext }
+  | SparkServingSliceRunnerAgent
+
+fn spark_serving_slice_transport(
+  locus: SparkServingSliceCredentialLocus,
   host: HostIdentity,
-) -> SshSessionExecResult? {
-  match portable_remote_words(raws: spark_serving_linger_probe_words()) {
-    Absent => none
-    Present { value: words } => Present {
-      value: ssh_session_exec_portable_words(
-        client_args: shape_fleet_ssh_exec(
-          context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: spark_serving_automation_principal_login(),
-          },
-          words: words,
-        ),
-      ),
-    }
+) -> HostEffectTransport {
+  match locus {
+    SparkServingSliceAnchoredContext { context: c } =>
+      FleetSsh {
+        target: spark_serving_converge_slice_ssh_target(host: host),
+        context: c,
+      }
+    SparkServingSliceRunnerAgent =>
+      SshShell {
+        ssh_host: join([
+          spark_serving_automation_principal_login() as String,
+          "@",
+          fleet_probe_endpoint_for(host: host as String),
+        ], "") as NonEmptyStr,
+      }
   }
+}
+
+fn spark_serving_slice_locus_label(locus: SparkServingSliceCredentialLocus) -> String {
+  match locus {
+    SparkServingSliceAnchoredContext { context: _ } => "anchored-fleet-ssh-context"
+    SparkServingSliceRunnerAgent => "runner-in-run-ssh-agent"
+  }
+}
+
+// Returns the typed outcome rather than an Optional. The previous shape collapsed every
+// refusal to `none`, so a portable-word rejection and an unreachable host arrived at the
+// caller as the same value with the same message.
+fn spark_serving_probe_linger(transport: HostEffectTransport) -> TypedArgvExecOutcome {
+  run_typed_argv_transport(argv: spark_serving_linger_probe_words(), transport: transport)
 }
 
 fn spark_serving_converge_slice_host_line(
@@ -145,7 +172,7 @@ fn spark_serving_converge_slice_would_apply_verdict(
 }
 
 fn spark_serving_converge_slice_exec_verdict(
-  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
   host: HostIdentity,
   artifact: FleetConvergePlanArtifact,
   bundle_hex: String,
@@ -154,11 +181,10 @@ fn spark_serving_converge_slice_exec_verdict(
   if effect_count == 0 {
     "wet-noop-converged"
   } else {
-    match spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
+    match spark_serving_exec_frozen_typed_rows(
       artifact: artifact,
       claimed_bundle_hex: bundle_hex,
-      context: context,
-      target: spark_serving_converge_slice_ssh_target(host: host),
+      transport: transport,
     ) {
       SparkServingFrozenRemoteExecRefused { reason: why } =>
         join(["wet-apply-refused ", why], "")
@@ -173,9 +199,10 @@ fn spark_serving_converge_slice_exec_verdict(
                 " stderr=", result.stderr,
               ], "")
             } else {
-              match spark_serving_probe_linger(context: context, host: host) {
-                Absent => "wet-applied-readback-refused probe-did-not-run"
-                Present { value: post } =>
+              match spark_serving_probe_linger(transport: transport) {
+                TypedArgvExecRefused { reason: why } =>
+                  join(["wet-applied-readback-refused ", why], "")
+                TypedArgvExecConverged { result: post } =>
                   if post.success == false {
                     join([
                       "wet-applied-readback-refused exit=", to_string(post.exit_code),
@@ -201,13 +228,14 @@ fn spark_serving_converge_slice_exec_verdict(
 }
 
 fn spark_serving_converge_slice_wet_host_report(
-  context: FleetSshExecutionContext,
+  locus: SparkServingSliceCredentialLocus,
   host: HostIdentity,
   execute_apply: Bool,
 ) -> String {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
-  match spark_serving_probe_linger(context: context, host: host) {
-    Absent =>
+  let transport = spark_serving_slice_transport(locus: locus, host: host)
+  match spark_serving_probe_linger(transport: transport) {
+    TypedArgvExecRefused { reason: probe_refusal } =>
       spark_serving_converge_slice_host_line(
         host: host,
         endpoint: endpoint,
@@ -215,9 +243,9 @@ fn spark_serving_converge_slice_wet_host_report(
         typed_row_count: 0,
         apply_effect_count: 0,
         apply_argv_len: 0,
-        verdict: "observation-refused probe-did-not-run",
+        verdict: join(["observation-refused ", probe_refusal], ""),
       )
-    Present { value: probe } =>
+    TypedArgvExecConverged { result: probe } =>
       if probe.success == false {
         spark_serving_converge_slice_host_line(
           host: host,
@@ -298,7 +326,7 @@ fn spark_serving_converge_slice_wet_host_report(
                           apply_argv_len: length(argv),
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
-                              context: context,
+                              transport: transport,
                               host: host,
                               artifact: artifact,
                               bundle_hex: hex as String,
@@ -351,19 +379,19 @@ func spark_serving_converge_slice_wet() -> ProcessExit
                     SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
                     SparkConvergeTargetSingle { host: only } =>
                       spark_serving_converge_slice_emit_receipt(
-                        context: context,
+                        locus: SparkServingSliceAnchoredContext { context: context },
                         now: now,
                         attempt_raw: attempt_raw,
-                        materialization: materialization,
+                        trust_line: known_hosts_materialization_receipt(outcome: materialization),
                         hosts: [only],
                         execute_apply: execute_apply,
                       )
                     SparkConvergeTargetAllObserveOnly =>
                       spark_serving_converge_slice_emit_receipt(
-                        context: context,
+                        locus: SparkServingSliceAnchoredContext { context: context },
                         now: now,
                         attempt_raw: attempt_raw,
-                        materialization: materialization,
+                        trust_line: known_hosts_materialization_receipt(outcome: materialization),
                         hosts: spark_serving_converge_slice_wet_hosts,
                         execute_apply: execute_apply,
                       )
@@ -381,10 +409,10 @@ func spark_serving_converge_slice_wet() -> ProcessExit
 // this fold never has to decide what "no target" means — the only way to reach it with the
 // full host list is the observe-only arm.
 fn spark_serving_converge_slice_emit_receipt(
-  context: FleetSshExecutionContext,
+  locus: SparkServingSliceCredentialLocus,
   now: NonEmptyStr,
   attempt_raw: String,
-  materialization: KnownHostsMaterializationOutcome,
+  trust_line: String,
   hosts: List<HostIdentity>,
   execute_apply: Bool,
 ) -> ProcessExit {
@@ -396,15 +424,16 @@ fn spark_serving_converge_slice_emit_receipt(
                         join([
                           "execute_apply=",
                           if execute_apply { "yes" } else { "no" },
+                          " credential_locus=", spark_serving_slice_locus_label(locus: locus),
                           " address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n",
                         ], ""),
-                        known_hosts_materialization_receipt(outcome: materialization),
+                        trust_line,
                         "\n",
                       ],
                       map(
                         hosts,
                         h => spark_serving_converge_slice_wet_host_report(
-                          context: context,
+                          locus: locus,
                           host: h,
                           execute_apply: execute_apply,
                         ),
@@ -418,4 +447,46 @@ fn spark_serving_converge_slice_emit_receipt(
                   } else {
                     exit_failure(reason: join(["receipt write failed: ", w.error], ""))
                   }
+}
+
+// THE CI ENTRY. spark_serving_converge_slice_wet above is the operator-workstation route: it
+// resolves a fleet credential through GcloudPrintToken, and spark_credential_workflow
+// spark_credential_access_token_frontier_note states that path is NOT valid on GHA
+// self-hosted runner slots, because those hosts carry no gcloud and the fetch fails at
+// runtime rather than degrading. Wiring that entry into the fleet-converge job therefore
+// produced a dispatch mode that could not execute on the runners it targeted (review 52564).
+//
+// This entry is the runner-side sibling, and it mirrors the arrangement the enrolled
+// fleet_multi_principal_probe_wet already uses: no Secret Manager fetch, no token source, no
+// known-hosts materialization inside the entry. The key is already loaded in the in-run
+// ssh-agent and the anchor is already materialized, both by the job's own key-agent step, so
+// the transport is SshShell and the receipt says so rather than implying an anchored context
+// it never held.
+//
+// It carries no attempt identity for the same reason: attempt identity exists to name a
+// credential materialization this entry does not perform.
+func spark_serving_converge_slice_ci_wet() -> ProcessExit {
+  let now = clock_now_probed_at()
+  let execute_apply = spark_converge_execute_apply_from_env()
+  match spark_converge_target_selection(execute_apply: execute_apply) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetSingle { host: only } =>
+      spark_serving_converge_slice_emit_receipt(
+        locus: SparkServingSliceRunnerAgent,
+        now: now,
+        attempt_raw: "runner-agent-no-attempt-identity",
+        trust_line: "trust=in-run ssh-agent + job-materialized known_hosts anchor (established by the runner job, not by this entry)",
+        hosts: [only],
+        execute_apply: execute_apply,
+      )
+    SparkConvergeTargetAllObserveOnly =>
+      spark_serving_converge_slice_emit_receipt(
+        locus: SparkServingSliceRunnerAgent,
+        now: now,
+        attempt_raw: "runner-agent-no-attempt-identity",
+        trust_line: "trust=in-run ssh-agent + job-materialized known_hosts anchor (established by the runner job, not by this entry)",
+        hosts: spark_serving_converge_slice_wet_hosts,
+        execute_apply: execute_apply,
+      )
+  }
 }
