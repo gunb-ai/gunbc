@@ -284,19 +284,19 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
 // so it is its own cause and its own count. Component missing-document is zero. The board land
 // pattern is a commercial-access ATTACHMENT obligation (Customer Connect); attachment causes are
 // not folded into pcb_cause_counts or the legend population string.
-test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment_part_unresolved() -> Bool {
+test fn w_the_world_carries_five_established_twelve_unselected_and_one_attachment_part_unresolved() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_component_count(p: p) == 2
+      pcb_component_count(p: p) == 5
         && pcb_obligation_count(p: p) == 12
         && pcb_unselected_part_count(p: p) == 11
         && pcb_named_attachment_part_unresolved_count(p: p) == 1
         && pcb_missing_document_count(p: p) == 0
         && pcb_commercial_access_count(p: p) == 0
         && pcb_legal_carriage_count(p: p) == 0
-        && pcb_population_count(p: p) == 14
+        && pcb_population_count(p: p) == 17
   }
 }
 
@@ -453,7 +453,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
     Absent => false
     Present { value: s } =>
       count_substring(haystack: s, needle: "class=\"pcb-component-established\"") == 0
-        && count_substring(haystack: s, needle: "class=\"pcb-component-subset-body\"") == 2
+        && count_substring(haystack: s, needle: "class=\"pcb-component-subset-body\"") == 5
         && count_substring(haystack: s, needle: "class=\"pcb-component-unselected-part\"") == 11
         && count_substring(haystack: s, needle: "class=\"pcb-component-named-attachment-type-part-unresolved\"") == 1
         && count_substring(haystack: s, needle: "class=\"pcb-component-missing-document\"") == 0
@@ -465,7 +465,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "5 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 7 unrealized-function — body layout admitted over established subset only; 12 parts owed")
   }
 }
 
@@ -576,6 +576,9 @@ test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_senten
       string_contains(s: s, pattern: "read: ")
         && string_contains(s: s, pattern: "extdeps.programmable_logic.ice40.subject::ice40_tq144_package")
         && string_contains(s: s, pattern: "extdeps.cpu.ampere_altra_package::altra_package_body_width")
+        && string_contains(s: s, pattern: "extdeps.network.ti_dp83867::dp83867_rgz0048b_body")
+        && string_contains(s: s, pattern: "extdeps.power.ti_tps53688::tps53688_rsb0040a_body")
+        && string_contains(s: s, pattern: "extdeps.power.ti_tps3808::tps3808_dbv0006a_body")
         && !string_contains(s: s, pattern: "Mechanical Data")
         && !string_contains(s: s, pattern: "verified")
   }
@@ -586,7 +589,7 @@ test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool {
     Absent => false
     Present { value: w } =>
       let reads = pcb_envelope_reads(p: pcb_world_physical(w: w))
-      list_length(items: reads) == 2
+      list_length(items: reads) == 5
         && fold(reads, init: true, f: fn(ok, r) {
           ok && fold(reads, init: true, f: fn(inner, q) {
             inner && ((r.identity as String) == (q.identity as String) || !declaration_ref_eq(a: r.source, b: q.source))
@@ -679,10 +682,10 @@ test fn w_mutation_control_obligation_count_must_be_twelve() -> Bool {
   }
 }
 
-test fn w_mutation_control_established_count_must_be_two() -> Bool {
+test fn w_mutation_control_established_count_must_be_five() -> Bool {
   match world_or_empty() {
     Absent => false
-    Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 2
+    Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 5
   }
 }
 
@@ -826,28 +829,30 @@ test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool {
   }
 }
 
-// MOVING THE CLOCK REQUIREMENTS OFF THE PHYSICAL ROSTER DID NOT STOP REPORTING THEM. They were
-// briefly BoardComponentRole variants, which made the exactly-one population join decide that one
-// device provides each function -- a decision the annotation beside it explicitly disclaimed, and
-// one the Mt. Jade reference contradicts with four parts across the two jobs. They are now
-// functional obligations with no identity, origin or envelope, because the multiplicity is what is
-// unknown. The failure mode of that relocation is silent disappearance, so this asserts both that
-// the count survived and that each function reaches the emitted document by name.
-test fn w_the_unrealized_clock_functions_are_still_reported() -> Bool {
+// MOVING CLOCKS OFF THE PHYSICAL ROSTER AND ADMITTING CANDIDATE BODY ENVELOPES DID NOT STOP
+// REPORTING UNESTABLISHED FUNCTIONS. Clocks have no providers; host PHY, power stage, and power
+// good have cited bodies but candidate-only justifications — all must reach the scene as functional
+// obligations rather than reading as geometrically established connectivity or control.
+test fn w_unestablished_functions_reach_the_scene_including_candidate_body_providers() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      pcb_functional_obligation_count(p: pcb_world_physical(w: w)) == 2
+      pcb_functional_obligation_count(p: pcb_world_physical(w: w)) == 7
         && match scene_or_empty() {
              Absent => false
              Present { value: s } =>
-               string_contains(s: s, pattern: "function unrealized: clock source")
-                 && string_contains(s: s, pattern: "function unrealized: clock fanout")
+               string_contains(s: s, pattern: "function unrealized: clock reference generation")
+                 && string_contains(s: s, pattern: "function unrealized: clock reference distribution")
+                 && string_contains(s: s, pattern: "function unrealized: host network connectivity")
+                 && string_contains(s: s, pattern: "function unrealized: processor power stage control")
+                 && string_contains(s: s, pattern: "function unrealized: processor power good supervision")
+                 && string_contains(s: s, pattern: "function unrealized: management network connectivity")
+                 && string_contains(s: s, pattern: "function unrealized: processor rail enable sequencing")
            }
   }
 }
 
-// AND THEY ARE NOT COMPONENTS, which is the half that would silently come back if someone later
+// AND CLOCKS ARE NOT COMPONENTS
 // "fixed" the missing clock parts by re-adding the roles. No planned component fills a clock
 // function, so nothing in the geometric population claims a clock device exists.
 test fn w_no_clock_device_appears_in_the_physical_population() -> Bool {
@@ -904,7 +909,7 @@ fn expected_second_function_label() -> String {
     Present { value: w } =>
       let attachments = pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
       let y = micrometer_count(m: attachment_label_base) + ((attachments + 2) * micrometer_count(m: attachment_label_step))
-      concat("y=\"", concat(to_string(y), "\" class=\"pcb-label-functional-obligation\">function unrealized: clock fanout"))
+      concat("y=\"", concat(to_string(y), "\" class=\"pcb-label-functional-obligation\">function unrealized: clock reference distribution"))
   }
 }
 

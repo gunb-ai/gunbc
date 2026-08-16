@@ -49,6 +49,12 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   altra_platform_orientation_datum_availability,
   bibliography_entry_is_package_mechanical,
   bibliography_lists_a_package_mechanical_document,
+  names_a_board_layout_document,
+  board_layout_document_is_reachable,
+  referenced_document_is_board_layout,
+  PlatformReferencedDocument,
+  ReferencedDocumentPublic,
+  ReferencedDocumentAccessGated,
   pad_array_is_positionable_from_running_text,
   pad_grid_exceeds_pad_population,
   altra_refclk_frequency,
@@ -211,6 +217,42 @@ test fn w_altra_attachment_facts_absent_or_drawn_are_classified_not_missing() ->
 
 test fn w_altra_bibliography_names_no_package_mechanical_document() -> Bool {
   !bibliography_lists_a_package_mechanical_document()
+}
+
+// AND THE BIBLIOGRAPHY'S SILENCE IS NOT THE DOCUMENT'S. Asserted as one claim because the pairing
+// IS the finding: section 10 names no mechanical or layout document, and running text names one
+// anyway. Reading the first conjunct alone — which is what the repository did until 2026-08-15 —
+// answers "nothing further to chase" over a roster that structurally cannot mention it.
+test fn w_running_text_names_a_layout_document_the_bibliography_omits() -> Bool {
+  !bibliography_lists_a_package_mechanical_document()
+    && names_a_board_layout_document()
+}
+
+// THE GATE IS THE ANSWER, not the absence of the document. Both halves asserted together so the
+// state stays distinguishable from "no such document exists": the layout authority is named AND
+// it is unreachable, which is a third condition from either of the two this lane previously held.
+test fn w_the_named_board_layout_document_is_access_gated() -> Bool {
+  names_a_board_layout_document()
+    && !board_layout_document_is_reachable()
+}
+
+// A DISCRIMINATING CONTROL ON THE REACH FOLD, because a reachability answer that is false for
+// every input proves nothing about the input it was given. Planting a public layout document
+// flips the answer, so the false above is a fact about Ampere's gate rather than a constant.
+test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
+  let planted = [
+    PlatformReferencedDocument {
+      title: "Altra PCB Layout Guidelines",
+      cited_by_section: "planted control, not a document this repository holds",
+      reach: ReferencedDocumentPublic,
+    },
+  ]
+  any(planted, d =>
+    referenced_document_is_board_layout(d: d)
+      && match d.reach {
+        ReferencedDocumentPublic => true
+        ReferencedDocumentAccessGated { gate: _ } => false
+      })
 }
 
 // --- OCP Mt. Mitchell motherboard specification, revision 0.80 ---

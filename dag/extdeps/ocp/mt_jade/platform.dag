@@ -1,9 +1,10 @@
 module extdeps.ocp.mt_jade.platform
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
   mt_jade_subject_authority_anchor,
   mt_jade_model_scope,
@@ -283,6 +284,11 @@ type MtJadeReferencePartRow {
   role: ReferencePartRole
   authority: ExternalAuthority
 }
+
+// THE OCP REFERENCE-PART ROW NAMES AST2500 IN PROSE; THE CHIP FACTS LIVE IN THE ASPEED
+// AUTHORITY. This edge joins the platform BMC role to extdeps.bmc.aspeed_ast2500 rather than
+// retyping the part number as the only source of chip identity.
+data mt_jade_bmc_chip_catalog: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
 
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
