@@ -145,25 +145,89 @@ a §3 fork, and the bridge's own witness pins `module_path: "std.logic"` returni
 only helps where the emitter inserts the conversion. Both facts sit above the repr choice, so
 **the `Bool` half will not fully dissolve with a repr fix alone** — unlike the numeric half.
 
-## 6. What is NOT claimed
+## 6. The discriminating experiment — executed, and it refutes the obvious fix
 
-- No fix is proposed here, and none has landed. §7 records an experiment in progress.
-- The corpus-wide size of Root B is **unmeasured**. One module is measured.
-- Whether `HostNative` is the correct terminal answer is **not established**. It is the v1 seed's
-  representation; the terminal question is whether the modeled primitives should be grounded to
-  their host realization at emit for *every* closure, which is a modeling decision above this
-  lane's authority, not a switch to flip.
-- `emit_host` was probed in the same batch; its result is withheld because the probe overlapped a
-  rebuild of the instrument (see §7) and I cannot attribute it cleanly. It will be re-run.
+`rust_corpus_repr` was forced to `HostNative` unconditionally **in the generated seed only**
+(`src/v1/stage0/src/v1_compiler_infer.rs`), `gunbc` rebuilt, the probes re-run, and the patch
+reverted. Working agreement 4: the emitter's authority is `src/v1/04_infer.dag` and
+`src/v1/05_emit_rust.dag`; this was a probe and no fix is proposed from it.
 
-## 7. In progress — the discriminating experiment
+**Instrument control first.** The rebuilt binary emits `pub type Nat = i64;` for the pure-v2
+closure. Had it still emitted the modeled carrier, the patch never reached the binary and every
+number below would be void rather than negative.
 
-Forcing `rust_corpus_repr` to `HostNative` unconditionally, in the generated seed only, then
-re-emitting the pure-v2 `dag/std/nat.dag` closure and re-running `cargo`. The prediction Root B
-makes is specific: `pub type Nat = i64` and the four E0369 go to zero.
+### 6.1 The minimal closure goes green
 
-Per the shared surface's working agreements this is a **probe, reverted afterwards** — the
-emitter's authority is `src/v1/05_emit_rust.dag` and `src/v1/04_infer.dag`, and a real fix lands
-there and regenerates. It is also null-controlled: the check is what the emitted text *becomes*,
-not merely that a count dropped, because `HostNative` also changes the text carrier
-(`FreeMonoid<Char>` → `String`) and could trade one wrong output for another.
+`dag/std/nat.dag`, pure-v2 closure: **4 E0369 + 1 E0432 → 0 errors, 0 warnings, cargo green.**
+
+### 6.2 On a real compiler module the numeric half is eliminated — and the wall gets worse
+
+`src/v2/compiler/06_translate.dag`, same probe, before and after:
+
+| | baseline | `HostNative` forced |
+|---|---:|---:|
+| diagnostics citing `CommutativeSemiring<Magnitude>` | 342 | **0** |
+| `expected bool found Bool` | 11 | **11** |
+| total coded errors | 652 | **773** |
+
+Three things follow, and only the first is comfortable.
+
+**The cause is confirmed.** 342 → 0 is not a marginal shift; the repr switch *is* the mechanism
+behind Root B's numeric half, established by execution on a real module rather than by reading.
+
+**The `Bool` half is untouched — now executed, not reasoned.** 11 → 11 confirms §5: `Bool` is a
+checkpoint entry plus a hard-coded bridge target, both above the repr choice. Emitting
+`src/v2/std/logic.dag` under the forced binary reproduces `expected bool found Bool` × 11 directly.
+
+**Flipping the switch is not the fix.** The total *rose* by 121. This is working agreement 6
+firing exactly as written: one wrong output became a different wrong output.
+
+### 6.3 What the increase is made of — and why it is progress, not noise
+
+The new errors are two disjoint families, both meaningful:
+
+- **~76 E0308 that the modeled carrier had been masking.** `expected i64 found Rc<i64>` (39) and
+  `expected Rc<Measure<_, _, Rc<i64>>> found Rc<Measure<(), (), i64>>` (37). The carrier grounded
+  correctly, and immediately exposed that `Nat` is still in `shared_types` and so is still
+  `Rc`-wrapped after becoming a `Copy` scalar. This is the same wrapping machinery §3 identifies,
+  now visible because the carrier error no longer fires first — DESIGN §5's absorbing structure,
+  whose deficit frequency was zero *by construction* until the mask came off.
+- **~87 E0425/E0433 missing type names** (`NodeOccurrenceIdentity`, `NodeKind`, …). These are not
+  mysterious. `v1.compiler.05_emit_rust` `reference_derived_use_lines_note` states the rule in
+  tree: import-bearing modules run reference-derived use-line synthesis **only when
+  `corpus_repr_is_faithful`**; HostNative import-bearing modules get `[]`, because running the
+  walk on the seed "adds spurious/wrong use-lines and breaks zero-drift seed regen."
+
+### 6.4 The actual finding
+
+**`RustCorpusRepr` is two independent facts fused into one two-valued enum.** It decides
+
+1. how modeled primitives are realized (`Nat`/`Int` → `i64`, text carrier → `String`), and
+2. whether namespace-derived use-lines are synthesized for import-bearing modules,
+
+and the two want *opposite* settings for a pure-v2 closure: it needs the host numeric grounding
+(1) **and** the faithful-branch use-line synthesis (2). No value of a two-valued enum can supply
+both, which is why the seed compiles, the v2 corpus refuses, and forcing either arm merely
+relocates the refusals. That is a §5 state-space conflation, and it sits underneath Root B rather
+than beside it.
+
+## 7. What is NOT claimed
+
+- **No fix is proposed and none has landed.** The experiment establishes a cause and refutes the
+  obvious remedy; it does not select the terminal design. Splitting `RustCorpusRepr` into its two
+  axes is the shape the evidence points at, but which authority owns the split, and whether the
+  numeric grounding belongs in the checkpoint table at all, are modeling decisions above this
+  lane.
+- **The corpus-wide size of Root B is unmeasured.** One module is measured, twice.
+- **The 121 increase is characterized, not fully attributed.** The two families above account for
+  the bulk; I have not reconciled every individual diagnostic.
+- **The third closure-shape branch is a candidate, not an instance.**
+  `05_emit_rust` `type_leaf_is_unbound_in_closure_scope` returns `true` on `Absent` — the same
+  "narrower closure silently takes the defaulting arm" shape — but I have not executed anything
+  showing it takes the wrong arm. By contrast `04_env` `source_tree_of` is explicitly **not** an
+  instance: its own note records the 2026-07-11 ruling that tree only labels a dissolution
+  partition and no longer decides refusal.
+- **`emit_host` was probed and its result is discarded.** That run overlapped a rebuild of the
+  instrument, so its `emit_fail` verdict is unattributable — it contradicts the banked receipt
+  that this module emits 621 diagnostics, and a contaminated run is not evidence against a clean
+  one. It needs re-running on a stable binary.
