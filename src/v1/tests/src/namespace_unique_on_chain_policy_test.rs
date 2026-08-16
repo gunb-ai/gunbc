@@ -59,8 +59,11 @@ fn error_diag_messages(sources: Vec<Rc<SourceFile>>) -> Vec<String> {
 /// referencing module `fixchain.mid.leaf`:
 /// - type/value path: bare `Homonym` — ImportScoped resolves nearest (`fixchain.mid`),
 ///   NamespaceOnlyY sees 2 binders on the chain and refuses;
-/// - fn path: bare `pick()` with two glob imports both providing it — ImportScoped
-///   first-hits over the flat parent closure, NamespaceOnlyY refuses on 2 matches.
+/// - fn path: bare `pick()` with two OFF-chain binders (`fixfns.one` / `fixfns.two`) —
+///   ImportScoped first-hits over the flat parent closure. Under containment lookup
+///   these are not ancestors of the caller, so the name is not reached at all and the
+///   refusal is `not found in scope`, not `ambiguous`. The on-chain fn homonym that
+///   still exercises the silent-pick class moved to `fn_chain_homonym_fixture`.
 fn homonym_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src(
