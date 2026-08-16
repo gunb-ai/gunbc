@@ -9,6 +9,9 @@ import extdeps.cpu.ampere {
 }
 import extdeps.ocp.mt_jade.subject { mt_jade_subject_authority_anchor }
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
+import extdeps.vendor.lotes { lotes }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
 // Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are
@@ -148,6 +151,103 @@ fn attested_by_independent_publishers() -> Bool {
   attested_by_ampere_datasheets() && attested_by_ocp_specification()
 }
 
+// ================= THIRD-PARTY ATTRIBUTION, CARRIED AT ITS REAL STRENGTH =================
+//
+// A community thread on Ampere's own developer forum names a vendor and two part numbers for this
+// designation. That is the first source of any kind to do so, and it is a genuine advance: it
+// gives the search a vendor to approach. It is NOT a publisher of record, and the distinction is
+// modelled rather than softened in prose, because the whole failure this module guards against is
+// a plausible attribution hardening into a fact nobody checked.
+//
+// WHO SAID IT: a community member, in a thread with no Ampere staff response. Ampere hosts the
+// forum; it did not author the claim. Hosting is not endorsement, so the authority row is the
+// thread, and the claim's strength is a property of the CLAIMANT, not of the domain it sits on.
+type AttestationStanding
+  = PublisherOfRecord
+  | ThirdPartyUnofficial { claimant: NonEmptyStr }
+
+data ampere_community_lga4926_thread_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "community.amperecomputing.com/t/lga4926-socket-details/2837"
+  }
+}
+
+// THE TWO PART NUMBERS, AND THE FACT THAT THEIR ASSIGNMENT IS DISPUTED. Two readings of the same
+// thread disagreed about which number names the socket body and which names the loading mechanism.
+// That disagreement is the reason this is a candidate row and not a resolution: writing the pair
+// down in one order would make a coin-flip look like a citation, and the referent split is exactly
+// the question this module exists to leave open.
+type PartReferentClaim
+  = ClaimedSocketBody
+  | ClaimedLoadingMechanism
+  | ReferentAssignmentDisputed { because: NonEmptyStr }
+
+type PartNumberCandidate {
+  part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  claimed_referent: PartReferentClaim
+  standing: AttestationStanding
+  authority: ExternalAuthority
+}
+
+data lotes_part_attestations: List<PartNumberCandidate> = [
+  PartNumberCandidate {
+    part_number: "SKT 4926 ILM",
+    vendor: lotes,
+    claimed_referent: ReferentAssignmentDisputed {
+      because: "the string carries both SKT and ILM, and two readings of the same thread assigned it to the socket body and to the loading mechanism respectively; no reading is preferred here",
+    },
+    standing: ThirdPartyUnofficial { claimant: "community forum member, no Ampere staff response in the thread" },
+    authority: ampere_community_lga4926_thread_authority,
+  },
+  PartNumberCandidate {
+    part_number: "AZIF0222-P002C56",
+    vendor: lotes,
+    claimed_referent: ReferentAssignmentDisputed {
+      because: "assigned to the loading mechanism by one reading and to the socket by the other; ZIF in the string suggests an insertion-force mechanism but reading a referent off a part number is inference, not citation",
+    },
+    standing: ThirdPartyUnofficial { claimant: "community forum member, no Ampere staff response in the thread" },
+    authority: ampere_community_lga4926_thread_authority,
+  },
+]
+
+// THE MECHANICAL DRAWING THE SAME THREAD CARRIES, AND WHAT IT IS NOT. A dimensioned plan view of
+// the retention frame was posted alongside the part numbers: a bezel with a central opening, a cam
+// feature on one edge, twelve mounting holes, datums A and B, and callouts including 2X97.00+/-0.1,
+// 2X94.00+/-0.05, 2X72.00+/-0.1, 2X60.00+/-0.05 and a 150 degree corner chamfer.
+//
+// It answers MOUNTING geometry -- where retention hardware bolts to the board. It contains NO pad
+// array, no pitch and no contact count, so it does not touch the board land pattern, and recording
+// it as attachment-stack progress must not be allowed to read as land-pattern progress. The two
+// layers are separate in product.altra_motherboard.attachment_stack for exactly this reason.
+type MechanicalDrawingScope
+  = MountingAndOutlineGeometry
+  | BoardSidePadArray
+
+data lga4926_retention_drawing_scope: MechanicalDrawingScope = MountingAndOutlineGeometry
+
+data lga4926_retention_drawing_note: String = "Community-posted dimensioned plan view of the LGA4926 retention frame: twelve mounting holes, datums A and B, symmetric callouts 2X97.00 +/-0.1 and 2X94.00 +/-0.05 across the width, 2X72.00 +/-0.1 and 2X60.00 +/-0.05 vertically, 150 degree corner chamfer. Mounting and outline geometry only. It carries no pad array, pitch or contact count, so it establishes nothing about the board land pattern."
+
+fn part_candidate_is_officially_attested(c: PartNumberCandidate) -> Bool {
+  match c.standing {
+    PublisherOfRecord => true
+    ThirdPartyUnofficial { claimant: _ } => false
+  }
+}
+
+fn any_part_officially_attested() -> Bool {
+  any(lotes_part_attestations, c => part_candidate_is_officially_attested(c: c))
+}
+
+fn part_referent_is_assigned(c: PartNumberCandidate) -> Bool {
+  match c.claimed_referent {
+    ClaimedSocketBody => true
+    ClaimedLoadingMechanism => true
+    ReferentAssignmentDisputed { because: _ } => false
+  }
+}
+
 // THE FOUR BOARD-DESIGN QUESTIONS A DESIGNATION MUST ANSWER BEFORE A PART CAN BE
 // ORDERED OR A LAND PATTERN RELEASED. They are four named fields rather than a
 // tagged list because the axis set is closed and fixed: a missing or duplicate
@@ -174,12 +274,12 @@ type DesignationResolutionObligations {
 
 data ilm4926_resolution_obligations: DesignationResolutionObligations = DesignationResolutionObligations {
   vendor_identity: DesignationFactUnresolved {
-    reason: "no cited document attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only",
-    next_authority_to_consult: none,
+    reason: "no PUBLISHER OF RECORD attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only. A community thread on Ampere's developer forum names Lotes and is carried in lotes_part_attestations, which is a lead worth pursuing rather than an attribution -- the claimant is a forum member and no Ampere staff response appears in the thread. Resolving this means a Lotes drawing or an Ampere document naming the vendor.",
+    next_authority_to_consult: Present { value: ampere_community_lga4926_thread_authority },
   },
   orderable_part_number: DesignationFactUnresolved {
-    reason: "no cited document attaches a catalog or ordering part number to the designator ILM4926",
-    next_authority_to_consult: none,
+    reason: "no publisher of record attaches a catalog or ordering part number to ILM4926. Two candidate numbers, SKT 4926 ILM and AZIF0222-P002C56, are carried in lotes_part_attestations from a community thread, and which one names the socket body versus the loading mechanism is itself disputed between two readings of that same thread -- so even taking the numbers at face value would not say what to order for which layer.",
+    next_authority_to_consult: Present { value: ampere_community_lga4926_thread_authority },
   },
   board_land_pattern: DesignationFactUnresolved {
     reason: "the board-side land pattern for the attachment named ILM4926 is stated in no public document consulted; the Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated rather than publicly fetchable — the search for a public land pattern is closed",

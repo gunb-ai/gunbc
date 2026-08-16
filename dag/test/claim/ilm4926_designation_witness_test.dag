@@ -2,7 +2,22 @@ module test.claim.ilm4926_designation_witness
 
 import std.logic { Bool }
 import std.types { list_length }
+import extdeps.vendor.lotes { lotes }
 import extdeps.cpu_attachment.ilm4926 {
+  lotes_part_attestations,
+  any_part_officially_attested,
+  part_referent_is_assigned,
+  part_candidate_is_officially_attested,
+  PublisherOfRecord,
+  ThirdPartyUnofficial,
+  ClaimedSocketBody,
+  ClaimedLoadingMechanism,
+  ReferentAssignmentDisputed,
+  PartNumberCandidate,
+  MountingAndOutlineGeometry,
+  BoardSidePadArray,
+  lga4926_retention_drawing_scope,
+  ampere_community_lga4926_thread_authority,
   DesignationFactEstablished,
   DesignationFactUnresolved,
   IndependentLoadingMechanismOnly,
@@ -118,5 +133,45 @@ test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
     && match unresolved {
       DesignationFactEstablished { value: _, authority: _ } => false
       DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+    }
+}
+
+
+// THE ATTRIBUTION MUST NOT HARDEN INTO A FACT. Two part numbers and a vendor now exist in the
+// model, and the whole risk of recording them is that a later reader takes their presence for
+// resolution. These three witnesses are the wall against that: the candidates are carried, and
+// NONE of them is officially attested or referent-assigned.
+test fn w_lotes_parts_are_carried_but_none_is_officially_attested() -> Bool {
+  count(lotes_part_attestations) == 2
+    && !any_part_officially_attested()
+    && all(lotes_part_attestations, c => !part_referent_is_assigned(c: c))
+}
+
+// RED control: the official arm is reachable, so the claim above is a measurement and not a
+// vacuous truth about a predicate that can never be true.
+test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
+  let official = PartNumberCandidate {
+    part_number: "SOME-PART",
+    vendor: lotes,
+    claimed_referent: ClaimedSocketBody,
+    standing: PublisherOfRecord,
+    authority: ampere_community_lga4926_thread_authority,
+  }
+  part_candidate_is_officially_attested(c: official)
+    && part_referent_is_assigned(c: official)
+}
+
+// THE DRAWING IS MOUNTING GEOMETRY, NOT A LAND PATTERN, and this witness is what stops the
+// attachment-stack progress from being read as land-pattern progress. The retention drawing
+// carries no pad array, so the board land pattern obligation must remain unresolved even though
+// a real dimensioned drawing for this designation now exists.
+test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
+  (match lga4926_retention_drawing_scope {
+    MountingAndOutlineGeometry => true
+    BoardSidePadArray => false
+  })
+    && match ilm4926_resolution_obligations.board_land_pattern {
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+      DesignationFactEstablished { value: _, authority: _ } => false
     }
 }
