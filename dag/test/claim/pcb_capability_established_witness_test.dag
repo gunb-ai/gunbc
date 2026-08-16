@@ -7,7 +7,6 @@ import product.pcb.world {
   CapabilityPending,
   CapabilityRefused,
   capability_established,
-  capability_is_established,
   capability_pending,
   unsettled_capability,
 }
@@ -44,11 +43,26 @@ test fn w_red_pending_and_refused_still_produce_refusals() -> Bool {
     }
 }
 
-// THE PREDICATE READS THE ARM, not a name or a count.
-test fn w_capability_is_established_discriminates_all_three_arms() -> Bool {
-  capability_is_established(s: capability_established(authority: a_stackup_authority))
-    && !capability_is_established(s: capability_pending(what_is_owed: "a stackup"))
-    && !capability_is_established(s: CapabilityRefused { cause: "any cause" })
+// THE ARM IS READ BY MATCHING, not through an is_established predicate. review 52611 noted that
+// such a predicate had no production consumer and only its own witness read it -- a bool over a
+// coproduct that exists to be tested. The three arms are distinguished here directly, which is
+// what any real consumer will do, so nothing in the module is kept alive by evidence alone.
+test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
+  (match capability_established(authority: a_stackup_authority) {
+    CapabilityEstablished { authority: _ } => true
+    CapabilityPending { owed: _ } => false
+    CapabilityRefused { cause: _ } => false
+  })
+    && (match capability_pending(what_is_owed: "a stackup") {
+      CapabilityPending { owed: _ } => true
+      CapabilityEstablished { authority: _ } => false
+      CapabilityRefused { cause: _ } => false
+    })
+    && match CapabilityRefused { cause: "any cause" } {
+      CapabilityRefused { cause: _ } => true
+      CapabilityEstablished { authority: _ } => false
+      CapabilityPending { owed: _ } => false
+    }
 }
 
 // THE ESTABLISHED ARM CARRIES ITS AUTHORITY THROUGH. A standing that said established without

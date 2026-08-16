@@ -24,10 +24,16 @@ import product.pcb.physical { ComponentPlacement, PhysicalRefusalSet }
 // those refs resolve. Capabilities that have no row type yet (stackup, footprints, pads, routes,
 // nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs
 // none from a board whose routing has not been modeled from a board whose routing completed at
-// zero. Each of those fields is a capability standing, pending with a nonempty obligation or
-// refused with a cause. There is no Established arm here because there is no consumer and no row
-// type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline
-// constructed; it is not an admitted board.
+// zero. Each of those fields is a capability standing, pending with a nonempty obligation,
+// refused with a cause, or established with a DeclarationRef naming where the delivered value
+// lives. The established arm carries a REF and not the value because one standing type serves all
+// six capabilities and they have six different value shapes; asking whether the stackup is settled
+// is a different question from asking what the stackup is, and a world needs only the first. That
+// ref is an identity like the others above -- nothing here checks that it resolves, and an
+// established standing is a claim about modelling progress, not a verified citation. NO capability
+// is established today: every field on every world this repository builds is still pending, so the
+// arm changes what the type can express rather than what any board carries. A PARTIAL world is a
+// preview whose outline constructed; it is not an admitted board.
 type PcbBoard {
   frame: CoordinateFrameIdentity
   outline: AxisAlignedRectangle2
@@ -191,13 +197,6 @@ fn capability_established(authority: DeclarationRef) -> PcbCapabilityStanding {
   CapabilityEstablished { authority: authority }
 }
 
-fn capability_is_established(s: PcbCapabilityStanding) -> Bool {
-  match s {
-    CapabilityEstablished { authority: _ } => true
-    CapabilityPending { owed: _ } => false
-    CapabilityRefused { cause: _ } => false
-  }
-}
 
 fn first_present_refusal(a: PcbWorldRefusal?, b: PcbWorldRefusal?) -> PcbWorldRefusal? {
   match a {
