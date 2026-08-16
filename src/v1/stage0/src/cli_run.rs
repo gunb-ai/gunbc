@@ -2351,7 +2351,15 @@ pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> b
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
-pub(crate) fn witness_layer_roots() -> Vec<String> {
+///
+/// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a §3 one
+/// rather than a convenience. The driver seam in `main.rs` is a separate crate, so it could
+/// not see this; the alternative was to spell `["dag", "src/v2"]` as a literal beside the
+/// `ci` verb, which forks a live authority that is READ FROM `.dag` at runtime into a
+/// hand-written constant that cannot track it. Exposing the existing single authority is
+/// not new investment in the frozen engine — nothing here is re-homed, reshaped, or
+/// reimplemented, and the body is untouched.
+pub fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
         .get_or_init(|| witness_layer_roots_from_source(ci_layer_roots_authority_content()))
@@ -4584,13 +4592,6 @@ fn reset_regen_verify_gate_failure_detail_for_test() {
     }
 }
 
-#[cfg(test)]
-fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
-    }
-}
-
 pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
     match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         Ok(guard) => guard.clone().unwrap_or_else(|| {
@@ -6284,20 +6285,9 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-#[cfg(test)]
-pub(crate) fn reset_module_path_index_cache_for_test() {
-    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().clear());
-}
-
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
-}
-
-#[cfg(test)]
-pub(crate) fn reset_module_graph_facts_cache_for_test() {
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
-    reset_module_path_index_cache_for_test();
 }
 
 pub(crate) fn build_module_graph_facts_live_uncached(
@@ -8097,13 +8087,6 @@ fn entry_source_from_index_or_disk(
         path: rel_path,
         content,
     }))
-}
-
-fn load_sources(
-    source_roots: &[String],
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mei = build_multi_entry_index(source_roots);
-    load_compile_clean_entry_sources(source_roots, &mei, None)
 }
 
 /// Which budget a `ClaimOutcome::TimedOut` blew. The two are measured on different
@@ -10519,10 +10502,6 @@ pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
 
 const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
 
-fn measurement_emoji() -> bool {
-    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-}
-
 fn measurement_human_bytes(bytes: u64) -> String {
     // Mirror of ci_gibibyte_tenths: (bytes * 10) / gibibyte_scale_factor_bytes (2^30).
     let tenths = (bytes.saturating_mul(10)) / 1_073_741_824;
@@ -11788,15 +11767,6 @@ pub fn p1_experimental_arm_shared_typed_store(scheduled_width: usize) -> bool {
     }
 }
 
-fn discovery_scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
-    match width_policy {
-        DiscoveryWidthPolicy::Serial => 1,
-        DiscoveryWidthPolicy::ControlledWidthTwo => 2,
-        DiscoveryWidthPolicy::DerivedSchedule => 1,
-        DiscoveryWidthPolicy::FixedWidth(w) => *w,
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn emit_p1_cohort_entry_line(
     group_idx: usize,
@@ -12195,23 +12165,6 @@ pub fn resolve_entry_with_index_for_discovery_corpus(
         entry_file,
         ResolveTypecheckGate::DiscoveryCorpusAdvisory,
     )
-}
-
-fn resolve_entry_graph_with_index(
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    set_phase(FloorPhase::Resolve, entry_file);
-    let sources = load_sources_for_entry_with_index(index, facts, entry_file)?;
-    set_phase(FloorPhase::Typecheck, entry_file);
-    resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
 /// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
@@ -14377,63 +14330,6 @@ fn try_reconcile_all_cache_hits(
         source_indices,
     )
     .map(Some)
-}
-
-fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
-    if !name.contains('.') {
-        return None;
-    }
-    name.rfind('.').and_then(|pos| {
-        if pos > 0 {
-            Some(name[..pos].to_string())
-        } else {
-            None
-        }
-    })
-}
-
-fn collect_qualified_projection_module_paths_from_node(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut HashSet<String>,
-) {
-    let name = authored_name_at(source_indices.clone(), node.clone());
-    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
-        out.insert(prefix);
-    }
-    for child in node.children.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            child.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    for param in node.params.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            param.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(inferred) = &node.inferred {
-        if let Some(inner) = inferred_to_node(inferred.clone()) {
-            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
-        }
-    }
-    if let Some(type_annotation) = &node.type_annotation {
-        collect_qualified_projection_module_paths_from_node(
-            type_annotation.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(body) = &node.body {
-        collect_qualified_projection_module_paths_from_node(
-            body.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
 }
 
 /// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
@@ -16794,80 +16690,6 @@ pub fn run_value(
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
-pub fn handle_ci() {
-    handle_run_with_options(
-        witness_layer_roots(),
-        "main".to_string(),
-        Some("dag/tools/gunbc_ci.dag".to_string()),
-        false,
-        false,
-        Vec::new(),
-    );
-}
-
-/// Thin CLI transport handler for `gunbc converge --host <h>`: argv parse ->
-/// in-process `.dag` interpreter call -> stdout/exit-code projection, no
-/// converge logic here. Disposition receipt (DESIGN §3 transport-is-a-handler,
-/// §7 typed self-host frontier): `gunbc.fleet_converge_cli`'s
-/// `gunbc_converge_cli_stage0_receiver_disposition`.
-pub fn handle_converge(host: String) {
-    let roots = witness_layer_roots();
-    let (graph, indices) =
-        match resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
-        };
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let args = [(Some("host".to_string()), str_value(host.clone()))];
-    let result =
-        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("runtime error: {e}");
-                std::process::exit(1);
-            }
-        };
-    let v1_interpreter::Value::Record { fields, .. } = &result else {
-        eprintln!(
-            "error: converge_cli_output returned an unexpected shape: {:?}",
-            result
-        );
-        std::process::exit(1);
-    };
-    let line = match ctx.field(fields, "line") {
-        Some(Value::Str(s)) => s.to_string(),
-        _ => {
-            eprintln!("error: converge_cli_output.line was not a String");
-            std::process::exit(1);
-        }
-    };
-    let converged = matches!(
-        ctx.field(fields, "converged"),
-        Some(v1_interpreter::Value::Bool(true))
-    );
-    let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant {
-            variant_name,
-            fields: vf,
-            ..
-        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(Value::Str(s)) => Some(s.to_string()),
-            _ => None,
-        },
-        _ => None,
-    };
-    println!("{line}");
-    if let Some(reason) = &reason {
-        eprintln!("{reason}");
-    }
-    if !converged {
-        std::process::exit(1);
-    }
-}
-
 #[path = "pre_push.rs"]
 mod pre_push;
 
@@ -16877,77 +16699,10 @@ pub fn handle_pre_push() -> std::process::ExitCode {
     pre_push::run()
 }
 
-pub fn handle_run(
-    source_roots: Vec<String>,
-    function: String,
-    entry_file: Option<String>,
-    claim_run: bool,
-) {
-    handle_run_with_options(
-        source_roots,
-        function,
-        entry_file,
-        false,
-        claim_run,
-        Vec::new(),
-    );
-}
-
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
 /// (env `GUNBC_FLATTEN_SITE_DUMP_SECS`) and once, deterministically, right
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
-fn dump_residual_hunt_instrumentation() {
-    let mut sites = v1_interpreter::flatten_by_site_snapshot();
-    sites.sort_by(|a, b| b.3.cmp(&a.3));
-    eprintln!("--- free_monoid_to_vec by call site (top 15 by items cloned) ---");
-    for (file, line, calls, total) in sites.iter().take(15) {
-        eprintln!("  {}:{}  calls={}  items={}", file, line, calls, total);
-    }
-    let (cons_calls, cons_len_sum) = v1_interpreter::list_cons_tail_split_snapshot();
-    eprintln!(
-        "--- list Cons-match tail split (hypothesis B): calls={} receiver_len_sum={} ---",
-        cons_calls, cons_len_sum
-    );
-    let mut freq = v1_interpreter::call_frequency_snapshot();
-    freq.sort_by(|a, b| a.0.cmp(b.0));
-    eprintln!("--- hypothesis A call frequency ---");
-    for (name, calls) in freq.iter() {
-        eprintln!("  {}  calls={}", name, calls);
-    }
-    let mut big_folds = v1_interpreter::big_fold_by_dag_site_snapshot();
-    big_folds.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- fold_list receivers >1000 items, by .dag closure site (top 10) ---");
-    for (site, calls, total) in big_folds.iter().take(10) {
-        eprintln!("  {}  calls={}  items={}", site, calls, total);
-    }
-    let mut times = v1_interpreter::builtin_time_snapshot();
-    times.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- builtin inclusive wall time (top 15 by nanos) ---");
-    for (name, calls, nanos) in times.iter().take(15) {
-        eprintln!("  {}  calls={}  ms={}", name, calls, nanos / 1_000_000);
-    }
-    let mut self_times = v1_interpreter::dag_fn_self_time_snapshot();
-    self_times.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- .dag fn self time (top 20 by ms) ---");
-    for (name, calls, nanos) in self_times.iter().take(20) {
-        eprintln!("  {}  calls={}  self_ms={}", name, calls, nanos / 1_000_000);
-    }
-    let (memo_lookups, memo_hits, memo_distinct) = v1_interpreter::parse_memo_global_snapshot();
-    eprintln!(
-        "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
-        memo_lookups, memo_hits, memo_distinct
-    );
-    let mut callers = v1_interpreter::fold_caller_snapshot();
-    callers.sort_by(|a, b| b.2.cmp(&a.2));
-    eprintln!("--- LARGE fold_list callers (items>=100/call), top 15 by total items; .dag fn [left|right], elem type ---");
-    for (caller, calls, total, maxlen, elem) in callers.iter().take(15) {
-        eprintln!(
-            "  {}  calls={}  total_items={}  max_len={}  elem={}",
-            caller, calls, total, maxlen, elem
-        );
-    }
-}
 
 /// Parse repeated `--arg name=value` into the interpreter's named-argument
 /// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
@@ -17260,86 +17015,9 @@ impl ScopedRunObservation {
 }
 
 #[cfg(unix)]
-fn capture_scoped_run_stderr<T>(f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
-    use std::fs::File;
-    use std::io::{Read, Write};
-    use std::os::fd::FromRawFd;
-    use std::os::raw::c_int;
-
-    unsafe extern "C" {
-        fn pipe(fds: *mut c_int) -> c_int;
-        fn dup(fd: c_int) -> c_int;
-        fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
-        fn close(fd: c_int) -> c_int;
-    }
-
-    struct RestoreStderr(c_int);
-    impl Drop for RestoreStderr {
-        fn drop(&mut self) {
-            unsafe {
-                dup2(self.0, 2);
-                close(self.0);
-            }
-        }
-    }
-
-    std::io::stderr()
-        .flush()
-        .map_err(|e| format!("flush before scoped stderr capture: {e}"))?;
-    let mut fds = [-1, -1];
-    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
-        return Err(format!(
-            "open scoped stderr capture pipe: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    let saved = unsafe { dup(2) };
-    if saved < 0 || unsafe { dup2(fds[1], 2) } < 0 {
-        unsafe {
-            close(fds[0]);
-            close(fds[1]);
-            if saved >= 0 {
-                close(saved);
-            }
-        }
-        return Err(format!(
-            "redirect scoped stderr capture: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    unsafe {
-        close(fds[1]);
-    }
-    let restore = RestoreStderr(saved);
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let mut file = unsafe { File::from_raw_fd(fds[0]) };
-        file.read_to_end(&mut bytes).map(|_| bytes)
-    });
-    let value = f();
-    std::io::stderr()
-        .flush()
-        .map_err(|e| format!("flush scoped stderr capture: {e}"))?;
-    drop(restore);
-    let bytes = reader
-        .join()
-        .map_err(|_| "scoped stderr capture reader panicked".to_string())?
-        .map_err(|e| format!("read scoped stderr capture: {e}"))?;
-    Ok((value, bytes))
-}
-
 #[cfg(not(unix))]
 fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
     Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
-}
-
-fn replay_scoped_run_stderr(bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
-    }
-    use std::io::Write;
-    let mut stderr = std::io::stderr().lock();
-    let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
 /// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
@@ -17360,441 +17038,6 @@ fn replay_scoped_run_stderr(bytes: &[u8]) {
 /// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
 /// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
 /// a substitute for it.
-fn emit_run_eval_profile(function: &str) {
-    use crate::v1_interpreter::{
-        cast_lookup_counters, eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
-    };
-    let prof = eval_profile_snapshot();
-    let total_ns: u128 = prof.self_nanos.iter().sum();
-    let total_count: u64 = prof.counts.iter().sum();
-    if total_count == 0 {
-        return;
-    }
-    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
-        .filter(|&i| prof.counts[i] > 0)
-        .collect();
-    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
-    eprintln!(
-        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
-        function,
-        total_count,
-        total_ns as f64 / 1.0e6,
-    );
-    for i in rows {
-        let ns = prof.self_nanos[i];
-        let count = prof.counts[i];
-        eprintln!(
-            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
-            expr_variant_name(i),
-            count,
-            ns as f64 / 1.0e6,
-            if total_ns == 0 {
-                0.0
-            } else {
-                100.0 * ns as f64 / total_ns as f64
-            },
-            if count == 0 {
-                0.0
-            } else {
-                ns as f64 / count as f64
-            },
-        );
-    }
-    // The cast cost center is a SCAN, not a per-cast constant: each alias-chain hop walks
-    // every item of every module extracting authored source text. Printing the three
-    // counters together is what turns "casts are expensive" into a named multiplier —
-    // items-per-lookup is the corpus-denominated term, and it grows with the closure.
-    let (kernel_calls, lookup_calls, lookup_items) = cast_lookup_counters();
-    if kernel_calls > 0 || lookup_calls > 0 {
-        eprintln!(
-            "[eval-profile] cast-kernel walks: {}  type-lookups: {}  items scanned: {}  ({:.1} lookups/walk, {:.0} items/lookup)",
-            kernel_calls,
-            lookup_calls,
-            lookup_items,
-            if kernel_calls == 0 {
-                0.0
-            } else {
-                lookup_calls as f64 / kernel_calls as f64
-            },
-            if lookup_calls == 0 {
-                0.0
-            } else {
-                lookup_items as f64 / lookup_calls as f64
-            },
-        );
-    }
-}
-
-pub fn handle_run_with_options(
-    source_roots: Vec<String>,
-    function: String,
-    entry_file: Option<String>,
-    dry_run: bool,
-    claim_run: bool,
-    args: Vec<String>,
-) {
-    if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
-    }
-
-    // Refuse a malformed --arg before the compile, so the diagnostic is the
-    // first thing printed rather than the last.
-    let run_args = match parse_run_args(&args) {
-        Ok(parsed) => parsed,
-        Err(message) => {
-            eprintln!("error: {message}");
-            std::process::exit(2);
-        }
-    };
-
-    if claim_run && entry_file.is_none() {
-        eprintln!(
-            "error: --claim-run requires --entry <file.dag> (scoped import closure; \
-             loading the whole --source-root tree is too large for witness runs)"
-        );
-        std::process::exit(1);
-    }
-
-    // Same install as claim_executor / claim_batch: without it, host-effect traces
-    // fall back to Full and effectful merge-admission success stages dump every
-    // Ambient Begin/Done as emoji shell noise (operator live-log
-    // 2026-07-25). Install before any Wet eval so ShellTrace Suppressed-at-Normal
-    // collapses Ambient scaffolding; Anomaly Failed still surfaces via disposition.
-    install_output_policy(&source_roots);
-    install_group_syntax(&source_roots);
-
-    let mut scoped_periodic_dump = None;
-    let mut scoped_periodic_secs = None;
-    if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
-        if let Ok(secs) = secs.parse::<u64>() {
-            if entry_file.is_some() {
-                // The producer is started only after capture_scoped_run_stderr
-                // has installed fd 2.  Starting it here leaves a timeout window
-                // between Begin and capture in which raw diagnostics can corrupt
-                // the Open dynamic line.
-                scoped_periodic_secs = Some(secs);
-            } else {
-                std::thread::spawn(move || loop {
-                    std::thread::sleep(std::time::Duration::from_secs(secs));
-                    dump_residual_hunt_instrumentation();
-                });
-            }
-        }
-    }
-
-    let sources = match entry_file.as_deref() {
-        Some(path) => match load_sources_for_entry(&source_roots, path) {
-            Ok(sources) => sources,
-            Err(msg) => {
-                eprintln!("error: {}", msg);
-                std::process::exit(1);
-            }
-        },
-        None => match load_sources(&source_roots) {
-            Ok(sources) => sources,
-            Err(msg) => {
-                eprintln!("error: {}", msg);
-                std::process::exit(1);
-            }
-        },
-    };
-    eprintln!("resolved {} sources", sources.len());
-
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-
-    let has_errors = result
-        .diagnostics
-        .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
-    if has_errors {
-        let si: HashMap<String, Rc<NewlineIndex>> = result
-            .newline_indices
-            .iter()
-            .map(|idx| (idx.file.clone(), idx.clone()))
-            .collect();
-        for d in result.diagnostics.iter() {
-            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                continue;
-            }
-            let span = diagnostic_to_span(d.diagnostic.clone());
-            let loc = match si.get(&span.file) {
-                Some(idx) => {
-                    let lc = byte_to_line_col(idx.clone(), span.start);
-                    format!("{}:{}:{}", span.file, lc.line, lc.col)
-                }
-                None => span.file.clone(),
-            };
-            eprintln!(
-                "{}: error: {}",
-                loc,
-                diagnostic_to_message(d.diagnostic.clone())
-            );
-        }
-        std::process::exit(1);
-    }
-
-    let graph = match result.graph.as_ref() {
-        Some(g) => g,
-        None => {
-            eprintln!("error: compilation produced no graph");
-            std::process::exit(1);
-        }
-    };
-
-    let execution_mode = if dry_run {
-        v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_interpreter::ExecutionMode::Wet
-    };
-    let ctx =
-        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
-    let scoped_identity = entry_file.as_ref().map(|_| {
-        let module_path_index = build_module_path_index(&source_roots);
-        ctx.selected_function_identity(&function, &module_path_index)
-            .filter(|identity| !identity.bare_name_ambiguous || function.contains('.'))
-            .unwrap_or_else(|| {
-                eprintln!(
-                    "error: scoped run function `{function}` has no unique runtime-selected declaration identity"
-                );
-                std::process::exit(1);
-            })
-    });
-    let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        let identity = scoped_identity
-            .as_ref()
-            .expect("scoped identity exists for scoped entry");
-        ScopedRunObservation::resolve(
-            entry,
-            &identity.module_path,
-            &identity.decl_name,
-            std::time::Instant::now(),
-        )
-        .unwrap_or_else(|cause| {
-            eprintln!("error: {cause}");
-            std::process::exit(1);
-        })
-    });
-    if let Some(observation) = scoped_observation.as_mut() {
-        observation.begin().unwrap_or_else(|cause| {
-            eprintln!("error: {cause}");
-            std::process::exit(1);
-        });
-    } else {
-        eprintln!("running {}()...", function);
-    }
-    v1_interpreter::with_active_context(&ctx, || {
-        // One path, not two: with an empty `--arg` list this is byte-identical
-        // to `run_in_context`, which passes the same empty slice.
-        let mut run = || {
-            if let Some(secs) = scoped_periodic_secs {
-                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-                let (armed_tx, armed_rx) = std::sync::mpsc::channel();
-                let periodic_ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                let tick_count = periodic_ticks.clone();
-                let witness = std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some();
-                let handle = std::thread::spawn(move || loop {
-                    if witness && secs == 0 {
-                        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
-                            stop_rx.recv_timeout(std::time::Duration::ZERO)
-                        {
-                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            dump_residual_hunt_instrumentation();
-                        }
-                        let _ = armed_tx.send(());
-                        break;
-                    }
-                    let _ = armed_tx.send(());
-                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
-                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            let tick =
-                                tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            dump_residual_hunt_instrumentation();
-                            if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some()
-                                && tick == 0
-                            {
-                                break;
-                            }
-                        }
-                    }
-                });
-                if witness {
-                    let _ = armed_rx.recv();
-                }
-                scoped_periodic_dump = Some((stop_tx, handle, periodic_ticks));
-            }
-            let outcome =
-                v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
-            if let Some((stop, handle, periodic_ticks)) = scoped_periodic_dump.take() {
-                let _ = stop.send(());
-                let _ = handle.join();
-                if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some() {
-                    eprintln!(
-                        "[scoped-periodic-ticks={}]",
-                        periodic_ticks.load(std::sync::atomic::Ordering::Relaxed)
-                    );
-                }
-            }
-            v1_interpreter::print_eval_recompute_trace(&ctx);
-            if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
-                dump_residual_hunt_instrumentation();
-            }
-            outcome
-        };
-        let (run_outcome, mut deferred_stderr) = if scoped_observation.is_some() {
-            capture_scoped_run_stderr(run).unwrap_or_else(|cause| {
-                if let Some(observation) = scoped_observation.as_mut() {
-                    observation
-                        .failed(&cause)
-                        .unwrap_or_else(|projection_cause| {
-                            eprintln!("error: {projection_cause}");
-                            std::process::exit(1);
-                        });
-                }
-                std::process::exit(1);
-            })
-        } else {
-            (run(), Vec::new())
-        };
-        if !deferred_stderr.is_empty() {
-            if let Some(observation) = scoped_observation.as_mut() {
-                observation
-                    .close_before_deferred()
-                    .unwrap_or_else(|projection_cause| {
-                        eprintln!("error: {projection_cause}");
-                        std::process::exit(1);
-                    });
-            }
-            replay_scoped_run_stderr(&deferred_stderr);
-            deferred_stderr.clear();
-        }
-        match run_outcome {
-            Ok(val) => {
-                if claim_run {
-                    match &val {
-                        v1_interpreter::Value::Bool(false) => {
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation.failed("claim returned false").unwrap_or_else(
-                                    |cause| {
-                                        eprintln!("error: {cause}");
-                                        std::process::exit(1);
-                                    },
-                                );
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            std::process::exit(1)
-                        }
-                        v1_interpreter::Value::Bool(true) => {
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation.finish().unwrap_or_else(|cause| {
-                                    eprintln!("error: {cause}");
-                                    std::process::exit(1);
-                                });
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            return;
-                        }
-                        other => {
-                            let cause = format!(
-                                "function `{}` returned `{}`, not Bool; --claim-run requires Bool",
-                                function, other
-                            );
-                            if let Some(observation) = scoped_observation.as_mut() {
-                                observation
-                                    .refused(&cause)
-                                    .unwrap_or_else(|projection_cause| {
-                                        eprintln!("error: {projection_cause}");
-                                        std::process::exit(1);
-                                    });
-                            } else {
-                                eprintln!(
-                                    "error: function `{}` returned `{}`, not `Bool`. \
-                                     With --claim-run the entry must return Bool (false → exit 1).",
-                                    function, other
-                                );
-                            }
-                            replay_scoped_run_stderr(&deferred_stderr);
-                            println!("{}", val);
-                            std::process::exit(2);
-                        }
-                    }
-                }
-                emit_run_eval_profile(&function);
-                match classify_exit(&val, &ctx) {
-                    ExitClass::Success => {
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation.finish().unwrap_or_else(|cause| {
-                                eprintln!("error: {cause}");
-                                std::process::exit(1);
-                            });
-                        }
-                    }
-                    ExitClass::Failure { code, reason } => {
-                        let cause = reason
-                            .clone()
-                            .unwrap_or_else(|| format!("process exited {code}"));
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation
-                                .failed(&cause)
-                                .unwrap_or_else(|projection_cause| {
-                                    eprintln!("error: {projection_cause}");
-                                    std::process::exit(1);
-                                });
-                        } else if let Some(message) = &reason {
-                            eprintln!("{message}");
-                        }
-                        replay_scoped_run_stderr(&deferred_stderr);
-                        println!("{}", val);
-                        std::process::exit(code);
-                    }
-                    ExitClass::NotProcessExit { type_name } => {
-                        let cause = format!(
-                            "function `{}` returned `{}`, not ProcessExit",
-                            function, type_name
-                        );
-                        if let Some(observation) = scoped_observation.as_mut() {
-                            observation
-                                .refused(&cause)
-                                .unwrap_or_else(|projection_cause| {
-                                    eprintln!("error: {projection_cause}");
-                                    std::process::exit(1);
-                                });
-                        } else {
-                            eprintln!(
-                                "error: function `{}` returned `{}`, not `ProcessExit`. \
-                                 Functions invoked via `dag run` must return std/process.dag's \
-                                 ProcessExit so the host can map success/failure to an exit code. \
-                                 Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                                 --claim-run for Bool witness entry points under src/v2.",
-                                function, type_name
-                            );
-                        }
-                        replay_scoped_run_stderr(&deferred_stderr);
-                        println!("{}", val);
-                        std::process::exit(2);
-                    }
-                }
-                replay_scoped_run_stderr(&deferred_stderr);
-                println!("{}", val);
-            }
-            Err(e) => {
-                if let Some(observation) = scoped_observation.as_mut() {
-                    observation.failed(&e.to_string()).unwrap_or_else(|cause| {
-                        eprintln!("error: {cause}");
-                        std::process::exit(1);
-                    });
-                } else {
-                    eprintln!("runtime error: {}", e);
-                }
-                replay_scoped_run_stderr(&deferred_stderr);
-                std::process::exit(1);
-            }
-        }
-    });
-}
 
 /// `gunbc serve` — the thin host seam for the gunbc-served dashboard
 /// (docs/plans/gunbc-served-dashboard-design.md). Compile the entry closure
@@ -17815,12 +17058,6 @@ pub fn handle_run_with_options(
 /// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
 /// back from some other process. Same rule, two boundaries, and the boundary
 /// each guards is the reason it cannot be deleted in favour of the other.
-fn release_revision_text_valid(text: &str) -> bool {
-    text.len() == 40
-        && text
-            .chars()
-            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
-}
 
 /// The process-wide evaluation budget this serve process enforces.
 ///
@@ -17841,244 +17078,10 @@ pub struct ServeEvaluationBudget {
 /// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
 /// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
 /// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
-    elapsed_nanos: u128,
-    limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
-}
 
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
-fn serve_json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-pub fn handle_serve(
-    source_roots: Vec<String>,
-    entry_file: String,
-    function: String,
-    host: String,
-    port: u16,
-    release_revision: String,
-    serve_budget: ServeEvaluationBudget,
-) {
-    if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
-    }
-    // Bound BEFORE the graph is compiled and before the listener binds: a
-    // process that cannot say which release it is must never reach a state
-    // where something can route traffic to it and read its identity back.
-    if !release_revision_text_valid(&release_revision) {
-        eprintln!(
-            "error: --release-revision must be exactly 40 lowercase hex digits \
-             (git object name); got {:?} ({} chars). This is the identity this \
-             process publishes through /healthz and that deployment ordering \
-             reads back — a branch name, an abbreviated sha, or an empty value \
-             is not a revision.",
-            release_revision,
-            release_revision.chars().count()
-        );
-        std::process::exit(1);
-    }
-    let index = process_shared_index(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        ResolveTypecheckGate::Strict,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    ) {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    if compile_clean_diags
-        .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
-            eprintln!("error: {}", format_error_node(d, &source_indices));
-        }
-        std::process::exit(1);
-    }
-    let ctx = v1_interpreter::InterpContext::new(
-        &graph,
-        source_indices.clone(),
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
-            std::process::exit(1);
-        }
-    };
-    // The budget is announced at startup because "unset" is a policy state that must be visible.
-    // A process serving with no bound and a process serving with a bound are different
-    // operational facts, and the difference has to be readable without inspecting argv.
-    eprintln!(
-        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
-        function,
-        release_revision,
-        serve_budget
-            .cpu_limit_ms
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unset".to_string()),
-    );
-    v1_interpreter::with_active_context(&ctx, || {
-        for stream in listener.incoming() {
-            let mut stream = match stream {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("serve: accept error: {}", e);
-                    continue;
-                }
-            };
-            match serve_read_request(&mut stream) {
-                Err(reason) => serve_write_response(
-                    &mut stream,
-                    400,
-                    "text/plain; charset=utf-8",
-                    &format!("bad request: {}\n", reason),
-                ),
-                Ok((method, path, body)) => {
-                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
-                        (Some("method".to_string()), str_value(method)),
-                        (Some("path".to_string()), str_value(path)),
-                        (Some("body".to_string()), str_value(body)),
-                        // Captured once above and cloned per request: the value
-                        // is fixed for the process lifetime, so no request can
-                        // observe a different release than any other request.
-                        (
-                            Some("release_revision".to_string()),
-                            str_value(release_revision.clone()),
-                        ),
-                    ];
-                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
-                    // Before this existed the serve path armed nothing, so a route evaluation
-                    // that did not return also prevented the `Err` arm below from ever running:
-                    // the 500 existed and was unreachable, and because the loop is serial the
-                    // stuck request held the accept queue for every later one. The guard both
-                    // arms and restores — a leaked deadline would be worse than none here,
-                    // since `ctx` outlives every request and a stale CPU baseline would refuse
-                    // all subsequent requests for the life of the process.
-                    let result = {
-                        let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
-                        );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
-                    };
-                    match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
-                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                            // the evaluation that would have rendered it is the one that was
-                            // just aborted, so asking it to describe its own abort would put
-                            // recovery behind the evaluator that failed.
-                            //
-                            // 500, not 503: this request is deterministic against a fixed
-                            // policy, so it will cross again on retry. A status meaning
-                            // "temporary capacity" would assert something the model does not
-                            // know, and no `Retry-After` is attached for the same reason
-                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
-                            serve_write_response(
-                                &mut stream,
-                                500,
-                                "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
-                            )
-                        }
-                        Err(e) => serve_write_response(
-                            &mut stream,
-                            500,
-                            "text/plain; charset=utf-8",
-                            &format!("handler error: {}\n", e),
-                        ),
-                        Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
-                                &mut stream,
-                                status,
-                                &content_type,
-                                &resp_body,
-                            ),
-                            None => serve_write_response(
-                                &mut stream,
-                                500,
-                                "text/plain; charset=utf-8",
-                                &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
-                                    ctx.format_value(&val)
-                                ),
-                            ),
-                        },
-                    }
-                }
-            }
-        }
-    });
-}
 
 /// Read one HTTP/1.1 request: request line + headers (only Content-Length is
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
@@ -18087,150 +17090,24 @@ pub fn handle_serve(
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
-fn serve_read_request(
-    stream: &mut std::net::TcpStream,
-) -> Result<(String, String, String), String> {
-    use std::io::{BufRead, Read};
-    const MAX_HEAD: usize = 16 << 10;
-    const MAX_BODY: usize = 1 << 20;
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
-        .map_err(|e| format!("set_read_timeout: {}", e))?;
-    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
-    let mut request_line = String::new();
-    let mut head_bytes = reader
-        .read_line(&mut request_line)
-        .map_err(|e| format!("read request line: {}", e))?;
-    if head_bytes > MAX_HEAD {
-        return Err(format!(
-            "request line of {} bytes exceeds the {} byte serve head limit",
-            head_bytes, MAX_HEAD
-        ));
-    }
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().ok_or("empty request line")?.to_string();
-    let target = parts.next().ok_or("missing request target")?.to_string();
-    if !target.starts_with('/') {
-        return Err(format!(
-            "request target must be origin-form, got {:?}",
-            target
-        ));
-    }
-    let mut content_length: Option<usize> = None;
-    loop {
-        let mut line = String::new();
-        let n = reader
-            .read_line(&mut line)
-            .map_err(|e| format!("read header: {}", e))?;
-        if n == 0 {
-            return Err("connection closed before end of headers".to_string());
-        }
-        head_bytes += n;
-        if head_bytes > MAX_HEAD {
-            return Err(format!(
-                "headers of {} bytes exceed the {} byte serve head limit",
-                head_bytes, MAX_HEAD
-            ));
-        }
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                if content_length.is_some() {
-                    return Err("duplicate Content-Length header".to_string());
-                }
-                content_length = Some(
-                    value
-                        .trim()
-                        .parse()
-                        .map_err(|e| format!("bad Content-Length: {}", e))?,
-                );
-            }
-        }
-    }
-    let content_length = content_length.unwrap_or(0);
-    if content_length > MAX_BODY {
-        return Err(format!(
-            "body of {} bytes exceeds the {} byte serve limit",
-            content_length, MAX_BODY
-        ));
-    }
-    let mut body_bytes = vec![0u8; content_length];
-    reader
-        .read_exact(&mut body_bytes)
-        .map_err(|e| format!("read body: {}", e))?;
-    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok((method, target, body))
-}
-
-fn serve_write_response(
-    stream: &mut std::net::TcpStream,
-    status: u16,
-    content_type: &str,
-    body: &str,
-) {
-    use std::io::Write;
-    let reason = match status {
-        200 => "OK",
-        400 => "Bad Request",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        409 => "Conflict",
-        500 => "Internal Server Error",
-        501 => "Not Implemented",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        _ => "",
-    };
-    let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        status,
-        reason,
-        content_type,
-        body.len(),
-        body
-    );
-    if let Err(e) = stream.write_all(response.as_bytes()) {
-        eprintln!("serve: write error: {}", e);
-    }
-}
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response).
-fn serve_wire_fields(
-    val: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
-    if let v1_interpreter::Value::Record { type_name, fields } = val {
-        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
-            return None;
-        }
-        let status = match ctx.field(fields, "status") {
-            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
-            _ => return None,
-        };
-        let content_type = match ctx.field(fields, "content_type_label") {
-            Some(Value::Str(s)) => s.to_string(),
-            _ => return None,
-        };
-        let body = match ctx.field(fields, "body") {
-            Some(Value::Str(s)) => s.to_string(),
-            _ => return None,
-        };
-        return Some((status, content_type, body));
-    }
-    None
-}
 
-enum ExitClass {
+/// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
+/// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
+/// seam in `main.rs` must map that value to a process exit code. Reimplementing the match
+/// in the driver would fork the one place that knows the variant shape. Body untouched.
+pub enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
-fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> ExitClass {
+pub fn classify_exit(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> ExitClass {
     match val {
         v1_interpreter::Value::Variant {
             type_name,
@@ -20353,8 +19230,6 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // is emitted or natively realized (then the source-scan helpers go), the classification path
 // follows it (then the rest goes), or the frozen population reaches zero (then all of it goes with
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
-pub(crate) const CLI_RUN_WITNESS_DEFERRAL_FREEZE_SCAFFOLD_MARKER: &str =
-    "cli_run_witness_deferral_freeze";
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
 /// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
@@ -21561,34 +20436,6 @@ impl SelectedEntryClosureOverlap {
 }
 
 /// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
-fn closure_overlap_membership_for_entries(
-    index: &MultiEntryIndex,
-    selected_entries: &[String],
-) -> Result<(usize, usize, Vec<(String, usize)>), String> {
-    let mut sum_closure_memberships: usize = 0;
-    let mut fanout: HashMap<String, usize> = HashMap::new();
-    for entry in selected_entries {
-        let mut members: HashSet<String> = HashSet::new();
-        for source in load_sources_for_entry_with_pool(index, entry)? {
-            let Some(name) = extract_module_path(&source.content) else {
-                return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module \
-                     header (fail-closed)",
-                    source.path, entry
-                ));
-            };
-            members.insert(name);
-        }
-        sum_closure_memberships += members.len();
-        for m in members {
-            *fanout.entry(m).or_insert(0) += 1;
-        }
-    }
-    let union_modules = fanout.len();
-    let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
-    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    Ok((sum_closure_memberships, union_modules, fanout_by_module))
-}
 
 pub fn measure_selected_entry_closure_overlap(
     source_roots: &[String],
@@ -22679,7 +21526,6 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
-const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
 // deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
@@ -22691,50 +21537,6 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // import-closure realization; the fn-arrow chain stays in `.dag`
 // (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
 // namespace-only terminal step re-decides the grain.
-
-fn call_entry_affected_by_touched_paths(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    pool_roots: &[String],
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("entry_affected_by_touched_paths")
-    {
-        return Err(
-            "entry_affected_by_touched_paths missing from module_graph context".to_string(),
-        );
-    }
-    let roots: Vec<v1_interpreter::Value> =
-        pool_roots.iter().map(|s| str_value(s.clone())).collect();
-    let touched: Vec<v1_interpreter::Value> =
-        touched_paths.iter().map(|s| str_value(s.clone())).collect();
-    let args = [
-        (
-            Some("entry_path".to_string()),
-            str_value(entry_path.to_string()),
-        ),
-        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(touched),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "entry_affected_by_touched_paths",
-        &args,
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "entry_affected_by_touched_paths returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("entry_affected_by_touched_paths: {e}")),
-    }
-}
 
 fn call_floor_kernel_would_skip(
     ctx: &v1_interpreter::InterpContext,
@@ -29354,14 +28156,6 @@ pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
     source_root_ingest_symbol_from_stem(stem)
 }
 
-fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("host_sr");
-    source_root_ingest_symbol_from_stem(stem)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRootEntryAdmission {
     pub subject: Vec<String>,
@@ -29655,17 +28449,6 @@ pub fn discover_source_root_reads_for_entry(
     Ok(records)
 }
 
-fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
-    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
-    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
-    Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
-        dag_embedded_dag_source_escape(&rec.source),
-        dag_manifest_scalar_escape(&rec.file_path)?,
-        rec.source_root,
-    ))
-}
-
 fn emit_source_content_hash_dag_for_text(source: &str) -> String {
     let digest = crate::v1_rt::atom_identity_hash(source.to_string());
     format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
@@ -29718,18 +28501,6 @@ pub fn emit_source_ref_dag_for_path(
         .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
         .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
     emit_source_ref_dag(rec)
-}
-
-fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
-    let mut witness_nodes: Vec<String> = records
-        .iter()
-        .map(emit_source_root_read_witness)
-        .collect::<Result<_, _>>()?;
-    let mut out = String::from("Empty");
-    while let Some(head) = witness_nodes.pop() {
-        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
-    }
-    Ok(out)
 }
 
 fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
@@ -40451,14 +39222,6 @@ fn try_resolve_extdeps_module_source_path(path: &str) -> Option<std::path::PathB
 fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
     try_resolve_extdeps_module_source_path(path).unwrap_or_else(|| {
         panic!("resolve_extdeps_module_source_path: file not found: {path}");
-    })
-}
-
-fn read_extdeps_module_source_text(path: &str) -> String {
-    let resolved = resolve_extdeps_module_source_path(path);
-    let path_str = resolved.to_string_lossy();
-    std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
-        panic!("read_extdeps_module_source_text: failed to read {path_str}: {e}")
     })
 }
 
