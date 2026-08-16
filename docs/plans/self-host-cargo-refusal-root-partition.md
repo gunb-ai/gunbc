@@ -572,6 +572,45 @@ probe, which costs tens of minutes.
 
 Root B **is** instance 1: its whole mechanism is a closure-content branch.
 
+**PROMOTED — EXECUTED 2026-08-16 (`eager-deer-389`). The candidate below FIRES, and what it fires
+on reopens the `gentle-dove-833` overlap I had retracted.** The miss arm of
+`type_leaf_is_unbound_in_closure_scope` was instrumented in the generated seed (an `eprintln` of
+the looked-up name on the `None` branch), `05_emit.dag` emitted in a pure-v2 closure, patch
+reverted. **34 firings:**
+
+```
+28  Absent
+ 4  TypeExprKindAuthorityInvalid
+ 2  fn
+```
+
+So the arm is live, not dead. And the NAME reaching `lookup_type_by_name` and missing is literally
+`Absent`, 28 of 34 times.
+
+**This vindicates `gentle-dove-833`'s hypothesis while leaving my mechanism retraction standing,
+and the distinction matters.** Their reading of my sentence was wrong — that `Absent` is still an
+`Option` arm in the emitter's control flow, not a name. But their *substantive* caution — that if
+`Absent` reaches my predicate it may be a **variant name arriving at a type-name lookup**, making
+the two of us consumers of one upstream defect — is now measured true, and they stated it before
+either of us had evidence. I killed their three-run experiment on the mechanism when the question
+was always about the name; that was my error twice over and the experiment is back on.
+
+**Reading, not finding:** a variant name is being carried in a type position. `gentle-dove-833`'s
+mechanism meets it in `derive_variant_to_enum` (two declarers ⇒ ambiguity sentinel ⇒ ignored by
+`map_contains_key`); mine meets it in the type env (not a type ⇒ miss ⇒ defaults to unbound). If
+that holds, **neither arm is the root** and both populations are partly downstream of whatever
+puts a variant name in a type position.
+
+**Cheaper next step than the three-run table:** dump the same miss list on `gentle-dove-833`'s
+entry and compare it to their sentinel set. Same two names ⇒ one upstream defect and the runs then
+measure double-counting. Disjoint ⇒ genuinely independent and the runs are unnecessary. The whole
+answer is in emit stderr — no `cssl_assemble`, no cargo pass.
+
+**Bearing on identity-keying:** this is a caution against over-scoping that fix. Resolved
+declaration identity disambiguates two same-named *types*; it does not obviously repair a
+*variant* name arriving where a type was expected. Those may be two different defects and the
+identity fix should not be sized as if it covers both.
+
 **A third candidate, same shape, NOT executed:** `05_emit_rust`
 `type_leaf_is_unbound_in_closure_scope` returns `true` on the `Absent` **match arm of
 `lookup_type_by_name`** (which returns `Node?`) — i.e. on a lookup MISS, nothing whatsoever to do
