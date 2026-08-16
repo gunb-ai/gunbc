@@ -127,14 +127,26 @@ twice, per family, because there is nowhere to state it once.
 
 ### 3d. Grain failures are keying failures
 
-A census over production `.dag` found **23 constructors that take an isolation parameter
-(`root:` / `instance:` / `layout:` / `scope:`) and then reach past it to a module-level
-singleton on the same axis**. Six sit in `gunbc.roadmap_belt_actuate`, all named
-`*_for_instance`, all reaching `belt_observe_workdir`.
+**Retraction (2026-08-15).** An earlier revision of this section asserted a census of
+"23 constructors that take an isolation parameter and then reach past it to a module-level
+singleton", with six `*_for_instance` functions in `gunbc.roadmap_belt_actuate` reaching
+`belt_observe_workdir` as its flagship. **That flagship is a false positive and the count is
+withdrawn.** `belt_observe_workdir` is deliberately `/` — a host-global execution workdir for
+tmux observation and teardown — and `gunbc.roadmap_belt_actuate` `belt_actuate_workdir_note`
+explicitly distinguishes it from the instance-specific spawn workdir, calling the collapse of
+the two a §5 fail-open. The detector answered *function accepts an instance parameter and also
+reads a module singleton*, which is **not** the question. It does not distinguish a singleton
+that is correctly host-global from one keyed too coarsely, so it establishes reach, not defect,
+and no repo-wide cleanup follows from it. The count is deleted rather than corrected because a
+sound detector needs the fact this document argues does not yet exist: a declared key scope to
+compare the reach against.
 
-Restated as keying: those facts are keyed by **nothing** (arity-zero — a module
-singleton) where the subject is keyed by instance. "Wrong grain" and "wrong key arity"
-are the same statement.
+What survives is the claim itself, carried by the two specimens verified by reading their
+subjects (§3a, §3b) rather than by a population count: a fact reached at a coarser scope than
+the subject that consumes it is keyed by **nothing** (arity-zero — a module singleton) where
+the subject is keyed by instance. "Wrong grain" and "wrong key arity" are the same statement,
+and the refuting specimen above is precisely why the distinction has to be *declared* before it
+can be *checked* — today the correct case and the defective case are byte-identical in the source.
 
 ## 4. Where each layer's authority sits
 
