@@ -158,6 +158,30 @@ newly-resolving declarations expose the residue with fresh spans. Each round edi
 only what it can prove and re-measures rather than modelling the remainder. A round
 that stops shrinking is the signal to fix the spans rather than to widen the rewriter.
 
+## The right declaration index already exists — do not re-model it a fourth time
+
+`src/v1/stage0/src/source_closure.rs` carries `DeclarationIndex` /
+`build_declaration_index`, and it is strictly better than the `^type|fn|func` regex
+this census used:
+
+- **it indexes variant arms**, discriminating them correctly (children are variants
+  only when the item's `connective == Disj`, so record fields are excluded) — which is
+  exactly the 1246 "no declarer" refusals the regex cannot see;
+- **it keeps homonyms plural** by construction (`by_name: name → set of modules`), with
+  an in-code note that collapsing it would silently pick a winner before the resolver
+  ever sees the ambiguity — the discipline the declarer-count classification here had
+  to rebuild by hand.
+
+It was believed deleted and was not: only its probe test was removed, by this lane.
+That false belief has already produced one withdrawn measurement (a grep-based
+declared-vs-undeclared classification, wrong in both directions) and one second-rate
+index (this one). **It now has a single caller, a test helper**, so an ordinary
+consumer-join would read it as dead — a zero created by this program's own deletions,
+not by the corpus.
+
+If a later pass needs arm-aware declarer counts, the move is to **restore its probe**
+and use the real index, never to re-model it again.
+
 ## Sequencing consequence
 
 Class 3 is now eight names, all small, none blocking. The rule that survives is
