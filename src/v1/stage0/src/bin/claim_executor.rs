@@ -13105,7 +13105,7 @@ mod tests {
     /// ordinary instead of reverting to one polarity for everything in it.
     #[test]
     fn expected_red_is_function_grain_not_file_or_batch_grain() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let expected_red = vec![(
             entry.to_string(),
             "logic_complement_truth_table".to_string(),
@@ -13236,7 +13236,7 @@ mod tests {
     #[test]
     fn resolve_refuse_agreement_requires_every_entry_expect_a_pre_verdict_refusal() {
         let pre_verdict = (
-            "src/v2/test/claim/emit/logic_ground_truth_test.dag".to_string(),
+            "src/v2/test/claim/manual/english_emit_add_test.dag".to_string(),
             "logic_complement_truth_table".to_string(),
         );
         let ordinary_known_red = (
@@ -13388,7 +13388,7 @@ mod tests {
     /// A count equality alone cannot see this; that is the whole reason the join replaced it.
     #[test]
     fn non_pass_join_matches_identities_not_merely_counts() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let expected_red = vec![(
             entry.to_string(),
             "logic_complement_truth_table".to_string(),
@@ -13426,7 +13426,7 @@ mod tests {
     /// the empty-observation narrow, applied to the batch's own accounting.
     #[test]
     fn still_red_pass_arm_requires_exact_failure_accounting() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let f = "logic_complement_truth_table";
         let expected_red = vec![(entry.to_string(), f.to_string())];
         let tally =
