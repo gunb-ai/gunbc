@@ -14912,8 +14912,9 @@ mod process_termination_tests {
     }
 }
 
-/// Semantic parity receipts for `Value::Str(Rc<str>)` — equality, hashing, map/set
-/// keys, clone sharing, and display. Guards against mechanical migration regressions.
+/// Semantic parity receipts for `Value::Str(Rc<str>)` — shared-allocation invariant
+/// (clone shares `Rc` allocation; buffer immutable under sharing; equality/hash by
+/// content), plus map/set keys, display, and CanonKey surfaces.
 #[cfg(test)]
 mod value_str_rc_semantic_parity_tests {
     use super::*;
@@ -14984,10 +14985,38 @@ mod value_str_rc_semantic_parity_tests {
         let v = str_value("shared");
         let cloned = v.clone();
         if let (Value::Str(a), Value::Str(b)) = (&v, &cloned) {
-            assert!(Rc::ptr_eq(a, b));
+            assert!(
+                Rc::ptr_eq(a, b),
+                "Value::Str clone must share the same Rc allocation (not deep-copy); \
+                 content-equality tests alone would stay green if clone reintroduced String copy"
+            );
         } else {
             panic!("expected Str");
         }
+    }
+
+    #[test]
+    fn str_shared_buffer_immutable_under_multiple_refs() {
+        let v = str_value("immutable");
+        let cloned = v.clone();
+        let Value::Str(a) = &v else {
+            panic!("expected Str");
+        };
+        let Value::Str(b) = &cloned else {
+            panic!("expected Str");
+        };
+        assert!(Rc::ptr_eq(a, b));
+        let mut lone = Rc::clone(a);
+        let mut peer = Rc::clone(b);
+        assert!(
+            Rc::get_mut(&mut lone).is_none(),
+            "shared Rc<str> must refuse in-place mutation while another handle exists"
+        );
+        assert!(
+            Rc::get_mut(&mut peer).is_none(),
+            "shared Rc<str> must refuse in-place mutation while another handle exists"
+        );
+        assert_eq!(a.as_ref(), b.as_ref());
     }
 
     #[test]
