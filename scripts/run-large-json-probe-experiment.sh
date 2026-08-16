@@ -84,7 +84,7 @@ cgroup_create() {
   if [ -w /sys/fs/cgroup ] && [ -f /sys/fs/cgroup/cgroup.controllers ]; then
     path="/sys/fs/cgroup/str-rc0-${id}-$$"
     if mkdir -p "$path" 2>/dev/null; then
-      if ! echo "$MEM_LIMIT_BYTES" >"$path/memory.max" 2>/dev/null; then
+      if ! { echo "$MEM_LIMIT_BYTES"; } >"$path/memory.max" 2>/dev/null; then
         rmdir "$path" 2>/dev/null || true
         path=""
       fi
@@ -165,7 +165,7 @@ run_survival_process() {
     if [ -n "$cgroup_path" ]; then
       (
         echo $$ >"$cgroup_path/cgroup.procs" 2>/dev/null || true
-        exec timeout "$TIMEOUT_SEC" \
+        exec timeout "$TIMEOUT_SEC" env \
           GUNBC_EVAL_MEMO="$eval_memo" \
           JSON_PARSE_PROBE_MODE=survival \
           JSON_PARSE_TARGET_BYTES="$target_bytes" \
@@ -173,7 +173,7 @@ run_survival_process() {
       )
       ec=$?
     else
-      timeout "$TIMEOUT_SEC" \
+      timeout "$TIMEOUT_SEC" env \
         GUNBC_EVAL_MEMO="$eval_memo" \
         JSON_PARSE_PROBE_MODE=survival \
         JSON_PARSE_TARGET_BYTES="$target_bytes" \
@@ -187,8 +187,8 @@ run_survival_process() {
     echo "# cgroup_memory_peak_kb=$(cgroup_read_peak_kb "$cgroup_path")"
     echo "# cgroup_oom_kill_count=$(cgroup_read_oom_kills "$cgroup_path")"
     cgroup_cleanup "$cgroup_path"
-    return 0
   } | tee "$outfile"
+  return 0
 }
 
 run_memo_receipt_process() {
@@ -207,7 +207,7 @@ run_memo_receipt_process() {
     echo "# command: JSON_PARSE_PROBE_MODE=memo_receipt JSON_PARSE_TARGET_BYTES=$target_bytes $bin"
     echo "#"
     set +e
-    timeout "$TIMEOUT_SEC" \
+    timeout "$TIMEOUT_SEC" env \
       JSON_PARSE_PROBE_MODE=memo_receipt \
       JSON_PARSE_TARGET_BYTES="$target_bytes" \
       "$bin"
@@ -215,8 +215,8 @@ run_memo_receipt_process() {
     set -e
     echo "# exit_code=$ec"
     echo "# termination=$(termination_label "$ec")"
-    return 0
   } | tee "$outfile"
+  return 0
 }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
