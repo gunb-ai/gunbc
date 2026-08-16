@@ -2,6 +2,9 @@ module test.claim.interpreter_replacement_cut_witness_test
 
 import std.types { String, Bool, List, list_length }
 import gunbc.replacement_cut {
+  BoundaryConsumer, BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty,
+  ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY,
+  EvidenceOnly, Retire, Undecided,
   CutRefusalCause,
   UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence,
   CoveredByOldRoot, ReplacementNamesOldRoot,
@@ -85,12 +88,65 @@ test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
   )
 }
 
-// Retired and replaced consumers contribute no causes: a row whose subject
-// leaves with X needs no coverage authority.
+fn census_rows(census: BoundaryCensus) -> List<BoundaryConsumer> {
+  match census {
+    ConsumersEnumerated { consumers: rows } => rows
+    BoundaryDeclaredEmpty { basis: _ } => []
+  }
+}
+
+fn is_causeless_disposition(d: ConsumerDisposition) -> Bool {
+  match d {
+    Retire { reason: _ } => true
+    ReplacedByY { new_authority: _ } => true
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Undecided => false
+  }
+}
+
+fn count_consumers(rows: List<BoundaryConsumer>, p: fn(ConsumerDisposition) -> Bool) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) { if p(r.disposition) { acc + 1 } else { acc } })
+}
+
+fn is_retire(d: ConsumerDisposition) -> Bool {
+  match d {
+    Retire { reason: _ } => true
+    ReplacedByY { new_authority: _ } => false
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Undecided => false
+  }
+}
+
+fn is_replaced(d: ConsumerDisposition) -> Bool {
+  match d {
+    ReplacedByY { new_authority: _ } => true
+    Retire { reason: _ } => false
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Undecided => false
+  }
+}
+
+// A row whose subject leaves with X needs no coverage authority. Asserted as the
+// ARITHMETIC that distinguishes the arms rather than by re-stating the cause
+// counts: four consumers are retired-or-replaced, ten are enumerated, and exactly
+// the other six produce causes. Three DIFFERENT constants (3, 1, 10) can only hold
+// together if the disposition field genuinely varies per row -- a constant or an
+// unpopulated field cannot satisfy them at once.
 test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
-  let causes = causes_of(admission: interpreter_cut_admission())
-  count_matching(causes: causes, p: is_uncovered_surviving) == 3
-    && list_length(items: causes) == 6
+  let rows = census_rows(census: interpreter_replacement_cut().boundary_census)
+  let causeless = count_consumers(rows: rows, p: is_causeless_disposition)
+  list_length(items: rows) == 10
+    && count_consumers(rows: rows, p: is_retire) == 3
+    && count_consumers(rows: rows, p: is_replaced) == 1
+    && causeless == 4
+    && list_length(items: causes_of(admission: interpreter_cut_admission()))
+       == list_length(items: rows) - causeless
 }
 
 // The descent arm carries a BOUNDARY and no identifier. This is the assertion
