@@ -1,0 +1,96 @@
+module gunbc.spark_serving_converge_apply
+
+import std.types { String, List, Bool, Int }
+import gunbc.fleet_converge_plan {
+  FleetConvergePlanArtifact,
+  fleet_converge_plan_artifact_bundle_admits,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark_serving_converge_realize {
+  realize_spark_serving_install_effects_argv,
+  spark_serving_install_remote_argv_refused,
+  SparkServingInstallRemoteArgvPresent,
+  SparkServingInstallRemoteArgvRefused,
+}
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome }
+
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv and actuation routes through typed_argv_exec_over_fleet_ssh — never through effect_actuation shell strings (privilege derivation only)."
+
+type SparkServingFrozenApplyResult =
+    SparkServingFrozenApplied { remote_argv: List<String>, effect_count: Int }
+  | SparkServingFrozenApplyRefused { reason: String }
+
+type SparkServingFrozenRemoteExecResult =
+    SparkServingFrozenRemoteExecApplied { exec_outcome: TypedArgvExecOutcome }
+  | SparkServingFrozenRemoteExecRefused { reason: String }
+
+fn spark_serving_apply_reads_frozen_typed_rows(
+  artifact: FleetConvergePlanArtifact,
+  claimed_bundle_hex: String,
+) -> SparkServingFrozenApplyResult {
+  if !fleet_converge_plan_artifact_bundle_admits(artifact: artifact, claimed_hex: claimed_bundle_hex) {
+    SparkServingFrozenApplyRefused {
+      reason: "spark_serving_converge_apply: plan artifact bundle/hash consistency refused — typed rows cannot be smuggled beside an unverified v1 digest",
+    }
+  } else {
+    let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
+    let argv_verdict = realize_spark_serving_install_effects_argv(
+      effects: frozen_effects,
+      executor_login: spark_serving_automation_principal_login(),
+    )
+    if spark_serving_install_remote_argv_refused(v: argv_verdict) {
+      match argv_verdict {
+        SparkServingInstallRemoteArgvRefused { reason: why } =>
+          SparkServingFrozenApplyRefused {
+            reason: concat("spark_serving_converge_apply: ", why),
+          }
+        SparkServingInstallRemoteArgvPresent { argv: _ } =>
+          SparkServingFrozenApplyRefused {
+            reason: "spark_serving_converge_apply: remote argv refused verdict disagreed with shape",
+          }
+      }
+    } else {
+      match argv_verdict {
+        SparkServingInstallRemoteArgvPresent { argv: remote_argv } =>
+          SparkServingFrozenApplied {
+            remote_argv: remote_argv,
+            effect_count: length(frozen_effects),
+          }
+        SparkServingInstallRemoteArgvRefused { reason: why } =>
+          SparkServingFrozenApplyRefused { reason: why }
+      }
+    }
+  }
+}
+
+fn spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
+  artifact: FleetConvergePlanArtifact,
+  claimed_bundle_hex: String,
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+) -> SparkServingFrozenRemoteExecResult {
+  match spark_serving_apply_reads_frozen_typed_rows(
+    artifact: artifact,
+    claimed_bundle_hex: claimed_bundle_hex,
+  ) {
+    SparkServingFrozenApplyRefused { reason: why } =>
+      SparkServingFrozenRemoteExecRefused { reason: why }
+    SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+      if n == 0 {
+        SparkServingFrozenRemoteExecApplied {
+          exec_outcome: TypedArgvExecRefused {
+            reason: "spark_serving_converge_apply: converged plan — zero frozen install effects, remote exec is noop",
+          },
+        }
+      } else {
+        SparkServingFrozenRemoteExecApplied {
+          exec_outcome: typed_argv_exec_over_fleet_ssh(
+            target: target,
+            context: context,
+            argv: argv,
+          ),
+        }
+      }
+  }
+}

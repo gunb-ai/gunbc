@@ -1,0 +1,191 @@
+module test.claim.spark_serving_converge_slice_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.membership_reconcile { MemberChanged }
+import gunbc.fleet_converge_plan {
+  FleetConvergePlanArtifact,
+  fleet_converge_plan_artifact_hash,
+  fleet_converge_plan_artifact_bundle_admits,
+  fleet_converge_plan_spark_typed_actions_consistency_admits,
+}
+import gunbc.spark_serving_converge_plan {
+  spark_serving_fleet_converge_plan_artifact,
+  spark_serving_linger_slice_noop_when_converged,
+  spark_serving_linger_membership_plan,
+  spark_serving_frozen_linger_effect,
+}
+import gunbc.spark_serving_converge_apply {
+  spark_serving_apply_reads_frozen_typed_rows,
+  SparkServingFrozenApplied,
+  SparkServingFrozenApplyRefused,
+}
+import gunbc.spark_serving_converge_realize {
+  spark_serving_enable_linger_remote_argv,
+  spark_serving_enable_linger_argv_matches_expected,
+  SparkServingInstallRemoteArgvPresent,
+}
+import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark_serving_realization { EnableLingerForOwnAccount }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_host_srv5: NonEmptyStr = "srv5" as NonEmptyStr
+
+test fn linger_slice_noop_when_linger_already_enabled() -> Bool {
+  spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
+}
+
+test fn linger_slice_plans_member_changed_when_linger_disabled() -> Bool {
+  let plan = spark_serving_linger_membership_plan(
+    host: operator_host_srv5,
+    linger_enabled: false,
+  )
+  any(plan.actions, a => match a {
+    MemberChanged { from: _, to: _ } => true
+    _ => false
+  })
+}
+
+test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
+  match spark_serving_enable_linger_remote_argv(
+    login: spark_serving_automation_principal_login(),
+  ) {
+    SparkServingInstallRemoteArgvPresent { argv: remote_argv } =>
+      spark_serving_enable_linger_argv_matches_expected(argv: remote_argv)
+    _ => false
+  }
+}
+
+test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: false,
+  ) {
+    Present { value: artifact } =>
+      length(artifact.spark_serving_typed_actions) == 1
+        && match spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
+          Present { value: e } => e == EnableLingerForOwnAccount
+          Absent => false
+        }
+        && string_contains(
+          s: artifact.plan_body,
+          pattern: "# spark-serving-typed-actions:",
+        )
+        && !string_contains(s: artifact.apply_shell, pattern: "loginctl")
+    Absent => false
+  }
+}
+
+test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: true,
+  ) {
+    Present { value: artifact } => length(artifact.spark_serving_typed_actions) == 0
+    Absent => false
+  }
+}
+
+test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: false,
+  ) {
+    Present { value: artifact } =>
+      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+        Present { value: hex } =>
+          !fleet_converge_plan_artifact_bundle_admits(
+            artifact: FleetConvergePlanArtifact {
+              subject: artifact.subject,
+              prior_generation: artifact.prior_generation,
+              plan_lease: artifact.plan_lease,
+              observed_baseline_hex: artifact.observed_baseline_hex,
+              plan_body: artifact.plan_body,
+              apply_shell: artifact.apply_shell,
+              spark_serving_typed_actions: [],
+            },
+            claimed_hex: hex as String,
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: false,
+  ) {
+    Present { value: artifact } =>
+      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+        Present { value: hex } =>
+          match spark_serving_apply_reads_frozen_typed_rows(
+            artifact: artifact,
+            claimed_bundle_hex: hex as String,
+          ) {
+            SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+              n == 1 && spark_serving_enable_linger_argv_matches_expected(argv: argv)
+            SparkServingFrozenApplyRefused { reason: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn linger_slice_apply_noop_when_converged() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: true,
+  ) {
+    Present { value: artifact } =>
+      match fleet_converge_plan_artifact_hash(artifact: artifact) {
+        Present { value: hex } =>
+          match spark_serving_apply_reads_frozen_typed_rows(
+            artifact: artifact,
+            claimed_bundle_hex: hex as String,
+          ) {
+            SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+              n == 0 && length(argv) == 0
+            SparkServingFrozenApplyRefused { reason: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: witness_host_srv5,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    linger_enabled: false,
+  ) {
+    Present { value: artifact } =>
+      fleet_converge_plan_spark_typed_actions_consistency_admits(
+        plan_body: artifact.plan_body,
+        spark_serving_typed_actions: artifact.spark_serving_typed_actions,
+      )
+    Absent => false
+  }
+}
