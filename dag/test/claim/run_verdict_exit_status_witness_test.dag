@@ -38,7 +38,13 @@ MEASURED, not hypothetical. An earlier revision of the failure row called run_wi
 
 THE FIX IS THE UNCONFLATED ROUTE, already in the tree: the failure row now calls gunbc.WitnessBin.Run directly and reads result.success from a RECORD. A hermetic context cannot satisfy it — the operation refuses and the witness fails loudly — so the row can no longer answer yes on nothing. The precedent is typed_witness_bin_run_loud_failure_red_control_holds in test.claim.typed_witness_invocation, whose own note records that this route replaced a cheaper one to keep exactly this discrimination.
 
-DISSOLVE-ON: run_witness_bin returns a result that distinguishes an unexecuted invocation from a nonzero exit, at which point rows may use the helper without the polarity hazard. Rewriting an assertion does not discharge this; changing the return type does."
+DISSOLVE-ON: run_witness_bin returns a result that distinguishes an unexecuted invocation from a nonzero exit, at which point rows may use the helper without the polarity hazard. Rewriting an assertion does not discharge this; changing the return type does.
+
+STRENGTHENED 2026-08-16, AND THE DEFECT WAS INTRODUCED BY THE FIX ABOVE. Moving the refusal row onto the unconflated route left it asserting result.success == false — which is what the failure row already asserted. TWO ROWS, ONE PREDICATE, DIFFERENT SUBJECTS: one claims a DECLARED ExitFailure code reaches the process status, the other claims a value carrying no verdict is REFUSED. Both are satisfied by 'exited nonzero for any reason', so neither could tell it had exercised its own arm, and both would pass against a driver that exited 1 for everything — a fabricated plausible output one level up from the one this file exists to catch. The failure row in particular tested nothing about the CODE, which is the half that makes the mapping a mapping.
+
+THE FIX IS TO ASSERT THE CODE, because the three arms have three distinct ones and the driver is the single authority for each: ExitSuccess -> 0, an ExitFailure -> its own declared code passing through exit_status_for, NotProcessExit -> 2. So the rows now read exit_code == 3 and exit_code == 2 against a fixture declaring 3, and the three rows answer differently rather than two answering identically.
+
+THE DIAGNOSTIC THAT FOUND IT, worth keeping because it is cheap and general: after any substitution, for every file holding both a positive and a negative control, CHECK THAT THEY STILL ANSWER OPPOSITELY ON THE SAME PREDICATE. A negative control is correct only when its subject is wrong IN A PARTICULAR WAY; a substitution preserves the type and the shape but not the wrongness, and the wrongness is the entire content of the control. Nothing was red — a negative control that has quietly become a restatement of its positive sibling reports success."
 
 // The failure arm. A returned ExitFailure MUST reach a nonzero status.
 // This is the exact defect the planted-drift control caught; if this row ever greens by
@@ -55,7 +61,7 @@ test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
       "--function", "verdict_failure"
     ]
   )
-  result.success == false
+  result.exit_code == 3
 }
 
 // The positive control. Without it the row above is satisfiable by a seam that fails on
@@ -95,5 +101,5 @@ test fn run_non_process_exit_return_refuses() -> Bool {
       "--function", "verdict_not_process_exit"
     ]
   )
-  result.success == false
+  result.exit_code == 2
 }
