@@ -23,7 +23,7 @@ fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
         row(cells: [cell(text: "**F0**"), cell(text: "`emit` / `emit_module` pipeline (walks TargetModel edges backward; new target = rows, no pipeline edit)"), cell(text: "✓ done")]),
-        row(cells: [cell(text: "**F1**"), cell(text: "`TargetModel` 4-edge + grammar-inverse translation gunbc.plans.md_helpers.rows"), cell(text: "✓ done")]),
+        row(cells: [cell(text: "**F1**"), cell(text: "`TargetModel` 4-edge + grammar-inverse translation rows"), cell(text: "✓ done")]),
         row(cells: [cell(text: "**F2**"), cell(text: "VEP (`TargetValueExpressionProjection`) — the general body producer"), cell(text: "**partial** (rust: `^rust_token_unwired_\{else,loop,match,fat_arrow\}`, `v2.extdeps.languages.rust` `rust_value_expression_projection`) · partial (TS: match/loop/bind-in unwired) · **absent** (python, ecmascript)")]),
         row(cells: [cell(text: "**F3**"), cell(text: "`BlockEvaluationMode` statement spine (`ValueProducing` vs `StatementSequenced`)"), cell(text: "✓ type exists; TS's `StatementSequenced` arm produces the correct fail-closed refusals")]),
         row(cells: [cell(text: "**F4**"), cell(text: "`ProcessProgram` transport + `run_emit_host`; executable identity **bound per extdeps transport row** (`v2.std.host_transport` `HostTransportDescriptor` / `ProcessProgram`), compiler dispatch **generic** (`v2.compiler.emit_host` `process_program_name`)"), cell(text: "✓ done — `HostToolProgram.executable` is carried by the row and generic dispatch returns that value; target-specific work is only to configure a runtime row where one is absent")]),
