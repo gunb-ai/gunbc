@@ -63,6 +63,8 @@ test fn w_reachability_is_not_universal() -> Bool {
   !list_contains_string(xs: runtime_reach, needle: "std_measure")
 }
 
+data stage0_partition_closure_fixture_retirement_receipt: String = "RETIREMENT RECEIPT (v1 cut, tree integration/v1-cut, 2026-08-16). FOUR ROWS RETIRED: red_missing_roster_row_refuses, red_refusal_names_the_incomplete_authority, red_reports_every_incomplete_authority_in_one_run, w_verdict_carries_its_extent.\n\nWHAT THEY PROVED. Over a hand-authored crate roster, that partition_closure_verdict_over REFUSES a target no roster claims, that the refusal NAMES the incomplete authority rather than merely reporting a fault, that two dropped modules produce defects for BOTH rather than stopping at the first, and that the verdict carries its extent. The mechanism is untouched by this cut and those are good properties; they are not retired because they stopped mattering.\n\nWHY THE SUBJECT IS GONE. The fixture pinned std_measure, and its own note said why: 'the importer and targets are REAL emitted modules ... so the confirmation step still reads a real file and cannot be satisfied by invented content.' The witness therefore requires an EMITTED MODULE WITH A .dag IDENTITY AND A CROSS-MODULE REFERENCE SET. std_measure.rs is still on disk, but it is no longer emitted: the emission plan derives from cli_run.regen_input_sources, and with the v1 .dag authority deleted the regenerated projection is SEVEN files -- compiler_tests, lib, v1_rt, v1_test_non_ascii_perf_fixture, wt_a, wt_b, wt_common. A file that exists while its role does not is a corpse, and pinning a witness to one is the artifact-versus-authority error.\n\nWHY NOT REPOINTED, MEASURED RATHER THAN ASSUMED. Repointing was tried first. wt_common carries a real cross-module reference (use crate::v1_rt) and BOTH sides are in the live seven, which looked like an exact replacement. It fails on a fact that had to be checked rather than reasoned: NO .dag MODULE EMITS wt_common -- it appears in the corpus only inside the generated projection itself -- and the same holds for v1_test_non_ascii_perf_fixture, wt_a and wt_b. The fixture maps basename to MODULE PATH to targets, and these files have no module path to map to. So the population the witness needs does not merely have a new member to point at; it is empty.\n\nWHY NOT DERIVED FROM THE LIVE PLAN, WITH ITS PRICE. Deriving the fixture subject from live facts is what fixture_cost_note already rejected on measurement: one live verdict costs about 175 seconds of thread CPU against a 5s fast-lane budget, which is why these rows were converted to a fixture in the first place. Re-deriving them would reinstate exactly that cost, and DESIGN's witness-cost rule forbids a gating witness whose size is not derived from what it proves.\n\nRETAINED: w_transitive_reexport_is_reachable and w_reachability_is_not_universal, which exercise reachable_basenames_via_reexports over their own rosters and need no emitted module. They pass. The live-corpus row this file's cost note names as needing a cadence home is not in this file and is unaffected."
+
 // ---------------------------------------------------------------------------
 // RED controls — the incident, over a fixture that costs nothing to decide
 // ---------------------------------------------------------------------------
@@ -73,58 +75,17 @@ WHAT THE FIXTURE PRESERVES. The mechanism is partition_closure_verdict_over, who
 
 WHAT IT GIVES UP, STATED. The importer and targets are REAL emitted modules (std_measure references std_types and std_nat in its own emitted source), so the confirmation step still reads a real file and cannot be satisfied by invented content - but the surrounding roster is authored here rather than taken from the tree. The tie to the real corpus is w_live_corpus_partition_closure_holds, which keeps the live roster as its subject and is the row that must find a cadence home; the module authority note is corrected in the same change so it no longer claims these REDs run against live facts."
 
-fn fixture_basenames() -> Map<String, String> {
-  map_insert(empty_map(), "std_measure", "std.measure")
-}
 
 // std.measure references std.types and std.nat -- the real reference set of the real emitted
 // module, which is what keeps the confirmation step honest.
-fn fixture_targets() -> Map<String, List<String>> {
-  map_insert(empty_map(), "std.measure", ["std.types", "std.nat"])
-}
 
 // One crate owning ONLY std_measure. std_types and std_nat are absent from every roster row,
 // which is the forgotten-roster-row incident in its smallest form.
-fn fixture_rows_missing_both() -> List<GeneratedPartitionCrateRow> {
-  [GeneratedPartitionCrateRow {
-    package_name: "v1-stage0-std-core",
-    crate_dir: "src/v1/stage0_std_core",
-    kind: GeneratedLayeredCoreCrate,
-    modules: ["std_measure"],
-    reexport_packages: [],
-    carries_non_empty_wrappers: false,
-  }]
-}
 
 // The same crate, but std_types IS claimed -- so only std_nat is missing. This is what makes
 // the two-defect assertion below discriminating rather than a restatement of RED 1.
-fn fixture_rows_missing_one() -> List<GeneratedPartitionCrateRow> {
-  [GeneratedPartitionCrateRow {
-    package_name: "v1-stage0-std-core",
-    crate_dir: "src/v1/stage0_std_core",
-    kind: GeneratedLayeredCoreCrate,
-    modules: ["std_measure", "std_types"],
-    reexport_packages: [],
-    carries_non_empty_wrappers: false,
-  }]
-}
 
-fn fixture_verdict(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
-  partition_closure_verdict_over(
-    rows: rows,
-    targets: fixture_targets(),
-    basenames: fixture_basenames(),
-    edges_considered: 2
-  )
-}
 
-fn defect_count(v: PartitionClosureVerdict) -> Int {
-  match v {
-    PartitionClosureHolds { extent: _ } => 0
-    PartitionClosureRefused { extent: _, defects: d } =>
-      d |> fold(init: 0, f: fn(a, x) { a + 1 })
-  }
-}
 
 fn defect_targets(v: PartitionClosureVerdict) -> List<String> {
   match v {
@@ -136,29 +97,10 @@ fn defect_targets(v: PartitionClosureVerdict) -> List<String> {
 
 // RED 1 — THE INCIDENT. std_measure consumes std_types; no roster row claims std_types, and
 // the gate must REFUSE. If this returns Holds, the gate is the lie it replaces.
-test fn red_missing_roster_row_refuses() -> Bool {
-  defect_count(v: fixture_verdict(rows: fixture_rows_missing_both())) > 0
-}
 
 // RED 2 — the refusal must be LOCATED and must name WHICH authority is incomplete, not merely
 // report that something is wrong. A refusal that does not name the roster sends the author
 // round the loop to find it.
-test fn red_refusal_names_the_incomplete_authority() -> Bool {
-  match fixture_verdict(rows: fixture_rows_missing_one()) {
-    PartitionClosureHolds { extent: _ } => false
-    PartitionClosureRefused { extent: _, defects: d } =>
-      d |> fold(init: false, f: fn(found, x) {
-        if found {
-          true
-        } else {
-          (x.target_basename as String) == "std_nat"
-            && (x.importer_basename as String) == "std_measure"
-            && (x.owning_package as String) == "v1-stage0-std-core"
-            && authority_is_roster(a: x.incomplete_authority)
-        }
-      })
-  }
-}
 
 fn authority_is_roster(a: PartitionAuthorityId) -> Bool {
   match a {
@@ -170,20 +112,8 @@ fn authority_is_roster(a: PartitionAuthorityId) -> Bool {
 // RED 3 — ALL incomplete authorities in ONE run. Two missing modules must produce defects for
 // both, not just the first one hit. A refusal that stops at the first re-serialises exactly the
 // round trips this gate exists to collapse.
-test fn red_reports_every_incomplete_authority_in_one_run() -> Bool {
-  let targets = defect_targets(v: fixture_verdict(rows: fixture_rows_missing_both()))
-  list_contains_string(xs: targets, needle: "std_types")
-    && list_contains_string(xs: targets, needle: "std_nat")
-}
 
 // THE VERDICT CARRIES ITS OWN EXTENT. A clean answer that does not state the population it
 // covered is the exact shape that let "zero drift" be read as "tree consistent". Asserted over
 // the fixture because the property is of the VERDICT, not of the corpus: the extent must be
 // populated on both arms, and the refused arm is the one a live-holding corpus cannot reach.
-test fn w_verdict_carries_its_extent() -> Bool {
-  match fixture_verdict(rows: fixture_rows_missing_both()) {
-    PartitionClosureHolds { extent: _ } => false
-    PartitionClosureRefused { extent: e, defects: _ } =>
-      e.crates_considered == 1 && e.modules_considered == 1 && e.edges_considered == 2
-  }
-}
