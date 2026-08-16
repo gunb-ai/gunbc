@@ -6,6 +6,7 @@ import std.realization {
   Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
 }
 import std.disposition { Disposition, Terminal }
+import v2.compiler.use_site_verdict { UseSiteVerdict, MoveWhole, Borrow, CloneShared }
 import std.cache_interface {
   ProviderRetention,
   CapacityPolicy,
@@ -33,7 +34,7 @@ data materialization_ladder_value_binding_predicate_contract: Disposition = Term
   reason: "Structural coproduct readers over ValueMaterialization/AccessMode (value_verdict_is_*, value_materialization_*, access_is_*) — closed by the value-tier vocabulary; discriminating corpus: materialization_ladder_witness_test value_* cells."
 }
 
-data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
+data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. DISSOLUTION FIRED, EARLIER THAN THIS ROW EXPECTED AND FOR A DIFFERENT REASON (2026-08-16). v1.compiler.ownership is DELETED — not because the emit stage migrated onto the v2/std spine, but because its per-binding grain was itself the defect: clone-vs-move is a property of a use site, and the three predicates built above that authority (build_movable_set, build_read_only_params, and the ad-hoc emit-time owned_bindings) were compensating structures the grain error forced into existence, each falling through to the same silent default — clone. This row is kept rather than deleted because the mapping it records is the quarry that made the cut legible: the correspondence it tracked was real, and what it could not see is that BOTH surfaces answered at the wrong grain, so the fork did not widen, it was resolved by deleting one side and re-deriving the other. The residue it named as keeping the v1 instance load-bearing — SharedError's affine refusal — survives here as ValueRefusedAffine, derived from a take count over per-site verdicts. Authority: docs/plans/ownership-grain-cut-plan.md."
 
 data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (retention) splits across two rungs and the earlier wording claimed only the higher one. RETENTION FACTS are by construction: CacheProvider cannot be written without a ProviderRetention, so a provider with no declared lifetime or capacity is unwritable. ELIGIBILITY is mechanically adjudicated, not structural: an unbounded provider is deliberately representable — a scoped witness memo is legitimately unbounded — so discharge_verdict ADMITS providers through retention_admission (a total fold over release_policy x capacity) and refuses when none qualifies. Requiring the field does not make its value eligible, and conflating the two is the rung inflation DESIGN section 4b names. The former EvictionClass forced a choice between those two and carried its budget as free text; a scoped carrier and a byte-bounded one are now the same product with different fields, and TTL or LRU alone reach neither arm (freshness is InvalidationTrigger, and a replacement ORDER is not a ceiling). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
 
@@ -926,7 +927,7 @@ fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
   }
 }
 
-data value_tier_note: String = "The VALUE tier: v1.compiler.ownership refactored onto materialization (operator-directed first consolidation, 2026-07-09). A value binding inside one shared-state frame is the smallest materialization site, and the ownership decision IS provider selection: single take = move the value (no provider); plural readonly access = discharge by ReferenceTier (point at it — 'if a value is readonly and in context, provide a reference; do not destroy the memory to build a cache'); a take alongside borrows = the PRICED demotion to CopyTier (v1: excluded from build_movable_set, the emitter clones — the #6249 clone-fallback made explicit and priced; v1's FoldAccUnwrapProof is the escape that re-earns the move for fold accumulators); plural takes = affine refusal (v1 SharedError — a double-consume is a modeling bug, not a caching opportunity). Faithful to v1's THREE distinct plurality readings: take_count mirrors semantic_consumer_count (Consumed only — the affine axis); value_access_plurality mirrors binding_fan_out (CarryAccess/Threaded excluded — the reference-eligibility axis, the reduce-spine exclusion); borrow_count mirrors whole_value_borrow_count (Read + Carry, NOT Project — the movability axis). Witnesses assert cell-by-cell agreement with make_decision / build_movable_set / build_read_only_params semantics; corpus-level equivalence against live v1 ownership folds is the C4 receipt."
+data value_tier_note: String = "The VALUE tier: v1.compiler.ownership refactored onto materialization (operator-directed first consolidation, 2026-07-09). A value binding inside one shared-state frame is the smallest materialization site, and the ownership decision IS provider selection: single take = move the value (no provider); plural readonly access = discharge by ReferenceTier (point at it — 'if a value is readonly and in context, provide a reference; do not destroy the memory to build a cache'); a take alongside borrows = the PRICED demotion to CopyTier (v1: excluded from build_movable_set, the emitter clones — the #6249 clone-fallback made explicit and priced; v1's FoldAccUnwrapProof is the escape that re-earns the move for fold accumulators); plural takes = affine refusal (v1 SharedError — a double-consume is a modeling bug, not a caching opportunity). MIRROR RETIRED, GRAIN CORRECTED (2026-08-16). This row formerly declared itself faithful to v1's three plurality readings and cited witnesses asserting cell-by-cell agreement with make_decision / build_movable_set / build_read_only_params. That authority is DELETED — its per-binding grain was the root defect, since clone-vs-move is a property of a USE SITE and a per-binding answer structurally cannot say 'borrowed at uses 1..n-1, moved at use n'. Agreement with a deleted authority is not a claim this module can hold, and the C4 corpus-equivalence receipt it named is retired with its subject rather than carried undecided. What survives is this tier's own semantics, now DERIVED: every aggregate is a count over per-site UseSiteVerdicts (value_site_verdicts), so the whole-value answer is a projection of the per-site one instead of a second answer to the same question. Two of v1's three exclusions are rejected outright rather than mirrored — a projection borrow blocks a whole-value move, and a carried value is borrowed at the site that carries it — both on the ground that parity with X was never the bar; the affected population is provably empty (ProjectAccess and CarryAccess have zero production construction sites; both live producers build ReadAccess only), so the rule is asserted before a producer exists to depend on the old cell. See value_site_verdict_order_note and value_site_verdict_semantic_change_note, and docs/plans/ownership-grain-cut-plan.md."
 
 type AccessMode
   = ReadAccess
@@ -961,34 +962,53 @@ fn access_is_consume(a: AccessMode) -> Bool {
   }
 }
 
-fn access_is_carry(a: AccessMode) -> Bool {
-  match a {
-    ReadAccess => false
-    ConsumeAccess => false
-    CarryAccess => true
-    ProjectAccess => false
-  }
-}
-
-fn access_is_whole_value_borrow(a: AccessMode) -> Bool {
-  match a {
-    ReadAccess => true
-    ConsumeAccess => false
-    CarryAccess => true
-    ProjectAccess => false
-  }
-}
-
 fn value_take_count(usage: ValueUsage) -> Int {
   usage.consumers |> filter(c => access_is_consume(a: c.access)) |> count
 }
 
-fn value_access_plurality(usage: ValueUsage) -> Int {
-  usage.consumers |> filter(c => !access_is_carry(a: c.access)) |> count
+data value_site_verdict_order_note: String = "DECIDE PER SITE, THEN COLLAPSE — never collapse then decide. `value_materialization` previously read `usage` and folded `consumers` to three Ints BEFORE reaching any arm, so the per-site edges this module already carries (`ValueConsumerEdge { access, site }`) never reached a decision. The input grain was right and the fold discarded it. Every aggregate below is now a count over per-site verdicts, which is what makes the whole-value answer a DERIVED projection of the per-site one rather than a second, independent answer to the same question (DESIGN §2: model the concept once at its true grain, derive every use). The verdict carrier is `v2.compiler.use_site_verdict` `UseSiteVerdict`, imported rather than re-declared: a fact's home is its LAYER and paths are discriminators, so a std-layer fact filed under v2/compiler/ by authorship accident is still a std-layer fact — nothing in it is target-specific (it imports only v2.std.node/collection/algebra, and `MoveField`'s field is a substrate `Symbol`). Move/borrow/copy are affine readings of ACCESS; Rust enforces them, it did not author them. NOT a nickname of `ProviderTier`: the relation is SELECTION, not identity — a `Borrow` verdict SELECTS `ReferenceTier`, and `ProviderTier` additionally spans `MemoTier`/`ArtifactTier`/`CasTier`, which have no use-site reading at all."
+
+data value_site_verdict_semantic_change_note: String = "TWO SEMANTIC CHANGES, DELIBERATE, NOT TRANSLATION LOSS. v1's per-binding authority excluded `ProjectAccess` from its movability axis and `CarryAccess` from its reference-eligibility axis; both exclusions are X's rule, and parity with X was never the bar (DESIGN §3). Y holds instead that a live projection borrow BLOCKS a whole-value move — which is what the target actually enforces — so `ProjectAccess` maps to `Borrow` and counts as a reader; and a carried value is borrowed at the site that carries it, so `CarryAccess` maps to `Borrow` too. The alternative was an arm on `UseSiteVerdict` for projection-borrow, refused as a HOLLOW ARM: its distinguishing datum is a field name, `ValueConsumerEdge` carries none, so the constructor could never be faithfully constructed — growing the concept count by re-invention, which is §2's failed-decomposition test. The third alternative — folding over (edge, verdict) pairs and reading the raw access back for the Project case — was refused as the collapse wearing the fold's clothes: it satisfies the letter of 'fold over verdicts' while defeating its purpose. AFFECTED POPULATION IS PROVABLY EMPTY, which is why this is cheap now and expensive later: `ProjectAccess` has ZERO production construction sites corpus-wide (5 occurrences, in this module's declaration and its witness), and both live producers — `gunbc.floor_materialization` `floor_index_build_value_usage` and `floor_typecheck_store_value_usage` — construct every edge as `ReadAccess`. So no verdict observable today changes, and the rule is asserted BEFORE a producer exists to depend on the old cell. A semantic change to an empty population is exactly where evidence is cheapest to add and most likely to be skipped, so it is witnessed rather than left as a silent default: `materialization_ladder_witness_test` constructs a `ProjectAccess` edge beside a `ConsumeAccess` one and asserts `ValueDemotedToCopy`, which the old rule would have answered `ValueMoved`."
+
+// The per-site decision. A consume site MOVES unless it coexists with a borrow, in which case
+// it is the priced demotion to a copy. Every non-consume access is a borrow of the value at
+// that site — see `value_site_verdict_semantic_change_note` for why Project and Carry are not
+// special-cased here.
+fn value_site_verdict(access: AccessMode, sole_take_with_borrows: Bool) -> UseSiteVerdict {
+  if access_is_consume(a: access) {
+    if sole_take_with_borrows { CloneShared } else { MoveWhole }
+  } else {
+    Borrow
+  }
 }
 
-fn value_borrow_count(usage: ValueUsage) -> Int {
-  usage.consumers |> filter(c => access_is_whole_value_borrow(a: c.access)) |> count
+fn value_site_verdicts(usage: ValueUsage) -> List<UseSiteVerdict> {
+  let takes = value_take_count(usage: usage)
+  let borrows = usage.consumers |> filter(c => !access_is_consume(a: c.access)) |> count
+  let demoted = (takes == 1) && (borrows > 0)
+  usage.consumers |> map(c => value_site_verdict(access: c.access, sole_take_with_borrows: demoted))
+}
+
+// THREE READINGS, THREE SEPARATE DERIVATIONS over the same verdict list — never one count
+// reused three ways. A collapse to a single count is what re-introduces the grain error one
+// layer up, so the three stay distinct even where two of them agree on today's population.
+fn verdict_move_count(verdicts: List<UseSiteVerdict>) -> Int {
+  verdicts |> filter(v => match v { MoveWhole => true, _ => false }) |> count
+}
+
+fn verdict_copy_count(verdicts: List<UseSiteVerdict>) -> Int {
+  verdicts |> filter(v => match v { CloneShared => true, _ => false }) |> count
+}
+
+fn verdict_reader_count(verdicts: List<UseSiteVerdict>) -> Int {
+  verdicts |> filter(v => match v { Borrow => true, _ => false }) |> count
+}
+
+// A consume site is exactly one of MoveWhole or CloneShared, so the affine axis is their sum.
+// Deriving it from MoveWhole alone would make two demoted takes read as zero takes and silently
+// escape the affine refusal.
+fn verdict_take_count(verdicts: List<UseSiteVerdict>) -> Int {
+  verdict_move_count(verdicts: verdicts) + verdict_copy_count(verdicts: verdicts)
 }
 
 fn first_provider_where(providers: List<CacheProvider>, wanted: fn(CacheProvider) -> Bool) -> CacheProvider? {
@@ -997,20 +1017,21 @@ fn first_provider_where(providers: List<CacheProvider>, wanted: fn(CacheProvider
 }
 
 fn value_materialization(usage: ValueUsage, providers: List<CacheProvider>) -> ValueMaterialization {
-  let takes = value_take_count(usage: usage)
-  let plurality = value_access_plurality(usage: usage)
-  let carries = usage.consumers |> filter(c => access_is_carry(a: c.access)) |> count
-  if (plurality == 0) && (carries == 0) {
+  let verdicts = value_site_verdicts(usage: usage)
+  let takes = verdict_take_count(verdicts: verdicts)
+  let copies = verdict_copy_count(verdicts: verdicts)
+  let plurality = verdict_reader_count(verdicts: verdicts)
+  if takes + plurality == 0 {
     ValueDead { identity: usage.identity }
   } else if takes > 1 {
     ValueRefusedAffine { identity: usage.identity, take_count: takes }
   } else if takes == 1 {
-    if value_borrow_count(usage: usage) == 0 {
+    if copies == 0 {
       ValueMoved { identity: usage.identity }
     } else {
       match first_provider_where(providers: providers, wanted: p => provider_is_copy_tier(p: p)) {
         Present { value: copier } =>
-          ValueDemotedToCopy { identity: usage.identity, copies: 1, provider_id: copier.id }
+          ValueDemotedToCopy { identity: usage.identity, copies: copies, provider_id: copier.id }
         Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: CopyTier }
       }
     }

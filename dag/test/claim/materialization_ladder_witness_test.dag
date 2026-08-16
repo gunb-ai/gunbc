@@ -266,7 +266,7 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
   deploy_ok && measure_ok
 }
 
-data value_tier_witness_note: String = "Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof) is asserted at the conservative pre-unwrap semantics."
+data value_tier_witness_note: String = "MIRROR CLAIM RETIRED WITH A RECEIPT, the witnesses re-enrolled against Y. These rows formerly asserted cell-by-cell agreement with `v1.compiler.ownership` — make_decision, build_read_only_params, build_movable_set — and that module is DELETED (the per-binding grain was the root; see docs/plans/ownership-grain-cut-plan.md). A witness whose only subject is behavior Y deliberately rejects is retired rather than left standing, else tests become the mechanism by which obsolete behavior grants itself immortality (DESIGN §3 step 6); a witness whose CLAIM survives is re-enrolled against the new authority. These are the second kind: what they establish — dead, moved, shared-by-reference, priced demotion, affine refusal, and the two carrier-capability refusals — are obligations Y still carries, now derived by folding OVER per-site `UseSiteVerdict`s rather than by collapsing consumers to three Ints before deciding. Every one passes unchanged across the cut, which is the evidence that the fold preserved the verdicts rather than the counting. What did NOT survive is the mirror relation itself: agreement with a deleted per-binding authority is not a claim Y can hold, and two of v1's three exclusions are rejected outright — `value_fold_carry_excluded_from_plurality_but_blocks_move` keeps its behavior and loses the premise in its name, since carry is now a borrow like any other and the row survives on its second half. The projection half is pinned in both directions by `value_projection_borrow_blocks_the_move`, which is the one fixture whose verdict the old rule would have answered differently."
 
 fn rust_value_providers() -> List<CacheProvider> {
   [rust_reference_provider(), rust_clone_provider()]
@@ -305,6 +305,21 @@ test fn value_fold_carry_excluded_from_plurality_but_blocks_move() -> Bool {
   ])
   let v = value_materialization(usage: u, providers: rust_value_providers())
   value_verdict_is_demoted_to_copy(v: v, identity: "fold-acc", copies: 1)
+}
+
+// THE DISCRIMINATING FIXTURE FOR THE PROJECTION RULE. Under v1's per-binding authority a
+// projection was excluded from the movability axis, so this exact usage answered ValueMoved:
+// one take, and a Project site that counted for nothing. Y holds that a live projection borrow
+// blocks a whole-value move — what the target actually enforces — so the same usage is the
+// priced demotion. Asserting BOTH halves, because a fixture that only pins the new arm cannot
+// tell a correct rule from a rule applied backwards.
+test fn value_projection_borrow_blocks_the_move() -> Bool {
+  let u = usage(identity: "record", consumers: [
+    edge(access: ProjectAccess, site: "field:header"),
+    edge(access: ConsumeAccess, site: "call:consume")
+  ])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_demoted_to_copy(v: v, identity: "record", copies: 1) && !value_verdict_is_moved(v: v, identity: "record")
 }
 
 test fn value_double_take_is_affine_refusal_not_a_caching_opportunity() -> Bool {
