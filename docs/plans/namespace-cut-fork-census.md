@@ -377,3 +377,50 @@ So "classify at arm grain" is not automatable by scanning for a conjunction. **T
 have to be read.** This is the same failure as every other instrument error in this lane —
 a regex standing in for the resolver, a filtered grep for the corpus, a name list for a
 relation, and now a keyword for an arm.
+
+## The relation this pass traversed, and what depends on it through another
+
+The clearances in this lane traversed two relations:
+
+```
+deletions        "text mentions this name"                        plain substring, whole tree, no filters
+qualifications   "the compiler reports a diagnostic at this span" the census
+```
+
+The second has a blind side that no widening of the search universe would close: **anything
+depending on the 632 edited files by their BYTES rather than their semantics.** A golden, a
+drift gate, a content hash, a regeneration fixed point. The pass rewrote 1504 byte ranges,
+and a diagnostic census cannot see a consumer that asserts byte equality — the dependency is
+not on a symbol or a filename at all, so no name-based search finds it at any breadth.
+
+The hazard is live here: `ci_layer_roots` carries a fixed-point receipt that *"reads every
+committed artifact from disk and asserts `artifact_generate` reproduces bytes byte-for-byte."*
+Had any edited file been a generated artifact, regeneration would overwrite the edit and red
+that gate, silently as far as this lane's instruments go.
+
+**Checked, and it clears:**
+
+| check | result |
+|---|---|
+| edited files carrying a generated-file header | 0 (control: `main.rs` detected, so the test works) |
+| edited files under `docs/` or `*.md` | 0 |
+| extension census of the 632 | 632 `.dag`, nothing else |
+| doc-generating sources edited | 0 — the one pattern hit was `roadmap_authority_test.dag` |
+
+**Two false positives on the way, both from the same error as everything else here.** First
+test asked "does the filename appear in any file that also mentions `generated_artifact`" and
+flagged six files, including `commit_workflow.dag` — which appears as an `--entry` **argument**
+in a CLI invocation, an input to a workflow, not a generated output. A containment test
+standing in for a membership test. Second, the doc-generator pattern matched a test *about*
+the roadmap authority rather than the generator. Both were name co-occurrence read as a
+relation.
+
+**Residue, named rather than cleared.** The header test traverses "the file declares itself
+generated"; a generated file *without* a header is invisible to it, and enumerating
+`artifact_generate`'s output set is not cheap without running it. Three independent checks
+agree and the population is very likely empty — it is not *proven* empty.
+
+**The generalisation worth keeping:** naming the relation you traverse is necessary but not
+sufficient. Also name **what your consumers depend on**, which is a different question. This
+lane traverses "calls"; a drift gate depends on "bytes"; those two never intersect however
+carefully the search is widened.
