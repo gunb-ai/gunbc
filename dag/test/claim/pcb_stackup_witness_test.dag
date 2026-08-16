@@ -23,6 +23,7 @@ import product.pcb.stackup {
   StackupAdmitted,
   StackupRefused,
   admit_stackup,
+  admitted_stackup_authority,
   admitted_stackup_body,
   establish_stackup_capability,
 }
@@ -35,6 +36,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data stackup_authority: DeclarationRef = DeclarationRef {
   module_path: "test.claim.pcb_stackup_witness",
   decl_name: "four_layer",
+  field: WholeDeclaration,
+}
+
+data single_layer_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.pcb_stackup_witness",
+  decl_name: "single_layer",
   field: WholeDeclaration,
 }
 
@@ -133,7 +140,7 @@ test fn w_a_mixed_layer_counts_as_reference_copper() -> Bool {
 // A well-formed board admits, and the admitted value carries the stackup it judged rather than a
 // fresh one — a verdict detached from its subject would be a name, not evidence.
 test fn w_a_wellformed_stackup_admits_and_carries_its_subject() -> Bool {
-  match admit_stackup(s: four_layer) {
+  match admit_stackup(s: four_layer, authority: stackup_authority) {
     StackupAdmitted { admitted: a } =>
       stackup_copper_layer_count(s: admitted_stackup_body(a: a)) == 4
         && stackup_plane_layer_count(s: admitted_stackup_body(a: a)) == 2
@@ -143,7 +150,7 @@ test fn w_a_wellformed_stackup_admits_and_carries_its_subject() -> Bool {
 
 // RED control: an all-signal multilayer board routes with no return path and must be refused.
 test fn w_red_a_multilayer_board_without_a_reference_plane_is_refused() -> Bool {
-  match admit_stackup(s: all_signal) {
+  match admit_stackup(s: all_signal, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
     StackupRefused { causes: c } =>
       count(c) == 1 && c.first() == RoutedBoardHasNoReferencePlane
@@ -154,7 +161,7 @@ test fn w_red_a_multilayer_board_without_a_reference_plane_is_refused() -> Bool 
 // no interior, which is the degenerate case rather than a defect — proving the refusal keys on the
 // routing relation and not merely on the absence of a plane.
 test fn w_a_single_layer_board_is_not_refused_for_lacking_a_plane() -> Bool {
-  match admit_stackup(s: single_layer) {
+  match admit_stackup(s: single_layer, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => true
     StackupRefused { causes: _ } => false
   }
@@ -170,7 +177,7 @@ test fn w_red_all_refusal_causes_are_counted_not_just_the_first() -> Bool {
     top: zero_copper,
     plies: [StackupPly { dielectric: zero_dielectric, copper: zero_copper }],
   }
-  match admit_stackup(s: broken) {
+  match admit_stackup(s: broken, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
     StackupRefused { causes: c } => count(c) == 3
   }
@@ -183,7 +190,7 @@ test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
     top: half_ounce,
     plies: [StackupPly { dielectric: zero_dielectric, copper: half_ounce_ground }],
   }
-  match admit_stackup(s: shorted) {
+  match admit_stackup(s: shorted, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
     StackupRefused { causes: c } => count(c) == 1 && c.first() == DielectricLayerHasNoThickness
   }
@@ -195,13 +202,29 @@ test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
 // compile-time fact, so the discriminating evidence for it is that no such construction exists
 // anywhere in the tree rather than an arm this witness can execute.
 test fn w_an_established_capability_requires_an_admitted_stackup() -> Bool {
-  match admit_stackup(s: four_layer) {
+  match admit_stackup(s: four_layer, authority: stackup_authority) {
     StackupRefused { causes: _ } => false
     StackupAdmitted { admitted: a } =>
-      match establish_stackup_capability(a: a, authority: stackup_authority) {
+      match establish_stackup_capability(a: a) {
         CapabilityEstablished { authority: r } => r.decl_name == "four_layer"
         CapabilityPending { owed: _ } => false
         CapabilityRefused { cause: _ } => false
       }
+  }
+}
+
+// The established capability names the declaration ADMISSION judged, not one supplied beside it.
+// Admitting a different stackup under a different authority produces a different established
+// reference, so the arm is a function of what was checked rather than of what was asserted.
+test fn w_the_established_authority_comes_from_admission() -> Bool {
+  match admit_stackup(s: single_layer, authority: single_layer_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      admitted_stackup_authority(a: a).decl_name == "single_layer"
+        && match establish_stackup_capability(a: a) {
+          CapabilityEstablished { authority: r } => r.decl_name == "single_layer"
+          CapabilityPending { owed: _ } => false
+          CapabilityRefused { cause: _ } => false
+        }
   }
 }
