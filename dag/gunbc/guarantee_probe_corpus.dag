@@ -176,7 +176,7 @@ fn harness_digest_from_material_and_expectation(
   )
 }
 
-data v1_compile_harness_source_paths_note: String = "v1_compile_harness_source_paths is the measured authority for compile_dag_diagnostic_census harness revision: probe-corpus bridge, guarantee_measurement folds, census vocabulary, the host builtin seam, and the v1 CompileAccept→Rust pipeline stages whose edits change which diagnostics a synthetic subject provokes. dissolve-on ladder-baseline stage supplies GitRevision harness anchors."
+data v1_compile_harness_source_paths_note: String = "v1_compile_harness_source_paths is the measured authority for compile_dag_diagnostic_census harness revision: probe-corpus bridge, guarantee_measurement folds, census vocabulary, the host builtin seam, and the v1 CompileAccept→Rust pipeline stages whose edits change which diagnostics a synthetic subject provokes. dissolve-on ladder-baseline stage supplies GitRevision harness anchors. V1 CUT 2026-08-15 (tree integration/v1-cut): the five .dag entries here were REPOINTED to the frozen Rust that now IS those stages -- compile.dag/02_parse.dag/04_infer.dag/04_method.dag/04_types.dag became v1_compiler_compile.rs / v1_compiler_parse.rs / v1_compiler_infer.rs / v1_compiler_infer_method.rs / v1_compiler_infer_types.rs. THIS IS A REPOINT, NOT A RETIREMENT, and the distinction is the whole point: this list is a CONTENT-DERIVED FINGERPRINT over whatever can change which diagnostics a synthetic subject provokes, so its membership must follow the AUTHORITY rather than the file extension. The v1 pipeline did not stop existing when its .dag authority was deleted; it stopped being generated and became the frozen seed, and an edit to that seed changes probe outcomes exactly as an edit to the .dag stage used to. Retiring the rows instead would have shrunk the fingerprint to cli_run.rs alone and made a real harness change invisible -- a silently narrowed provenance key, which is worse than a stale one because it still computes. Mapping verified file-by-file rather than by naming rule: each of the five resolves to exactly one distinct twin, and note 04_method -> v1_compiler_infer_method.rs is a NESTED prefix that a stem-based rule does not produce."
 
 fn v1_compile_harness_source_paths() -> List<String> {
   [
@@ -184,11 +184,11 @@ fn v1_compile_harness_source_paths() -> List<String> {
     "dag/gunbc/guarantee_measurement.dag",
     "dag/gunbc/compile_diagnostic_census.dag",
     "src/v1/stage0/src/cli_run.rs",
-    "src/v1/compile.dag",
-    "src/v1/02_parse.dag",
-    "src/v1/04_infer.dag",
-    "src/v1/04_method.dag",
-    "src/v1/04_types.dag",
+    "src/v1/stage0/src/v1_compiler_compile.rs",
+    "src/v1/stage0/src/v1_compiler_parse.rs",
+    "src/v1/stage0/src/v1_compiler_infer.rs",
+    "src/v1/stage0/src/v1_compiler_infer_method.rs",
+    "src/v1/stage0/src/v1_compiler_infer_types.rs",
     "dag/extdeps/uri.dag",
   ]
 }
