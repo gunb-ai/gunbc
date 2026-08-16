@@ -4,17 +4,10 @@
 use std::sync::{Arc, Mutex};
 
 use crate::memory_governor::read_host_budget_bytes;
-use crate::v1_compiler_compile;
 use crate::v1_interpreter::{self, ExecutionMode, Value};
 
 /// Kept so observation census can anchor the schedule receipt shape.
 pub const REALIZATION_SCHEDULE_CENSUS_MARKER: &str = "[realization-schedule]";
-
-/// Run 31916550287 receipt: first-slot worker RSS over pool baseline (~2.1 GiB).
-pub const DECLARED_MEASURED_WORKER_SHARE_BYTES: u64 = 2_254_803_968;
-
-const SCHEDULE_HIGH_WATER_NUM: u64 = 4;
-const SCHEDULE_HIGH_WATER_DEN: u64 = 5;
 
 fn schedule_emoji() -> bool {
     std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
@@ -27,26 +20,6 @@ fn render_schedule_info_line(text: &str, emoji: bool) -> String {
 
 fn render_schedule_done_line(text: &str, emoji: bool) -> String {
     render_schedule_info_line(text, emoji)
-}
-
-fn width_from_declared_worker_share(budget_bytes: u64, independence_width: i64) -> usize {
-    let usable = budget_bytes.saturating_mul(SCHEDULE_HIGH_WATER_NUM) / SCHEDULE_HIGH_WATER_DEN;
-    let by_share = (usable / DECLARED_MEASURED_WORKER_SHARE_BYTES.max(1)) as i64;
-    by_share.max(1).min(independence_width.max(1)) as usize
-}
-
-fn apply_budget_share_fallback(
-    mut derived: DerivedScheduleWidth,
-    budget_bytes: Option<i64>,
-    independence_width: i64,
-) -> DerivedScheduleWidth {
-    if derived.verdict == "MaturationReserve" {
-        if let Some(b) = budget_bytes.filter(|b| *b > 0) {
-            derived.width = width_from_declared_worker_share(b as u64, independence_width);
-            derived.verdict = "DeclaredWorkerShare".to_string();
-        }
-    }
-    derived
 }
 
 /// The modeled packing verdict projected to a fixed worker count.
@@ -125,15 +98,11 @@ pub fn realize_pack_width_from_scalars(
                 Some(Value::Str(s)) => s.clone(),
                 _ => "unknown".to_string(),
             };
-            Ok(apply_budget_share_fallback(
-                DerivedScheduleWidth {
-                    width: width.max(0) as usize,
-                    verdict,
-                    max_derived_bound_bytes: derived_bytes,
-                },
-                budget_bytes,
-                independence_width,
-            ))
+            Ok(DerivedScheduleWidth {
+                width: width.max(0) as usize,
+                verdict,
+                max_derived_bound_bytes: derived_bytes,
+            })
         }
         other => Err(format!(
             "realize_advisory returned {}, expected RealizeAdvisory record",

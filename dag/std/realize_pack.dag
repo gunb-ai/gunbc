@@ -56,7 +56,7 @@ fn realize_verdict_label(v: RealizeVerdict) -> String {
   }
 }
 
-data realize_advisory_note: String = "P4 bridge entry (witness-realization plan): the terminal-kernel executor consumes the modeled packing law through the interpreter — it extracts the DERIVED per-function space bound (ComplexityReport.function_space_bytes, empty size_env) and the host budget as plain Int?s, calls realize_pack_width, and schedules discovery at the returned width. When the bound is BoundUnknown the seed applies a declared worker-share fallback (budget × high-water / measured first-slot share) instead of serializing — the retired AIMD memory_governor is deleted. Absent budget -> BudgetRefused, never a fabricated width."
+data realize_advisory_note: String = "P4 bridge entry (witness-realization plan): the v1 seed calls realize_advisory through derived_realization_schedule with host budget and optional derived_bytes. BoundUnknown -> MaturationReserve width 1 per realize_pack_width — the seed does not fabricate a width from measured worker share or other Rust literals. Absent budget -> BudgetRefused, never a fabricated width. Floor discovery passes derived_bytes absent (O(entries) resolve prohibited); pool execution is capped at width 1 until shared-index crossover — a separate seed policy, not a verdict rewrite. Per-entry derived_bytes supply is future work once bounds are available without a whole-roster resolve."
 
 type RealizeAdvisory {
   width: Int
