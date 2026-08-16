@@ -10,11 +10,11 @@ fn ci_oom_reclassification_body() -> List<MarkdownBlock> {
     h2(text: "2. The fact: one OOM-kill, two Realization handlers"),
     p(text: "\"The kernel killed a process for memory\" is ONE grounded fact. Per §2/§3 the agnostic *was-OOM-killed* shape stays central; the ways to OBSERVE it are Realization **handlers** that live peripheral (in `extdeps`) with the dispatch — never forked into the interface. There are two handlers, because Linux kills for memory in two places:"),
     TableBlock {
-      header: row(cells: [cell(text: "handler"), cell(text: "grounded source"), cell(text: "what it catches"), cell(text: "read seam")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "handler"), cell(text: "grounded source"), cell(text: "what it catches"), cell(text: "read seam")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "**kernel cgroup `memory.events`**"), cell(text: "the `oom_kill` counter line in the job's cgroup-v2 `memory.events`"), cell(text: "a **hard-limit** kill — the cgroup hit `memory.max` and the in-kernel OOM-killer fired"), cell(text: "reuses the cgroup-read seam already in `ci_floor_measurement.dag` (it reads `memory.peak` off the same cgroup tree; `oom_kill` is one more line in a sibling file)")]),
-        row(cells: [cell(text: "**systemd-oomd journal**"), cell(text: "oomd kill records in the systemd journal"), cell(text: "a **PSI-pressure pre-emptive** kill — oomd kills *before* the hard cgroup limit on sustained memory pressure"), cell(text: "the journal is oomd's only record: a PSI-preemptive kill never increments the cgroup `oom_kill` counter, so the cgroup handler alone would miss it")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "**kernel cgroup `memory.events`**"), cell(text: "the `oom_kill` counter line in the job's cgroup-v2 `memory.events`"), cell(text: "a **hard-limit** kill — the cgroup hit `memory.max` and the in-kernel OOM-killer fired"), cell(text: "reuses the cgroup-read seam already in `ci_floor_measurement.dag` (it reads `memory.peak` off the same cgroup tree; `oom_kill` is one more line in a sibling file)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "**systemd-oomd journal**"), cell(text: "oomd kill records in the systemd journal"), cell(text: "a **PSI-pressure pre-emptive** kill — oomd kills *before* the hard cgroup limit on sustained memory pressure"), cell(text: "the journal is oomd's only record: a PSI-preemptive kill never increments the cgroup `oom_kill` counter, so the cgroup handler alone would miss it")]),
       ],
     },
     p(text: "Neither is \"the\" definition — they are two handlers of one fact (§2 horizontal, one concept across breadths). **Dispatch selects** whichever realization the host exposes (cgroup-v2 with vs without oomd active). **Fail-closed:** if NEITHER handler confirms an OOM-kill, the `exit-137` is not a proven OOM and stays `Structural`."),
