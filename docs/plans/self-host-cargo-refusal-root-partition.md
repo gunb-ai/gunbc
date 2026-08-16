@@ -384,3 +384,70 @@ starting.
 - Independent root partition requested from the linked side channel; its answer lands here, and
   its claims are evidence to check, not authority (it has already cited one symbol that does not
   exist in the tree).
+
+
+## 10. THE CLOSURE-SHAPE FORK — a candidate meta-root above A and B (2026-08-16)
+
+Two lanes independently hit the same underlying fact from different roots, and it may explain
+why "the seed compiles and v2 modules do not" better than any per-root mechanism.
+
+**Root B (eager-deer-389, root-caused with an executed receipt).** `v1.compiler.infer`
+`rust_corpus_repr` picks the whole corpus's numeric representation from
+`corpus_has_v1_seed_source_indices`, which is verbatim:
+
+```
+modules |> any(m => map_keys(m.type_env.source_indices)
+                    |> any(k => contains(k, "/v1/") || contains(k, "src/v1")))
+```
+
+**A path substring decides the emitted representation of every primitive.** `HostNative` grounds
+the numeric tower (`rust_seed_host_numeric_alias` renders `Nat`/`Int` as `i64`, gated on
+`corpus_repr_is_host`); `FaithfulFreeMonoid` does not. A seed closure contains `src/v1` paths; a
+pure-v2 closure does not. The receipt, one source file emitted twice:
+
+```
+seed  src/v1/stage0/src/std_nat.rs   pub type Nat = i64;
+v2    emitted from dag/std/nat.dag   pub type Nat = Rc<CommutativeSemiring<Magnitude>>;
+                                     → E0369 binary operation `<` cannot be applied
+```
+
+DESIGN §4 rules a heuristic never necessary in a closed system, and §3 rules that a fact's home
+is its layer, not its file — "paths are discriminators, not gospel." This is a path literal
+deciding semantics for the entire emitted corpus.
+
+**Root A, same shape, found live by the same lane.** The first error in `06_translate` today is
+no longer a rustc error at all — it is the emitter refusing:
+
+> `trait_derive_emit: generic item 'Homomorphism' has a field applying type 'C', whose declared
+> parameter list is not readable in this closure — the Clone bound it may require cannot be decided`
+
+That is `v1_type_expr_clone_undecided_head`, the fail-closed arm of #7691, whose own note ends
+**"Dead in corpus as of this landing; kept as the fail-closed arm."** It is not dead. It fires
+first, and it fires because a declared parameter list is *not readable in this closure*.
+
+**The convergence.** Both mechanisms branch on what the closure contains, and both take the
+unfavourable branch exactly when the closure is pure-v2. So the wall is not only "the emitter
+emits wrong Rust" — it is substantially **"the emitter has never been exercised on a seed-free
+closure,"** and two independent places change behaviour silently when it is.
+
+If that holds, several roots are downstream projections of one fact, and the per-root sizes are
+measuring symptoms of it. **This is a hypothesis with two confirmed instances, not a finding.**
+Falsified by: a third closure-shape branch that does NOT correlate, or by fixing the repr switch
+and finding Root B's population unchanged.
+
+**Two further facts from the same run, recorded because they cut against tidy stories:**
+
+- **The wall GREW.** `06_translate` measured 671 coded errors today against July's 364. No cause
+  attributed, and the lane explicitly does not claim one.
+- **Bool will not dissolve with a repr fix, because there are TWO Bool authorities.**
+  `dag/extdeps/languages/rust/types.dag` maps `Bool` → native `bool`, so references render
+  native while `type Bool = True | False` emits an enum. The host bridge
+  (`std.trait_derive_shape` `repr_grounding_supplemental_bool_host_bridge_target`) is hardcoded
+  to `module_path == "std.types" && name == "Bool"`, and `src/v2/std/logic.dag` declares a
+  SECOND `type Bool = True | False` which that predicate is pinned to reject — its own witness
+  asserts the std.logic case is false *as expected behaviour*. That is a §3 fork sitting ABOVE
+  the representation choice and it needs its own row.
+
+**Method note worth copying (eager-deer-389):** a three-file closure emitting `dag/std/nat.dag`
+is a 30-second discriminating reproducer for the Root B family. Prefer it to a compiler-module
+probe, which costs tens of minutes.
