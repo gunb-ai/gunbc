@@ -19,7 +19,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
-// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations.
+// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps this relation distinct from other TailscaleServeEndpoint x ScopedKey rows that share carriers — orthogonal to scope correctness (see tailscale_serve_scope_global_key_defect_note).
 type TailscaleServeRouteKeyRelation
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -160,6 +160,10 @@ fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServ
   }
 }
 
+fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+}
+
 // THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
 type TailscaleServeRouteKey {
   https_port: Port
@@ -217,6 +221,8 @@ fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpo
     b: tailscale_endpoint_state_of(endpoint: b),
   )
 }
+
+data tailscale_serve_scope_global_key_defect_note: String = "HONEST RUNG (operator ruling 2026-08-16): GlobalKeyScope on tailscale_serve_route_key_relation asserts route keys are unique universe-wide, but tailscale serve configuration is per-device — node A and node B may each hold the same listener×mount route as distinct subjects. GlobalKeyScope collapses them into one ScopedKey: the same failure class as the DeploymentArtifactStep poison (distinct subjects merged into one identity), arrived from declaring a scope wider than the resource rather than writing a fake value. The phantom relation brand distinguishes relations from each other, not instances within this relation. Terminal answer: TailscaleServeScope { node, service } with node grounded on the fleet tailnet device carrier already in the model (not minted here). Current fleet vertical is single-node so the wrong population is not yet observable and twin witnesses cannot catch it. FOLLOW-ON subject: ground TailscaleServeScope and re-home tailscale_serve_route_key_relation off GlobalKeyScope; acceptance = one route identity read by both membership reconcile and any witness."
 
 data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
   key_of: tailscale_serve_route_key,

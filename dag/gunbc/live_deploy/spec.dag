@@ -24,6 +24,7 @@ import extdeps.tailscale.serve {
   ScopedRemovalUnobserved,
   tailscale_serve_route_key,
   tailscale_serve_route_key_label,
+  tailscale_serve_endpoint_key,
   TailscaleServeRouteKey,
 }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
@@ -341,24 +342,22 @@ type DeploymentSpec {
 
 
 
-data live_deploy_tailscale_artifact_path_unreachable_note: String = "TailscaleServeMapping identity is tailscale_serve_route_key on DeploymentArtifactStep.serve_route_key — NOT DeploymentArtifactStep.path. The path field is a poison for this kind: apply/teardown read spec.names.tailscale_serve_endpoint, and membership reconcile keys via deployment_artifact_reconcile_key."
-
-data live_deploy_tailscale_artifact_path_unreachable_poison: String = "__GUNBC_TAILSCALE_ARTIFACT_PATH_UNREACHABLE__"
+data deployment_artifact_serve_route_key_note: String = "INTERIM (KEYING-0 fallback): TailscaleServeMapping carries two projections of names.tailscale_serve_endpoint — path = tailscale_serve_endpoint_key (twin-safety witnesses via spec_owned_paths) and serve_route_key = tailscale_serve_route_key (membership_reconcile via deployment_artifact_reconcile_key). Both derive from one authority today; the failure mode to prevent is consumers keying the same subject through divergent projections. FOLLOW-ON acceptance (DeploymentArtifactStep coproduct): the tailscale variant carries ONE identity; twin-safety witnesses and membership reconcile both read that same one — not merely that poison is gone. Pre-existing modeling debt discovered by this lane, not authored by the fallback."
 
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
   [
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr, serve_route_key: Absent },
-    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr, serve_route_key: Absent },
-    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr, serve_route_key: Absent },
-    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr, serve_route_key: Absent },
-    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names), serve_route_key: Absent },
-    DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names), serve_route_key: Absent },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr, serve_route_key: none },
+    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr, serve_route_key: none },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr, serve_route_key: none },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr, serve_route_key: none },
+    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names), serve_route_key: none },
+    DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names), serve_route_key: none },
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
-      path: live_deploy_tailscale_artifact_path_unreachable_poison as NonEmptyStr,
+      path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint),
       serve_route_key: Present { value: tailscale_serve_route_key(endpoint: names.tailscale_serve_endpoint) },
     },
   ]

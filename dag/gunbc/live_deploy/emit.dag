@@ -55,7 +55,6 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
   deployment_step_teardown_disposition,
-  live_deploy_tailscale_artifact_path_unreachable_poison,
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
@@ -412,13 +411,9 @@ data live_deploy_reconcile_binding_note: String = "apply/retract are the two deg
 type DeploymentStepMemberAt = NonEmptyStr
 
 fn deployment_artifact_reconcile_key(art: DeploymentArtifactStep) -> NonEmptyStr {
-  match art.kind {
-    TailscaleServeMapping =>
-      match art.serve_route_key {
-        Present { value: k } => tailscale_serve_route_key_label(key: k)
-        Absent => live_deploy_tailscale_artifact_path_unreachable_poison as NonEmptyStr
-      }
-    _ => art.path
+  match art.serve_route_key {
+    Present { value: k } => tailscale_serve_route_key_label(key: k)
+    Absent => art.path
   }
 }
 
