@@ -532,3 +532,40 @@ projection should eventually make `fixfns.one.pick` reachable as `one.pick` from
 a `fixchain.*` caller. DESIGN describes sibling modules as visible with members
 projected; that projection is not implemented today, and nothing in this cut
 depends on it.
+
+### Control-collapse check on the repaired file, and one near-vacuous assertion
+
+Re-checked after the repair above, on the rule that two controls asserting the
+same predicate in the same direction on different subjects are indistinguishable
+-- and that a *repair* is the most dangerous edit to make to a control, because
+it is made with that row's correctness freshly in mind and that confidence is
+what stops you checking its sibling.
+
+The file passes. The predicate the repair touches, `ambiguous reference 'pick'`,
+is asserted PRESENT on the on-chain fixture and ABSENT on the off-chain one, so
+the two answer oppositely, and the absence assertion has a known positive
+(`ambiguous reference 'Homonym'` fires on the type path) proving the string is
+capable of appearing at all.
+
+**One observation the check surfaced, recorded rather than repaired.** Two tests
+assert `ambiguous` ABSENT on different subjects:
+
+| test | subject | on-chain binders | pool binders |
+|---|---|---|---|
+| `zero_on_chain_homonym_discriminates_the_diagnostic_label` | `Stray` | 0 | **2** |
+| `namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous` | `NoSuchTypeAnywhere` | 0 | **0** |
+
+These are not interchangeable, but they are not equally strong either. The first
+is load-bearing: two pool binders exist, so a whole-pool fallback *could*
+fabricate an ambiguity, and the assertion is what forbids it. The second is
+**near-vacuous by construction** -- with zero binders anywhere, no candidate set
+exists for any fallback to draw an ambiguity from, so no mechanism could produce
+the string the test forbids. Its real content is its positive half (the name
+resolves to `unresolved type`, typed and located).
+
+Left as-is deliberately. The assertion is not wrong, only weaker than it reads,
+and rewriting a control that cannot currently be executed -- the v1 test builder
+is the blocker this branch documents -- would be exactly the unverifiable repair
+the rule warns about. Recorded so the next reader does not mistake its passing
+for evidence about the fallback path; `zero_on_chain` is the test that carries
+that claim.
