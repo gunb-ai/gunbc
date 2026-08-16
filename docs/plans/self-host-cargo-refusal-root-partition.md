@@ -512,19 +512,11 @@ claim.** It has its own full entry below (`### §10 — the third branch`), writ
 dual authority this surface exists to prevent and its own authors produced one within minutes.
 
 **What the falsifier was, and that it fired.** This section named its falsifier as *a third
-closure-shape branch that does NOT correlate*. `gentle-dove-833` then instrumented the sentinel
-insert and dumped the ambiguous set per closure, under identical source roots:
-
-```
-05_emit.dag       6 ambiguous names   Absent Named Optional Repeat Terminal TypeExprKindAuthorityInvalid
-05_emit_rust.dag  6 ambiguous names   Absent AsAuthored Bind Named SnakeCase Text
-```
-
-**The seed closure is not protected.** It carries ambiguous names too — six, including the same
-`Absent` — and the emitter collapses them by the same predicate. So the mechanism IS
-closure-shaped (the SET is a function of closure membership, and the two sets genuinely differ),
-but there is **no favourable seed arm**. Both closures take the same branch; the v2 closure
-merely has ambiguous names sitting in far more type-argument positions.
+closure-shape branch that does NOT correlate*. `gentle-dove-833` measured exactly that: the seed
+closure carries ambiguous names too — including the same `Absent` — and the emitter collapses
+them by the same predicate, so there is **no favourable seed arm**. Both closures take the same
+branch; the v2 closure merely has ambiguous names in far more type-argument positions. The
+per-closure ambiguous sets and method are in their entry below; not copied here.
 
 **So the meta-root is restated, narrower and better supported:** several independent decisions
 are keyed off **under-modeled closure facts**. That is what the three instances share. What they
