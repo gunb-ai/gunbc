@@ -297,14 +297,27 @@ test fn value_take_with_borrows_is_priced_demotion_to_copy() -> Bool {
   value_verdict_is_demoted_to_copy(v: v, identity: "acc", copies: 1)
 }
 
-test fn value_fold_carry_excluded_from_plurality_but_blocks_move() -> Bool {
+// RENAMED, and the rename is the finding. This row was called
+// `value_fold_carry_excluded_from_plurality_but_blocks_move` — asserting X's rule in its NAME
+// while `value_site_verdict_semantic_change_note` deliberately dropped that exclusion, and
+// while its predicate tested neither half. A control whose name does the discriminating is not
+// a control. It now asserts the per-site verdict counts, which are the values that DISTINGUISH
+// the arms: two carried sites are two `Borrow`s (readers, NOT excluded) and the sole consume is
+// the priced `CloneShared`. Asserting a distinguishing constant rather than "it failed" is what
+// makes the row self-evidencing — a collapsed rule cannot satisfy 2 and 1 at once.
+test fn value_fold_carry_sites_are_borrows_and_the_sole_take_is_demoted() -> Bool {
   let u = usage(identity: "fold-acc", consumers: [
     edge(access: CarryAccess, site: "fold:step-1"),
     edge(access: CarryAccess, site: "fold:step-2"),
     edge(access: ConsumeAccess, site: "fold:final")
   ])
+  let verdicts = std.materialization_ladder.value_site_verdicts(usage: u)
+  let readers = std.materialization_ladder.verdict_reader_count(verdicts: verdicts)
+  let copies = std.materialization_ladder.verdict_copy_count(verdicts: verdicts)
+  let moves = std.materialization_ladder.verdict_move_count(verdicts: verdicts)
   let v = value_materialization(usage: u, providers: rust_value_providers())
-  value_verdict_is_demoted_to_copy(v: v, identity: "fold-acc", copies: 1)
+  (readers == 2) && (copies == 1) && (moves == 0)
+    && value_verdict_is_demoted_to_copy(v: v, identity: "fold-acc", copies: 1)
 }
 
 // THE DISCRIMINATING FIXTURE FOR THE PROJECTION RULE. Under v1's per-binding authority a

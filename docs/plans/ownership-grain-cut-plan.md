@@ -64,11 +64,18 @@ accident of authorship, not a dependency.
 
 ## Required property of the fold
 
-The fold from per-site verdicts to `ValueMaterialization` **must preserve the ladder's three
-plurality readings** — `take_count` (Consumed only, the affine axis), `value_access_plurality`
-(`CarryAccess` excluded, the reference-eligibility axis) and `borrow_count` (Read + Carry, not
-Project, the movability axis). `CarryAccess` and `ProjectAccess` are the reduce-spine and
-field-projection axes the ladder separates deliberately.
+The fold from per-site verdicts to `ValueMaterialization` **must derive its three counts
+separately** — `verdict_take_count`, `verdict_copy_count`, `verdict_reader_count` — never one
+count reused three ways.
+
+**Superseded, and recorded rather than silently edited:** an earlier revision of this paragraph
+required preserving X's two *exclusions* — `CarryAccess` excluded from plurality, `ProjectAccess`
+excluded from movability. Those exclusions are X's rule, and parity with X was never the bar
+(§3). Y drops both deliberately — a live projection borrow blocks a whole-value move, and a
+carried value is borrowed at the site that carries it — declared in
+`value_site_verdict_semantic_change_note` with the affected population proved empty. This
+paragraph survived that decision and went on stating the old requirement, so for a while the plan
+and the carrier disagreed about the rule: the §3 stale-claim class, in the document naming it.
 
 Folding through a single count re-collapses the three readings into one — the original defect
 wearing the new model's clothes. This is a **required property, not a preference**, and it is
