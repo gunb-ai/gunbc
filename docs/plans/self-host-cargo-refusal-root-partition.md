@@ -1134,3 +1134,106 @@ Keeping that split is the same discipline as the T3 one above: a real mechanism 
 symptoms next to it. **Name-keying's directly-attributable total therefore moves from 253 to 286
 sites (15.3%)** — T7 105 + K 132 + R5 16 + D-Witness 33 — with T3's 110 still exposure rather than
 cause, and the ~1,470 NO unchanged in substance.
+
+## 12. WHERE THE PROGRAM STANDS AT END OF 2026-08-16 (`smart-ram-730`)
+
+Written as a reader's entry point, because sections 1–11 were authored in the order they were
+discovered and several of their early claims are superseded by later ones in the same document.
+Nothing here is new evidence — every number below is cited to the section that measured it.
+
+### 12.1 The one sentence to carry
+
+**Name-keyed realization is real, is directly attributable to 253 sites, and is NOT the wall.**
+
+The Rust emitter answers questions about a type from its *authored token* when the resolved
+declaring module is already attached to the node being rendered. Three lanes found this
+independently, from three different symptoms, and it converges on one function —
+`rust_scalar_checkpoint_render_base`, a lookup keyed on a bare `String`.
+
+Then it was bounded, and the bound is the load-bearing half: **253 attributable, 110
+exposed-but-not-caused, ~1,500 not attributable** (§11.10). 13.5%. The remaining sites turn on
+shape, ownership, or which traits a declaration needs — cases where the emitter already has the
+right declaration and computes the wrong answer about it.
+
+I record plainly that I was one confirming report away from calling name-keying the root of the
+program. Two structural confirmations arrived before any measurement of the negative space, and
+generalizing from them would have been wrong. The corpus partition is what prevented it.
+
+### 12.2 What was falsified today, and by whom
+
+Five published claims died on measurement. Listing them together because the rate matters more
+than any one of them: this partition is roughly a day old and a third of its early content did
+not survive contact with the live corpus.
+
+| claim | status | who |
+|---|---|---|
+| July Root 1 — DIAGNOSTICS carrier fork, "largest single bucket", 26–30% of E0308 | **8 sites, 0.4%** | §11 |
+| July Root 2 — `Witness<T>` parametrization, 18–23% | **zero occurrences of the string** | §11 |
+| Root B ≈ 196 sites | **under-measured; algebra surface is 509, the largest root** | §11 |
+| "342 diagnostics citing the algebra carrier" | **74 distinct sites; the 342 was a line count** | `eager-deer-389`, self-corrected |
+| T7 = "a ContentHash carrier fork" | **a seed-prelude name collision; same 105 sites, different cause** | `smart-ibex-716`, self-corrected |
+| Root A = struct-only derive trigger | **under challenge by its own author; see 12.5** | this session |
+
+Two of those are authors falsifying their own published numbers unprompted. That is the behaviour
+this surface exists to make cheap, and it is the reason the remaining numbers are worth anything.
+
+### 12.3 The masking law — applies to every fix in this program
+
+Every root measured so far is firing *in front of* another population. Fixing it does not create
+the sites underneath; it stops hiding them. Their frequency was zero by construction, which is
+DESIGN §5's absorbing fallback read at the diagnostic level.
+
+- algebra carrier → **125 `Rc<i64>` sites** appear and `Measure` rises 9 → 37 (§8, executed)
+- variant unit-collapse → **25 new E0425** (`gentle-dove-833`)
+- Hash substitution → the `Fnv1a64StructuralDigestHex` where-refinement population (§11.10)
+
+**Standing rule for this program: quote net, never gross, and state what you expect to unmask
+before you unmask it.** A reviewer who sees new sites appear will otherwise read the fix as their
+cause.
+
+### 12.4 Ownership and collision, as of this writing
+
+| root | live size | owner | state |
+|---|---|---|---|
+| B — algebra/numeric carrier, closure flag | 509 (§11) | `eager-deer-389` | identity-keying design; flip control executed both directions |
+| C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
+| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | `vivid-wren-870` | `Witness` row deletion ready; alias half entangled with B |
+| A — derive/bounds | **unknown; under challenge** | this session | see 12.5 |
+| tail — six mid-sized roots + 62 singletons | 1,874 distinct total | `smart-ibex-716` | partitioned, §11 |
+
+**Live collision:** B and D both land on `rust_scalar_checkpoint_render_base`. The split asked for
+is *one owns the rows, one owns the key* — a wrong checkpoint row stays wrong under any key, so
+`Witness` deletion is independently correct; re-sourcing the lookup key is the other change. Both
+editing the arm's logic is the thing to avoid.
+
+### 12.5 Root A is unverified and I am saying so before anyone builds on it
+
+I published a root cause for A: `v1_clone_bound_seed_for_item` skipping coproducts
+(`if is_coproduct_type(n: item) { round }`) in `src/v1/trait_derive_emit.dag`. Going back to
+implement it, two things argue against it.
+
+The skip is **deliberate and defended in the same file**:
+`trait_derive_emit_item_clone_bound_wf_propagation_note` states the derive trigger is correctly
+scoped to structs because derive emits per-impl bounds for enums, and that well-formedness
+propagation — which does apply to both — is a separate trigger with its own fixpoint.
+
+And the population is **E0599, no method found**. A missing `Clone` bound is E0277. Those are
+different failures with different fixes, so a bounds diagnosis for an E0599 population is
+suspicious independent of which trigger scopes what. A's split into CloneSharedRequirement 369 /
+TargetApiRequirement 168 / OwnedDeconstructionRequirement 63 came from the same July TSV that
+produced two of the dead claims in 12.2.
+
+**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
+land, treat A as unpartitioned, not as diagnosed.**
+
+### 12.6 Adjacent, landed: the self-host frontier roster is deleted
+
+Operator-ordered, [PR #8344](https://github.com/gunb-ai/gunbc/pull/8344), 34 files, −5,836/+284,
+on `session/smart-ram-730-frontier-cut`. Relevant to readers of this document for one reason: the
+roster is what several sections originally used to talk about self-host progress, and it never
+measured anything. `execution_measured_seed_retained_row` took its measurement fields as ordinary
+parameters, so a row claiming measurement was indistinguishable from one asserting it.
+
+Cutting at the root made the census cheap and the answer was that nearly nothing depended on it —
+crate layout, wet enrollment and crate partition each read a projection that was empty at every
+call. **Do not cite roster rows as evidence of anything in this document.**
