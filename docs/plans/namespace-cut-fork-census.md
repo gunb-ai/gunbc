@@ -455,3 +455,42 @@ One stated bound: `artifact_path` also yields two computed path *fragments* (`pr
 provisioning outputs, not `.dag`, so they cannot intersect a `.dag`-only edit set. And the
 roster was read **unfiltered** by `artifact_is_committed` — a superset of what the receipt
 actually checks — so the empty intersection holds *a fortiori*.
+
+## Correction: the probe receipt is exact, and the earlier "merge" explanation was false
+
+An earlier revision of this lane's reporting said the baseline census ran at `0fad0cec741`
+and that 228 extra diagnostics in the probe run came from an intervening merge with main.
+**Both were wrong**, and the correction makes the probe receipt stronger.
+
+The SHA came from `census.log` — a **failed** run (exit 2, missing `--output-dir`) carrying
+**zero diagnostic lines**. The real baseline is `census2.log` at `e29d0aa2ef9`. The tell was
+in the same file: *a census log with no diagnostics is not a census.* Between that baseline
+and the probe there is **exactly one commit — the probe** — so no merge could explain
+anything.
+
+Raw log against raw log, same six-class pattern:
+
+```
+census2.log (baseline e29d0aa2ef9)   4804
+probe.log   (probe    ab304307c8d)   4802
+                                     ────
+                                       −2    exactly the probe's two diagnostics, corpus-wide
+```
+
+The 228 was an artifact of comparing a **derived** file against a **raw** one: `diags.txt`
+was a three-class extraction (`unresolved type` / `function` / `undefined variable`) later
+counted with a six-class pattern, so it carries **zero** `no field` lines where the raw log
+has 230. `4804 − 4574 = 230`; minus the probe's `−2` gives the phantom `+228`. Fully
+accounted, no residue.
+
+So the echo is confirmed at **exact corpus grain**, not merely per-file: one annotation
+qualified, exactly two diagnostics gone tree-wide, nothing else moved.
+
+**The headline result is unaffected**, and the reason is worth stating rather than asserting:
+the 4801 → 2768 comparison used `form.log` and `pass1.log`, both **raw** remote logs filtered
+with the same pattern at read time. It never touched `diags.txt`.
+
+**The generalisable form.** A filtered projection compared against its source reads the filter
+difference as a change in the world. This is a *subject* error like measuring the wrong tree,
+except the wrong subject is one's own earlier extraction. The discipline: state which tree
+**and which extraction** a number came from — a derived file is provenance too.
