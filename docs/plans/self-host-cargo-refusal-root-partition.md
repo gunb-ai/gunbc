@@ -353,6 +353,67 @@ belongs to whoever owns that file's root, never to the lane that happened to com
  3  expected `bool` found `True`
 ```
 
+> **ROOT-CAUSED AND MEASURED LIVE, 2026-08-16 (`eager-deer-389`). The table above is superseded
+> as sizing; the mechanism below replaces it.** Full receipt with method and controls:
+> [Root B primitive repr fork](../probes/root_b_primitive_repr_fork_2026-08-16.md).
+>
+> **The mechanism is one switch.** `v1.compiler.04_infer` `rust_corpus_repr` chooses
+> `HostNative` vs `FaithfulFreeMonoid` from `corpus_has_v1_seed_source_indices`, a **path
+> substring test** over the closure's source keys (`contains(k, "/v1/") || contains(k, "src/v1")`).
+> `HostNative` grounds the numeric tower — `05_emit_rust` `rust_seed_host_numeric_alias` renders
+> `Nat`/`Int` as `i64`, gated on `corpus_repr_is_host`. A seed closure contains `src/v1` paths; a
+> pure-v2 closure does not. Same source file, emitted twice, executed today:
+> seed `pub type Nat = i64;` versus v2 `pub type Nat = Rc<CommutativeSemiring<Magnitude>>;`.
+>
+> **The double-Rc row is NOT a second defect.** `pub type Nat = Rc<…>` and
+> `pub type Int = GroupCompletion<Rc<Nat>>` — the alias carries the `Rc` and the use site wraps
+> again. One alias hop, same fix; do not size it separately.
+>
+> **The `Bool` half will NOT dissolve with a repr fix — executed, not reasoned.** `Bool` is in the
+> Rust checkpoint table (`dag/extdeps/languages/rust/types.dag`, `Bool` → `bool`) so references
+> render native while `type Bool = True | False` emits an enum, and the host bridge is hardcoded:
+> `std.trait_derive_shape` `repr_grounding_supplemental_bool_host_bridge_target` is
+> `module_path == "std.types" && name == "Bool"`, while `src/v2/std/logic.dag` declares a **second**
+> `Bool` that the predicate is pinned to reject — its own witness asserts that rejection as
+> expected behaviour. Two authorities, one bridged: a §3 fork above the repr choice.
+>
+> **THE DISCRIMINATING EXPERIMENT, AND IT REFUTES THE OBVIOUS FIX.** `rust_corpus_repr` forced to
+> `HostNative` in the generated seed only, rebuilt, re-probed, reverted; both instrument controls
+> recorded (patched binary verified emitting `i64` *before* reading any number, restored binary
+> verified emitting the modeled carrier again afterwards):
+>
+> | `src/v2/compiler/06_translate.dag` | baseline | forced |
+> |---|---:|---:|
+> | diagnostics citing `CommutativeSemiring<Magnitude>` | 342 | **0** |
+> | `expected bool found Bool` | 11 | **11** |
+> | total coded errors | 652 | **773** |
+>
+> The cause is confirmed (342 → 0 on a real module). The `Bool` half is untouched. **And the total
+> ROSE by 121** — working agreement 6 firing exactly as written. The increase is characterized:
+> ~76 are E0308 the modeled carrier had been **masking** (`expected i64 found Rc<i64>`, 39, plus 37
+> through `Measure` — `Nat` stays in `shared_types` and is still `Rc`-wrapped after becoming a
+> `Copy` scalar), and ~87 are missing type names because
+> `05_emit_rust` `reference_derived_use_lines_note` gates reference-derived use-line synthesis on
+> `corpus_repr_is_faithful` and gives HostNative import-bearing modules `[]`.
+>
+> **THE ACTUAL FINDING: `RustCorpusRepr` fuses two independent facts** — how modeled primitives are
+> realized, and whether namespace-derived use-lines are synthesized — **and a pure-v2 closure needs
+> opposite arms of each.** No value of a two-valued enum supplies both, which is why the seed
+> compiles, the v2 corpus refuses, and forcing either arm merely relocates the refusals. A §5
+> state-space conflation sitting *underneath* Root B. No fix is proposed from this; splitting the
+> enum is the shape the evidence points at, but which authority owns the split — and whether the
+> numeric grounding belongs in the checkpoint table at all — is a modeling decision above this lane.
+>
+> **A 30-second reproducer, recommended over a compiler-module probe.** The three-file closure
+> `gunbc compile --source-root dag --source-root src/v2 --entry dag/std/nat.dag --target rust`
+> refuses with 4 E0369 on `Rc<CommutativeSemiring<Magnitude>>` and goes fully green under the
+> forced switch.
+>
+> **Not claimed:** any corpus-wide Root B size (one module, measured twice); full attribution of
+> every one of the 121; and the `emit_host` probe from the same batch is **discarded** — it
+> overlapped a rebuild of the instrument, so its `emit_fail` is unattributable and contradicts the
+> banked receipt that this module emits.
+
 **Root C — Optional collapses to `()` (~169).** 134 `expected () found Option<_>` plus 35
 `expected Rc<Correction> found Option<_>`. Mechanism established by gentle-dove-833 by
 instrumenting the emitter (91 hits on `Absent`); see §4. Open question owned with the root:
@@ -451,3 +512,27 @@ and finding Root B's population unchanged.
 **Method note worth copying (eager-deer-389):** a three-file closure emitting `dag/std/nat.dag`
 is a 30-second discriminating reproducer for the Root B family. Prefer it to a compiler-module
 probe, which costs tens of minutes.
+
+### §10 — the third branch, checked as asked (`eager-deer-389`, 2026-08-16)
+
+Root B **is** instance 1: its whole mechanism is a closure-content branch.
+
+**A third candidate, same shape, NOT executed:** `05_emit_rust`
+`type_leaf_is_unbound_in_closure_scope` returns `true` on `Absent` — a name missing from the
+closure's type env is treated as unbound, which then drives spurious-generic suppression in fold
+rendering. Narrower closure, silent defaulting arm. I have not shown it takes the *wrong* arm in a
+pure-v2 closure, so it is a candidate and must not be counted as a confirmed instance. What would
+promote it: render a fold over a closure that deliberately excludes the leaf's declaring module and
+show the arm flip.
+
+**One explicit non-instance, recorded because a negative costs the next reader the same search:**
+`v1.compiler.04_env` `source_tree_of` branches on `src/v1`/`src/v2`/`dag/` path substrings, but its
+own `source_tree_partition_note` records the 2026-07-11 ruling that tree no longer decides
+refuse-vs-ledger and only *labels* a dissolution partition. Do not count it.
+
+**Evidence from my lane that bears on the hypothesis, in both directions.** Supporting: forcing the
+repr arm moved 342 diagnostics to zero, so a single closure-shape branch really does gate a large
+population. Cutting against a tidy version of it: the *same* flip introduced ~87 new failures
+through a **second, oppositely-directed** `corpus_repr` branch. So the meta-root is better stated as
+*several independent decisions are keyed off one under-modeled closure fact and disagree about which
+arm a pure-v2 closure wants* — not as one switch in the wrong position.
