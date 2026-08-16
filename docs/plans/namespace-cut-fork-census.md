@@ -668,3 +668,58 @@ such as `plan.actions` is still not a pattern.
 error, so "1 failing file" is a bound imposed by the instrument, not a fact
 about the corpus -- the same right-censoring shape as a `>=2400s` timing floor.
 The uncensored count is now simply whether the floor goes green.
+
+## Measured state of the cut after the parser fix (2026-08-16)
+
+With the qualified-arm parse defect fixed and the two files main landed after
+the merge base qualified, the corpus PARSES clean -- `build_declaration_index`
+reports zero unparseable files. What it does not do is RESOLVE.
+
+One entry's closure produces **966 unresolved-name diagnostics across 213
+files**:
+
+```
+TOTAL 966      BARE 964      DOTTED 2
+FilePath 204 · Nat 163 · HostIdentity 138 · Accepted 112 · None 79
+Rejected 65 · UInt8 29 · NonNegativeInt 24 · Hardware 21 · SourceSpan 15
+```
+
+The 2 dotted ones are `std.types.String` -- a builtin qualified as though it
+were a declaration, the mirror image of the error described below.
+
+**This is the remaining cut work, and its size is now measured rather than
+assumed.** These are the references that used to be bound by an `import` line
+and now bind to nothing.
+
+### Why the mechanical split is not yet trustworthy
+
+A span-directed pass over those diagnostics reports `edits=196`,
+`no_declarer=310`, `not_unique_declarer=460` -- i.e. only 20% mechanical. That
+split is **not reliable**, because it is computed from a scratch declaration
+index matching `^(type|fn|func) Name`, and the compiler's own `declared_names`
+(`source_closure.dag` / `.rs`) additionally walks `Connective::Disj` children,
+so it sees VARIANT CONSTRUCTORS that the regex cannot. `Accepted`, `Rejected`
+and `None` are variants; they are almost certainly in the `no_declarer` bucket
+for that reason alone.
+
+> An index missing a real declaration FORM does not produce approximate counts.
+> It produces counts about a different corpus -- the same wrong-subject failure
+> this lane already paid for once with a closure model missing a filter.
+
+The sound instrument exists in-tree and returns exactly the needed shape:
+`build_declaration_index -> (DeclarationIndex { by_name: name -> {modules} },
+unparsed)`. The mechanical pass should be driven from THAT, not from a regex
+that re-models the resolver.
+
+### The authoring error this measurement caught
+
+When qualifying the two new files I tested `String`, `Bool`, `List` and
+`NonEmptyStr`, found bare usage dominant (13673 vs 104), and generalised to
+"std primitives stay bare". Those four are builtins, so bare is right for them.
+`Nat`, `FilePath`, `Hardware`, `NonNegativeInt` are ordinary declarations that
+need qualification, and the rule was applied to them without ever being tested
+on one.
+
+> A convention validated on four members of a class was applied to the class.
+> The four shared a property (builtin-ness) that the rule was actually keyed on
+> and that nobody had named.
