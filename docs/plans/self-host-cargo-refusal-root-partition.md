@@ -174,7 +174,43 @@ partition is confirmed, so the two lanes work disjoint roots rather than the sam
 | **F — E0282 type annotations needed** | 55 | — | do NOT start; likely dissolves with A |
 | **the unclassified ~64%** | — | new child | dispatched 2026-08-16 |
 
-### Root A — ROOT-CAUSED (smart-ram-730, 2026-08-16)
+### Root A — SIZING RETRACTED, and it is at least two roots (smart-ram-730, 2026-08-16)
+
+**The ~590 was arithmetic coincidence across two censuses, not a measured root.** Raised by the
+side channel, verified in tree against `docs/probes/e0599_phase_b0_emitter_decision_2026-07-29.md`.
+The five signatures I summed came partly from the July E0599 diagnosis (whose own 590 was
+*590 of 635 E0599 diagnostics*, including further `Outcome<U>`/`Option<T>`/`Vector<T>` shapes I
+did not list) and partly from the separately-counted 181 E0277 `T: Clone`. Adding them was
+double-counting across two populations that overlap.
+
+**Worse for my framing: the E0599 population was already split by emitter decision, three ways:**
+
+| mechanism | occurrences | what produced it |
+|---|---:|---|
+| `CloneSharedRequirement` | **369 (61.5%)** | the seed emitter INSERTED a clone at a sharing seam |
+| `TargetApiRequirement` | 168 (28.0%) | `is_empty`/`iter` require element `Clone` |
+| `OwnedDeconstructionRequirement` | 63 (10.5%) | the emitter's owned head/deconstruction lowering |
+
+So "Root A" as this document defined it spans **two different lanes**. The derive-macro
+supplemental-bound mechanism I root-caused below maps to the `TargetApiRequirement` population
+(168) — container methods needing an element bound. The larger `CloneSharedRequirement` half is
+clones the emitter *synthesised*, which belongs to the **emitter-ownership-defork** thread
+DESIGN already carries, not to derive bounds.
+
+**Two warnings that census attaches to its own numbers, and this document must not strip:**
+369 is **not** a predicted burn-down — the census records which emitter arm is *associated* with
+a site, and does NOT execute the per-site ownership verdict, so removability is unproven; and
+`CloneSharedRequirement` means only *the emitter inserted a clone here*, never *this clone can
+be deleted*. A withdrawn rationale in the same document is worth carrying: `Rc::make_mut` was
+once cited as evidence a copy-free alternative exists, and it is not — it is declared
+`where T: Clone` and clones the pointee whenever another strong `Rc` is live, so it **requires
+the very bound being counted**.
+
+**What survives:** the mechanism below is real and root-caused. Its scope is the derive/container
+population, not 590. What the live `05_emit` run measured (~105 in one module, 49 of them
+"exists but its trait bounds were not satisfied") is the number to work against.
+
+### Root A — MECHANISM, for the derive/container population only (smart-ram-730, 2026-08-16)
 
 Live size, measured today on `05_emit` by `gentle-dove-833`: **~105** in one module
 (24 `no method clone on type parameter` · 32 `bound …: Clone not satisfied` ·
