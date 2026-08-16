@@ -6,7 +6,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::v1_interpreter::{sorted_fields, InterpContext, Value};
+use crate::v1_interpreter::{sorted_fields, str_value, InterpContext, Value};
 use crate::v1_rt;
 use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 
@@ -473,7 +473,7 @@ pub fn value_from_fixture_json(
         "Bool" => Ok(Value::Bool(require_bool(obj, "value")?)),
         "Int" => Ok(Value::Int(require_i64(obj, "value")?)),
         "Float" => Ok(Value::Float(require_f64(obj, "value")?)),
-        "Str" => Ok(Value::Str(require_str(obj, "value")?)),
+        "Str" => Ok(str_value(require_str(obj, "value")?)),
         "List" => {
             let items = obj.get("items").and_then(|v| v.as_array()).ok_or_else(|| {
                 FixtureError::DeserializationMismatch {

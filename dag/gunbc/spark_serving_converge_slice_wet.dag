@@ -150,7 +150,7 @@ fn spark_serving_converge_slice_host_line(
   observed_linger: ObservedLingerState,
   typed_row_count: Int,
   apply_effect_count: Int,
-  apply_argv_len: Int,
+  apply_command_count: Int,
   verdict: String,
 ) -> SparkServingSliceHostReport {
   SparkServingSliceHostReport {
@@ -161,7 +161,7 @@ fn spark_serving_converge_slice_host_line(
     " observed_linger=", render_observed_linger(state: observed_linger),
     " typed_rows=", to_string(typed_row_count),
     " apply_effect_count=", to_string(apply_effect_count),
-    " apply_argv_len=", to_string(apply_argv_len),
+    " apply_command_count=", to_string(apply_command_count),
       " verdict=", verdict,
       "\n",
     ], ""),
@@ -255,7 +255,7 @@ fn spark_serving_converge_slice_wet_host_report(
         observed_linger: LingerUnobserved,
         typed_row_count: 0,
         apply_effect_count: 0,
-        apply_argv_len: 0,
+        apply_command_count: 0,
         verdict: join(["observation-refused ", probe_refusal], ""),
       )
     TypedArgvExecConverged { result: probe } =>
@@ -266,7 +266,7 @@ fn spark_serving_converge_slice_wet_host_report(
           observed_linger: LingerUnobserved,
           typed_row_count: 0,
           apply_effect_count: 0,
-          apply_argv_len: 0,
+          apply_command_count: 0,
           verdict: join([
             "observation-refused exit=", to_string(probe.exit_code),
             " stderr=", probe.stderr,
@@ -281,7 +281,7 @@ fn spark_serving_converge_slice_wet_host_report(
               observed_linger: LingerUnobserved,
               typed_row_count: 0,
               apply_effect_count: 0,
-              apply_argv_len: 0,
+              apply_command_count: 0,
               verdict: join(["observation-refused stdout=", trim(s: probe.stdout)], ""),
             )
           Present { value: linger_enabled } =>
@@ -299,7 +299,7 @@ fn spark_serving_converge_slice_wet_host_report(
                   observed_linger: LingerObserved { enabled: linger_enabled },
                   typed_row_count: 0,
                   apply_effect_count: 0,
-                  apply_argv_len: 0,
+                  apply_command_count: 0,
                   verdict: "plan-refused",
                 )
               Present { value: artifact } =>
@@ -311,7 +311,7 @@ fn spark_serving_converge_slice_wet_host_report(
                       observed_linger: LingerObserved { enabled: linger_enabled },
                       typed_row_count: length(artifact.spark_serving_typed_actions),
                       apply_effect_count: 0,
-                      apply_argv_len: 0,
+                      apply_command_count: 0,
                       verdict: "plan-hash-refused",
                     )
                   Present { value: hex } =>
@@ -326,17 +326,17 @@ fn spark_serving_converge_slice_wet_host_report(
                           observed_linger: LingerObserved { enabled: linger_enabled },
                           typed_row_count: length(artifact.spark_serving_typed_actions),
                           apply_effect_count: 0,
-                          apply_argv_len: 0,
+                          apply_command_count: 0,
                           verdict: join(["apply-refused ", why], ""),
                         )
-                      SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+                      SparkServingFrozenApplied { remote_commands: commands, effect_count: n } =>
                         spark_serving_converge_slice_host_line(
                           host: host,
                           endpoint: endpoint,
                           observed_linger: LingerObserved { enabled: linger_enabled },
                           typed_row_count: length(artifact.spark_serving_typed_actions),
                           apply_effect_count: n,
-                          apply_argv_len: length(argv),
+                          apply_command_count: length(commands),
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
                               transport: transport,

@@ -514,7 +514,10 @@ fn witness() -> String {
     );
     match v1_interpreter::run_in_context(&ctx, "witness", false) {
         Ok(Value::Str(s)) => {
-            ensure!(s == "dry-run-mock", "expected dry-run-mock, got {s:?}");
+            ensure!(
+                s.as_ref() == "dry-run-mock",
+                "expected dry-run-mock, got {s:?}"
+            );
             Ok(())
         }
         other => Err(format!("expected mock String, got {other:?}")),

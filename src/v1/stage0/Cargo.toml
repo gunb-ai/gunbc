@@ -276,6 +276,17 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
 
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / STR-RC-0) — local measurement transport
+# for `extdeps.languages.json.parse` `parse_json` interpreter scaling. NOT floor-enrolled.
+# Modes: `scaling` (sub-40KB grid, fixed-cost dominated) and `large` (100/200/507KB
+# decisive regime — post must survive sizes pre reportedly OOM'd on, or refute).
+# CHECKABLE RECEIPT: large-mode TSV rows `ok` vs host kill; not a sub-40KB exponent claim.
+# DISSOLUTION: delete when STR-RC-0 enrolls a floor witness or large-regime refutes and reverts.
+# Carrier: `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER` in json_parse_scaling_probe.rs.
+[[bin]]
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
+
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under
 # NamespaceStructuralRootExposure dispatches to three distinct outcomes
