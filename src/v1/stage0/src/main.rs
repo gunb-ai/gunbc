@@ -970,7 +970,7 @@ fn decode_run_args(
         .map(|spec| match spec.split_once('=') {
             Some((name, value)) if !name.is_empty() => Ok((
                 Some(name.to_string()),
-                v1_compiler::v1_interpreter::Value::Str(value.to_string()),
+                v1_compiler::v1_interpreter::str_value(value),
             )),
             _ => Err(format!(
                 "--arg expects name=value, got `{spec}` (a missing `=` is refused, not \
