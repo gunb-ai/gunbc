@@ -89,6 +89,53 @@ It should be re-asserted directly against the new assembly path.
 
 ---
 
+## "Imports deleted, tree green" is a weaker claim than it looks
+
+Measured on the sibling v1 lane (neat-bee), partitioning all 62 deleted v1 `.dag`
+modules by which demand channel could have made a *survivor* complain:
+
+```
+import graph      0  of 62
+path literal     20  of 62
+directory scan   45  of 62
+-----------------------------
+union witnessed  53
+residue           9
+```
+
+**Zero.** No surviving `.dag` imported any of the 62 deleted modules. Every real
+dependency ran through a roster naming a path literal, or a bin doing `read_dir`
+over a directory. An import-graph census would have reported that entire deletion
+as unwitnessed — a rigorous-looking negative result that was worthless.
+
+This corroborates a finding from this lane's own measurements: authored import
+lists under-declared the true reference closure by roughly 30×. Both are the same
+fact from opposite ends — **imports were not where dependency lived**, so deleting
+them removes a representation that was already not carrying the load.
+
+**The unreassuring half, and it bounds what this cut has proven.** If path
+literals and directory scans are the channels actually carrying demand, deleting
+imports does not remove them, and the verification cannot be import-shaped
+either. `R1_IMPORTS 0` plus a green tree proves *nothing needed the import
+declarations*. It says nothing about whether the reference closure the resolver
+now computes agrees with what the surviving path-literal rosters and directory
+scans reach. **Those are different populations, and only one of them is affected
+by this change.**
+
+**OWED, and not answered by anything in this branch today:** after the cut, is
+there a module reachable by a surviving path-literal roster or directory scan
+that whole-pool resolution does NOT reach — or the reverse? That is a **set
+comparison at identity grain**, not a count, and `source_closure.rs` is the
+closest existing machinery to being able to answer it.
+
+Recorded here rather than left implicit because it is the third time in this lane
+that a guard's subject turned out narrower than the claim it was used to license
+(oracle: `.dag` files vs `.dag` content; control: within-job vs cross-job;
+receipt: branch vs merge ref). This one is the same shape at the level of the
+cut's whole verification story.
+
+---
+
 ## What is deliberately NOT in this note
 
 The tests that fail today with `unresolved type 'Nat'`, `'FilePath'`,
