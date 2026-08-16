@@ -13,9 +13,15 @@ import gunbc.spark_serving_converge_realize {
   SparkServingInstallRemoteArgvPresent,
   SparkServingInstallRemoteArgvRefused,
 }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome }
+import gunbc.typed_argv_exec {
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.host_effect { FleetSsh }
+import gunbc.host_effect_realize { run_typed_argv_transport }
 
-data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv and actuation routes through typed_argv_exec_over_fleet_ssh — never through effect_actuation shell strings (privilege derivation only)."
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv; actuation routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
 
 type SparkServingFrozenApplyResult =
     SparkServingFrozenApplied { remote_argv: List<String>, effect_count: Int }
@@ -85,10 +91,9 @@ fn spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
         }
       } else {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: typed_argv_exec_over_fleet_ssh(
-            target: target,
-            context: context,
+          exec_outcome: run_typed_argv_transport(
             argv: argv,
+            transport: FleetSsh { target: target, context: context },
           ),
         }
       }

@@ -20,7 +20,12 @@ import gunbc.fleet_known_hosts_anchor {
   portable_remote_words,
   shape_fleet_ssh_exec,
 }
-import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
+import gunbc.fleet_multi_principal_probe {
+  fleet_ssh_attempt_raw_from_env,
+  spark_converge_target_host_from_env,
+  spark_converge_execute_apply_from_env,
+}
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
@@ -30,10 +35,16 @@ import gunbc.spark_serving_converge_plan {
 }
 import gunbc.spark_serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
+  spark_serving_exec_frozen_typed_rows_over_fleet_ssh,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
+  SparkServingFrozenRemoteExecApplied,
+  SparkServingFrozenRemoteExecRefused,
 }
-import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_hash }
+import gunbc.fleet_converge_plan {
+  fleet_converge_plan_artifact_hash,
+  FleetConvergePlanArtifact,
+}
 import gunbc.membership_reconcile { membership_write_count }
 
 data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.dgx_spark_procurement OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host was observed."
@@ -105,9 +116,89 @@ fn spark_serving_converge_slice_host_line(
   ], "")
 }
 
+fn spark_serving_converge_slice_ssh_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: spark_serving_automation_principal_login(),
+  }
+}
+
+fn spark_serving_converge_slice_would_apply_verdict(
+  host: HostIdentity,
+  linger_enabled: Bool,
+  n: Int,
+) -> String {
+  join([
+    "would-apply typed-argv membership_writes=",
+    to_string(membership_write_count(
+      plan: spark_serving_linger_membership_plan(
+        host: host,
+        linger_enabled: linger_enabled,
+      ),
+    )),
+  ], "")
+}
+
+fn spark_serving_converge_slice_exec_verdict(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  artifact: FleetConvergePlanArtifact,
+  bundle_hex: String,
+  effect_count: Int,
+) -> String {
+  if effect_count == 0 {
+    "wet-noop-converged"
+  } else {
+    match spark_serving_exec_frozen_typed_rows_over_fleet_ssh(
+      artifact: artifact,
+      claimed_bundle_hex: bundle_hex,
+      context: context,
+      target: spark_serving_converge_slice_ssh_target(host: host),
+    ) {
+      SparkServingFrozenRemoteExecRefused { reason: why } =>
+        join(["wet-apply-refused ", why], "")
+      SparkServingFrozenRemoteExecApplied { exec_outcome } =>
+        match exec_outcome {
+          TypedArgvExecRefused { reason: why } =>
+            join(["wet-apply-exec-refused ", why], "")
+          TypedArgvExecConverged { result } =>
+            if result.success == false {
+              join([
+                "wet-apply-exec-failed exit=", to_string(result.exit_code),
+                " stderr=", result.stderr,
+              ], "")
+            } else {
+              match spark_serving_probe_linger(context: context, host: host) {
+                Absent => "wet-applied-readback-refused probe-did-not-run"
+                Present { value: post } =>
+                  if post.success == false {
+                    join([
+                      "wet-applied-readback-refused exit=", to_string(post.exit_code),
+                      " stderr=", post.stderr,
+                    ], "")
+                  } else {
+                    match spark_serving_linger_enabled_from_stdout(stdout: post.stdout) {
+                      Absent =>
+                        join(["wet-applied-readback-refused stdout=", trim(s: post.stdout)], "")
+                      Present { value: enabled } =>
+                        if enabled {
+                          "wet-applied-converged"
+                        } else {
+                          "wet-applied-readback-mismatch lingering-still-no"
+                        }
+                    }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
 fn spark_serving_converge_slice_wet_host_report(
   context: FleetSshExecutionContext,
   host: HostIdentity,
+  execute_apply: Bool,
 ) -> String {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
   match spark_serving_probe_linger(context: context, host: host) {
@@ -200,18 +291,22 @@ fn spark_serving_converge_slice_wet_host_report(
                           typed_row_count: length(artifact.spark_serving_typed_actions),
                           apply_effect_count: n,
                           apply_argv_len: length(argv),
-                          verdict: if n == 0 {
+                          verdict: if execute_apply {
+                            spark_serving_converge_slice_exec_verdict(
+                              context: context,
+                              host: host,
+                              artifact: artifact,
+                              bundle_hex: hex as String,
+                              effect_count: n,
+                            )
+                          } else if n == 0 {
                             "wet-noop-converged"
                           } else {
-                            join([
-                              "would-apply typed-argv membership_writes=",
-                              to_string(membership_write_count(
-                                plan: spark_serving_linger_membership_plan(
-                                  host: host,
-                                  linger_enabled: linger_enabled,
-                                ),
-                              )),
-                            ], "")
+                            spark_serving_converge_slice_would_apply_verdict(
+                              host: host,
+                              linger_enabled: linger_enabled,
+                              n: n,
+                            )
                           },
                         )
                     }
@@ -246,18 +341,31 @@ func spark_serving_converge_slice_wet() -> ProcessExit
                     reason: known_hosts_materialization_receipt(outcome: materialization),
                   )
                 Present { value: context } => {
+                  let execute_apply = spark_converge_execute_apply_from_env()
+                  let hosts = match spark_converge_target_host_from_env() {
+                    Present { value: only } => [only]
+                    Absent => spark_serving_converge_slice_wet_hosts
+                  }
                   let body = join(
                     concat(
                       [
                         join(["spark_serving_converge_slice_wet probed_at=", now as String, "\n"], ""),
                         join(["attempt=", attempt_raw, "\n"], ""),
-                        join(["address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n"], ""),
+                        join([
+                          "execute_apply=",
+                          if execute_apply { "yes" } else { "no" },
+                          " address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n",
+                        ], ""),
                         known_hosts_materialization_receipt(outcome: materialization),
                         "\n",
                       ],
                       map(
-                        spark_serving_converge_slice_wet_hosts,
-                        h => spark_serving_converge_slice_wet_host_report(context: context, host: h),
+                        hosts,
+                        h => spark_serving_converge_slice_wet_host_report(
+                          context: context,
+                          host: h,
+                          execute_apply: execute_apply,
+                        ),
                       ),
                     ),
                     "",

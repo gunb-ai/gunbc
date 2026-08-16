@@ -22,7 +22,8 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_exec,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import product.placement_supply { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
@@ -233,6 +234,31 @@ fn fleet_ssh_attempt_raw_from_env() -> String? {
               compose_fleet_ssh_attempt_raw(run_id: run_id, run_attempt: run_attempt)
           }
       }
+  }
+}
+
+data spark_converge_target_env_name: NonEmptyStr = "SPARK_CONVERGE_TARGET"
+
+data spark_converge_execute_env_name: NonEmptyStr = "SPARK_CONVERGE_EXECUTE"
+
+fn spark_converge_target_host_from_env() -> HostIdentity? {
+  match env_var_nonempty(name: spark_converge_target_env_name) {
+    Present { value: raw } =>
+      if raw == "srv5" {
+        Present { value: operator_host_srv5 }
+      } else if raw == "srv6" {
+        Present { value: operator_host_srv6 }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+fn spark_converge_execute_apply_from_env() -> Bool {
+  match env_var_nonempty(name: spark_converge_execute_env_name) {
+    Present { value: v } => v == "1"
+    Absent => false
   }
 }
 
