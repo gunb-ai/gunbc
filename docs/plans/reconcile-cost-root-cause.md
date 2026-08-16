@@ -124,10 +124,26 @@ RUN C  arm=1  db984524…   195 879 595 bytes
 ```
 
 Identical byte counts, different digests. `v1_rt` builds every map with `im::HashMap::new()`, whose
-default `RandomState` is seeded per process. Structural comparison of two baseline runs:
-`nodes` identical (193.8M chars), `diagnostics` and `item_registry_keys` **multiset-equal**
-(order-only), `modules` differing under a canonicalization that sorts object keys but not nested
-lists — unresolved at time of writing.
+default `RandomState` is seeded per process.
+
+Structural comparison of two baseline runs, resolved:
+
+```
+nodes                identical, 193 854 713 chars
+files, version       identical
+diagnostics          1557 / 1557    multiset-equal      → order only
+item_registry_keys   19473 / 19473  multiset-equal      → order only
+modules              768 / 768      deep-sorted equal, 0 entries differing
+```
+
+So the divergence is **ordering at every level; content is stable**. (A first comparison reported
+`modules` unequal — that canonicalization sorted object keys but not nested lists, so a permutation
+*inside* a module entry read as a difference. The instrument, not the artifact.)
+
+One bound on the claim: deep-sorting erases intended order as well as incidental order, so this
+establishes content-identity up to ordering, not that every varying order is semantically inert. It
+does not need to — DESIGN already rules map traversal order unspecified, so any consumer relying on
+it is itself the defect.
 
 **Consequence: emitted-artifact byte digests are not a valid equivalence oracle on this path.** Any
 drift gate or cache keyed on them rests on a false premise, and a semantic fingerprint is required
