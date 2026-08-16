@@ -178,6 +178,26 @@ fn witness_floor_run_step() -> Step {
   }
 }
 
+// A DECLARED PROVISIONAL BOUND, NOT A DERIVED ONE, AND THE DIFFERENCE IS THE WHOLE POINT.
+//
+// Absent, this job inherits GitHub's 360-minute default -- so it was never unbounded, but
+// the bound was nobody's decision and it is longer than any observed run needs. The cost it
+// imposes is not wall clock: a self-hosted runner is held for the duration, and the step's
+// log is UNREADABLE until the job ends, so an over-long ceiling converts a failed run into
+// hours of zero information. A bounded failure is strictly more informative than an
+// unbounded wait.
+//
+// 180 is NOT derived from a completed run, because no run of this fold has ever completed.
+// Deriving it would require the completion time this bound exists to force. What it is: half
+// the inherited default, above every phase sequence measured so far (preparation 553s plus
+// published-mock projection 47s locally, at bfecfd961c1), and low enough that the log
+// arrives the same working hour as the failure. Calling it derived would be the fabricated
+// plausible output DESIGN section 5 forbids, one level up -- a number with no measurement
+// behind it wearing a measurement's authority.
+//
+// RESTORATION TRIGGER: the first run that completes this fold. Its wall time is the real
+// measurement, and this constant is replaced by one derived from it -- at which point this
+// note dissolves with the provisional bound it explains.
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -193,7 +213,7 @@ fn witness_floor_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: none,
+    timeout_minutes: 180,
     continue_on_error: none,
     concurrency: none,
     permissions: none

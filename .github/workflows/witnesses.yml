@@ -16,6 +16,7 @@ env:
 jobs:
   witnesses:
     runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v5
