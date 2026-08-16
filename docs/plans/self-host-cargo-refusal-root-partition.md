@@ -1405,3 +1405,88 @@ the noun, answers a neighbouring question to the one being asked.
 
 **Not settled by this run:** whether `Outcome` is seeded by some path other than
 `v1_clone_bound_seed_for_item`. These measurements see receivers, never the seeding map.
+
+## 14. ROOT A, CORRECTED AGAIN — §13.4's construction is REFUTED (`smart-ram-730`, 2026-08-16)
+
+**The mechanism in §13.2 survives two falsifiers. The fix in §13.4 does not.** Refuted before it
+ran, by two witnesses that were already in the tree.
+
+### 14.1 What survived
+
+`smart-ibex-716` ran both checks I asked for.
+
+**Receiver split of A's 64 generic-receiver sites — diagnosis survives, but read it carefully:**
+34 enum / 30 struct. The struct share looks like a 47% counterexample and is not — **all 30 are
+`im::Vector<T>`**, the upstream container the carrier already names as having no declaration bound
+to propagate. **Corpus-declared generic structs in the failing population: zero**, which is
+exactly what the diagnosis predicts, since structs are already seeded. Receivers:
+`Outcome<T>` 10 · `AudienceSet<P>` 5 (an enum) · `Option<T>` 5 · `CacheLookupResult<T>` 4 ·
+`Outcome<U>` 4 · `Grounding<E>` 2 · others 2; `im::Vector` 30.
+
+**Method note worth more than the result** (theirs): *"struct" in a rustc message is a fact about
+the receiver's DECLARATION KIND, not about whose corpus declared it.* The discriminating question
+is which module the receiver comes from. A one-minute check answering the adjacent question would
+have killed a correct diagnosis while wearing the authority of a measurement.
+
+**Refuter — is `Outcome` seeded by some other path? No, and structurally so.** There is one
+seeding call; the fixpoint can only add through `v1_type_expr_wf_needs_clone_param`, which opens
+`if (type_expr.children |> count) == 0 { false }`. **A bare `T` has no children, so the
+well-formedness axis can never bound a bare parameter.** `Outcome`'s only `T`-bearing field is the
+bare `value: T` (both `Diagnostics` types are non-generic). The two axes have complementary blind
+spots and a generic coproduct with a bare payload falls in the gap.
+
+**A is two roots wearing one label.** The 34 enum sites are the seeding gap. The 30 `im::Vector`
+sites cannot be seeded from a declaration at all — upstream, no bound — and need the target API's
+own impl requirements, which is `trait_derive_emit_item_clone_bound_contract_fork_note`'s
+dissolution. Quoting 64 as one target would deliver 34 and look like missing half.
+
+### 14.2 What was refuted, and by what
+
+§13.4 proposed: seed coproducts, and keep declaration emission struct-only by filtering coproducts
+at `v1_item_clone_bounded_param_names`. **Premise false.** `dag/test/claim/generic_item_clone_bound_witness_test.dag`
+already asserts, in `w_bound_propagates_into_coproduct_item`, that
+`type OccurrenceBinding<N> = BoundTo { path: ContainmentPath<N> } | Unbound {...}` emits
+**`enum OccurrenceBinding<N: Clone>`** — an enum declaration DOES print an item-level bound when
+well-formedness propagation fires. The kind filter would have redded it.
+
+Its sibling `w_coproduct_bare_payload_param_stays_bare` asserts `enum PlainChoice<N>` stays bare,
+and that is also correct: `derive(Clone)` supplies `impl<N: Clone>`, so the declaration does not
+need it.
+
+**Both witnesses are right; the two facts really are different, and they really are in one map.**
+An enum's declaration must print a bound earned from *well-formedness* and must not print one
+earned from the *derive seed*. A kind filter cannot separate those — only two records can. §13.4's
+own first sentence proposed exactly that and I implemented the shortcut instead.
+
+Reverted before execution. It cost an hour rather than a day only because I went looking for
+existing evidence before writing new evidence — the general lesson, not an A-specific one.
+
+### 14.3 Where the failure actually bites, corrected
+
+Not at consumer-item declarations. `derive(Clone)` on a consumer struct already yields
+`impl<T: Clone>`. The failures are **fn-level**: `fn f<T>(o: Outcome<T>) { ... o.clone() ... }`
+earns nothing from either fn trigger — the structural one (`v1_generic_params_needing_clone_bound`:
+bare-generic return or direct container element) does not match `Outcome<T>`, and the wf one
+(`v1_fn_param_wf_needs_clone`) finds `bounds[Outcome]` empty. rustc then reports *clone exists for
+`Outcome<T>` but its trait bounds were not satisfied*, which is the measured message verbatim.
+
+**Open, and the reason this is not yet implementable.** The correct fn-level question is
+*cloning* `tau` requires `P: Clone` — `v1_type_expr_clone_impl_needs_param`, which reduces to
+"P occurs in tau". Applying that unconditionally over-bounds: a fn that takes an `Outcome<T>` and
+never clones it does not need the bound, which is why the existing structural trigger is
+usage-shaped. **Deciding a fn's clone-impl requirement needs a usage fact this diagnosis has not
+established.** That is the next thing to establish, and it is not a fourth guess at the same
+question.
+
+### 14.4 Two testing traps found today, both corpus-wide
+
+**Reverting the generated `.rs` is a false green** (`gentle-dove-833`). `claim_batch` interprets
+the `.dag`, so perturbing the emitted artifact perturbs something the witness never reads. Four
+rows stayed green against a reverted projection; reverting the AUTHORITY flipped exactly one. Two
+verifications through two execution paths, one measuring nothing. Anyone verifying an emitter
+change is one step from this, because reverting the visible output is the intuitive control.
+
+**The variant-name wall is module-local** (same). The compiler already refuses two enums claiming
+one variant name *within* a module, so the ambiguous state is reachable only ACROSS modules —
+which is where every live case sits. The wall is drawn exactly at the boundary the defect crosses.
+Whether it should be corpus-wide is an open decision nobody owns.
