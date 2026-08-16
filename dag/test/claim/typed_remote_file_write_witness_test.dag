@@ -66,8 +66,8 @@ test fn w_dotdot_escape_refused() -> Bool {
   !path_within_file_tree_scope(
     scope: witness_tmp_scope,
     path: witness_dotdot_escape_path as NonEmptyStr,
-  )
-    && match typed_remote_file_write_seal(
+  ) &&
+    match typed_remote_file_write_seal(
       path: witness_dotdot_escape_path as FilePath,
       content: "payload" as String,
       allowed_scope: witness_tmp_scope,
@@ -81,8 +81,8 @@ test fn w_executor_home_substring_trap_refused() -> Bool {
   !path_within_file_tree_scope(
     scope: witness_executor_home_scope,
     path: witness_executor_home_substring_trap_path as NonEmptyStr,
-  )
-    && match typed_remote_file_write_seal(
+  ) &&
+    match typed_remote_file_write_seal(
       path: witness_executor_home_substring_trap_path as FilePath,
       content: "payload" as String,
       allowed_scope: witness_executor_home_scope,
@@ -121,9 +121,9 @@ test fn w_remote_argv_is_tee_and_path_only() -> Bool {
     allowed_scope: witness_tmp_scope,
   ) {
     TypedRemoteFileWriteAdmitted { write: w } =>
-      typed_remote_file_write_remote_argv(write: w)
-        == [typed_remote_file_write_tee_command, "/tmp/gunbc-trfw-argv"]
-        && match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: w)) {
+      typed_remote_file_write_remote_argv(write: w) ==
+        [typed_remote_file_write_tee_command, "/tmp/gunbc-trfw-argv"] &&
+        match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: w)) {
           Present { value: _ } => true
           Absent => false
         }
@@ -183,8 +183,8 @@ test fn w_content_digest_stable_for_same_bytes() -> Bool {
         allowed_scope: witness_tmp_scope,
       ) {
         TypedRemoteFileWriteAdmitted { write: b } =>
-          typed_remote_file_write_content_digest_hex(write: a)
-            == typed_remote_file_write_content_digest_hex(write: b)
+          typed_remote_file_write_content_digest_hex(write: a) ==
+            typed_remote_file_write_content_digest_hex(write: b)
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       }
     TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
@@ -220,9 +220,9 @@ test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> Bool {
             admission: TypedRemoteFileWriteAdmitted { write: w },
           ) {
             TypedRemoteFileWriteRemoteExecAccepted { result: r } =>
-              r.success
-                && r.stdout == "mock-ssh-portable-words-stdin"
-                && typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
+              r.success &&
+                r.stdout == "mock-ssh-portable-words-stdin" &&
+                typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
             TypedRemoteFileWriteOutcomeRefused { reason: _ } => false
           }
         Absent => false
