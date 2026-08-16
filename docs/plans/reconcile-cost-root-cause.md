@@ -9,6 +9,42 @@ emitted Rust; nothing here was landed.
 `compile.reconcile` reported **8 minutes** inside `prepare_repository_once` on a required-floor run,
 one core, RSS 3.5 → 6.9 GB, `majflt=0`.
 
+## CORRECTION (2026-08-16, srv2, the real symptom population)
+
+Everything below the next heading was measured on closures of 63/369/768 modules and **extrapolated**
+to the floor. The extrapolation was wrong, and the headline localization with it. Measured on srv2
+against the actual floor (`claim_executor --required-floor`, three source roots,
+`modules_resolved=3734`):
+
+```
+[rx] typecheck                 533 664ms   90.3%   ← the answer
+[rx] rewire_import_str          53 885ms    9.1%   ← predicted ~460s
+[rx] rewire_type_env_parent      1 163ms
+[rx] build_emit_graph_info       1 618ms
+[rx3] parse_census_fill               0ms   ← confirmed prediction
+[rx3] census_si_plus_reconcile 591 357ms
+```
+
+Exponents 768 → 3734 modules: `typecheck` **1.89** (superlinear), `rewire_import_str` **1.49**,
+`keys_total` **1.14**. The two exponents *crossed* between the small grid and reality. Why rewire's
+bent down: `keys_max` saturated at exactly **18 662** — identical to the 768-module closure — and
+`keys_mean` moved only 1 643 → 2 052. Ancestry **plateaus**; the `modules × universe` quadratic does
+not hold at scale, so the cost-law section below is true of the grid and false of the floor.
+
+What survives unchanged, and is stronger: the no-op finding — 11 046 real changes out of 7 665 169
+scans, **0.14%** — every one same-name/different-`resolved`, over a cohort that shrank to **three**
+names (`Bytes` 3657 · `Optional` 3732 · `Secret` 3657; `Float` dropped out). The §3 dual-authority
+root cause and the narrowed replacement stand; their prize is 54s, not 480s.
+
+**This is control-defect variant 7 — oracle denominator narrower than the change — committed by me.**
+A 9× grid was used to rank children of a 60× population.
+
+**New frontier:** `typecheck_with_census_extra`, unpartitioned. Its children are
+`seed_kernel_intern_table`, the `resolved_by_name` fold, `symbol_index_with_qualified_fill`,
+`build_global_bare_variant_locals`, the `realize_module` fold, `expand_transitive_services`. My
+earliest suspicion — `type_env_for_import`'s `std.types` special case, reached via `build_type_env` →
+`interface_env_for_import` — lives inside that 90%.
+
 ## The partition (three closure sizes, one build, one host)
 
 ```
