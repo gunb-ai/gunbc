@@ -192,18 +192,22 @@ test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Boo
       let p = pcb_world_physical(w: w)
       match p.routes {
         CapabilityRefused { cause: _ } => false
+        CapabilityEstablished { authority: _ } => false
         CapabilityPending { owed: o } =>
           (o.first.what_is_owed as String) != ""
             && match w.electrical.nets {
               CapabilityRefused { cause: _ } => false
+              CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: n } => (n.first.what_is_owed as String) != ""
             }
             && match w.manufacturing.artifacts {
               CapabilityRefused { cause: _ } => false
+              CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: a } => (a.first.what_is_owed as String) != ""
             }
             && match p.stackup {
               CapabilityRefused { cause: _ } => false
+              CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: s } => (s.first.what_is_owed as String) != ""
             }
       }
