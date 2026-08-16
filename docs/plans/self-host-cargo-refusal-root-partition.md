@@ -1526,3 +1526,45 @@ Three consequences:
 3. `05_eval`'s 168-site delta is the largest of the four, which is consistent with §6's note that its
    lane sits mostly behind defects that are not eval's — but 605 of its 773 are floor, so the
    proportion holds.
+
+### 11.15 Where Root A actually bites: fn generic parameter lists, measured
+
+`smart-ram-730` reported (after its published fix was refuted by two existing witnesses) that the
+failure bites at **fn bounds, not consumer declarations**. Measured independently, by walking each of
+A's sites in the emitted `03_ingest` tree up to its enclosing item (121 of A's sites are in files
+that tree contains):
+
+```
+91  fn whose generic parameter list carries NO bound      75%
+13  fn whose generic parameter list carries SOME bound    11%   <- see below
+ 9  fn with no generic parameters at all                   7%   (the concrete-receiver residue, 11.12)
+ 6  struct / enum declaration                              5%
+```
+
+**104 of 121 (86%) are fn signatures; 6 are type declarations.** A fix that adds item-level bounds to
+consumer *declarations* cannot reach this population, which is consistent with the refutation.
+
+**The 13 partially-bounded signatures are the sharpest evidence in this root**, because they show the
+mechanism is not failing wholesale — it bounds some parameters of a signature and misses others, and
+the missed one is always the parameter used *through another generic type*:
+
+```
+fold_list<T, A: Clone>                                          fails on T   via Rc<im::Vector<T>>
+fold_list_right<T, A: Clone>                                    fails on T   via Rc<im::Vector<T>>
+resolve_probe<A: Clone, B>                                      fails on B   via CacheProbe<B>
+reconcile_grounded<A: Clone, R, E>                              fails on R   via ShowEffectiveRead<R>
+grounding_qualified_by_durability<E, Target: Clone, ReadbackSubject: Clone>
+                                                                fails on E   via Grounding<E>
+```
+
+This is the two-blind-spot composition stated at fn grain: the wf axis can only propagate a bound
+*from a declared type that already carries one*, and the carriers these parameters flow through carry
+none — `CacheProbe`, `ShowEffectiveRead`, `Grounding` and `Outcome` are generic **coproducts**, which
+the seed skips, and `im::Vector` is upstream with no declaration bound at all. Every parameter that
+DID earn its bound in these same signatures flows through something else.
+
+**Discriminating prediction, recorded before any fix lands:** seeding the propagation record from
+coproducts should bound the parameters flowing into `CacheProbe`/`ShowEffectiveRead`/`Grounding`/
+`Outcome` and leave the `im::Vector<T>` ones standing, because `im::Vector` has no corpus declaration
+to seed from. If both move, the seeding gap was not the mechanism; if neither moves, the fix did not
+reach fn signatures at all.
