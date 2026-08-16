@@ -1,5 +1,6 @@
 module test.claim.typed_remote_file_write_fleet_ssh_fixture
 
+
 data fixture_attempt_raw: String = "typed-remote-file-write-witness"
 
 fn fixture_attempt() -> gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity? {
@@ -24,6 +25,29 @@ fn fleet_openssh_trust_policy_hermetic_witness_fixture(
   gunbc.fleet_known_hosts_anchor.fleet_openssh_trust_policy_seal(anchor: anchor)
 }
 
+// The hermetic credential fixture goes THROUGH the real classifier rather than around it. There is
+// no other mint, so the fixture cannot assert a binding into existence; it must present a synthetic
+// derivation that matches, which is the same wall production traverses. `fixture_identity_file` is
+// never opened -- classification is pure, so no key exists on disk in a witness run.
+data fixture_identity_file: std.types.NonEmptyStr = "/tmp/gunbc-trfw-witness-key"
+
+data fixture_public_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
+  algorithm: extdeps.ssh.Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIHERMETICWITNESSFIXTUREKEYMATERIAL0" as std.types.NonEmptyStr,
+  comment: "typed-remote-file-write-witness",
+}
+
+// A derivation whose stdout IS the expected line, so the match arm is reached honestly.
+fn fixture_credential_verification() -> gunbc.fleet_ssh_credential_verify.FleetSshCredentialVerification {
+  gunbc.fleet_ssh_credential_verify.classify_derived_public_key_line(
+    identity_file: fixture_identity_file,
+    expected_key: fixture_public_key,
+    derivation_succeeded: true,
+    derivation_stdout: gunbc.fleet_ssh_credential_verify.expected_public_key_line(key: fixture_public_key),
+    derivation_stderr: "",
+  )
+}
+
 fn fleet_ssh_execution_context_hermetic_witness_fixture() -> gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext?
   admit_callers: [
     decl_ref(module_path: "test.claim.typed_remote_file_write_witness", decl_name: "w_over_fleet_ssh_hermetic_mock_exec_accepted"),
@@ -33,17 +57,16 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> gunbc.fleet_known_h
     Absent => none
     Present { value: attempt } => {
       let anchor = known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
-      Present {
-        value: gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_seal(
-          attempt: attempt,
-          trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
-          credential: gunbc.fleet_known_hosts_anchor.fleet_ssh_credential_binding_of_public_material(
-            identity_file: "/tmp/gunbc-trfw-witness-key" as std.types.NonEmptyStr,
-            public_material: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHERMETIC-WITNESS-FIXTURE" as std.types.NonEmptyStr,
+      match fixture_credential_verification() {
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialVerified { binding: binding } => Present {
+          value: gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_seal(
+            attempt: attempt,
+            trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
+            credential: binding,
           ),
         }
-        FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
-        FleetSshCredentialDerivationRefused { cause: _ } => none
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: _ } => none
       }
     }
   }
