@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# STR-RC-0 large-regime experiment: pre (String) vs post (Rc<str>).
-# Run from a CLEAN committed tree (ctrl-build overlays local diffs onto fetch base).
+# STR-RC-0 clean-process survival experiment: pre (String) vs post (Rc<str>).
+# One fresh process per (carrier, size) pair; cgroup memory.peak/events when available.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -14,8 +14,10 @@ PRE_DIR="/tmp/str-rc0-pre-build"
 RESULTS_DIR="$ROOT/docs/probes/results"
 mkdir -p "$RESULTS_DIR"
 
-MEM_LIMIT_KB=8000000
+# 8 GiB cgroup cap (honest memory bound; not ulimit -v virtual address space).
+MEM_LIMIT_BYTES=$((8 * 1024 * 1024 * 1024))
 TIMEOUT_SEC=900
+SURVIVAL_SIZES=(100000 200000 507000)
 
 echo "=== Dispatch metadata (quote this in receipts, not the fetch line alone) ==="
 echo "# dispatch_head=$(git rev-parse HEAD)"
@@ -57,8 +59,6 @@ PROBE_SRC="$ROOT/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 PROBE_DST="$PRE_DIR/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 mkdir -p "$(dirname "$PROBE_DST")"
 cp "$PROBE_SRC" "$PROBE_DST"
-
-# Adapt str_value for Value::Str(String) on pre-migration tree.
 sed -i 's/Value::Str(std::rc::Rc::from(s.as_ref()))/Value::Str(s.as_ref().to_string())/' "$PROBE_DST"
 
 if ! grep -q json_parse_scaling_probe "$PRE_DIR/src/v1/stage0/Cargo.toml"; then
@@ -78,79 +78,194 @@ echo "=== Building PRE (String) probe ==="
 )
 PRE_BIN="$PRE_DIR/target/release/json_parse_scaling_probe"
 
-run_probe_bounded() {
+cgroup_create() {
+  local id="$1"
+  local path=""
+  if [ -w /sys/fs/cgroup ] && [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+    path="/sys/fs/cgroup/str-rc0-${id}-$$"
+    if mkdir -p "$path" 2>/dev/null; then
+      if ! echo "$MEM_LIMIT_BYTES" >"$path/memory.max" 2>/dev/null; then
+        rmdir "$path" 2>/dev/null || true
+        path=""
+      fi
+    else
+      path=""
+    fi
+  fi
+  echo "$path"
+}
+
+cgroup_read_peak_kb() {
+  local path="$1"
+  if [ -n "$path" ] && [ -r "$path/memory.peak" ]; then
+    local peak
+    peak="$(cat "$path/memory.peak" 2>/dev/null || echo "")"
+    if [ -n "$peak" ] && [ "$peak" != "max" ]; then
+      echo $((peak / 1024))
+      return
+    fi
+  fi
+  echo "unavailable"
+}
+
+cgroup_read_oom_kills() {
+  local path="$1"
+  if [ -n "$path" ] && [ -r "$path/memory.events" ]; then
+    awk '/^oom_kill / {print $2; exit}' "$path/memory.events" 2>/dev/null || echo "unavailable"
+    return
+  fi
+  echo "unavailable"
+}
+
+cgroup_cleanup() {
+  local path="$1"
+  if [ -n "$path" ] && [ -d "$path" ]; then
+    rmdir "$path" 2>/dev/null || true
+  fi
+}
+
+termination_label() {
+  local ec="$1"
+  case "$ec" in
+    0) echo "completed" ;;
+    2) echo "parse_failed" ;;
+    137|134|9) echo "killed (OOM or signal)" ;;
+    124) echo "timeout" ;;
+    *) echo "failed" ;;
+  esac
+}
+
+# Fresh process: one (carrier, size, eval_memo) invocation.
+run_survival_process() {
   local label="$1"
   local bin="$2"
-  local outfile="$3"
-  local eval_memo="${4:-0}"
-  local targets="${5:-}"
-  echo "=== Running $label (large mode, GUNBC_EVAL_MEMO=$eval_memo, ulimit -v $MEM_LIMIT_KB, timeout ${TIMEOUT_SEC}s) ==="
+  local target_bytes="$3"
+  local eval_memo="$4"
+  local outfile="$5"
+
+  local cgroup_id="${label}-${target_bytes}"
+  local cgroup_path
+  cgroup_path="$(cgroup_create "$cgroup_id")"
+
+  echo "=== Running $label survival target=${target_bytes} GUNBC_EVAL_MEMO=${eval_memo} (fresh process) ==="
   {
+    echo "# experiment=survival"
     echo "# label=$label"
+    echo "# target_bytes=$target_bytes"
     echo "# GUNBC_EVAL_MEMO=$eval_memo"
+    echo "# cgroup_path=${cgroup_path:-unavailable}"
+    echo "# cgroup_memory_max_bytes=$MEM_LIMIT_BYTES"
     echo "# host=$(uname -a)"
     echo "# date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "# mem_limit_kb=$MEM_LIMIT_KB timeout_sec=$TIMEOUT_SEC"
-    echo "# command: GUNBC_EVAL_MEMO=$eval_memo JSON_PARSE_PROBE_MODE=large $bin"
+    echo "# timeout_sec=$TIMEOUT_SEC"
+    echo "# command: JSON_PARSE_PROBE_MODE=survival JSON_PARSE_TARGET_BYTES=$target_bytes GUNBC_EVAL_MEMO=$eval_memo $bin"
+    echo "#"
+
+    set +e
+    if [ -n "$cgroup_path" ]; then
+      (
+        echo $$ >"$cgroup_path/cgroup.procs" 2>/dev/null || true
+        exec timeout "$TIMEOUT_SEC" \
+          GUNBC_EVAL_MEMO="$eval_memo" \
+          JSON_PARSE_PROBE_MODE=survival \
+          JSON_PARSE_TARGET_BYTES="$target_bytes" \
+          "$bin"
+      )
+      ec=$?
+    else
+      timeout "$TIMEOUT_SEC" \
+        GUNBC_EVAL_MEMO="$eval_memo" \
+        JSON_PARSE_PROBE_MODE=survival \
+        JSON_PARSE_TARGET_BYTES="$target_bytes" \
+        "$bin"
+      ec=$?
+    fi
+    set -e
+
+    echo "# exit_code=$ec"
+    echo "# termination=$(termination_label "$ec")"
+    echo "# cgroup_memory_peak_kb=$(cgroup_read_peak_kb "$cgroup_path")"
+    echo "# cgroup_oom_kill_count=$(cgroup_read_oom_kills "$cgroup_path")"
+    cgroup_cleanup "$cgroup_path"
+    return 0
+  } | tee "$outfile"
+}
+
+run_memo_receipt_process() {
+  local label="$1"
+  local bin="$2"
+  local target_bytes="$3"
+  local outfile="$4"
+
+  echo "=== Running $label memo_receipt target=${target_bytes} (fresh process, memo default) ==="
+  {
+    echo "# experiment=memo_receipt"
+    echo "# label=$label"
+    echo "# target_bytes=$target_bytes"
+    echo "# GUNBC_EVAL_MEMO=default"
+    echo "# date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# command: JSON_PARSE_PROBE_MODE=memo_receipt JSON_PARSE_TARGET_BYTES=$target_bytes $bin"
     echo "#"
     set +e
-    (
-      ulimit -v "$MEM_LIMIT_KB"
-      if [ -n "$targets" ]; then
-        export JSON_PARSE_PROBE_TARGETS="$targets"
-      else
-        unset JSON_PARSE_PROBE_TARGETS || true
-      fi
-      GUNBC_EVAL_MEMO="$eval_memo" JSON_PARSE_PROBE_MODE=large timeout "$TIMEOUT_SEC" "$bin" &
-      pid=$!
-      peak_kb=0
-      while kill -0 "$pid" 2>/dev/null; do
-        if [ -r "/proc/$pid/status" ]; then
-          hwm="$(awk '/^VmHWM:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
-          if [ -n "$hwm" ] && [ "$hwm" -gt "$peak_kb" ]; then
-            peak_kb=$hwm
-          fi
-        fi
-        sleep 0.2
-      done
-      wait "$pid"
-      ec=$?
-      echo "# peak_rss_kb=$peak_kb"
-      exit "$ec"
-    )
+    timeout "$TIMEOUT_SEC" \
+      JSON_PARSE_PROBE_MODE=memo_receipt \
+      JSON_PARSE_TARGET_BYTES="$target_bytes" \
+      "$bin"
     ec=$?
     set -e
     echo "# exit_code=$ec"
-    case "$ec" in
-      0) echo "# outcome=completed" ;;
-      137|134|9) echo "# outcome=killed (OOM or signal)" ;;
-      124) echo "# outcome=timeout" ;;
-      *) echo "# outcome=failed" ;;
-    esac
+    echo "# termination=$(termination_label "$ec")"
     return 0
   } | tee "$outfile"
 }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-# Primary receipt: memo OFF (true first-call parse cost).
-run_probe_bounded "pre-string-memo0" "$PRE_BIN" "$RESULTS_DIR/large-pre-string-memo0-${TS}.txt" 0
-run_probe_bounded "post-rc-str-memo0" "$POST_BIN" "$RESULTS_DIR/large-post-rc-str-memo0-${TS}.txt" 0
-run_probe_bounded "post-rc-str-memo-on" "$POST_BIN" "$RESULTS_DIR/large-post-rc-str-memo-on-${TS}.txt" 1 "100000,200000"
 
-SUMMARY="$RESULTS_DIR/large-regime-summary-${TS}.tsv"
+# PRODUCTION SURVIVAL: 6 fresh processes, memo at production default.
+for size in "${SURVIVAL_SIZES[@]}"; do
+  run_survival_process "pre-string" "$PRE_BIN" "$size" "default" \
+    "$RESULTS_DIR/survival-pre-string-${size}-${TS}.txt"
+  run_survival_process "post-rc-str" "$POST_BIN" "$size" "default" \
+    "$RESULTS_DIR/survival-post-rc-str-${size}-${TS}.txt"
+done
+
+# MECHANISM: memo OFF at 100KB and 200KB for both carriers (diagnostic only).
+for size in 100000 200000; do
+  run_survival_process "pre-string-memo0" "$PRE_BIN" "$size" 0 \
+    "$RESULTS_DIR/mechanism-pre-string-memo0-${size}-${TS}.txt"
+  run_survival_process "post-rc-str-memo0" "$POST_BIN" "$size" 0 \
+    "$RESULTS_DIR/mechanism-post-rc-str-memo0-${size}-${TS}.txt"
+done
+
+# MEMO RECEIPT: post only at 100KB (cold / first repeat / subsequent hits).
+run_memo_receipt_process "post-rc-str" "$POST_BIN" 100000 \
+  "$RESULTS_DIR/memo-receipt-post-rc-str-100000-${TS}.txt"
+
+SUMMARY="$RESULTS_DIR/clean-process-summary-${TS}.tsv"
 {
-  echo -e "label\tGUNBC_EVAL_MEMO\ttarget_bytes\tactual_bytes\toutcome\tmembers_found\tfirst_call_ms\texit_code\tpeak_rss_kb"
-  for f in "$RESULTS_DIR"/large-*-"${TS}".txt; do
+  echo -e "experiment\tlabel\tGUNBC_EVAL_MEMO\ttarget_bytes\tactual_bytes\toutcome\tmembers_found\telapsed_ms\texit_code\ttermination\tcgroup_memory_peak_kb\tcgroup_oom_kill_count"
+  for f in "$RESULTS_DIR"/*-"${TS}".txt; do
+    [ -f "$f" ] || continue
+    experiment="$(grep '^# experiment=' "$f" | cut -d= -f2)"
     label="$(grep '^# label=' "$f" | cut -d= -f2)"
     eval_memo="$(grep '^# GUNBC_EVAL_MEMO=' "$f" | cut -d= -f2)"
     exit_code="$(grep '^# exit_code=' "$f" | cut -d= -f2)"
-    peak="$(grep '^# peak_rss_kb=' "$f" | cut -d= -f2)"
-    grep -E '^[0-9]+\t' "$f" | while IFS=$'\t' read -r target members actual outcome members_found first_ms; do
-      echo -e "${label}\t${eval_memo}\t${target}\t${actual}\t${outcome}\t${members_found}\t${first_ms}\t${exit_code}\t${peak}"
-    done
+    termination="$(grep '^# termination=' "$f" | cut -d= -f2)"
+    peak="$(grep '^# cgroup_memory_peak_kb=' "$f" | cut -d= -f2)"
+    oom="$(grep '^# cgroup_oom_kill_count=' "$f" | cut -d= -f2)"
+    if [ "$experiment" = "memo_receipt" ]; then
+      grep -E '^[0-9]+\t' "$f" | while IFS=$'\t' read -r target members actual cold first avg outcome; do
+        echo -e "${experiment}\t${label}\tdefault\t${target}\t${actual}\t${outcome}\tcold=${cold}\tfirst=${first}\tavg_hit=${avg}\t${exit_code}\t${termination}\t${peak}\t${oom}"
+      done
+    else
+      grep -E '^[0-9]+\t' "$f" | while IFS=$'\t' read -r target members actual outcome members_found elapsed; do
+        echo -e "${experiment}\t${label}\t${eval_memo}\t${target}\t${actual}\t${outcome}\t${members_found}\t${elapsed}\t${exit_code}\t${termination}\t${peak}\t${oom}"
+      done
+    fi
   done
 } >"$SUMMARY"
 
 echo "=== Results ==="
-ls -la "$RESULTS_DIR"/large-*-"${TS}".*
+ls -la "$RESULTS_DIR"/*-"${TS}".*
+echo ""
 cat "$SUMMARY"
