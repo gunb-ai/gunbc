@@ -35,7 +35,7 @@ type SupervisorRunState
 // measurement as a setting, and the next reader would try to edit it.
 type SupervisorIntervalKnowledge
   = IntervalDeclared { interval: Second }
-  | IntervalMeasured { interval: Second, samples: Nat, observed_at: EpochMs }
+  | IntervalMeasured { interval: Second, samples: std.nat.Nat, observed_at: EpochMs }
   | IntervalUnknown
 
 type HostBootSupervisorObservation {
@@ -70,7 +70,7 @@ type HostBootStallSignature {
   host: HostIdentity
   last_checkpoint: NonEmptyStr
   error_code: NonEmptyStr?
-  observed_cycles: Nat
+  observed_cycles: std.nat.Nat
   observed_at: EpochMs
 }
 

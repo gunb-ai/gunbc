@@ -63,13 +63,13 @@ type ReferenceBindingObservation
       gap: ReferenceBindingProductionGap,
     }
   | RepeatedMentionDependencyObservation {
-      provider_file: FilePath,
-      projected_dependencies: List<FilePath>,
+      provider_file: std.types.FilePath,
+      projected_dependencies: List<std.types.FilePath>,
     }
   | UnrelatedLoadedFileObservation {
-      provider_file: FilePath,
-      unrelated_loaded_file: FilePath,
-      projected_dependencies: List<FilePath>,
+      provider_file: std.types.FilePath,
+      unrelated_loaded_file: std.types.FilePath,
+      projected_dependencies: List<std.types.FilePath>,
     }
 
 fn structural_binding_resolution_from_candidates(

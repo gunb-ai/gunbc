@@ -35,7 +35,7 @@ type BlackUnstableFeature
   | BlackUnstablePyiBlankLineBeforeDecoratedClass
 
 type BlackConfig {
-  line_length: Outcome<PositiveInt>
+  line_length: Outcome<v2.std.refinement.PositiveInt>
   target_version: BlackTargetVersionPolicy
   required_version: BlackRequiredVersionPolicy
   pyi: Bool

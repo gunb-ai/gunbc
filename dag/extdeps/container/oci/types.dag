@@ -119,7 +119,7 @@ fn runtime_mount_kind_label(kind: RuntimeMountKind) -> String {
 }
 
 type RuntimeMountSource
-  = MountBindSource { host_path: FilePath }
+  = MountBindSource { host_path: std.types.FilePath }
   | MountSymbolicSource { label: NonEmptyStr }
 
 fn runtime_mount_source_label(source: RuntimeMountSource) -> String {

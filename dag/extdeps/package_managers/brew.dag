@@ -9,11 +9,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data brew_prefix_apple_silicon: FilePath = "/opt/homebrew"
-data brew_bin_apple_silicon: FilePath = "/opt/homebrew/bin"
+data brew_prefix_apple_silicon: std.types.FilePath = "/opt/homebrew"
+data brew_bin_apple_silicon: std.types.FilePath = "/opt/homebrew/bin"
 
-data brew_prefix_intel: FilePath = "/usr/local"
-data brew_bin_intel: FilePath = "/usr/local/bin"
+data brew_prefix_intel: std.types.FilePath = "/usr/local"
+data brew_bin_intel: std.types.FilePath = "/usr/local/bin"
 
 data formula_rust: NonEmptyStr = "rust"               
 data formula_coreutils: NonEmptyStr = "coreutils"     

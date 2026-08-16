@@ -3,7 +3,7 @@ module std.filesystem
 
 
 type FileEntry {
-  path: FilePath
+  path: std.types.FilePath
   kind: EntryKind
   encoding: Encoding?
   symlink_target: SymlinkTarget?

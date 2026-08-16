@@ -45,14 +45,14 @@ fn derive_regional_premium(
 }
 
 // Monthly cost for the row's whole instance at the conventional 730-hour billing month, and the same figure divided by the instance's vCPU count -- the per-vCPU number is what makes a 2-vCPU cloud instance comparable to a 12-thread dedicated box (extdeps.pricing.hetzner_dedicated), which is the comparison that shows on-demand cloud compute costing several times a rented machine.
-fn monthly_micros(row: RegionalComputeRow) -> Nat? {
+fn monthly_micros(row: RegionalComputeRow) -> std.nat.Nat? {
   match hourly_micros(row: row) {
     Present { value: h } => Present { value: h * 730 }
     _ => none
   }
 }
 
-fn per_vcpu_month_micros(row: RegionalComputeRow) -> Nat? {
+fn per_vcpu_month_micros(row: RegionalComputeRow) -> std.nat.Nat? {
   let cores = hardware_thread_count_value(t: row.vcpus)
   if cores <= 0 {
     none

@@ -9,14 +9,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitReleaseVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: std.integer.NonNegativeInt
+  minor: std.integer.NonNegativeInt
+  patch: std.integer.NonNegativeInt
 }
 
 type GitVersionPlatformSuffix
   = GitVersionPlain
-  | GitVersionWindows { build: NonNegativeInt }
+  | GitVersionWindows { build: std.integer.NonNegativeInt }
 
 type GitCliReportedVersion {
   git_release: GitReleaseVersion

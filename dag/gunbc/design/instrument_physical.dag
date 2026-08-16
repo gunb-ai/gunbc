@@ -70,7 +70,7 @@ data amplitude_note: String = "AN AMPLITUDE IS A NONNEGATIVE MAGNITUDE, and the 
 
 type ChannelAmplitude
   = ChannelDisabled
-  | ChannelAmplitudePx { px: Nat }
+  | ChannelAmplitudePx { px: std.nat.Nat }
 
 fn amplitude_px(a: ChannelAmplitude) -> Int {
   match a {
@@ -132,9 +132,9 @@ fn instrument_displacement_px(p: InstrumentPreference) -> Int {
 data composed_displacement_note: String = "Every positional contribution the register can grant a single subject, carried as nonnegative magnitudes so the sum cannot cancel. focal_attraction_px is the plate travel a focal control may be granted; it is zero for a subject with no attraction. The record has no direction field on purpose: a direction would let two contributions be argued to oppose, which is how a composed budget gets talked out of being composed."
 
 type ComposedVisualDisplacement {
-  enclosure_character_px: Nat
-  focal_attraction_px: Nat
-  impulse_transient_px: Nat
+  enclosure_character_px: std.nat.Nat
+  focal_attraction_px: std.nat.Nat
+  impulse_transient_px: std.nat.Nat
 }
 
 fn composed_total_px(d: ComposedVisualDisplacement) -> Int {
@@ -146,7 +146,7 @@ type DisplacementAdmission
   | DisplacementOverBudget { total_px: Int, max_px: Int }
   | EnclosureCharacterReachesResponseTravel { character_px: Int, max_px: Int }
 
-fn compose_displacement(p: InstrumentPreference, focal_attraction_px: Nat) -> ComposedVisualDisplacement {
+fn compose_displacement(p: InstrumentPreference, focal_attraction_px: std.nat.Nat) -> ComposedVisualDisplacement {
   ComposedVisualDisplacement {
     enclosure_character_px: amplitude_px(a: p.optical_jitter) +
       amplitude_px(a: p.vertical_shift) +

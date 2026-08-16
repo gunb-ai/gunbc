@@ -51,7 +51,7 @@ type CargoArtifactHit
 // where non_empty, so an empty path cannot become one — it refuses by name instead
 // of being cast into a carrier that would reject it anyway.
 type CargoArtifactSelection
-  = CargoArtifactSelected { executable: FilePath }
+  = CargoArtifactSelected { executable: std.types.FilePath }
   | CargoArtifactAbsent { target_name: String }
   | CargoArtifactAmbiguous { target_name: String, count: Int }
   | CargoArtifactWithoutExecutable { target_name: String }
@@ -339,7 +339,7 @@ fn cargo_selection_from_hit(
           line_number: line_number
         }
       } else {
-        CargoArtifactSelected { executable: path as FilePath }
+        CargoArtifactSelected { executable: path as std.types.FilePath }
       }
   }
 }
@@ -395,7 +395,7 @@ fn cargo_select_artifact_executable(
   }
 }
 
-fn cargo_artifact_selected_path(selection: CargoArtifactSelection) -> FilePath? {
+fn cargo_artifact_selected_path(selection: CargoArtifactSelection) -> std.types.FilePath? {
   match selection {
     CargoArtifactSelected { executable: p } => Present { value: p }
     CargoArtifactAbsent { target_name: _ } => none

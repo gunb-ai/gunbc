@@ -182,7 +182,7 @@ test fn w_microsoft_fy2022_components_reach_operating_income() -> Bool {
   }
 }
 
-fn signed_usd_value_equals(v: SignedUsdWholeDollars, expected: Nat) -> Bool {
+fn signed_usd_value_equals(v: SignedUsdWholeDollars, expected: std.nat.Nat) -> Bool {
   match v {
     NonNegativeUsd { amount: a } => usd_whole_dollars_count(m: a) == expected
     NegativeUsd { magnitude: _ } => false

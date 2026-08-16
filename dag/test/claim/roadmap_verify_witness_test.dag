@@ -32,7 +32,7 @@ fn empty_contract() -> WorkItemExecutionContract {
 
 fn one_validation_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap_verify_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap_verify_witness_test.dag" as std.types.FilePath,
     function: "roadmap_verify_keystone_holds" as NonEmptyStr,
   )
 }
@@ -110,7 +110,7 @@ fn sample_receipt() -> LegacySingleValidationVerificationReceipt {
     node_id: "shell-typed-invocation",
     attempt_key: "a1b2c3",
     host: "srv1" as NonEmptyStr,
-    worktree: "/srv/attempts/shell-typed-invocation-aa1b2c3" as FilePath,
+    worktree: "/srv/attempts/shell-typed-invocation-aa1b2c3" as std.types.FilePath,
     revision: "deadbeefcafe" as NonEmptyStr,
     validation_label: "gunbc-claim" as NonEmptyStr,
     command_wire: "/opt/gunbc/bin/gunbc run --claim-run",
@@ -137,7 +137,7 @@ test fn unobserved_exit_never_serializes_as_zero() -> Bool {
       node_id: "n",
       attempt_key: "k",
       host: "srv1" as NonEmptyStr,
-      worktree: "/w" as FilePath,
+      worktree: "/w" as std.types.FilePath,
       revision: "r" as NonEmptyStr,
       validation_label: "gunbc-claim" as NonEmptyStr,
       command_wire: "gunbc run",

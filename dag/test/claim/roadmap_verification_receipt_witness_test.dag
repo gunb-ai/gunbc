@@ -21,12 +21,12 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
     executions: [
       ValidationExecution {
         validation: GunbcClaimValidation {
-          entry: "dag/test/claim/exact_head_test.dag" as FilePath,
+          entry: "dag/test/claim/exact_head_test.dag" as std.types.FilePath,
           function: "exact_head_holds" as NonEmptyStr,
         },
         command: ModeledValidationCommand {
           label: "gunbc-claim" as NonEmptyStr,
-          program: "/opt/gunbc/bin/gunbc" as FilePath,
+          program: "/opt/gunbc/bin/gunbc" as std.types.FilePath,
           args: [
             "run", "--claim-run", "--entry",
             "dag/test/claim/exact_head_test.dag", "--function", "exact_head_holds",

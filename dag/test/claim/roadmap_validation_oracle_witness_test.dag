@@ -3,7 +3,7 @@ module test.claim.roadmap_validation_oracle_witness_test
 
 data oracle_fixture_note: String = "The fixtures model the exact situation this lane exists for: ONE attempt, whose diff touches a subject file and — in the discriminating case — the witness that judges it. The oracle entry and function are held constant across every case below, so the only thing that varies is the witness SOURCE. That is what makes the pair of cases discriminating rather than merely different: a mechanism that greened both would be reading the contract, not the oracle."
 
-data oracle_entry_path: FilePath = "src/v2/compiler/self_host/frontier_witness_test.dag" as FilePath
+data oracle_entry_path: std.types.FilePath = "src/v2/compiler/self_host/frontier_witness_test.dag" as std.types.FilePath
 
 data oracle_function_name: NonEmptyStr = "frontier_generator_attribution_holds" as NonEmptyStr
 
@@ -690,12 +690,12 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
       executions: [
         ValidationExecution {
           validation: GunbcClaimValidation {
-            entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as FilePath,
+            entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as std.types.FilePath,
             function: "verify_lamp_stays_pending_without_a_receipt" as NonEmptyStr,
           },
           command: ModeledValidationCommand {
             label: "gunbc-claim" as NonEmptyStr,
-            program: "/opt/gunbc/bin/gunbc" as FilePath,
+            program: "/opt/gunbc/bin/gunbc" as std.types.FilePath,
             args: ["run", "--claim-run"],
           },
           exit_code: if validation_verdict_key(verdict: verdict) == "failed" { 1 } else { 0 },

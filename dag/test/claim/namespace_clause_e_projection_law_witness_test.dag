@@ -3,11 +3,11 @@ module test.claim.namespace_clause_e_projection_law_witness_test
 
 data namespace_clause_e_projection_law_witness_note: String = "Planted controls for gunbc.namespace_clause_e_projection_law assess_controlled_two_mention_provenance_projection. Each NamespaceClauseEProjectionFailure variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the full projection fields. B2 row-closure over OrdinaryLoadedCompilationClosure is excluded from this witness file."
 
-fn contract_witness_consumer_file() -> FilePath {
+fn contract_witness_consumer_file() -> std.types.FilePath {
   "app/consumer.dag"
 }
 
-fn contract_witness_provider_file() -> FilePath {
+fn contract_witness_provider_file() -> std.types.FilePath {
   "app/provider.dag"
 }
 

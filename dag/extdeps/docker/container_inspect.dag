@@ -24,7 +24,7 @@ type ContainerStateDetail {
   restarting: Bool
   oom_killed: Bool
   dead: Bool
-  pid: Nat?
+  pid: std.nat.Nat?
   exit_code: Int?
   error: ErrorMessage?
   started_at: Timestamp?
@@ -40,7 +40,7 @@ data container_state_detail_redundant_bools_frontier_rows: List<FrontierRow> = [
 ]
 
 type HostConfig {
-  cpu_shares: Nat?
+  cpu_shares: std.nat.Nat?
   memory: ByteSize?
   memory_reservation: ByteSize?
   memory_swap: ByteSize?
@@ -48,7 +48,7 @@ type HostConfig {
   cpu_quota: Microsecond?
   cpuset_cpus: String?
   cpuset_mems: String?
-  blkio_weight: Nat?
+  blkio_weight: std.nat.Nat?
   blkio_weight_device: List<String>?
   network_mode: String?
   pid_mode: String?
@@ -108,14 +108,14 @@ data hostconfig_containerconfig_anemic_leaves_frontier_rows: List<FrontierRow> =
 type ContainerInspect {
   id: String
   created: Timestamp
-  path: FilePath?
+  path: std.types.FilePath?
   args: List<String>?
   state: ContainerStateDetail
   image: String
-  resolv_conf_path: FilePath?
+  resolv_conf_path: std.types.FilePath?
   hostname: String?
   name: String?
-  restart_count: Nat?
+  restart_count: std.nat.Nat?
   driver: String?
   platform: String?
   config: ContainerConfig?
@@ -127,7 +127,7 @@ type NetworkSettings {
   bridge: String?
   gateway: String?
   ip_address: String?
-  ip_prefix_len: Nat?
+  ip_prefix_len: std.nat.Nat?
   mac_address: String?
   networks: List<String>?
 }

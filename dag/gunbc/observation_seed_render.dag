@@ -272,7 +272,7 @@ fn scoped_run_routine_measured_without_basis(
   )
 }
 
-fn seed_phase_basis(overhead_ms: Nat) -> AttentionBasis {
+fn seed_phase_basis(overhead_ms: std.nat.Nat) -> AttentionBasis {
   AttentionBasis { average: millisecond(count: overhead_ms), maximum: millisecond(count: overhead_ms) }
 }
 
@@ -282,7 +282,7 @@ fn seed_phase_subject(phase: NonEmptyStr) -> ObservationSubject {
 
 data seed_phase_begin_note: String = "A phase Begin is the matched half of observation law 1 for phase-grain subjects. The floor prelude historically only printed Concluded (the mark fires when the phase ends); compile-path gantt marks already pair .begin/.done, so the seed boundary exposes both arms. Wall at Begin is unmeasured by construction — elapsed does not exist yet — and RSS stays on heartbeat/measurement (ci_event_line does not project event.rss). The compile-path seed renders through a Rust MIRROR of these fns rather than the interpreter: trace_mark runs inside compile itself, and calling back into the interpreter to render would recurse. The mirror is proven byte-equal to this oracle by the seed RED (same pattern as seed_heartbeat_line / render_heartbeat_line_mirror)."
 
-fn phase_begin_line(phase: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+fn phase_begin_line(phase: NonEmptyStr, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_phase_subject(phase: phase),
     transition: Begin,
@@ -295,7 +295,7 @@ fn phase_begin_line(phase: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String
   )
 }
 
-fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+fn phase_concluded_line(phase: NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_phase_subject(phase: phase),
     transition: Concluded { outcome: Done },
@@ -312,16 +312,16 @@ data seed_heartbeat_unreadable_cause: NonEmptyStr = "cgroup field unreadable" as
 
 // The floor-memory heartbeat's projection. The heartbeat runs on a detached liveness thread in a memory-constrained context, so the seed renders it through a Rust MIRROR of ci_heartbeat_line rather than calling the interpreter there — an interpreter render on that thread would build a duplicate module index, consuming the very memory the heartbeat watches (DESIGN section 2), and the thread's whole point is to stay alive when the main interpreter is busy. This fn is the ORACLE that keeps the mirror honest: the seed's Rust test runs this (through the interpreter) and its mirror on the same samples and asserts byte-equality, so the format authority stays here in the one renderer and any drift reds. The subject is batch-grain by construction — the floor walks entries in parallel, so there is no single active module to name; the primitive interface carries no module or phase, which is why the mirror is a COMPLETE reflection of this fn over the seed's real input space, never a fabricated per-module detail (observation law 2: identity, never invented). Wired (4b): claim_executor.render_heartbeat_line_mirror + HeartbeatFeed.
 fn seed_heartbeat_line(
-  elapsed_ms: Nat,
-  batch_index: Nat,
+  elapsed_ms: std.nat.Nat,
+  batch_index: std.nat.Nat,
   batch_label: NonEmptyStr,
-  entry_index: Nat,
-  entry_total: Nat,
-  rss_bytes: Nat,
+  entry_index: std.nat.Nat,
+  entry_total: std.nat.Nat,
+  rss_bytes: std.nat.Nat,
   rss_available: Bool,
-  swap_bytes: Nat,
+  swap_bytes: std.nat.Nat,
   swap_available: Bool,
-  pressure_bp: Nat,
+  pressure_bp: std.nat.Nat,
   pressure_available: Bool,
   emoji: Bool
 ) -> String {
@@ -351,14 +351,14 @@ fn seed_governor_hold_line(hold: SchedulerHold, emoji: Bool) -> String {
   )
 }
 
-fn seed_psi_hold_line(avg10_bp: Nat, emoji: Bool) -> String {
+fn seed_psi_hold_line(avg10_bp: std.nat.Nat, emoji: Bool) -> String {
   seed_governor_hold_line(
     hold: PsiPressure { avg10: basis_point(count: avg10_bp) },
     emoji: emoji
   )
 }
 
-fn seed_high_water_hold_line(current_bytes: Nat, high_water_bytes: Nat, emoji: Bool) -> String {
+fn seed_high_water_hold_line(current_bytes: std.nat.Nat, high_water_bytes: std.nat.Nat, emoji: Bool) -> String {
   seed_governor_hold_line(
     hold: CurrentHighWater {
       current: byte_size(current_bytes),
@@ -379,7 +379,7 @@ fn seed_typecheck_subject(module_path: NonEmptyStr) -> ObservationSubject {
   }
 }
 
-fn typecheck_begin_line(module_path: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+fn typecheck_begin_line(module_path: NonEmptyStr, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_typecheck_subject(module_path: module_path),
     transition: Begin,
@@ -392,7 +392,7 @@ fn typecheck_begin_line(module_path: NonEmptyStr, overhead_ms: Nat, emoji: Bool)
   )
 }
 
-fn typecheck_concluded_line(module_path: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+fn typecheck_concluded_line(module_path: NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_typecheck_subject(module_path: module_path),
     transition: Concluded { outcome: Done },
@@ -409,7 +409,7 @@ data seed_measurement_unreadable_cause: NonEmptyStr = "no /proc/self/status" as 
 
 data seed_measurement_note: String = "Measurement-feed projection (wiring flip): peak-RSS samples become ci_measurement_rss_line — identity-first label, human GiB, MeasuredUnavailable names its cause. Hot-path mirrors in claim_executor / claim_batch (same class as heartbeat). The typed receipt consumers are unchanged; only the log dialect migrates."
 
-fn seed_peak_rss_line(label: NonEmptyStr, rss_bytes: Nat, rss_available: Bool, emoji: Bool) -> String {
+fn seed_peak_rss_line(label: NonEmptyStr, rss_bytes: std.nat.Nat, rss_available: Bool, emoji: Bool) -> String {
   ci_render_line(
     line: ci_measurement_rss_line(
       label: label,
@@ -429,7 +429,7 @@ fn seed_shell_subject(intent: NonEmptyStr) -> ObservationSubject {
   ObservationSubject { segments: [ PhaseSegment { name: intent } ] }
 }
 
-fn shell_effect_begin_line(intent: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -> String {
+fn shell_effect_begin_line(intent: NonEmptyStr, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_shell_subject(intent: intent),
     transition: Begin,
@@ -442,7 +442,7 @@ fn shell_effect_begin_line(intent: NonEmptyStr, overhead_ms: Nat, emoji: Bool) -
   )
 }
 
-fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat, emoji: Bool) -> String {
+fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = ObservationEvent {
     subject: seed_shell_subject(intent: intent),
     transition: Concluded { outcome: Done },
@@ -458,9 +458,9 @@ fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat
 fn shell_effect_failed_line(
   intent: NonEmptyStr,
   argv_collapsed: NonEmptyStr,
-  exit_code: Nat,
-  elapsed_ms: Nat,
-  overhead_ms: Nat,
+  exit_code: std.nat.Nat,
+  elapsed_ms: std.nat.Nat,
+  overhead_ms: std.nat.Nat,
   emoji: Bool
 ) -> String {
   let error = concat(

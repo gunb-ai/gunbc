@@ -12,7 +12,7 @@ type BrowserPresentationMode
 
 type BrowserLaunchConfiguration
   = | PlaywrightDefaultChromiumLaunch {
-      executable_path: FilePath,
+      executable_path: std.types.FilePath,
     }
 
 type BrowserExecutionEnvironment {
@@ -217,7 +217,7 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
     architecture: Aarch64,
     presentation_mode: HeadlessPresentation,
     launch_configuration: PlaywrightDefaultChromiumLaunch {
-      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
+      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     },
   },
   observed_on: "2026-08-01T04:58:15Z" as Rfc3339Timestamp,

@@ -6,7 +6,7 @@ data namespace_pool_independence_note: String = "N3-C pool-independence comparis
 data namespace_pool_independence_section_4c_finding_note: String = "§4c COMMENT-PATH FINDING (executed 2026-08-07, sole carrier #7996 — B2 stopped; equality control deferred). DEFECT: referenced_module_paths_in_text in v1_compiler.cli_run byte-scans source and does not skip // comment lines, so a comment-only dotted module path changes closure discovery. EXECUTED EVIDENCE: index declares std.occurrence_binding_candidates; baseline source `module test.probe\\nimport std.types { Bool }\\n` yields referenced_module_paths_in_text=[]; same source with inserted line `// std.occurrence_binding_candidates.foo\\n` yields referenced_module_paths_in_text=[\"std.occurrence_binding_candidates\"]. BOTH CLOSURE CONSUMERS call this scanner: extend_with_reference_closure (bare reference closure fixpoint / load_reference_scan) and reference_pull_paths_for_source (reference-pull closure). REMEDIATION: route closure discovery through annotation-erased projection (B2, not this PR). This PR records the finding only — no inverted assert_ne! probe and no CI enrollment."
 
 type PoolIndependenceFailure
-  = SourceSubjectConsumerFileMismatch { expected: FilePath, found: FilePath }
+  = SourceSubjectConsumerFileMismatch { expected: std.types.FilePath, found: std.types.FilePath }
   | RefusalOutcomeMismatch
   | BoundReferencePopulationMismatch
   | ReferenceOccurrenceIdentityMismatch
@@ -111,7 +111,7 @@ fn provenance_lists_agree(
 }
 
 fn pool_independence_source_subject_matches_provenance(
-  source_subject: FilePath,
+  source_subject: std.types.FilePath,
   provenances: List<CrossFileBindingProvenance>,
 ) -> Bool {
   fold(
@@ -127,7 +127,7 @@ fn pool_independence_source_subject_matches_provenance(
 }
 
 fn pool_independence_compare_ready_fields(
-  source_subject: FilePath,
+  source_subject: std.types.FilePath,
   baseline_provenances: List<CrossFileBindingProvenance>,
   baseline_dependencies: List<DirectFileDependency>,
   baseline_population: BoundReferencePopulation,
@@ -210,7 +210,7 @@ fn pool_independence_compare_ready_fields(
 }
 
 fn assess_pool_independent_projection_equality(
-  source_subject: FilePath,
+  source_subject: std.types.FilePath,
   baseline: ReferenceDerivedDependencyProjection,
   perturbed: ReferenceDerivedDependencyProjection,
 ) -> PoolIndependenceVerdict {

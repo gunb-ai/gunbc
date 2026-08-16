@@ -21,7 +21,7 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   }
 }
 
-fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+fn cost_account_measured<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
     space: byte_size(count: 0)
@@ -30,7 +30,7 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
+fn cost_account_time_count<S>(account: CostAccount<S>) -> std.nat.Nat {
   measure_count(m: account.time)
 }
 

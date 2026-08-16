@@ -70,8 +70,8 @@ type PrettierParser
   | PrettierParserYaml
 
 type PrettierFormattingOptions {
-  print_width: Outcome<NonNegativeInt>
-  tab_width: Outcome<NonNegativeInt>
+  print_width: Outcome<v2.std.refinement.NonNegativeInt>
+  tab_width: Outcome<v2.std.refinement.NonNegativeInt>
   use_tabs: Bool
   semi: Bool
   single_quote: Bool
@@ -97,8 +97,8 @@ type PrettierFormattingOptions {
 
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
-  print_width: FieldPatch<Outcome<NonNegativeInt>>
-  tab_width: FieldPatch<Outcome<NonNegativeInt>>
+  print_width: FieldPatch<Outcome<v2.std.refinement.NonNegativeInt>>
+  tab_width: FieldPatch<Outcome<v2.std.refinement.NonNegativeInt>>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>

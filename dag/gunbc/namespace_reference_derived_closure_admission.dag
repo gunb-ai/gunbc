@@ -39,7 +39,7 @@ type ReferenceDerivedClosureTrigger
   | P2aReferenceDependencyProjection7515
   | P2aPoolIndependentDependencyProjection7515
 
-fn file_present(xs: List<FilePath>, wanted: FilePath) -> Bool {
+fn file_present(xs: List<std.types.FilePath>, wanted: std.types.FilePath) -> Bool {
   xs |> any(x => (x as String) == (wanted as String))
 }
 

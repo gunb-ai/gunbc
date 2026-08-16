@@ -77,7 +77,7 @@ type TimingQuantity
   = BoundInNanoseconds { value: Nanosecond }
   | BoundInMicroseconds { value: Microsecond }
   | BoundInHertz { value: Hertz }
-  | BoundInClockCycles { count: Nat }
+  | BoundInClockCycles { count: std.nat.Nat }
 
 type TimingBound {
   quantity: TimingQuantity

@@ -43,7 +43,7 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
     tree_identity: id,
   }
   CodexRuntimeBundle {
-    root: "/tmp/codex-runtime-fixture" as FilePath,
+    root: "/tmp/codex-runtime-fixture" as std.types.FilePath,
     native_executable_rel: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
     wrapper_executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
     platform_package_rel: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr,
@@ -88,7 +88,7 @@ fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
               bundle: fixture_bundle_from_digest(digest: digest),
               binding: binding,
               probe_key: "probe-fixture-1" as ProviderProbeKey,
-              codex_home: "/tmp/gunbc-codex-home-fixture" as FilePath,
+              codex_home: "/tmp/gunbc-codex-home-fixture" as std.types.FilePath,
             ),
           }
         _ => none

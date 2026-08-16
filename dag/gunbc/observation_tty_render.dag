@@ -8,7 +8,7 @@ type PreambleFields {
   run_id: NonEmptyStr
   trigger: NonEmptyStr
   diff_summary: NonEmptyStr
-  entry_total: Nat
+  entry_total: std.nat.Nat
 }
 
 data observation_tty_preamble_note: String = "The preamble is REQUIRED — no anonymous process. The reference implementation makes this a construction rule (a titled, described process or nothing), and it is kept: a TTY run opens with what is running, why it was triggered, and how much work it faces, so the first thing on screen answers the question the crawl window could not. The diff-to-runs selection summary is the centre of it (section 6b), but its declaration-grain form rides the namespace lane; this carrier holds the fields that exist today and grows without a format change when decl-grain selection lands."
@@ -46,7 +46,7 @@ fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap
 
 data observation_tty_group_note: String = "The live group line is a repainting projection of the currently-running subject: a spinner, the phase, and the k-of-n counter, overwritten each tick. It names the current entry the way the reference's group line does, and it carries the same identity-first discipline as the heartbeat — the spinner says alive, the text says what is alive."
 
-fn tty_group_line(active: ObservationSubject, k: Nat, n: Nat, spinner: SymbolId) -> RenderedLine {
+fn tty_group_line(active: ObservationSubject, k: std.nat.Nat, n: std.nat.Nat, spinner: SymbolId) -> RenderedLine {
   let detail = ci_subject_detail_text(subject: active)
   RenderedLine {
     glyph: spinner,
@@ -80,7 +80,7 @@ fn tty_blocked_line(blocked: BlockedOn) -> RenderedLine {
 }
 
 // The reward animal renders on Final — the reference's flourish, kept, and kept CORRECTLY: it is drawn from the reward-animal rows in the one glyph authority, selected deterministically by the run's identity, never a random draw. A random animal would make the event stream unreplayable, which would defeat the same replay the flagship depends on. On a non-emoji terminal the row's ascii form renders, so the flourish degrades to a word rather than a mojibake box.
-fn tty_final_line(shown_failures: Nat, run_index: Int, tier: Tier) -> RenderedLine {
+fn tty_final_line(shown_failures: std.nat.Nat, run_index: Int, tier: Tier) -> RenderedLine {
   let animal = match reward_animal_at(index: run_index, tier: tier) {
     Present { value: a } => a
     Absent => ""

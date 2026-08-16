@@ -20,8 +20,8 @@ data fixture_note: String = "One synthetic source laid out so every arm of the r
 
 `inner` is the load-bearing one. Its nearest FOLLOWING subject is g, so a rule that checked proximity without checking containment would silently file a function's body commentary against the next unrelated declaration — a plausible wrong answer rather than a refusal."
 
-fn probe_span(start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: "probe.dag", start: start, end: end }
+fn probe_span(start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: "probe.dag", start: start, end: end }
 }
 
 fn subject_f() -> AnnotationSubject {

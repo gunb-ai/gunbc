@@ -25,7 +25,7 @@ data codex_app_server_subject_note: String = "THE SUBJECT IS the Codex app-serve
 type CodexAppServerTransport
   = CodexAppServerStdio
   | CodexAppServerUnixSocket {
-      path: FilePath
+      path: std.types.FilePath
     }
 
 type CodexAppServerMethod
@@ -48,7 +48,7 @@ fn codex_app_server_method_wire_name(method: CodexAppServerMethod) -> NonEmptySt
 data codex_app_server_method_note: String = "FIRST PRESS SLICE method sequence from the generated ClientRequest schema: initialize → account/read → account/rateLimits/read → thread/start → turn/start. There is no `thread/turn` or bare `rateLimits/read` method in 0.146.0."
 
 type CodexAppServerExecutable {
-  path: FilePath
+  path: std.types.FilePath
 }
 
 data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."

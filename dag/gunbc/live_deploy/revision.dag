@@ -9,7 +9,7 @@ data deploy_revision_probe_note: String = "The relation is OBSERVED, not inferre
 
 type DeployTargetId {
   host: HostIdentity
-  destination: FilePath
+  destination: std.types.FilePath
   service_unit: NonEmptyStr
 }
 
@@ -17,7 +17,7 @@ data deploy_target_id_note: String = "The mutex identity is the DEPLOYMENT DOMAI
 
 data srv1_dashboard_target: DeployTargetId = DeployTargetId {
   host: srv1_host.identity,
-  destination: "/opt/gunbc/gunbc" as FilePath,
+  destination: "/opt/gunbc/gunbc" as std.types.FilePath,
   service_unit: "gunbc-dashboard" as NonEmptyStr,
 }
 
@@ -97,8 +97,8 @@ fn deploy_revision_relation_from_probes(
 
 data deploy_revision_persisted_outside_tree_note: String = "The deployed-revision record lives OUTSIDE the directory the deploy rsyncs into, and that placement is load-bearing rather than tidy. A marker inside the deployed tree is destroyed or overwritten by the very rsync whose outcome it is supposed to describe, so after a partial or interrupted deploy the record would describe a tree that was never fully written — the state the guard exists to detect becomes the state it cannot see. Keeping it beside the destination instead means the record is written ONLY after the service has restarted and the deployed surface has been read back, so a crash mid-deploy leaves the previous revision recorded and the next run correctly classifies the incomplete tree as still-at-the-old-revision rather than trusting a marker the failed run had already advanced."
 
-fn deploy_revision_state_path(target: DeployTargetId) -> FilePath {
-  concat(concat("/var/lib/gunbc/deploy-revision/", target.service_unit as String), ".sha") as FilePath
+fn deploy_revision_state_path(target: DeployTargetId) -> std.types.FilePath {
+  concat(concat("/var/lib/gunbc/deploy-revision/", target.service_unit as String), ".sha") as std.types.FilePath
 }
 
 fn deploy_target_mutex_group(target: DeployTargetId) -> String {

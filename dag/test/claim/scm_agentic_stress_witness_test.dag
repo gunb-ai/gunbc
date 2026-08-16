@@ -26,9 +26,9 @@ data agentic_base_10k: ScmWorkloadProfile = ScmWorkloadProfile {
   monthly_object_writes_per_user: 0,
 }
 
-data agentic_logical_node_reads_per_user: Nat = 2000000
+data agentic_logical_node_reads_per_user: std.nat.Nat = 2000000
 
-data agentic_logical_node_writes_per_user: Nat = 200000
+data agentic_logical_node_writes_per_user: std.nat.Nat = 200000
 
 data agentic_unpacked_10k: ScmWorkloadProfile = profile_with_packed_ops(
   base: agentic_base_10k,
@@ -80,19 +80,19 @@ data storj_quote: ProviderQuote = ProviderQuote {
   quoted_basis: ByteBasisUnstated,
 }
 
-fn total_for(quote: ProviderQuote, profile: ScmWorkloadProfile) -> Nat? {
+fn total_for(quote: ProviderQuote, profile: ScmWorkloadProfile) -> std.nat.Nat? {
   quote_total_micros(
     result: quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
   )
 }
 
-fn ops_for(quote: ProviderQuote, profile: ScmWorkloadProfile) -> Nat? {
+fn ops_for(quote: ProviderQuote, profile: ScmWorkloadProfile) -> std.nat.Nat? {
   quote_operations_micros(
     result: quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
   )
 }
 
-fn w_total_equals(quote: ProviderQuote, profile: ScmWorkloadProfile, expected: Nat) -> Bool {
+fn w_total_equals(quote: ProviderQuote, profile: ScmWorkloadProfile, expected: std.nat.Nat) -> Bool {
   match total_for(quote: quote, profile: profile) {
     Present { value: t } => t == expected
     _ => false

@@ -91,7 +91,7 @@ fn admit_observed_archive_digest(
 
 fn observe_package_archive_at_path(
   locator: NonEmptyStr,
-  path: FilePath,
+  path: std.types.FilePath,
 ) -> PackageArchiveDigestObservation {
   match sha512sum_observe_file(path: path) {
     Sha512FileObserved { digest } =>
@@ -178,7 +178,7 @@ type RegistryArtifactAcquisition
 fn acquire_and_admit_registry_artifact(
   artifact: NpmRegistryArtifact,
   lock_node_key: NonEmptyStr,
-  dest_dir: FilePath,
+  dest_dir: std.types.FilePath,
 ) -> RegistryArtifactAcquisition {
   match admit_codex_registry_artifact_locator(locator: artifact.resolved.locator) {
     CodexRegistryLocatorRefused { locator, cause } =>
@@ -193,7 +193,7 @@ fn acquire_and_admit_registry_artifact(
           let dest = concat(
             dest_dir as String,
             concat("/", staging_archive_name_from_lock_key(lock_node_key: lock_node_key) as String),
-          ) as FilePath
+          ) as std.types.FilePath
           let downloaded = http.Client.DownloadToFile(
             url: artifact.resolved.locator,
             destination: dest as NonEmptyStr,
@@ -376,8 +376,8 @@ fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
 data publish_codex_runtime_current_link_note: String = "Typed symlink publish via extdeps.shell.Symlink.AtomicReplace (ln -sfnT argv binding). Runs inside materialize_codex_runtime_bundle during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport."
 
 fn publish_codex_runtime_current_link(
-  release_parent: FilePath,
-  release_root: FilePath,
+  release_parent: std.types.FilePath,
+  release_root: std.types.FilePath,
 ) -> Bool {
   let link = codex_runtime_current_link_path(release_parent: release_parent)
   shell.Symlink.AtomicReplace(target: release_root, link: link).success
@@ -513,7 +513,7 @@ fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
   )
 }
 
-fn codex_bundled_executable_for_srv1() -> FilePath? {
+fn codex_bundled_executable_for_srv1() -> std.types.FilePath? {
   match codex_linux_arm64_native_executable_rel() {
     Absent => none
     Present { value: rel } =>
@@ -791,7 +791,7 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
+data codex_runtime_release_parent: std.types.FilePath = srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 
@@ -902,7 +902,7 @@ fn sort_admitted_packages_by_lock_key(
 
 fn observe_admitted_package_set_identity(
   receipts: List<AdmittedPackageArtifactReceipt>,
-  staging_dir: FilePath,
+  staging_dir: std.types.FilePath,
 ) -> ContentHash? {
   let ordered = sort_admitted_packages_by_lock_key(receipts: receipts)
   let body = fold(
@@ -916,7 +916,7 @@ fn observe_admitted_package_set_identity(
   if wrote.success == false {
     none
   } else {
-    match sha512sum_observe_file(path: path as FilePath) {
+    match sha512sum_observe_file(path: path as std.types.FilePath) {
       Sha512FileObserved { digest } =>
         Present { value: as_content_hash_sha512(digest: digest) }
       Sha512FileObservationRefused { cause: _ } => none
@@ -924,7 +924,7 @@ fn observe_admitted_package_set_identity(
   }
 }
 
-fn observe_file_sha512(path: FilePath) -> Sha512Digest? {
+fn observe_file_sha512(path: std.types.FilePath) -> Sha512Digest? {
   match sha512sum_observe_file(path: path) {
     Sha512FileObserved { digest } => Present { value: digest }
     Sha512FileObservationRefused { cause: _ } => none
@@ -1023,8 +1023,8 @@ type PackageMaterializedTreeObservation
   | PackageMaterializedTreeObservationRefused { cause: NonEmptyStr }
 
 fn observe_package_materialized_tree(
-  root: FilePath,
-  work_dir: FilePath,
+  root: std.types.FilePath,
+  work_dir: std.types.FilePath,
 ) -> PackageMaterializedTreeObservation {
   let listed = shell.Find.FilesAndSymlinksWithMode(root: root)
   if listed.success == false {
@@ -1062,7 +1062,7 @@ fn observe_package_materialized_tree(
                         Present { value: so_far }
                       } else if kind_ch == "f" {
                         let abs = concat(root as String, concat("/", rel))
-                        match observe_file_sha512(path: abs as FilePath) {
+                        match observe_file_sha512(path: abs as std.types.FilePath) {
                           Absent => none
                           Present { value: digest } =>
                             Present {
@@ -1123,7 +1123,7 @@ fn observe_package_materialized_tree(
             cause: "canonical installed-tree listing could not be written" as NonEmptyStr,
           }
         } else {
-          match sha512sum_observe_file(path: path as FilePath) {
+          match sha512sum_observe_file(path: path as std.types.FilePath) {
             Sha512FileObserved { digest } =>
               PackageMaterializedTreeObserved {
                 receipt: PackageMaterializedTreeReceipt {
@@ -1264,10 +1264,10 @@ fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
 }
 
 fn observe_protocol_schema_identity(
-  native_executable: FilePath,
-  work_dir: FilePath,
+  native_executable: std.types.FilePath,
+  work_dir: std.types.FilePath,
 ) -> ContentHash? {
-  let schema_dir = concat(work_dir as String, "/protocol-schema") as FilePath
+  let schema_dir = concat(work_dir as String, "/protocol-schema") as std.types.FilePath
   let made = shell.Mkdir.Parents(path: schema_dir)
   if made.success == false {
     none
@@ -1357,7 +1357,7 @@ fn observe_protocol_schema_identity(
               if wrote.success == false {
                 none
               } else {
-                match sha512sum_observe_file(path: path as FilePath) {
+                match sha512sum_observe_file(path: path as std.types.FilePath) {
                   Sha512FileObserved { digest } =>
                     Present { value: as_content_hash_sha512(digest: digest) }
                   Sha512FileObservationRefused { cause: _ } => none
@@ -1444,7 +1444,7 @@ fn codex_runtime_bundle_receipt_canonical_body(
 
 fn observe_codex_runtime_bundle_receipt_identity(
   receipt_without_identity: CodexRuntimeBundleReceipt,
-  staging_dir: FilePath,
+  staging_dir: std.types.FilePath,
 ) -> ContentHash? {
   match codex_runtime_bundle_receipt_canonical_body(receipt: receipt_without_identity) {
     Absent => none
@@ -1454,7 +1454,7 @@ fn observe_codex_runtime_bundle_receipt_identity(
       if wrote.success == false {
         none
       } else {
-        match sha512sum_observe_file(path: path as FilePath) {
+        match sha512sum_observe_file(path: path as std.types.FilePath) {
           Sha512FileObserved { digest } =>
             Present { value: as_content_hash_sha512(digest: digest) }
           Sha512FileObservationRefused { cause: _ } => none
@@ -1464,15 +1464,15 @@ fn observe_codex_runtime_bundle_receipt_identity(
   }
 }
 
-fn codex_runtime_receipt_sidecar_path(release_root: FilePath) -> FilePath {
+fn codex_runtime_receipt_sidecar_path(release_root: std.types.FilePath) -> std.types.FilePath {
   concat(
     release_root as String,
     concat("/", codex_runtime_receipt_sidecar_name as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn write_codex_runtime_receipt_sidecar(
-  release_root: FilePath,
+  release_root: std.types.FilePath,
   receipt_identity: ContentHash,
 ) -> Bool {
   match content_hash_sha512_hex(hash: receipt_identity) {
@@ -1487,7 +1487,7 @@ fn write_codex_runtime_receipt_sidecar(
   }
 }
 
-fn read_codex_runtime_receipt_sidecar(release_root: FilePath) -> String? {
+fn read_codex_runtime_receipt_sidecar(release_root: std.types.FilePath) -> String? {
   let read = Filesystem.Read(
     path: codex_runtime_receipt_sidecar_path(release_root: release_root) as String,
   )
@@ -1516,11 +1516,11 @@ type CodexRuntimeReleaseOutcome
     }
 
 fn validate_existing_codex_runtime_release(
-  existing_root: FilePath,
+  existing_root: std.types.FilePath,
   receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: NonEmptyStr,
   expected_hex: String,
-  scratch_dir: FilePath,
+  scratch_dir: std.types.FilePath,
 ) -> CodexRuntimeReleaseOutcome {
   match read_codex_runtime_receipt_sidecar(release_root: existing_root) {
     Absent =>
@@ -1538,7 +1538,7 @@ fn validate_existing_codex_runtime_release(
         let existing_native = concat(
           existing_root as String,
           concat("/", native_executable_rel as String),
-        ) as FilePath
+        ) as std.types.FilePath
         match observe_file_sha512(path: existing_native) {
           Absent =>
             CodexRuntimeReleaseReuseMismatch {
@@ -1607,14 +1607,14 @@ fn validate_existing_codex_runtime_release(
 data codex_runtime_release_publish_note: String = "Publication uses a UNIQUE same-parent staging directory (mktemp -d .<hex>.publishing.XXXXXX), never a deterministic .<hex>.publishing path. Tree-identity scratch (materialized-tree.canonical) is ALWAYS outside the publishing/release tree — passed as scratch_dir — so validation cannot plant a file into the tree it is measuring. Final install is GNU mv -T (no-target-directory): equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux — never nests into an existing winner. On AlreadyExists, delete the contender staging tree and validate the winner with the same external scratch."
 
 fn relocate_build_root_to_unique_publishing(
-  build_root: FilePath,
-  parent: FilePath,
+  build_root: std.types.FilePath,
+  parent: std.types.FilePath,
   hex: String,
-) -> FilePath? {
+) -> std.types.FilePath? {
   let template = concat(
     parent as String,
     concat("/.", concat(hex, ".publishing.XXXXXX")),
-  ) as FilePath
+  ) as std.types.FilePath
   let staged = shell.Mktemp.DirWithTemplate(template: template)
   if staged.success == false {
     none
@@ -1646,8 +1646,8 @@ fn relocate_build_root_to_unique_publishing(
 }
 
 fn rename_publishing_noreplace(
-  publishing: FilePath,
-  dest: FilePath,
+  publishing: std.types.FilePath,
+  dest: std.types.FilePath,
 ) -> Bool {
   let script = retained_foreign(
     body: concat(
@@ -1663,8 +1663,8 @@ fn rename_publishing_noreplace(
 }
 
 fn codex_runtime_release_ready_with_current_link(
-  release_parent: FilePath,
-  root: FilePath,
+  release_parent: std.types.FilePath,
+  root: std.types.FilePath,
 ) -> CodexRuntimeReleaseOutcome {
   if publish_codex_runtime_current_link(
     release_parent: release_parent,
@@ -1679,11 +1679,11 @@ fn codex_runtime_release_ready_with_current_link(
 }
 
 fn release_codex_runtime_bundle_immutable(
-  build_root: FilePath,
+  build_root: std.types.FilePath,
   receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: NonEmptyStr,
-  scratch_dir: FilePath,
-  release_parent: FilePath,
+  scratch_dir: std.types.FilePath,
+  release_parent: std.types.FilePath,
 ) -> CodexRuntimeReleaseOutcome {
   match content_hash_sha512_hex(hash: receipt.receipt_identity) {
     Absent =>
@@ -1698,7 +1698,7 @@ fn release_codex_runtime_bundle_immutable(
           cause: "release parent mkdir refused" as NonEmptyStr,
         }
       } else {
-        let dest = concat(parent as String, concat("/", hex)) as FilePath
+        let dest = concat(parent as String, concat("/", hex)) as std.types.FilePath
         let already = shell.Test.IsDirectory(path: dest)
         if already.is_directory {
           let validated = validate_existing_codex_runtime_release(
@@ -1926,7 +1926,7 @@ type TargetClosureAcquisitionAcc
 fn acquire_and_admit_selected_pair(
   wrapper: CodexSelectedNodeAdmission,
   platform: CodexSelectedNodeAdmission,
-  dest_dir: FilePath,
+  dest_dir: std.types.FilePath,
 ) -> TargetClosureAcquisitionAcc {
   match wrapper {
     CodexSelectedNodeInstallScriptRefused { lock_node_key: _ } =>
@@ -1984,9 +1984,9 @@ fn acquire_and_admit_selected_pair(
 }
 
 fn seed_npm_cache_from_admitted(
-  cache: FilePath,
+  cache: std.types.FilePath,
   admitted: List<StagedAdmittedPackageArtifact>,
-) -> FilePath? {
+) -> std.types.FilePath? {
   fold(
     admitted,
     init: none,
@@ -2021,17 +2021,17 @@ fn durable_admitted_receipts(
 }
 
 fn finish_codex_runtime_materialization_after_install(
-  build_root: FilePath,
-  staging_dir: FilePath,
-  cache_dir: FilePath,
-  man_dest: FilePath,
-  lock_dest: FilePath,
-  native_path: FilePath,
+  build_root: std.types.FilePath,
+  staging_dir: std.types.FilePath,
+  cache_dir: std.types.FilePath,
+  man_dest: std.types.FilePath,
+  lock_dest: std.types.FilePath,
+  native_path: std.types.FilePath,
   native_executable_rel: NonEmptyStr,
   platform_lock_key: NonEmptyStr,
   selected_target: CodexNpmRuntimeTarget,
   staged_admitted: List<StagedAdmittedPackageArtifact>,
-  release_parent: FilePath,
+  release_parent: std.types.FilePath,
 ) -> CodexRuntimeMaterialization {
   let durable = durable_admitted_receipts(staged: staged_admitted)
   match observe_admitted_package_set_identity(
@@ -2164,7 +2164,7 @@ fn finish_codex_runtime_materialization_after_install(
 
 fn materialize_codex_runtime_bundle(
   source: AdmittedCodexRuntimeSource,
-  release_parent: FilePath,
+  release_parent: std.types.FilePath,
 ) -> CodexRuntimeMaterialization {
   match require_npm_host_dependency_for_materialization() {
     Present { value: refused } => refused
@@ -2220,11 +2220,11 @@ fn materialize_codex_runtime_bundle(
                             let man_dest = concat(
                               build.path as String,
                               "/package.json",
-                            ) as FilePath
+                            ) as std.types.FilePath
                             let lock_dest = concat(
                               build.path as String,
                               "/package-lock.json",
-                            ) as FilePath
+                            ) as std.types.FilePath
                             let wrote_man = Filesystem.Write(
                               path: man_dest as String,
                               content: source.manifest_bytes,
@@ -2254,11 +2254,11 @@ fn materialize_codex_runtime_bundle(
                                 let native_path = concat(
                                   build.path as String,
                                   concat("/", native_executable_rel as String),
-                                ) as FilePath
+                                ) as std.types.FilePath
                                 let plat_path = concat(
                                   build.path as String,
                                   concat("/", platform_lock_key as String),
-                                ) as FilePath
+                                ) as std.types.FilePath
                                 let native_present = shell.Test.IsFile(path: native_path)
                                 let plat_present = shell.Test.IsDirectory(path: plat_path)
                                 if native_present.is_file == false {
@@ -2330,19 +2330,19 @@ type SparkServingOllamaRuntimeMaterialization
       cause: NonEmptyStr
     }
 
-fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
+fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> std.types.FilePath {
   spark_serving_runtime_receipt_wire_path()
 }
 
 fn acquire_and_admit_ollama_release_archive(
   binary_release: OllamaBinaryRelease,
-  dest_dir: FilePath,
+  dest_dir: std.types.FilePath,
 ) -> SparkServingOllamaArchiveAdmission {
   let locator = ollama_binary_release_download_locator(binary_release: binary_release)
   let dest = concat(
     dest_dir as String,
     concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
-  ) as FilePath
+  ) as std.types.FilePath
   let downloaded = http.Client.DownloadToFile(
     url: locator,
     destination: dest as NonEmptyStr,

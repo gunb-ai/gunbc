@@ -36,7 +36,7 @@ test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -
   match outcome {
     MaterializedSshKeyFileBracketCompleted { value: key_path } =>
       key_path != ""
-        && !shell.Test.IsFile(path: key_path as FilePath).is_file
+        && !shell.Test.IsFile(path: key_path as std.types.FilePath).is_file
     MaterializedSshKeyFileBracketRefused { cause: _ } => false
   }
 }
@@ -46,7 +46,7 @@ test fn witness_write_owner_only_refuses_when_path_already_exists() -> Bool {
   if !dir.success {
     false
   } else {
-    let root = dir.path as FilePath
+    let root = dir.path as std.types.FilePath
     if !ensure_gunbc_private_materialization_dir(root: root) {
       false
     } else {

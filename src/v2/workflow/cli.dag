@@ -44,7 +44,7 @@ fn gunbc_test_corpus_harness_route_semantics(_route: GunbcTestCorpusHarnessRoute
 
 fn gunbc_testgen_route_provenance(
   route: GunbcTestgenRoute,
-  artifact: GeneratedArtifact
+  artifact: v2.std.artifact.GeneratedArtifact
 ) -> GeneratorProvenance {
   GeneratorProvenance {
     generator_id: route.generator,

@@ -99,7 +99,7 @@ fn witness_unresolved_identity_keeps_its_cause() -> Bool {
     && resolved_ref_key(r: RefNotProbed) != resolved_ref_key(r: RefUnpublishedByPlatform)
 }
 
-fn a_receipt(peak: Nat, latency: Milliseconds) -> SampleReceipt {
+fn a_receipt(peak: std.nat.Nat, latency: Milliseconds) -> SampleReceipt {
   SampleReceipt {
     count: 240,
     frequency: FrequencyObserved { hz: 60 },

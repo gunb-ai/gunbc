@@ -84,7 +84,7 @@ type OpenApiAdmittedHttpMethod
   | OpenApiPatch
   | OpenApiTrace
 
-fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> HttpMethod {
+fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> v2.std.network.HttpMethod {
   match method {
     OpenApiGet     => GET
     OpenApiPut     => PUT

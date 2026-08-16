@@ -47,7 +47,7 @@ type VerilogBinding {
   spelling: String
 }
 
-fn spelling_count(bindings: List<VerilogBinding>, name: SignalName) -> Nat {
+fn spelling_count(bindings: List<VerilogBinding>, name: SignalName) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if (b.signal as String) == (name as String) { acc + 1 } else { acc }
   })

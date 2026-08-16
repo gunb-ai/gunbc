@@ -78,7 +78,7 @@ fn observation_grain_of_segment(seg: ObservationSegment) -> ObservationGrain {
   }
 }
 
-fn observation_grain_depth(g: ObservationGrain) -> Nat {
+fn observation_grain_depth(g: ObservationGrain) -> std.nat.Nat {
   match g {
     RunGrain => 0
     BatchGrain => 1
@@ -630,12 +630,12 @@ data observation_dwell_threshold_disposition: Disposition = Scaffold {
 
 data observation_dwell_recalibration_note: String = "Declared scaffold, with its trigger: the design doc says T's basis is the measured quiet-time distribution. That distribution is not yet collected — the gauntlet and falsifier whole-corpus runs are the context that will produce it (design doc section 6b names that lane as the escalation law's primary home). Deriving T from the heartbeat period is a grounded interim, not taste, because the period is itself measured and law 2 is stated in terms of it. Dissolve-on: the first measured quiet-time distribution from a gauntlet cadence replaces the basis, and this row's period becomes a projection of it."
 
-fn observation_escalation_depth(quiet: Millisecond, t: DwellThreshold) -> Nat {
+fn observation_escalation_depth(quiet: Millisecond, t: DwellThreshold) -> std.nat.Nat {
   millisecond_count(m: quiet) / millisecond_count(m: t.period)
 }
 
 // Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent.
-fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> Nat {
+fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> std.nat.Nat {
   count(quiet_subject.segments) + observation_escalation_depth(quiet: quiet, t: t)
 }
 
@@ -816,7 +816,7 @@ fn observation_counts_accept(counts: ObservationCounts, c: ObservationEventClass
   }
 }
 
-fn observation_counts_anomalies(counts: ObservationCounts) -> Nat {
+fn observation_counts_anomalies(counts: ObservationCounts) -> std.nat.Nat {
   counts.refused + counts.failed + counts.timed_out
 }
 
@@ -902,7 +902,7 @@ fn observation_rollup_max_rss(
   }
 }
 
-fn observation_measurement_absent_delta(reading: Measured<Nanosecond>) -> Nat {
+fn observation_measurement_absent_delta(reading: Measured<Nanosecond>) -> std.nat.Nat {
   match reading {
     MeasuredUnavailable { cause: _ } => 1
     MeasuredValue { value: _ } => 0

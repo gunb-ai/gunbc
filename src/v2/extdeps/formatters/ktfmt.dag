@@ -11,7 +11,7 @@ type KtfmtTrailingCommaManagementStrategy
   | KtfmtTrailingCommaOnlyAdd
   | KtfmtTrailingCommaComplete
 
-type KtfmtPositiveInt = PositiveInt
+type KtfmtPositiveInt = v2.std.refinement.PositiveInt
 
 fn make_ktfmt_positive_int(value: Int, at: Locus) -> Outcome<KtfmtPositiveInt> {
   make_positive_int(value: value, at: at)

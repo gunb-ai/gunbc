@@ -64,7 +64,7 @@ fn fcr_timed_out_row() -> FloorComponentRow? {
   )
 }
 
-fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
+fn fcr_expect_red_row(index: std.nat.Nat) -> FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: index,

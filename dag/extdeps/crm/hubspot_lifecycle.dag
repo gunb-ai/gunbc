@@ -28,7 +28,7 @@ type HubspotLifecycleStageRow {
   stage: HubspotLifecycleStage
   display_label: NonEmptyStr
   definition_quote: NonEmptyStr
-  sort_order: Nat
+  sort_order: std.nat.Nat
   citation: NonEmptyStr
 }
 

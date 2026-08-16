@@ -56,7 +56,7 @@ fn ready_point_equals(r: SpatialResult<Point3>, b: Point3) -> Bool {
   }
 }
 
-fn norm_squared_is(v: Vector3, expected: Nat) -> Bool {
+fn norm_squared_is(v: Vector3, expected: std.nat.Nat) -> Bool {
   match norm_squared3(registry: mm_registry(), v: v) {
     SpatialArithmeticRefused { cause: _ } => false
     SpatialFrameRefused { refusal: _ } => false

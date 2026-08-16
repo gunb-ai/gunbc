@@ -162,7 +162,7 @@ fn rest_exchange_fixture_lookup(
   }
 }
 
-fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
+fn rest_method_verb(method: std.types.HttpMethod) -> std.effect_grant.Verb {
   match method {
     GET => Read
     HEAD => Read

@@ -4,8 +4,8 @@ module gunbc.cli_services
 service gunbc.Cli {
   operation Run {
     input {
-      workdir: FilePath
-      bin_path: FilePath
+      workdir: std.types.FilePath
+      bin_path: std.types.FilePath
       source_roots: List<String>
       entry: String
       function: String
@@ -42,8 +42,8 @@ service gunbc.Cli {
 service claim_executor.Executor {
   operation RunPlan {
     input {
-      workdir: FilePath
-      bin_path: FilePath
+      workdir: std.types.FilePath
+      bin_path: std.types.FilePath
       source_roots: List<String>
       plan_entry: String
       plan_function: PlanFunction
@@ -76,7 +76,7 @@ service claim_executor.Executor {
   }
 
   operation VerifyBuildArtifacts {
-    input { workdir: FilePath, bin_path: FilePath, artifact_paths: List<String> }
+    input { workdir: std.types.FilePath, bin_path: std.types.FilePath, artifact_paths: List<String> }
     output {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"

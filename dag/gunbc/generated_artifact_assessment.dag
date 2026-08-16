@@ -5,19 +5,19 @@ data generated_artifact_assessment_note: String = "P0 (operator-directed, 2026-0
 
 type GeneratedArtifactObservation
   = GeneratedArtifactObserved {
-      artifact: GeneratedArtifact,
+      artifact: gunbc.generated_artifact.GeneratedArtifact,
       path: String,
       generated_content: String,
       committed_content: String,
       extra_validation: Bool
     }
   | GeneratedArtifactObservationRefused {
-      artifact: GeneratedArtifact,
+      artifact: gunbc.generated_artifact.GeneratedArtifact,
       path: String,
       cause: String
     }
 
-fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
+fn observation_artifact(o: GeneratedArtifactObservation) -> gunbc.generated_artifact.GeneratedArtifact {
   match o {
     GeneratedArtifactObserved { artifact, path: _, generated_content: _, committed_content: _, extra_validation: _ } => artifact
     GeneratedArtifactObservationRefused { artifact, path: _, cause: _ } => artifact
@@ -43,7 +43,7 @@ fn assess_generated_artifact_observation(o: GeneratedArtifactObservation) -> Boo
 
 data assess_generated_artifact_population_note: String = "PURE GROUP. `expected` is the identity roster (committed_generated_artifacts(), passed in by the caller — this module never calls it); `observations` is the retained receipt population. Passes iff every expected identity is observed EXACTLY ONCE (no missing, no duplicate, no unknown observation outside the expected roster) and every observed receipt's leaf assessment holds. An identity join by artifact_eq, never a bare count equality (DESIGN section 5 oracle-independence ruling) — a population that lost one artifact and duplicated another would count-match while missing the defect."
 
-fn assess_generated_artifact_population(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
+fn assess_generated_artifact_population(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
   all(expected, e => count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) == 1)
     && all(observations, o => any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)))
     && all(observations, o => assess_generated_artifact_observation(o: o))
@@ -57,7 +57,7 @@ fn first_failing_observation_path(observations: List<GeneratedArtifactObservatio
   })
 }
 
-fn first_missing_expected_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
+fn first_missing_expected_path(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
   fold(expected, init: "", f: fn(acc, e) {
     if acc == "" && count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) != 1 {
       artifact_path(a: e)
@@ -67,7 +67,7 @@ fn first_missing_expected_path(expected: List<GeneratedArtifact>, observations: 
   })
 }
 
-fn first_unknown_observation_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
+fn first_unknown_observation_path(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
   fold(observations, init: "", f: fn(acc, o) {
     if acc == "" && !any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)) {
       observation_path(o: o)
@@ -79,7 +79,7 @@ fn first_unknown_observation_path(expected: List<GeneratedArtifact>, observation
 
 data first_failing_diagnostic_path_note: String = "The identity-join half of assess_generated_artifact_population can fail with every retained leaf clean (a missing, duplicate, or unknown identity) — a state first_failing_observation_path alone cannot name. This PROJECTION (still no producer call) tries leaf failure first, then a missing expected identity, then an unknown observed identity, so a group failure never surfaces as an empty diagnostic string."
 
-fn first_failing_diagnostic_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
+fn first_failing_diagnostic_path(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
   match first_failing_observation_path(observations: observations) {
     "" => match first_missing_expected_path(expected: expected, observations: observations) {
       "" => first_unknown_observation_path(expected: expected, observations: observations)

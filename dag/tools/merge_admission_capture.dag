@@ -100,11 +100,11 @@ func tested_subject_capture() -> TestedSubjectCapture {
             Present { value: base_tree } =>
               let root = git.Inspect.Toplevel().path as String
               let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
-              let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
+              let cleared = shell.Remove.RecursiveForce(path: attempt_dir as std.types.FilePath)
               if !cleared.success {
                 TestedSubjectCaptureRefused { cause: CaptureAttemptDirClearRefused }
               } else {
-                let ready = shell.Mkdir.Parents(path: attempt_dir as FilePath)
+                let ready = shell.Mkdir.Parents(path: attempt_dir as std.types.FilePath)
                 if !ready.success {
                   TestedSubjectCaptureRefused { cause: CaptureAttemptDirCreateRefused }
                 } else {
@@ -131,9 +131,9 @@ func tested_subject_capture() -> TestedSubjectCapture {
   }
 }
 
-func capture_refusal_wire_path() -> FilePath {
+func capture_refusal_wire_path() -> std.types.FilePath {
   let root = git.Inspect.Toplevel().path as String
-  concat(concat(root, "/"), merge_admission_capture_refusal_wire_relpath) as FilePath
+  concat(concat(root, "/"), merge_admission_capture_refusal_wire_relpath) as std.types.FilePath
 }
 
 func write_capture_refusal_wire(cause: TestedSubjectCaptureRefusal) -> Bool {

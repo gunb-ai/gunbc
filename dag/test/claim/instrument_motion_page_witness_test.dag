@@ -5,7 +5,7 @@ data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised 
 
 WHAT THE RED CONTROLS DISCRIMINATE. The reduced wire is asserted to DIFFER from the full wire and to be exactly the at-rest frame: if a future edit made reduced motion a client-side opt-out, both wires would be equal and the first control reds. The client program is asserted to contain no arithmetic library call: if the physics ever migrated into the renderer, Math. would appear and the second control reds. And the shipped full wire is asserted to respect the modelled travel bound at every frame, so a page that shipped an unbounded sequence reds even though the model that decided it is green."
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
+fn fixture_request(method: std.types.HttpMethod, path: String) -> ServeHttpRequest {
   ServeHttpRequest { method: method, path: path, body: "" }
 }
 

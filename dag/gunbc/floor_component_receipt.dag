@@ -35,7 +35,7 @@ type FloorControlState
   | ControlAbsent { cause: NonEmptyStr }
   | ControlAmbiguous { cause: NonEmptyStr, matched: std.nat.Nat }
 
-fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) -> ObservationSubject {
+fn floor_component_subject(run_id: NonEmptyStr, index: std.nat.Nat, label: NonEmptyStr) -> ObservationSubject {
   ObservationSubject {
     segments: [
       RunSegment { id: run_id },
@@ -65,7 +65,7 @@ fn floor_component_outcome_of_tag(
   basis: ClockBasis,
   budget: Millisecond,
   elapsed: Millisecond,
-  shown_failures: Nat
+  shown_failures: std.nat.Nat
 ) -> ObservationOutcome? {
   if (tag as String) == "done" { Present { value: Done } }
   else if (tag as String) == "refused" { Present { value: Refused { diagnostic: detail } } }
@@ -114,10 +114,10 @@ fn floor_component_transition_outcome(t: ObservationTransition) -> ObservationOu
 
 fn floor_component_row_of(
   run_id: NonEmptyStr,
-  index: Nat,
+  index: std.nat.Nat,
   label: NonEmptyStr,
   selection: NodeFrontierSelection,
-  witnesses: Nat,
+  witnesses: std.nat.Nat,
   outcome: ObservationOutcome,
   wall: Millisecond,
   failure_mode: FloorComponentFailureMode
@@ -137,16 +137,16 @@ fn floor_component_row_of(
 
 fn floor_component_row(
   run_id: NonEmptyStr,
-  index: Nat,
+  index: std.nat.Nat,
   label: NonEmptyStr,
   selection_tag: NonEmptyStr,
-  witnesses: Nat,
+  witnesses: std.nat.Nat,
   outcome_tag: NonEmptyStr,
   detail: NonEmptyStr,
   basis: ClockBasis,
   budget: Millisecond,
   elapsed: Millisecond,
-  shown_failures: Nat,
+  shown_failures: std.nat.Nat,
   wall: Millisecond
 ) -> FloorComponentRow? {
   match floor_component_selection_of_tag(tag: selection_tag) {
@@ -179,10 +179,10 @@ fn floor_component_row(
 
 fn floor_component_row_of_failure_mode(
   run_id: NonEmptyStr,
-  index: Nat,
+  index: std.nat.Nat,
   label: NonEmptyStr,
   selection_tag: NonEmptyStr,
-  witnesses: Nat,
+  witnesses: std.nat.Nat,
   failure_mode: NonEmptyStr,
   detail: NonEmptyStr,
   wall: Millisecond
@@ -214,7 +214,7 @@ fn floor_component_row_of_failure_mode(
 
 fn floor_component_row_not_concluded(
   run_id: NonEmptyStr,
-  index: Nat,
+  index: std.nat.Nat,
   label: NonEmptyStr,
   selection_tag: NonEmptyStr,
   failure_mode: NonEmptyStr,
@@ -246,7 +246,7 @@ fn floor_component_row_not_concluded(
   }
 }
 
-fn floor_component_row_index(row: FloorComponentRow) -> Nat {
+fn floor_component_row_index(row: FloorComponentRow) -> std.nat.Nat {
   fold(row.event.subject.segments, init: 0, f: (acc, seg) =>
     match seg {
       RunSegment { id: _ } => acc
@@ -378,8 +378,8 @@ fn floor_unsuccessful_component_rows(rows: List<FloorComponentRow>) -> List<Floo
 fn floor_run_terminal_json(
   disposition: NonEmptyStr,
   cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
 ) -> JsonValue {
   json_object(members: [
     json_kv(key: "disposition", value: json_string(s: disposition as String)),
@@ -396,15 +396,15 @@ fn floor_component_receipt_json_value(
   rows: List<FloorComponentRow>,
   selection_present: Bool,
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String,
   run_terminal_present: Bool,
   run_terminal_disposition: NonEmptyStr,
   run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
 ) -> JsonValue {
   let base = [
     json_kv(key: receipt_member_schema, value: json_string(s: floor_component_receipt_schema)),
@@ -490,8 +490,8 @@ fn floor_component_receipt_document_incomplete(
   head_sha: CommitSha,
   rows: List<FloorComponentRow>,
   run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
 ) -> String {
   serialize_json(v: floor_component_receipt_json_value(
     workflow_name: workflow_name,
@@ -518,11 +518,11 @@ fn floor_component_receipt_document_incomplete_with_selection(
   head_sha: CommitSha,
   rows: List<FloorComponentRow>,
   run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat,
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat,
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> String {
@@ -551,8 +551,8 @@ fn floor_component_receipt_document_with_selection(
   head_sha: CommitSha,
   rows: List<FloorComponentRow>,
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> String {

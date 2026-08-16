@@ -3,16 +3,16 @@ module v2.test.lens_cost.valuation
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data nat_1: Nat = Succ { prev: Zero }
-data nat_2: Nat = Succ { prev: nat_1 }
-data nat_3: Nat = Succ { prev: nat_2 }
-data nat_4: Nat = Succ { prev: nat_3 }
-data nat_5: Nat = Succ { prev: nat_4 }
-data nat_6: Nat = Succ { prev: nat_5 }
-data nat_7: Nat = Succ { prev: nat_6 }
-data nat_8: Nat = Succ { prev: nat_7 }
-data nat_9: Nat = Succ { prev: nat_8 }
-data nat_10: Nat = Succ { prev: nat_9 }
+data nat_1: v2.std.nat.Nat = Succ { prev: Zero }
+data nat_2: v2.std.nat.Nat = Succ { prev: nat_1 }
+data nat_3: v2.std.nat.Nat = Succ { prev: nat_2 }
+data nat_4: v2.std.nat.Nat = Succ { prev: nat_3 }
+data nat_5: v2.std.nat.Nat = Succ { prev: nat_4 }
+data nat_6: v2.std.nat.Nat = Succ { prev: nat_5 }
+data nat_7: v2.std.nat.Nat = Succ { prev: nat_6 }
+data nat_8: v2.std.nat.Nat = Succ { prev: nat_7 }
+data nat_9: v2.std.nat.Nat = Succ { prev: nat_8 }
+data nat_10: v2.std.nat.Nat = Succ { prev: nat_9 }
 
 fn synthetic_leaf(identity: Symbol) -> Node {
   Node {
@@ -28,7 +28,7 @@ data inner_leaf: Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
 data outer_variable: SizeVariable = SizeVariable { source: outer_leaf }
 data inner_variable: SizeVariable = SizeVariable { source: inner_leaf }
 
-fn bind(variable: SizeVariable, value: Nat) -> CostValuationBinding {
+fn bind(variable: SizeVariable, value: v2.std.nat.Nat) -> CostValuationBinding {
   CostValuationBinding { variable: variable, value: value }
 }
 
@@ -40,7 +40,7 @@ fn unit_loop_over(variable: SizeVariable) -> CostExpr {
   }
 }
 
-fn is_exact(evaluation: CostEvaluation, expected: Nat) -> Bool {
+fn is_exact(evaluation: CostEvaluation, expected: v2.std.nat.Nat) -> Bool {
   match evaluation {
     ExactCost { value: v } => v == expected
     _ => false

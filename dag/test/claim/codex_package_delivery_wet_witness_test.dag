@@ -18,7 +18,7 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
-fn isolated_release_parent() -> FilePath? {
+fn isolated_release_parent() -> std.types.FilePath? {
   let d = shell.Mktemp.Dir()
   if d.success == false {
     none
@@ -125,7 +125,7 @@ test fn materialize_codex_runtime_bundle_produces_native_executable_holds() -> B
               path: concat(
                 bundle.root as String,
                 "/.gunbc-codex-runtime-receipt",
-              ) as FilePath,
+              ) as std.types.FilePath,
             ).is_file
         _ => false
       }

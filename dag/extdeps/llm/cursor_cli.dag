@@ -158,7 +158,7 @@ fn cursor_automation_invocation(
   output_format: CursorOutputFormat,
   force: Bool,
   trust_workspace: Bool,
-  workspace: FilePath,
+  workspace: std.types.FilePath,
   prompt: NonEmptyStr,
 ) -> CursorInvocation {
   CursorInvocation {

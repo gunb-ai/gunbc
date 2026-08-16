@@ -50,13 +50,13 @@ type NativeScmContinuationChoice
   = NativeScmFirstContinuationOption
   | NativeScmSecondContinuationOption
   | NativeScmAdditionalContinuationOption {
-      index: NonNegativeInt,
+      index: std.integer.NonNegativeInt,
     }
 
 type NativeScmContinuationChoiceFold<R> {
   first: fn() -> R
   second: fn() -> R
-  additional: fn(NonNegativeInt) -> R
+  additional: fn(std.integer.NonNegativeInt) -> R
 }
 
 fn native_scm_continuation_choice_fold<R>(

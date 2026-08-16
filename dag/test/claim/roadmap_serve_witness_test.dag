@@ -10,7 +10,7 @@ fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   }
 }
 
-fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool {
+fn selects(method: std.types.HttpMethod, path: String, want: RoadmapServeHandler) -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
     SelectedDynamic { handler: h, params: _ } => h == want
     SelectedStatic { route: _ } => false
@@ -101,7 +101,7 @@ test fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
+fn fixture_request(method: std.types.HttpMethod, path: String) -> ServeHttpRequest {
   ServeHttpRequest { method: method, path: path, body: "" }
 }
 

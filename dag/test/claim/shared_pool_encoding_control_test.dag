@@ -32,7 +32,7 @@ data cpu_domain: DomainId = "cpu" as DomainId
 data gpu_domain: DomainId = "gpu" as DomainId
 data pool_level: LevelId = "system-pool" as LevelId
 
-data pool_bytes: Nat = 137438953472
+data pool_bytes: std.nat.Nat = 137438953472
 
 fn pool() -> MemoryLevel {
   MemoryLevel {
@@ -44,11 +44,11 @@ fn pool() -> MemoryLevel {
   }
 }
 
-fn lanes(n: Nat) -> ExecutionShape {
+fn lanes(n: std.nat.Nat) -> ExecutionShape {
   ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
 }
 
-fn domain(id: DomainId, n: Nat, mem: List<MemoryLevel>) -> ExecutionDomain {
+fn domain(id: DomainId, n: std.nat.Nat, mem: List<MemoryLevel>) -> ExecutionDomain {
   ExecutionDomain { id: id, execution: lanes(n: n), memory: mem }
 }
 
@@ -87,7 +87,7 @@ fn shape_validates(s: MachineShape) -> Bool {
 }
 
 // The naive summation a capacity consumer reaches for: total installed memory across domains.
-fn summed_capacity_bytes(s: MachineShape) -> Nat {
+fn summed_capacity_bytes(s: MachineShape) -> std.nat.Nat {
   fold(s.domains, init: 0, f: (acc, d) =>
     fold(d.memory, init: acc, f: (inner, m) => inner + byte_size_count(b: m.capacity)))
 }

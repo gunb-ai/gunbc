@@ -19,7 +19,7 @@ type MarginEnvelopeResult
   = MarginEnvelopeDerived { envelope: MarginEnvelope, margin_kind: MarginKind }
   | MarginEnvelopeRefused { cause: MarginEnvelopeRefusalCause }
 
-fn margin_envelope_from_whole_dollar_counts(revenue: Nat, profit: Nat) -> MarginEnvelope? {
+fn margin_envelope_from_whole_dollar_counts(revenue: std.nat.Nat, profit: std.nat.Nat) -> MarginEnvelope? {
   if revenue <= 0 {
     none
   } else {

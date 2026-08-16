@@ -7,7 +7,7 @@ data npi_decoy_same_spelled_substrate_finding_note: String = "EXECUTED CONCLUSIO
 
 data npi_cross_file_export_exposure_open_question_note: String = "OPEN QUESTION (loyal-ram-550 escalation 2026-08-07, operator-signed territory): fixture models cross-file provider export as CrossFileProviderExportedExposure => RootExposure, injecting helper into root scope. Namespace-only design says cross-module access is projection — sibling module visible, members reached as provider.helper, not bare-name injection. If projection governs, app.provider.helper and app.decoy.helper never collide at root and the decoy collision may be a fixture exposure artifact. Does not block N3-C; colliding_root_exported_homonym_refuses_ambiguity_holds stays enrolled regardless."
 
-fn npi_witness_consumer_file() -> FilePath {
+fn npi_witness_consumer_file() -> std.types.FilePath {
   "app/consumer.dag"
 }
 

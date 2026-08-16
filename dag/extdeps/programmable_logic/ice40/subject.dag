@@ -63,11 +63,11 @@ type Ice40BankPopulation {
   configuration: std.nat.Nat
 }
 
-fn bank_population_general_purpose(p: Ice40BankPopulation) -> Nat {
+fn bank_population_general_purpose(p: Ice40BankPopulation) -> std.nat.Nat {
   p.bank_0 + p.bank_1 + p.bank_2 + p.bank_3
 }
 
-fn bank_population_total(p: Ice40BankPopulation) -> Nat {
+fn bank_population_total(p: Ice40BankPopulation) -> std.nat.Nat {
   bank_population_general_purpose(p: p) + p.configuration
 }
 
@@ -144,7 +144,7 @@ type Ice40PackageContactItemization {
 
 // The rows that partition the package: every contact is counted exactly once. The differential
 // inputs are excluded because they are a recount of contacts already in the first term.
-fn itemized_contact_total(i: Ice40PackageContactItemization) -> Nat {
+fn itemized_contact_total(i: Ice40PackageContactItemization) -> std.nat.Nat {
   i.general_purpose_single_ended +
     i.dedicated_inputs +
     i.vccio +

@@ -5,27 +5,27 @@ data host_layout_note: String = "The ONE authority for the srv1 gunbc host paths
 
 data attempt_state_root_layout_admission_note: String = "srv1_dispatch_attempt_state_root JOINED THIS AUTHORITY ON AN INCIDENT (2026-07-30), and the incident is the argument for the row existing. #7368 made a published attempt-state directory a hard precondition of every dispatch, but the path was written as a bare literal inside gunbc.roadmap_dashboard_instance's srv1 row and nowhere else. live_deploy's owned-artifact roster therefore never carried it, so no deploy created it, so `install -d /opt/gunbc/attempt-state` ran as the service user against a root-owned parent and refused with EACCES — after `git worktree add` had already succeeded. Every dispatch since produced an orphan branch and worktree, no session, and a progress row that read `legacy attempt`. The defect was NOT the permission: it was that a path load-bearing for two consumers had one spelling and one owner, so adding the requirement to one consumer could not reach the other. The general rule the row restates: a host path the belt WRITES is a deployment member, and a deployment member is projected from here — never spelled at its point of use. Dissolution: when live_deploy takes a GunbcHostLayout row as a parameter, this flat row folds into the record literal with its siblings (gunbc_host_layout_note's trigger)."
 
-data srv1_gunbc_repo_root: FilePath = "/opt/gunbc/gunbc" as FilePath
+data srv1_gunbc_repo_root: std.types.FilePath = "/opt/gunbc/gunbc" as std.types.FilePath
 
-data srv1_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
+data srv1_gunbc_serve_binary: std.types.FilePath = "/opt/gunbc/bin/gunbc" as std.types.FilePath
 
-data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as FilePath
+data srv1_dispatch_worktree_root: std.types.FilePath = "/opt/gunbc/dispatch-worktrees" as std.types.FilePath
 
 data roadmap_codex_account_note: String = "THE DASHBOARD'S CODEX HOME IS DERIVED FROM AN ACCOUNT SELECTION, not spelled as a path. It used to be the literal /home/briansrls/.codex@gunbc-roadmap, which encoded three separate facts in one string with no way to read any of them back: the user's home directory, codex's own default-root name, and the @label convention that distinguishes this account from the two others on the same machine.\\n\\nDeriving it makes each fact answerable at its own layer. gunbc.provider_account owns both the suffix convention and the identity of the dashboard's account, extdeps.llm.codex_auth owns the fact that CODEX_HOME selects an isolated store at all, and what THIS module still states is only the machine-local half: which home directory the roots hang under.\\n\\nTHE FIRST VERSION OF THIS DECOMPOSITION FORKED THE ACCOUNT (review 45207). It named the label a second time here, as roadmap_codex_account_label beside a roadmap_codex_account() constructor, while gunbc.provider_account already carried codex_roadmap_account_label and codex_roadmap_account_selection() for the same account — two names for one concept in two modules, each spelling the same literal, which is exactly the nickname §3 forbids. Worse, neither local name had a consumer: the path rows below still inlined the literal a third and fourth time, so the module declared an authority and then ignored it. The fork is deleted rather than wired up, because the account's home is provider_account — this module's business is host paths.\\n\\nThe derived value is byte-identical to the literal it replaces, which the witness asserts — the point is provenance, not a new value."
 
-data operator_home_root: FilePath = "/home/briansrls" as FilePath
+data operator_home_root: std.types.FilePath = "/home/briansrls" as std.types.FilePath
 
-data srv1_dispatch_attempt_state_root: FilePath = "/opt/gunbc/attempt-state" as FilePath
+data srv1_dispatch_attempt_state_root: std.types.FilePath = "/opt/gunbc/attempt-state" as std.types.FilePath
 
 data devboot_root_layout_admission_note: String = "THE BUILD SERVICE'S HOST ROOT JOINS THIS AUTHORITY BEFORE ITS FIRST CONSUMER EXISTS, which is the whole point of the ordering. srv1_dispatch_attempt_state_root joined it AFTER an incident (attempt_state_root_layout_admission_note): a path load-bearing for two consumers was spelled as a bare literal inside one of them, so live_deploy's owned-artifact roster never carried it, so no deploy created it, and `install -d` refused with EACCES against a root-owned parent AFTER the dispatch had already half-run. This row is the same shape of fact -- a host path the service WRITES -- and it is declared here first so that roster can carry it from the start rather than after the equivalent failure.\\n\\nWHY ONE ROOT AND NOT TWO. An earlier revision admitted a second root to hold request records, the producer lease and terminal outcomes, on the assumption that this service would keep durable state in a database beside the artifacts. Re-observation found no such store realization in the tree, and found that the artifact store already provides everything the second root was for: a bare Git repository IS the content-addressed object database, its refs ARE durable named state, and its exact-old-value ref update IS the atomic compare-and-swap a producer lease needs. The second root would have been a second durable representation of one fact set, so it is retired rather than left standing with nothing writing to it (see devboot_state_root_retirement_note).\\n\\nWHAT THIS ROW DOES NOT SAY. It is a declaration, not an observation -- the same distinction srv2_host_layout_note draws. The path is not asserted to exist; the deployment creates it and a preflight refuses on the difference. A service that found no store and quietly built into a temp directory would be the absorbing fallback DESIGN section 5 forbids, so the refusal carries the exact path."
 
-data srv1_devboot_artifact_store_root: FilePath = "/var/lib/gunbc/artifacts.git" as FilePath
+data srv1_devboot_artifact_store_root: std.types.FilePath = "/var/lib/gunbc/artifacts.git" as std.types.FilePath
 
 
-data srv1_roadmap_codex_home: FilePath = codex_account_state_root(
+data srv1_roadmap_codex_home: std.types.FilePath = codex_account_state_root(
   home: operator_home_root,
   selection: codex_roadmap_account_selection(),
-) as String as FilePath
+) as String as std.types.FilePath
 
 data gunbc_host_layout_note: String = "THE HOST FACTS AN INSTANCE CANNOT DERIVE FROM ITS OWN ROOT, carried as one row per host instead of one name per host. An isolated dashboard instance derives most of its paths from its instance root — source, attempts, attempt-state and local origin are all children of it — but three belong to the machine rather than the instance: which seed binary serves, where the provider's authenticated state root lives, and which local worktree seeds the source bundle. Those cannot come from the root, so before this row they were written as srv1 literals inside the shared constructor.\\n\\nBE PRECISE ABOUT WHAT THAT DEFECT WAS, because overstating it would be its own false claim. No value was wrong. srv1 and srv2 run the same layout convention, so both rows below carry byte-identical paths, and a home-directory path denotes a different file on each machine anyway. The defect was representational: the constructor took host_identity as a parameter and then pinned the other three facts, so a host whose layout DIVERGED could not be expressed at all. A second host was nameable without being describable, and the name silently carried the first host's body.\\n\\nThat is precisely why it survived review — there was no wrong output to notice. It is a latent fabrication, not a live one: the first host to install its binary elsewhere would have gotten srv1's path under its own name, with the mismatch appearing as an unexplained refusal against a path nobody wrote for it.\\n\\nOne row per host beats a second set of srv2_-prefixed names, because a prefix bakes the instance into the concept and the next host repeats the exercise. The flat srv1_ rows above stay as the field values of srv1's row — they have live consumers in live_deploy and the actuators — so each path is still written exactly once. Dissolution trigger: when live_deploy takes a layout row as a parameter, those flat rows fold into the record literal and the prefix disappears."
 
@@ -37,15 +37,15 @@ type GunbcHostLayout {
   codex_bundled_executable: std.types.FilePath?
 }
 
-data srv1_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+data srv1_dashboard_controller_repo: std.types.FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath
 
 data gunbc_host_layout_codex_executable_note: String = "The bundled Codex executable path is derived through codex_bundled_executable_for_host, not stored as an independent layout literal. GunbcHostLayout.codex_bundled_executable is FilePath? so Absent has no fabricated path constructor — executors refuse when the committed-lock placement is unavailable. Witness: srv1_committed_lock_bundled_executable_is_present."
 
-fn srv1_codex_bundled_executable() -> FilePath? {
+fn srv1_codex_bundled_executable() -> std.types.FilePath? {
   codex_bundled_executable_for_host(host: "srv1" as HostIdentity)
 }
 
-fn srv2_codex_bundled_executable() -> FilePath? {
+fn srv2_codex_bundled_executable() -> std.types.FilePath? {
   codex_bundled_executable_for_host(host: "srv2" as HostIdentity)
 }
 
@@ -61,14 +61,14 @@ fn srv1_host_layout() -> GunbcHostLayout {
 
 data srv2_host_layout_note: String = "srv2's own row, where a DECLARATION and an OBSERVATION are deliberately different things. A preflight exists to compare what this row says against what the machine holds and refuse on the difference, so a path may legitimately be declared before it exists — an apply that found no binary and quietly served something else, or found no auth root and dispatched unauthenticated, is the absorbing fallback; refusing with the exact path is the whole mechanism.\\n\\nSTATE AS OF 2026-07-30, and this row is the wrong place to keep tracking it: /opt/gunbc/bin/gunbc does not exist on srv2 (only /opt/gunbc/gunbc, a hand-made symlink into a session worktree), while the Codex state root now DOES exist and is authenticated — an earlier version of this note said it had never been created, and that sentence was already false within the hour. Prose describing mutable host state goes stale silently, which is why liveness belongs to the readiness probe that observes it and this row states only intent.\\n\\nThe codex home derives from the same account selection srv1 uses, so the two hosts share the convention rather than each spelling it. The controller repo exists because the preview instance these rows grew out of was authored on this machine."
 
-data srv2_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
+data srv2_gunbc_serve_binary: std.types.FilePath = "/opt/gunbc/bin/gunbc" as std.types.FilePath
 
-data srv2_roadmap_codex_home: FilePath = codex_account_state_root(
+data srv2_roadmap_codex_home: std.types.FilePath = codex_account_state_root(
   home: operator_home_root,
   selection: codex_roadmap_account_selection(),
-) as String as FilePath
+) as String as std.types.FilePath
 
-data srv2_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+data srv2_dashboard_controller_repo: std.types.FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath
 
 fn srv2_host_layout() -> GunbcHostLayout {
   GunbcHostLayout {
@@ -107,9 +107,9 @@ type ProviderRuntimePlacement {
   wire_evidence_root: std.types.FilePath
 }
 
-data srv1_codex_runtime_mutable_state_root: FilePath = "/opt/gunbc/provider-runtime/codex-state" as FilePath
+data srv1_codex_runtime_mutable_state_root: std.types.FilePath = "/opt/gunbc/provider-runtime/codex-state" as std.types.FilePath
 
-data srv1_provider_wire_evidence_root: FilePath = "/opt/gunbc/provider-runtime/evidence" as FilePath
+data srv1_provider_wire_evidence_root: std.types.FilePath = "/opt/gunbc/provider-runtime/evidence" as std.types.FilePath
 
 fn srv1_provider_runtime_placement() -> ProviderRuntimePlacement {
   ProviderRuntimePlacement {
@@ -133,7 +133,7 @@ fn provider_runtime_placement_for_host(host: HostIdentity) -> ProviderRuntimePla
 
 data provider_runtime_placement_shared_row_note: String = "srv1..srv4 currently project srv1_provider_runtime_placement() — paths are convention-uniform today, not derived per-host. dissolve-on: each host's GunbcHostLayout row carries its own ProviderRuntimePlacement when a fleet host diverges from the srv1-shaped paths."
 
-fn codex_bundled_executable_for_host(host: HostIdentity) -> FilePath? {
+fn codex_bundled_executable_for_host(host: HostIdentity) -> std.types.FilePath? {
   match provider_runtime_placement_for_host(host: host) {
     Absent => none
     Present { value: placement } =>

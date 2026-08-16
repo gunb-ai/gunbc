@@ -57,18 +57,18 @@ type KernelInferenceProcedure {
 }
 
 type KernelInferenceRound {
-  ordinal: PositiveInt
+  ordinal: std.integer.PositiveInt
   procedures: List<KernelProcedureHandle>
 }
 
 type KernelFiniteBounds {
-  proposal_occurrences: PositiveInt
-  facts: PositiveInt
-  transports: PositiveInt
-  canonicalizations: PositiveInt
-  recovery_alternatives: PositiveInt
-  inference_rounds: PositiveInt
-  candidate_classes: PositiveInt
+  proposal_occurrences: std.integer.PositiveInt
+  facts: std.integer.PositiveInt
+  transports: std.integer.PositiveInt
+  canonicalizations: std.integer.PositiveInt
+  recovery_alternatives: std.integer.PositiveInt
+  inference_rounds: std.integer.PositiveInt
+  candidate_classes: std.integer.PositiveInt
 }
 
 type KernelCandidateGenerationSpec {
@@ -128,7 +128,7 @@ type KernelCandidateGenerator
       identity: KernelRecoveryAlternativeHandle,
     }
   | KernelInferenceGenerator {
-      round: PositiveInt,
+      round: std.integer.PositiveInt,
       procedure: KernelProcedureHandle,
     }
 

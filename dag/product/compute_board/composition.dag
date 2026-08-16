@@ -30,8 +30,8 @@ type ComponentJustification
 type CapabilityProvision
   = ProvidesCores { cores: HardwareThreadCount }
   | ProvidesMemoryCapacity { capacity: ByteSize }
-  | ProvidesNetworkPaths { paths: Nat }
-  | ProvidesBootStoragePaths { paths: Nat }
+  | ProvidesNetworkPaths { paths: std.nat.Nat }
+  | ProvidesBootStoragePaths { paths: std.nat.Nat }
   | ProvidesManagement { power_control: Bool, console: Bool, recovery: Bool }
   | ProvidesPowerBoundary
   | ProvidesCoolingContract
@@ -51,7 +51,7 @@ type ComponentInstance {
 // simply under-count and still report a verdict. Exhausting the variants makes the addition a
 // typecheck failure at every projection that has to decide what the new provision contributes.
 
-fn provision_cores(p: CapabilityProvision) -> Nat {
+fn provision_cores(p: CapabilityProvision) -> std.nat.Nat {
   match p {
     ProvidesCores { cores: c } => hardware_thread_count_value(t: c)
     ProvidesMemoryCapacity { capacity: _ } => 0
@@ -66,7 +66,7 @@ fn provision_cores(p: CapabilityProvision) -> Nat {
   }
 }
 
-fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
+fn provision_memory_bytes(p: CapabilityProvision) -> std.nat.Nat {
   match p {
     ProvidesMemoryCapacity { capacity: c } => byte_size_count(b: c)
     ProvidesCores { cores: _ } => 0
@@ -81,7 +81,7 @@ fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
   }
 }
 
-fn provision_network_paths(p: CapabilityProvision) -> Nat {
+fn provision_network_paths(p: CapabilityProvision) -> std.nat.Nat {
   match p {
     ProvidesNetworkPaths { paths: n } => n
     ProvidesCores { cores: _ } => 0
@@ -96,7 +96,7 @@ fn provision_network_paths(p: CapabilityProvision) -> Nat {
   }
 }
 
-fn provision_boot_paths(p: CapabilityProvision) -> Nat {
+fn provision_boot_paths(p: CapabilityProvision) -> std.nat.Nat {
   match p {
     ProvidesBootStoragePaths { paths: n } => n
     ProvidesCores { cores: _ } => 0
@@ -113,14 +113,14 @@ fn provision_boot_paths(p: CapabilityProvision) -> Nat {
 
 fn sum_over_components(
   components: List<ComponentInstance>,
-  f: fn(CapabilityProvision) -> Nat
-) -> Nat {
+  f: fn(CapabilityProvision) -> std.nat.Nat
+) -> std.nat.Nat {
   fold(components, init: 0, f: fn(acc, c) {
     acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + f(p) })
   })
 }
 
-fn total_memory_bytes(components: List<ComponentInstance>) -> Nat {
+fn total_memory_bytes(components: List<ComponentInstance>) -> std.nat.Nat {
   fold(components, init: 0, f: fn(acc, c) {
     acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + provision_memory_bytes(p: p) })
   })
@@ -201,7 +201,7 @@ fn unsatisfied_board_capabilities(
     |> map(r => requirement_capability(r: r))
 }
 
-fn justification_count(c: ComponentInstance) -> Nat {
+fn justification_count(c: ComponentInstance) -> std.nat.Nat {
   fold(c.justifications, init: 0, f: (acc, _) => acc + 1)
 }
 

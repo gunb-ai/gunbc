@@ -6,7 +6,7 @@ data public_projection_note: String = "Derived public projection plan over autho
 type PublicProjectionSubject {
   subject_identity: ContentHash
   content_identity: ContentHash
-  path: FilePath
+  path: std.types.FilePath
 }
 
 type PublicProjectionPlan {

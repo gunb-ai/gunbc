@@ -8,7 +8,7 @@ data pure_perturb_control_note: String = "P0 (operator-directed, 2026-08-05): th
 
 data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
 
-fn constructed_clean(a: GeneratedArtifact, content: String) -> GeneratedArtifactObservation {
+fn constructed_clean(a: gunbc.generated_artifact.GeneratedArtifact, content: String) -> GeneratedArtifactObservation {
   GeneratedArtifactObserved { artifact: a, path: "fixture/path", generated_content: content, committed_content: content, extra_validation: true }
 }
 
@@ -180,7 +180,7 @@ test fn witness_registry_complete() -> Bool {
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
 }
 
-fn consumer_is(a: GeneratedArtifact, expected: RepoConsumer) -> Bool {
+fn consumer_is(a: gunbc.generated_artifact.GeneratedArtifact, expected: RepoConsumer) -> Bool {
   match artifact_commit_policy(a: a) {
     CommitRequired { consumer } => match consumer {
       GitProtocol => match expected { GitProtocol => true  _ => false }

@@ -12,7 +12,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
     output_format: CursorStreamJson,
     force: false,
     trust_workspace: true,
-    workspace: "/srv/attempt" as FilePath,
+    workspace: "/srv/attempt" as std.types.FilePath,
     prompt: "do the work" as NonEmptyStr,
   }
 }

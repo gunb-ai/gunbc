@@ -91,11 +91,11 @@ type ExtentInFrame {
   extent: OccurrenceExtent
 }
 
-fn extent_low_ns(e: ExtentInFrame) -> Nat {
+fn extent_low_ns(e: ExtentInFrame) -> std.nat.Nat {
   nanosecond_count(n: interval_low(interval: e.extent.interval))
 }
 
-fn extent_high_ns(e: ExtentInFrame) -> Nat {
+fn extent_high_ns(e: ExtentInFrame) -> std.nat.Nat {
   nanosecond_count(n: interval_high(interval: e.extent.interval))
 }
 
@@ -116,7 +116,7 @@ type GapConstruction
   | GapReady { span: AttributionSpan }
   | GapRefused { cause: NonEmptyStr }
 
-fn gap_span(parent: OccurrenceId, from: Nat, to: Nat) -> GapConstruction {
+fn gap_span(parent: OccurrenceId, from: std.nat.Nat, to: std.nat.Nat) -> GapConstruction {
   if to > from {
     match closed_interval(low: nanosecond(count: from), high: nanosecond(count: to), le: nanosecond_le) {
       IntervalRefused { reason: r } => GapRefused { cause: r }

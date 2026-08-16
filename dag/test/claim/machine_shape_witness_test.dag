@@ -17,8 +17,8 @@ data m5_register_level: LevelId = "sm-register-file" as LevelId
 data m5_shared_level: LevelId = "sm-shared-memory" as LevelId
 data m5_device_level: LevelId = "device-dram" as LevelId
 
-data rtx5090_sm_shared_bytes: Nat = 102400
-data rtx5090_sm_register_bytes: Nat = 262144
+data rtx5090_sm_shared_bytes: std.nat.Nat = 102400
+data rtx5090_sm_register_bytes: std.nat.Nat = 262144
 
 fn shape_from_rtx5090_catalog() -> MachineShape {
   match gpu_shape_from_catalog(input: FromGpuModelCatalog {

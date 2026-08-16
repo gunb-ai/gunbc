@@ -2,7 +2,7 @@ module gunbc.gunbhub_serve
 
 
 type GunbhubServeRequest {
-  method: HttpMethod
+  method: std.types.HttpMethod
   path: String
 }
 

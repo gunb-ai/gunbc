@@ -3,7 +3,7 @@ module test.claim.observation_instant_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn at(domain: ClockDomain, basis: ClockBasis, ns: Nat) -> ObservationInstant {
+fn at(domain: ClockDomain, basis: ClockBasis, ns: std.nat.Nat) -> ObservationInstant {
   ObservationInstant { domain: domain, basis: basis, since_origin: nanosecond(count: ns) }
 }
 

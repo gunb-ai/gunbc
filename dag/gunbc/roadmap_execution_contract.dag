@@ -193,7 +193,7 @@ fn dispatch_required_capabilities(
 }
 
 fn gunbc_claim_execution_contract(
-  entry: FilePath,
+  entry: std.types.FilePath,
   function: NonEmptyStr,
 ) -> WorkItemExecutionContract {
   ExecutionContract {

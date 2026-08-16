@@ -21,19 +21,19 @@ type CodexProviderRuntimeReceipt {
 fn codex_provider_runtime_receipt_wire_path(
   placement: ProviderRuntimePlacement,
   host: HostIdentity,
-) -> FilePath {
+) -> std.types.FilePath {
   concat(
     placement.wire_evidence_root as String,
     concat(
       "/codex-provider-runtime/",
       concat(host as String, ".json"),
     ),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn derive_codex_provider_runtime_receipt(
   host: HostIdentity,
-  bundled_executable: FilePath,
+  bundled_executable: std.types.FilePath,
   bundle_receipt_identity_hex: NonEmptyStr,
 ) -> CodexProviderRuntimeReceipt? {
   match provider_runtime_placement_for_host(host: host) {

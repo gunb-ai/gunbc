@@ -16,7 +16,7 @@ data te_ddr4_dimm_socket_note: String = "A PRODUCT FAMILY, NOT A SELECTED PART, 
 type DimmSocketCatalogRow {
   base_part_number: NonEmptyStr
   vendor: Vendor<Hardware>
-  position_count: Nat
+  position_count: std.nat.Nat
   contact_pitch: Micrometer
   attachment: BoardAttachmentStyle
   board_pattern: MountingPatternObligation

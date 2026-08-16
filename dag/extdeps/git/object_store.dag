@@ -84,7 +84,7 @@ type GitTreeWireName {
 
 fn git_tree_entry_name_octet_value(
   octet: GitTreeEntryNameOctet,
-) -> UInt8 {
+) -> std.integer.UInt8 {
   match octet {
     GitTreeEntryNameOctetBeforeSlash { value } => value
     GitTreeEntryNameOctetAfterSlash { value } => value
@@ -93,7 +93,7 @@ fn git_tree_entry_name_octet_value(
 
 fn git_tree_entry_name_octets(
   name: GitTreeEntryName,
-) -> List<UInt8> {
+) -> List<std.integer.UInt8> {
   append(
     [git_tree_entry_name_octet_value(octet: name.first)],
     items: name.rest
@@ -101,7 +101,7 @@ fn git_tree_entry_name_octets(
   )
 }
 
-fn git_path_octets(path: GitPath) -> List<UInt8> {
+fn git_path_octets(path: GitPath) -> List<std.integer.UInt8> {
   fold(
     path.rest,
     init: git_tree_entry_name_octets(name: path.first),
@@ -136,7 +136,7 @@ type GitTreeEntryNameOctetsDecodeOutcome
     }
 
 fn git_decode_tree_entry_name_octet(
-  octet: UInt8,
+  octet: std.integer.UInt8,
 ) -> GitTreeEntryNameOctet? {
   if octet >= 1 && octet <= 46 {
     Present {
@@ -153,7 +153,7 @@ fn git_decode_tree_entry_name_octet(
 
 fn git_decode_tree_entry_name_octet_step(
   state: GitTreeEntryNameOctetsDecodeOutcome,
-  octet: UInt8,
+  octet: std.integer.UInt8,
 ) -> GitTreeEntryNameOctetsDecodeOutcome {
   match state {
     GitTreeEntryNameOctetsDecodeRefused { cause } =>
@@ -216,7 +216,7 @@ type GitPathDecodeState
 
 fn git_path_decode_step(
   state: GitPathDecodeState,
-  octet: UInt8,
+  octet: std.integer.UInt8,
 ) -> GitPathDecodeState {
   match state {
     GitPathDecodeStopped { cause } => GitPathDecodeStopped { cause: cause }
@@ -247,7 +247,7 @@ fn git_path_decode_step(
   }
 }
 
-fn git_decode_path_octets(octets: List<UInt8>) -> GitPathDecodeOutcome {
+fn git_decode_path_octets(octets: List<std.integer.UInt8>) -> GitPathDecodeOutcome {
   match fold(
     octets,
     init: GitPathDecodeBuilding {
@@ -629,7 +629,7 @@ fn store_object_kind(object: StoreObject) -> ObjectType {
   )
 }
 
-fn git_object_id_raw_size(oid: GitObjectId) -> NonNegativeInt {
+fn git_object_id_raw_size(oid: GitObjectId) -> std.integer.NonNegativeInt {
   match oid {
     GitSha1ObjectId { digest: _ } => 20
     GitSha256ObjectId { digest: _ } => 32
@@ -655,11 +655,11 @@ fn git_lower_hex_nibble(cp: Int) -> Int? {
   }
 }
 
-fn git_octet_of_int(value: Int) -> UInt8 {
+fn git_octet_of_int(value: Int) -> std.integer.UInt8 {
   value
 }
 
-fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
+fn git_decode_lower_hex_octets(text: String) -> List<std.integer.UInt8>? {
   if text.length() == 0 {
     Present { value: [] }
   } else if text.length() < 2 {
@@ -692,7 +692,7 @@ fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
   }
 }
 
-fn git_object_id_raw_octets(oid: GitObjectId) -> List<UInt8>? {
+fn git_object_id_raw_octets(oid: GitObjectId) -> List<std.integer.UInt8>? {
   let text = git_object_id_wire_hex(oid: oid) as String
   let expected = git_object_id_raw_size(oid: oid)
   if text.length() != expected * 2 {
@@ -1721,7 +1721,7 @@ type GitNulRecordSplitState
 
 fn git_nul_record_split_octet_step(
   state: GitNulRecordSplitState,
-  octet: UInt8,
+  octet: std.integer.UInt8,
 ) -> GitNulRecordSplitState {
   match state {
     GitNulRecordSplitRefused { cause } =>
@@ -1789,7 +1789,7 @@ type GitNulRecordSplitOutcome
   | GitNulRecordSplitRefusedOutcome { cause: GitNulQuartetRefusal }
 
 fn git_split_nul_record_quartet(
-  record: List<UInt8>,
+  record: List<std.integer.UInt8>,
 ) -> GitNulRecordSplitOutcome {
   match fold(
     record,
@@ -1832,7 +1832,7 @@ type GitNulQuartetRowsFoldState
 
 fn git_nul_quartet_rows_step(
   state: GitNulQuartetRowsFoldState,
-  record: List<UInt8>,
+  record: List<std.integer.UInt8>,
 ) -> GitNulQuartetRowsFoldState {
   match state {
     GitNulQuartetRowsRefused { cause } =>
@@ -1859,7 +1859,7 @@ type GitNulFieldFoldState
 
 fn git_nul_field_octet_step(
   state: GitNulFieldFoldState,
-  octet: UInt8,
+  octet: std.integer.UInt8,
 ) -> GitNulFieldFoldState {
   match state {
     GitNulFieldsRefused { cause } => GitNulFieldsRefused { cause: cause }
@@ -1977,7 +1977,7 @@ type GitLsTreeZDecodeOutcome
   = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
   | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
 
-fn git_ascii_field_text(octets: List<UInt8>) -> NonEmptyStr? {
+fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> NonEmptyStr? {
   if all(octets, octet => octet > 0 && octet < 128) {
     Present {
       value: join(

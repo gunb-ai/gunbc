@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type CpuStats {
   cpu_usage: CpuUsage
   system_cpu_usage: Nanosecond
-  online_cpus: Nat
+  online_cpus: std.nat.Nat
   cpu_percent: Float?
 }
 
@@ -26,11 +26,11 @@ type MemoryStats {
   usage: ByteSize
   max_usage: ByteSize
   limit: ByteSize
-  failcnt: Nat?
+  failcnt: std.nat.Nat?
 }
 
 type PidStats {
-  current: Nat?
+  current: std.nat.Nat?
 }
 
 type ContainerStats {
@@ -52,18 +52,18 @@ type BlkioStats {
 
 type BlkioValue {
   op: String
-  value: Nat
+  value: std.nat.Nat
 }
 
 type NetworkStats {
   rx_bytes: ByteSize
-  rx_packets: Nat
-  rx_errors: Nat
-  rx_dropped: Nat
+  rx_packets: std.nat.Nat
+  rx_errors: std.nat.Nat
+  rx_dropped: std.nat.Nat
   tx_bytes: ByteSize
-  tx_packets: Nat
-  tx_errors: Nat
-  tx_dropped: Nat
+  tx_packets: std.nat.Nat
+  tx_errors: std.nat.Nat
+  tx_dropped: std.nat.Nat
 }
 
 type DockerContainerNetworkInterfaceStats {
@@ -137,7 +137,7 @@ fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nanosecond {
   stats.cpu_stats.cpu_usage.total_usage
 }
 
-fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
+fn container_stats_online_cpus(stats: ContainerStats) -> std.nat.Nat {
   stats.cpu_stats.online_cpus
 }
 

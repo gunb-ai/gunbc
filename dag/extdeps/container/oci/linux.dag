@@ -21,7 +21,7 @@ type LinuxNamespaceType
 
 type LinuxNamespace {
   namespace_type: LinuxNamespaceType
-  path: FilePath?
+  path: std.types.FilePath?
 }
 
 type LinuxMemoryResources {

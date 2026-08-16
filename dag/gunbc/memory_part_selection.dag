@@ -146,15 +146,15 @@ type PartCandidate {
   module: DramModuleCatalogRow
   unit_price: MoneyAmountMicro
   currency: CurrencyCode
-  sticks_required: Nat
+  sticks_required: std.nat.Nat
   qualification: SpecificPartQualification
 }
 
-fn candidate_total_capacity_bytes(candidate: PartCandidate) -> Nat {
+fn candidate_total_capacity_bytes(candidate: PartCandidate) -> std.nat.Nat {
   byte_size_count(b: candidate.module.capacity_bytes) * candidate.sticks_required
 }
 
-fn candidate_total_price_micros(candidate: PartCandidate) -> Nat {
+fn candidate_total_price_micros(candidate: PartCandidate) -> std.nat.Nat {
   money_amount_micro_count(m: candidate.unit_price) * candidate.sticks_required
 }
 

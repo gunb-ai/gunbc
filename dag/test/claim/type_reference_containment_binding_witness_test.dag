@@ -6,8 +6,8 @@ fn trcb_module_path(dotted: String) -> NonEmptyStr {
   dotted as NonEmptyStr
 }
 
-fn trcb_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+fn trcb_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 fn trcb_fixture_path(

@@ -24,14 +24,14 @@ data land_pattern_note: String = "THIS MODULE CARRIES MECHANICAL CANDIDATES. IT 
 // frame and an origin convention that belong to whatever consumes the pattern.
 type SurfaceMountLandGeometry
   = DualRowLandGeometry {
-      lands_per_row: Nat
+      lands_per_row: std.nat.Nat
       pitch: Micrometer
       row_span_centre_to_centre: Micrometer
       land_length: Micrometer
       land_width: Micrometer
     }
   | QuadRowLandGeometry {
-      lands_per_side: Nat
+      lands_per_side: std.nat.Nat
       pitch: Micrometer
       side_span_centre_to_centre: Micrometer
       land_length: Micrometer
@@ -39,7 +39,7 @@ type SurfaceMountLandGeometry
       thermal_land_side: Micrometer?
     }
 
-fn peripheral_land_count(g: SurfaceMountLandGeometry) -> Nat {
+fn peripheral_land_count(g: SurfaceMountLandGeometry) -> std.nat.Nat {
   match g {
     DualRowLandGeometry { lands_per_row: n, pitch: _, row_span_centre_to_centre: _, land_length: _, land_width: _ } => 2 * n
     QuadRowLandGeometry { lands_per_side: n, pitch: _, side_span_centre_to_centre: _, land_length: _, land_width: _, thermal_land_side: _ } => 4 * n
@@ -76,7 +76,7 @@ type PackageDrawingRef {
 type PackageBodyDimensions {
   designator: NonEmptyStr
   drawing: PackageDrawingRef
-  terminal_count: Nat
+  terminal_count: std.nat.Nat
   terminal_pitch: Micrometer
   body_length_min: Micrometer
   body_length_max: Micrometer
@@ -160,7 +160,7 @@ type CatalogPartIdentity {
 // and nothing about a record's field names stops the wrong pair from being bound together.
 type LandPatternDisagreement
   = PatternDesignatorDiffersFromPackage { pattern_designator: NonEmptyStr, package_designator: NonEmptyStr }
-  | LandCountDiffersFromTerminalCount { lands: Nat, terminals: Nat }
+  | LandCountDiffersFromTerminalCount { lands: std.nat.Nat, terminals: std.nat.Nat }
   | LandPitchDiffersFromTerminalPitch { land_pitch: Micrometer, terminal_pitch: Micrometer }
 
 fn land_pattern_disagreements(p: PartMechanicalCandidate) -> List<LandPatternDisagreement> {
@@ -231,7 +231,7 @@ fn admit_part_candidate(p: PartMechanicalCandidate) -> PartAdmission {
   }
 }
 
-fn candidate_refusal_count(s: CandidateRefusalSet) -> Nat {
+fn candidate_refusal_count(s: CandidateRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 

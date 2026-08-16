@@ -96,7 +96,7 @@ fn srv1_dashboard_service_principal() -> PosixUser {
 
 data attempt_state_directory_is_placed_note: String = "THE DIRECTORY'S REQUIREMENTS ARE THE SAME EVERYWHERE; ITS LOCATION IS NOT. This arrived as a nullary srv1 singleton — the same nullary shape #7456 removed from deployment_owned_steps — and merging the two lanes made the mismatch live: the owned MEMBER path became instance-derived while the apply command still built its directory at srv1's literal, so a twin deployment's apply would have created and chmodded PRODUCTION's attempt-state root. That is review 45197's defect on a new member: an instance-derived path beside a hardcoded one that used to agree because only one instance existed.\\n\\nOwner and dependents genuinely do not vary — every instance's attempt state is written and read by that instance's own service user, so the derivation of the mode is unchanged and this is not a loosening. Only the placement moves to a parameter, which is the axis #7456 established as the one that varies.\\n\\nsrv1_attempt_state_directory survives as the production placement of the general row rather than as a second definition, so its single consumer keeps working and there is still exactly one statement of what the directory requires."
 
-fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
+fn attempt_state_directory_at(path: std.types.FilePath) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
   ManagedDirectory {
     member: "attempt-state-root" as NonEmptyStr,

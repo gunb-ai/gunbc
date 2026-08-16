@@ -163,7 +163,7 @@ service gcloud.Auth {
   }
 
   operation ReadADC {
-    input { path: FilePath = "~/.config/gcloud/application_default_credentials.json" }
+    input { path: std.types.FilePath = "~/.config/gcloud/application_default_credentials.json" }
     output {
       client_id: String
       client_secret: Secret

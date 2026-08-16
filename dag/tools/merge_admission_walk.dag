@@ -89,9 +89,9 @@ data merge_admission_refresh_refusal_wire_seed_pairing: String = "PAIRED LITERAL
 
 data merge_admission_refresh_refusal_wire_note: String = "TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven failure causes conflated, and the red was undiagnosable from the log). Same pattern as merge_admission_capture_refusal_wire_note: the claim channel is a Bool, so the core returns the typed sum and the Bool projection durably writes the labeled cause to target/merge-admission-refresh-refusal.txt before returning false; claim_executor's stage-failure line reads the wire. The fetch and target-tree arms carry the operation's own stderr/cause so a runner-side git failure names itself."
 
-func refresh_wire_path() -> FilePath {
+func refresh_wire_path() -> std.types.FilePath {
   let root = git.Inspect.Toplevel().path as String
-  concat(concat(root, "/"), merge_admission_refresh_refusal_wire_relpath) as FilePath
+  concat(concat(root, "/"), merge_admission_refresh_refusal_wire_relpath) as std.types.FilePath
 }
 
 data merge_admission_refresh_ratchet_off_widening_note: String = "DECLARED SCAFFOLD (review 47596 finding 3): the final else arm of merge_target_refresh returns MergeTargetRefreshed WITHOUT consuming the classifier verdict whenever merge_freshness_verdict_is_consumed_to_block() is false — the shadow-phase ratchet the operator's fleet-gating policy requires before a mechanism may red unrelated PRs. While the ratchet is off, the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2 cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open. Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict match becomes unconditional) and this row with it."

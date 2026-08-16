@@ -26,8 +26,8 @@ type BoardCapability
 type CapabilityRequirement
   = ComputeCores { minimum_cores: HardwareThreadCount }
   | MemoryCapacity { minimum_capacity: ByteSize }
-  | NetworkPaths { minimum_paths: Nat }
-  | BootStoragePaths { minimum_paths: Nat }
+  | NetworkPaths { minimum_paths: std.nat.Nat }
+  | BootStoragePaths { minimum_paths: std.nat.Nat }
   | RemoteManagement { power_control: Bool, console: Bool, recovery: Bool }
   | PowerInputBoundary { boundary: NonEmptyStr }
   | CoolingBoundary { boundary: NonEmptyStr }

@@ -11,11 +11,11 @@ fn occ(id: NonEmptyStr) -> std.occurrence_identity.OccurrenceId {
 
 fn frame() -> ClockFrame { ClockFrame { domain: worker_domain(), basis: CpuClock } }
 
-fn span_of(id: NonEmptyStr, low: Nat, high: Nat) -> ExtentSpec {
+fn span_of(id: NonEmptyStr, low: std.nat.Nat, high: std.nat.Nat) -> ExtentSpec {
   ExtentSpec { occurrence: occ(id: id), frame: frame(), start_ns: low, width_ns: high - low }
 }
 
-fn unattributed_widths(r: AttributionResult) -> List<Nat> {
+fn unattributed_widths(r: AttributionResult) -> List<std.nat.Nat> {
   match r {
     AttributionComputed { spans: ss } =>
       map(
@@ -30,7 +30,7 @@ fn unattributed_widths(r: AttributionResult) -> List<Nat> {
   }
 }
 
-fn attributed_count(r: AttributionResult) -> Nat {
+fn attributed_count(r: AttributionResult) -> std.nat.Nat {
   match r {
     AttributionComputed { spans: ss } =>
       length(filter(ss, s => match s { Attributed { occurrence: _, interval: _ } => true, _ => false }))

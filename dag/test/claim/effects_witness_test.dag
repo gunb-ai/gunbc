@@ -8,7 +8,7 @@ type ReadonlyGetCase {
   path: String
 }
 
-fn derived_op(name: String, method: HttpMethod, path: PathTemplate) -> DerivedOpEffect {
+fn derived_op(name: String, method: std.types.HttpMethod, path: PathTemplate) -> DerivedOpEffect {
   match derive_op_effect(operation_name: name, method: method, path: path) {
     DerivedEffect { effect: e } => e
     MalformedPathInput => DerivedOpEffect {
@@ -20,35 +20,35 @@ fn derived_op(name: String, method: HttpMethod, path: PathTemplate) -> DerivedOp
   }
 }
 
-fn derived_raw_is_read(name: String, method: HttpMethod, raw: String) -> Bool {
+fn derived_raw_is_read(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } => is_read(shape: derived_op(name: name, method: method, path: path).shape)
     MalformedPathTemplate => false
   }
 }
 
-fn derived_raw_is_create(name: String, method: HttpMethod, raw: String) -> Bool {
+fn derived_raw_is_create(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } => is_create(shape: derived_op(name: name, method: method, path: path).shape)
     MalformedPathTemplate => false
   }
 }
 
-fn derived_raw_is_upsert(name: String, method: HttpMethod, raw: String) -> Bool {
+fn derived_raw_is_upsert(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } => is_upsert(shape: derived_op(name: name, method: method, path: path).shape)
     MalformedPathTemplate => false
   }
 }
 
-fn derived_raw_is_delete(name: String, method: HttpMethod, raw: String) -> Bool {
+fn derived_raw_is_delete(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } => is_delete(shape: derived_op(name: name, method: method, path: path).shape)
     MalformedPathTemplate => false
   }
 }
 
-fn derived_raw_modifier_agrees(name: String, method: HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
+fn derived_raw_modifier_agrees(name: String, method: std.types.HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } =>
       match check_modifier_vs_derivation(
@@ -60,7 +60,7 @@ fn derived_raw_modifier_agrees(name: String, method: HttpMethod, raw: String, de
   }
 }
 
-fn derived_raw_modifier_unknown(name: String, method: HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
+fn derived_raw_modifier_unknown(name: String, method: std.types.HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } =>
       match check_modifier_vs_derivation(
@@ -88,7 +88,7 @@ fn is_create(shape: EffectShape<KeySource>) -> Bool {
 
 data keyless_fallback_witness_note: String = "Discriminating control for the PostAlways state-space conflation (std.effects.keyless_fallback_cause_note). Pre-fix, derive_effect_shape answered CreateEffect{PostAlways} for a real POST AND for a keyless PUT/PATCH/DELETE, so this projection was inexpressible and the originating method was lost. These rows go RED if the two causes ever collapse back together, and the negative arms prove the method is genuinely carried rather than defaulted."
 
-fn derived_cause_is_keyless_with_method(shape: EffectShape<KeySource>, expected: HttpMethod) -> Bool {
+fn derived_cause_is_keyless_with_method(shape: EffectShape<KeySource>, expected: std.types.HttpMethod) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
@@ -119,7 +119,7 @@ fn derived_cause_is_post_always(shape: EffectShape<KeySource>) -> Bool {
   }
 }
 
-fn derived_raw_cause_is_keyless_with_method(name: String, method: HttpMethod, raw: String, expected: HttpMethod) -> Bool {
+fn derived_raw_cause_is_keyless_with_method(name: String, method: std.types.HttpMethod, raw: String, expected: std.types.HttpMethod) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } =>
       match derive_op_effect(operation_name: name, method: method, path: path) {
@@ -130,7 +130,7 @@ fn derived_raw_cause_is_keyless_with_method(name: String, method: HttpMethod, ra
   }
 }
 
-fn derived_raw_cause_is_post_always(name: String, method: HttpMethod, raw: String) -> Bool {
+fn derived_raw_cause_is_post_always(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: path } =>
       match derive_op_effect(operation_name: name, method: method, path: path) {

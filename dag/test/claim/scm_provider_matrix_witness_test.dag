@@ -71,7 +71,7 @@ data storj_quote: ProviderQuote = ProviderQuote {
   quoted_basis: ByteBasisUnstated,
 }
 
-fn total_at(quote: ProviderQuote, users: Nat) -> Nat? {
+fn total_at(quote: ProviderQuote, users: std.nat.Nat) -> std.nat.Nat? {
   quote_total_micros(
     result: quote_provider_monthly(
       profile: profile_at_user_count(profile: matrix_profile, user_count: users),
@@ -81,7 +81,7 @@ fn total_at(quote: ProviderQuote, users: Nat) -> Nat? {
   )
 }
 
-fn w_total_equals(quote: ProviderQuote, users: Nat, expected_micros: Nat) -> Bool {
+fn w_total_equals(quote: ProviderQuote, users: std.nat.Nat, expected_micros: std.nat.Nat) -> Bool {
   match total_at(quote: quote, users: users) {
     Present { value: t } => t == expected_micros
     _ => false

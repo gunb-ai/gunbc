@@ -9,7 +9,7 @@ type AffectedSelection
 
 type AffectedCiCostAuditSubject {
   harvest: HarvestKind,
-  github_actions_run_id: Nat,
+  github_actions_run_id: std.nat.Nat,
   head_commit: NonEmptyStr,
   job_name: NonEmptyStr,
   selection: AffectedSelection,
@@ -104,23 +104,23 @@ fn cold_admission_baseline_wall() -> Millisecond {
   millisecond(count: 197130)
 }
 
-fn selected_entry_groups() -> Nat {
+fn selected_entry_groups() -> std.nat.Nat {
   297
 }
 
-fn total_entry_groups() -> Nat {
+fn total_entry_groups() -> std.nat.Nat {
   916
 }
 
-fn discovery_witness_total() -> Nat {
+fn discovery_witness_total() -> std.nat.Nat {
   6610
 }
 
-fn discovery_witness_skipped() -> Nat {
+fn discovery_witness_skipped() -> std.nat.Nat {
   4174
 }
 
-fn discovery_witness_deferred() -> Nat {
+fn discovery_witness_deferred() -> std.nat.Nat {
   1020
 }
 
@@ -132,7 +132,7 @@ fn calibration_floor_peak_rss() -> ByteSize {
   byte_size(count: 10821181440)
 }
 
-fn capture_swap_after() -> Nat {
+fn capture_swap_after() -> std.nat.Nat {
   0
 }
 

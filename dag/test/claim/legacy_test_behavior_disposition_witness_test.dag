@@ -4,17 +4,17 @@ module test.claim.legacy_test_behavior_disposition_witness_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data fixture_covered_behavior: LegacyTestBehavior = LegacyTestBehavior {
-  source_file: "fixture/legacy.rs" as FilePath,
+  source_file: "fixture/legacy.rs" as std.types.FilePath,
   test_fn: "covered_behavior" as NonEmptyStr,
 }
 
 data fixture_retained_behavior: LegacyTestBehavior = LegacyTestBehavior {
-  source_file: "fixture/legacy.rs" as FilePath,
+  source_file: "fixture/legacy.rs" as std.types.FilePath,
   test_fn: "retained_behavior" as NonEmptyStr,
 }
 
 data fixture_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "fixture/replacement_test.dag" as FilePath,
+  entry: "fixture/replacement_test.dag" as std.types.FilePath,
   test_fn: "replacement_catches_regression" as NonEmptyStr,
 }
 
@@ -78,16 +78,16 @@ test fn legacy_test_behavior_planted_misclassification_reds() -> Bool {
 
 data fixture_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
   name: "fixture-family" as NonEmptyStr,
-  source_files: ["fixture/legacy.rs" as FilePath],
+  source_files: ["fixture/legacy.rs" as std.types.FilePath],
 }
 
 data fixture_absent_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
   name: "fixture-absent-family" as NonEmptyStr,
-  source_files: ["fixture/never_discovered.rs" as FilePath],
+  source_files: ["fixture/never_discovered.rs" as std.types.FilePath],
 }
 
 data fixture_outside_family_behavior: LegacyTestBehavior = LegacyTestBehavior {
-  source_file: "fixture/other.rs" as FilePath,
+  source_file: "fixture/other.rs" as std.types.FilePath,
   test_fn: "outside_family_behavior" as NonEmptyStr,
 }
 

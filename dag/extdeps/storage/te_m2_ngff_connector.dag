@@ -17,7 +17,7 @@ type M2ConnectorCatalogRow {
   specification_number: NonEmptyStr
   specification_revision: NonEmptyStr
   vendor: Vendor<Hardware>
-  position_count: Nat
+  position_count: std.nat.Nat
   contact_pitch: Micrometer
   attachment: BoardAttachmentStyle
   board_pattern: SurfaceMountPatternStanding

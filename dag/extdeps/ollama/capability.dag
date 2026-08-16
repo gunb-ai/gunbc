@@ -26,7 +26,7 @@ type OllamaSemanticVersion {
   patch: std.nat.Nat
 }
 
-fn ollama_semantic_version(major: Nat, minor: Nat, patch: Nat) -> OllamaSemanticVersion {
+fn ollama_semantic_version(major: std.nat.Nat, minor: std.nat.Nat, patch: std.nat.Nat) -> OllamaSemanticVersion {
   OllamaSemanticVersion { major: major, minor: minor, patch: patch }
 }
 

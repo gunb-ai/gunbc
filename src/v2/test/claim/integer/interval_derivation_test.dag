@@ -78,7 +78,7 @@ test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
     && derived_matches_legacy(standard_integer_type: Int32, legacy: legacy_int32_spec)
     && derived_matches_legacy(standard_integer_type: Int64, legacy: legacy_int64_spec)
     && derived_matches_legacy(standard_integer_type: Int128, legacy: legacy_int128_spec)
-    && derived_matches_legacy(standard_integer_type: UInt8, legacy: legacy_uint8_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt8, legacy: legacy_uint8_spec)
     && derived_matches_legacy(standard_integer_type: UInt16, legacy: legacy_uint16_spec)
     && derived_matches_legacy(standard_integer_type: UInt32, legacy: legacy_uint32_spec)
     && derived_matches_legacy(standard_integer_type: UInt64, legacy: legacy_uint64_spec)

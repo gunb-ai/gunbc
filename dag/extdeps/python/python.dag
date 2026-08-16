@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service python.Interpreter {
   operation RunFile {
-    input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
+    input { workdir: std.types.FilePath, script_path: std.types.FilePath, args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"

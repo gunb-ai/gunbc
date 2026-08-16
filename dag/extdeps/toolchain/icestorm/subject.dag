@@ -16,7 +16,7 @@ type IcestormPackagePinRoster {
   pins: List<NonEmptyStr>
 }
 
-fn roster_pin_count(r: IcestormPackagePinRoster) -> Nat {
+fn roster_pin_count(r: IcestormPackagePinRoster) -> std.nat.Nat {
   fold(r.pins, init: 0, f: fn(acc, _p) { acc + 1 })
 }
 
@@ -29,7 +29,7 @@ fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
 // roster says 96, which is evidence only if the roster's 96 are 96 DISTINCT positions. A duplicate
 // would hold the count while shrinking the real population, so the agreement would still read
 // green against a roster that had quietly lost a pin.
-fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Nat {
+fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> std.nat.Nat {
   fold(r.pins, init: 0, f: fn(acc, p) { if (p as String) == (pin as String) { acc + 1 } else { acc } })
 }
 

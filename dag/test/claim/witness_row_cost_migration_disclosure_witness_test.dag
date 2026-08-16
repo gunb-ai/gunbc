@@ -32,7 +32,7 @@ fn sample_decl(name: String) -> DeclarationRef {
   }
 }
 
-fn sample_row(name: String, eval_ms: Nat) -> WitnessCostReceiptRow {
+fn sample_row(name: String, eval_ms: std.nat.Nat) -> WitnessCostReceiptRow {
   WitnessCostReceiptRow {
     entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
     declaration: sample_decl(name: name),

@@ -78,7 +78,7 @@ type RegionalComputeRow {
   pricing_citation: NonEmptyStr
 }
 
-fn usd_per_hour(micros: Nat) -> HourlyRateAvailability {
+fn usd_per_hour(micros: std.nat.Nat) -> HourlyRateAvailability {
   HourlyCited {
     hourly: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd },
   }
@@ -456,7 +456,7 @@ fn regional_compute_catalog() -> List<RegionalComputeRow> {
   ]
 }
 
-fn hourly_micros(row: RegionalComputeRow) -> Nat? {
+fn hourly_micros(row: RegionalComputeRow) -> std.nat.Nat? {
   match row.hourly {
     HourlyCited { hourly: h } => Present { value: money_rate_micros(q: h) }
     HourlyUnavailable { cause: _ } => none

@@ -158,7 +158,7 @@ type FrameLength {
   count: std.nat.Nat
 }
 
-fn frame_length(scale: Scale, count: Nat) -> FrameLength {
+fn frame_length(scale: Scale, count: std.nat.Nat) -> FrameLength {
   FrameLength { scale: scale, count: count }
 }
 
@@ -207,7 +207,7 @@ type FrameExtent
   = ExtentInFrame { length: FrameLength }
   | ExtentFrameUnregistered { identity: CoordinateFrameIdentity }
 
-fn extent_in_frame(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity, count: Nat) -> FrameExtent {
+fn extent_in_frame(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity, count: std.nat.Nat) -> FrameExtent {
   match frame_length_scale(r: registry, identity: identity) {
     Absent => ExtentFrameUnregistered { identity: identity }
     Present { value: s } => ExtentInFrame { length: frame_length(scale: s, count: count) }

@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // SEC EDGAR CIK display width: ten decimal digits with leading zeros in browse-edgar URLs, submissions API paths, and XBRL companyfacts endpoints (e.g. CIK0001653482). Grounded on the module's EDGAR API authority anchor.
-fn edgar_cik_zero_pad_digit_count() -> Nat {
+fn edgar_cik_zero_pad_digit_count() -> std.nat.Nat {
   10
 }
 

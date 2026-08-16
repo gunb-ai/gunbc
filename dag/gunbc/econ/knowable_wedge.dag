@@ -9,8 +9,8 @@ data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator ar
 type WedgeAssumptions {
   runner_utilization_bp: BasisPoint
   amortization_months: AmortizationMonths
-  eur_to_usd_numerator: Nat
-  eur_to_usd_denominator: Nat
+  eur_to_usd_numerator: std.nat.Nat
+  eur_to_usd_denominator: std.nat.Nat
 }
 
 type WedgeAssumptionsInput
@@ -42,7 +42,7 @@ type KnowableWedgeResult
   = KnowableWedgeComputed { wedge: KnowableWedgeDerived }
   | KnowableWedgeRefused { cause: KnowableWedgeRefusalCause }
 
-fn minutes_per_billing_month() -> Nat {
+fn minutes_per_billing_month() -> std.nat.Nat {
   billing_month_as_hour_count() * minutes_per_hour()
 }
 
@@ -55,8 +55,8 @@ fn money_per_minute_from_money_per_month(monthly: MoneyPerMonth) -> MoneyPerMinu
 
 fn convert_money_per_minute_eur_to_usd(
   eur: MoneyPerMinute,
-  numerator: Nat,
-  denominator: Nat,
+  numerator: std.nat.Nat,
+  denominator: std.nat.Nat,
 ) -> MoneyPerMinute? {
   if denominator <= 0 {
     none

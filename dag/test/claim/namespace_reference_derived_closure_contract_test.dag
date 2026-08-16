@@ -5,8 +5,8 @@ data namespace_reference_derived_closure_contract_witness_note: String = "CONTRO
 
 fn oid(value: Int) -> std.occurrence_identity.OccurrenceId { std.occurrence_identity.OccurrenceId { value: value } }
 
-fn fixture_span() -> SourceSpan {
-  SourceSpan { file: "contract-fixture.dag", start: 1, end: 2 }
+fn fixture_span() -> std.types.SourceSpan {
+  std.types.SourceSpan { file: "contract-fixture.dag", start: 1, end: 2 }
 }
 
 fn fixture_path(ancestor: std.occurrence_identity.OccurrenceId, terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {

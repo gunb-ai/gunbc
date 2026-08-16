@@ -28,7 +28,7 @@ fn roster_entry_selected(entry: String, changed_paths: List<String>) -> Bool {
   )
 }
 
-fn count_selected_entry_groups(roster: List<String>, changed_paths: List<String>) -> Nat {
+fn count_selected_entry_groups(roster: List<String>, changed_paths: List<String>) -> std.nat.Nat {
   fold(
     roster,
     init: 0,

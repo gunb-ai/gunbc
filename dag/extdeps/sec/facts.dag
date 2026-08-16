@@ -14,11 +14,11 @@ data filed_facts_derive_not_store_note: String = "Store ONLY filed monetary fact
 // SEC XBRL monetary facts report USD in whole dollars (companyfacts/companyconcept `val` field). Grounded on std.measure MoneyAmount<One, Currency> — not bare Int — so currency is in the type, not the field name.
 type UsdWholeDollars = MoneyAmount<One>
 
-fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+fn usd_whole_dollars(count: std.nat.Nat) -> UsdWholeDollars {
   UsdWholeDollars { count: count }
 }
 
-fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
+fn usd_whole_dollars_count(m: UsdWholeDollars) -> std.nat.Nat {
   measure_count(m)
 }
 
@@ -59,11 +59,11 @@ type SignedUsdWholeDollars
   = NonNegativeUsd { amount: UsdWholeDollars }
   | NegativeUsd { magnitude: UsdWholeDollars }
 
-fn signed_usd_non_negative(count: Nat) -> SignedUsdWholeDollars {
+fn signed_usd_non_negative(count: std.nat.Nat) -> SignedUsdWholeDollars {
   NonNegativeUsd { amount: usd_whole_dollars(count: count) }
 }
 
-fn signed_usd_negative(magnitude_count: Nat) -> SignedUsdWholeDollars {
+fn signed_usd_negative(magnitude_count: std.nat.Nat) -> SignedUsdWholeDollars {
   NegativeUsd { magnitude: usd_whole_dollars(count: magnitude_count) }
 }
 

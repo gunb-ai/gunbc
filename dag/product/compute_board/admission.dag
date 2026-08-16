@@ -42,7 +42,7 @@ type BoardArticleAdmission
   = BoardArticleAdmitted { article: AdmittedBoardPowerInterfaceArticle }
   | BoardArticleRefused { causes: BoardArticleRefusalSet }
 
-fn count_matching(names: List<NonEmptyStr>, name: NonEmptyStr) -> Nat {
+fn count_matching(names: List<NonEmptyStr>, name: NonEmptyStr) -> std.nat.Nat {
   fold(names, init: 0, f: fn(acc, n) { if (n as String) == (name as String) { acc + 1 } else { acc } })
 }
 
@@ -154,7 +154,7 @@ fn signal_is_output(control: DigitalControlIntent, name: SignalName) -> Bool {
   })
 }
 
-fn driver_count(control: DigitalControlIntent, name: SignalName) -> Nat {
+fn driver_count(control: DigitalControlIntent, name: SignalName) -> std.nat.Nat {
   fold(control.equations, init: 0, f: fn(acc, e) {
     if signal_names_equal(a: e.driven, b: name) { acc + 1 } else { acc }
   })
@@ -255,7 +255,7 @@ fn push_refusal(acc: BoardArticleRefusalSet?, r: BoardArticleRefusal) -> BoardAr
   }
 }
 
-fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
+fn refusal_set_count(s: BoardArticleRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 

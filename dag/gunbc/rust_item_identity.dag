@@ -18,7 +18,7 @@ type RustItemKind
   | RustTestFunction
 
 type RustItemIdentity {
-  repo_path: FilePath
+  repo_path: std.types.FilePath
   kind: RustItemKind
   name: NonEmptyStr
   impl_subject: String

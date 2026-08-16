@@ -3,8 +3,8 @@ module test.fixture.cross_file_clause_e_fixture
 
 data cross_file_clause_e_fixture_note: String = "Controlled cross-file clause-(e) fixture for witness tests only — hand-built transports exercising projection law. NOT production authority; production admissions must consume parser-produced closures via v1.gunbc.namespace_reference_derived_closure_clause_e_production."
 
-fn cross_file_clause_e_fixture_span() -> SourceSpan {
-  SourceSpan { file: "app/consumer.dag", start: 1, end: 2 }
+fn cross_file_clause_e_fixture_span() -> std.types.SourceSpan {
+  std.types.SourceSpan { file: "app/consumer.dag", start: 1, end: 2 }
 }
 
 fn cross_file_clause_e_fixture_path(terminal: OccurrenceId) -> OccurrenceContainmentPath {
@@ -166,7 +166,7 @@ fn cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
 fn cross_file_clause_e_fixture_unrelated_loaded_provider_row(
   declaration_authored_name: String,
   module_dotted: String,
-  file_path: FilePath,
+  file_path: std.types.FilePath,
 ) -> CrossFileBindingClosureRow {
   let transport = cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
     declaration_authored_name: declaration_authored_name,
@@ -220,6 +220,6 @@ fn cross_file_clause_e_fixture_assembled_closure() -> AssembledCrossFileBindingC
   cross_file_clause_e_fixture_baseline_assembled_closure()
 }
 
-fn cross_file_clause_e_fixture_provider_file() -> FilePath {
+fn cross_file_clause_e_fixture_provider_file() -> std.types.FilePath {
   "app/provider.dag"
 }

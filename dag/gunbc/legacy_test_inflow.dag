@@ -67,7 +67,7 @@ fn inflow_state_with_declaration(acc: InflowFoldState, declaration: String) -> I
       current_file: acc.current_file,
       pending_attribute: false,
       additions: concat(acc.additions, [LegacyTestBehavior {
-        source_file: acc.current_file as FilePath,
+        source_file: acc.current_file as std.types.FilePath,
         test_fn: name as NonEmptyStr,
       }]),
       unresolved: acc.unresolved,

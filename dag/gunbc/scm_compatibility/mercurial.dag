@@ -151,7 +151,7 @@ fn mercurial_compatibility_node_identity(
 
 fn mercurial_compatibility_octets_identity(
   tag: NonEmptyStr,
-  octets: List<UInt8>,
+  octets: List<std.integer.UInt8>,
 ) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,

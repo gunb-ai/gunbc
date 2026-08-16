@@ -37,18 +37,18 @@ fn parse_positive_width(value: String) -> Int? {
   }
 }
 
-fn runner_slot_identity(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdentity {
+fn runner_slot_identity(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: host, slot_index: slot_index }
 }
 
-data five_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
-data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
-data two_addition_slot_indices: List<Nat> = [6, 7]
-data empty_nat_list: List<Nat> = []
+data five_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5]
+data seven_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5, 6, 7]
+data two_addition_slot_indices: List<std.nat.Nat> = [6, 7]
+data empty_nat_list: List<std.nat.Nat> = []
 
-data one_slot_index: List<Nat> = [1]
+data one_slot_index: List<std.nat.Nat> = [1]
 
-fn desired_slot_indices(width: Int) -> List<Nat> {
+fn desired_slot_indices(width: Int) -> List<std.nat.Nat> {
   if width >= 7 {
     seven_slot_indices
   } else if width >= 5 {
@@ -147,7 +147,7 @@ fn connectivity_actions_for_observed(
   }
 }
 
-fn addition_slot_indices(observed_width: Int, requested_width: Int) -> List<Nat> {
+fn addition_slot_indices(observed_width: Int, requested_width: Int) -> List<std.nat.Nat> {
   if requested_width <= observed_width {
     empty_nat_list
   } else if observed_width == 5 && requested_width == 7 {

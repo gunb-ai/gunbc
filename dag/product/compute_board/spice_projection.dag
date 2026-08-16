@@ -100,7 +100,7 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
 // and a vendor-subcircuit row for the same part emit or refuse depending on which was authored
 // first, which is a verdict decided by an editing accident. Ambiguity is not a model standing
 // and is refused rather than resolved.
-fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> Nat {
+fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if (b.component as String) == (component_identity(c: c) as String) { acc + 1 } else { acc }
   })

@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type BrowserConfig {
   headless: Bool = false
-  profile_path: FilePath
+  profile_path: std.types.FilePath
   viewport_width: Int = 1280
   viewport_height: Int = 900
 }
@@ -22,7 +22,7 @@ type Element        = String where brand("Element")
 
 service browser.Context {
   operation Launch {
-    input { headless: String = "false", profile_path: FilePath }
+    input { headless: String = "false", profile_path: std.types.FilePath }
     output { context: BrowserContext from "stdout" }
     transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
   }
@@ -87,13 +87,13 @@ service browser.Page {
   }
 
   operation UploadFile {
-    input { selector: String, path: FilePath }
+    input { selector: String, path: std.types.FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
   }
 
   operation Screenshot {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
   }

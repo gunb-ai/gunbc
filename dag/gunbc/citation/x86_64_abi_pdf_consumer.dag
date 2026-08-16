@@ -82,11 +82,11 @@ fn x86_64_abi_pdf_syscall_convention_sequence() -> PdfSafeParameterSequenceConst
   )
 }
 
-fn x86_64_abi_syscall_citation_page_is_authoritative(page: PositiveInt) -> Bool {
+fn x86_64_abi_syscall_citation_page_is_authoritative(page: std.integer.PositiveInt) -> Bool {
   page == x86_64_abi_syscall_convention_authoritative_page
 }
 
-fn x86_64_abi_pdf_fragment_selector_from_page(page: PositiveInt) -> X86_64AbiPdfCitationSelectorConstruction {
+fn x86_64_abi_pdf_fragment_selector_from_page(page: std.integer.PositiveInt) -> X86_64AbiPdfCitationSelectorConstruction {
   match pdf_open_fragment_selector(
     sequence: match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: page)]) {
       SequenceConstructed(seq) => seq

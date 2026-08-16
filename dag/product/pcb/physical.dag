@@ -95,7 +95,7 @@ fn push_physical_refusal(acc: PhysicalRefusalSet?, r: PhysicalRefusal) -> Physic
   }
 }
 
-fn physical_refusal_count(s: PhysicalRefusalSet) -> Nat {
+fn physical_refusal_count(s: PhysicalRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
@@ -124,7 +124,7 @@ fn frame_is_sub_millimetre(registry: SpatialFrameRegistry, frame: CoordinateFram
   }
 }
 
-fn identity_occurrences(ps: List<ComponentPlacement>, id: NonEmptyStr) -> Nat {
+fn identity_occurrences(ps: List<ComponentPlacement>, id: NonEmptyStr) -> std.nat.Nat {
   fold(ps, init: 0, f: fn(acc, p) { if (p.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 

@@ -45,10 +45,10 @@ data pijul_partial_clone_authority: ExternalAuthority = ExternalAuthority {
 }
 
 type PijulUpstreamVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
-  beta: NonNegativeInt
+  major: std.integer.NonNegativeInt
+  minor: std.integer.NonNegativeInt
+  patch: std.integer.NonNegativeInt
+  beta: std.integer.NonNegativeInt
 }
 
 data pijul_upstream_version: PijulUpstreamVersion = PijulUpstreamVersion {
@@ -70,11 +70,11 @@ type PijulChannelName = NonEmptyStr where brand("PijulChannelName")
 type PijulInode = NonEmptyStr where brand("PijulInode")
 
 type PijulPath {
-  octets: List<UInt8>
+  octets: List<std.integer.UInt8>
 }
 
 type PijulVertexPosition {
-  value: NonNegativeInt
+  value: std.integer.NonNegativeInt
 }
 
 type PijulVertexId {
@@ -398,7 +398,7 @@ fn pijul_change_hashes(changes: List<PijulRecordedChange>) -> List<PijulChangeHa
 fn pijul_hash_count(
   changes: List<PijulChangeHash>,
   target: PijulChangeHash,
-) -> NonNegativeInt {
+) -> std.integer.NonNegativeInt {
   changes |> filter(change => change == target) |> count
 }
 

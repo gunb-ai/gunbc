@@ -62,7 +62,7 @@ type ClaudeEnrollmentRuntimeBinding {
 type ClaudeEnrollmentPlacement {
   host: ClaudeEnrollmentHostPlacement,
   run_as: ClaudeEnrollmentUnixServicePrincipal,
-  enrollment_root: FilePath,
+  enrollment_root: std.types.FilePath,
   account_label: NonEmptyStr,
   secret_target: ClaudeEnrollmentSecretTarget,
   writer: ClaudeEnrollmentPrincipalPopulation,
@@ -206,7 +206,7 @@ type ClaudeEnrollmentWorkflowAdmission
   | EnrollmentWorkflowRefusedHostEffectsScaffold { stage: NonEmptyStr }
 
 type ClaudeIsolationPathObservation
-  = IsolationPathObserved { paths_read: List<FilePath> }
+  = IsolationPathObserved { paths_read: List<std.types.FilePath> }
   | IsolationPathObservationRefused { reason: NonEmptyStr }
 
 data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment"
@@ -291,16 +291,16 @@ data claude_enrollment_acceptance_control_note: String = "ACCEPTANCE CONTROL (ms
 
 data claude_enrollment_workflow_realization_note: String = "Required host effects (not yet realized): spawn exact Claude CLI in a private PTY; observe browser challenge and project ONLY url and code; capture token privately; Secret Manager AddVersion; exact-version independent read-back; clean-context materialization; managed paired probe; ProviderStanding receipt. Until realization lands this module remains an enrollment specification with honest scaffold refusal — not a silent no-op."
 
-fn claude_enrollment_root_for_account(account_label: NonEmptyStr) -> FilePath {
+fn claude_enrollment_root_for_account(account_label: NonEmptyStr) -> std.types.FilePath {
   join(
     ["/var/lib/gunbc/claude-enrollment/", account_label as String],
     "",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn claude_enrollment_config_dir_for_placement(
   placement: ClaudeEnrollmentPlacement,
-) -> FilePath {
+) -> std.types.FilePath {
   join(
     [
       placement.enrollment_root as String,
@@ -311,12 +311,12 @@ fn claude_enrollment_config_dir_for_placement(
       "/config",
     ],
     "",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn claude_enrollment_data_dir_for_placement(
   placement: ClaudeEnrollmentPlacement,
-) -> FilePath {
+) -> std.types.FilePath {
   join(
     [
       placement.enrollment_root as String,
@@ -327,7 +327,7 @@ fn claude_enrollment_data_dir_for_placement(
       "/home",
     ],
     "",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 data claude_enrollment_empty_non_empty_str_list: List<NonEmptyStr> = []

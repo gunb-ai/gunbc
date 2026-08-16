@@ -51,9 +51,9 @@ data mercurial_closed_branch_authority: ExternalAuthority = ExternalAuthority {
 }
 
 type MercurialUpstreamVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: std.integer.NonNegativeInt
+  minor: std.integer.NonNegativeInt
+  patch: std.integer.NonNegativeInt
 }
 
 data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVersion {
@@ -65,26 +65,26 @@ data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVer
 data mercurial_upstream_version_note: NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
 
 type MercurialNodeId {
-  octet00: UInt8
-  octet01: UInt8
-  octet02: UInt8
-  octet03: UInt8
-  octet04: UInt8
-  octet05: UInt8
-  octet06: UInt8
-  octet07: UInt8
-  octet08: UInt8
-  octet09: UInt8
-  octet10: UInt8
-  octet11: UInt8
-  octet12: UInt8
-  octet13: UInt8
-  octet14: UInt8
-  octet15: UInt8
-  octet16: UInt8
-  octet17: UInt8
-  octet18: UInt8
-  octet19: UInt8
+  octet00: std.integer.UInt8
+  octet01: std.integer.UInt8
+  octet02: std.integer.UInt8
+  octet03: std.integer.UInt8
+  octet04: std.integer.UInt8
+  octet05: std.integer.UInt8
+  octet06: std.integer.UInt8
+  octet07: std.integer.UInt8
+  octet08: std.integer.UInt8
+  octet09: std.integer.UInt8
+  octet10: std.integer.UInt8
+  octet11: std.integer.UInt8
+  octet12: std.integer.UInt8
+  octet13: std.integer.UInt8
+  octet14: std.integer.UInt8
+  octet15: std.integer.UInt8
+  octet16: std.integer.UInt8
+  octet17: std.integer.UInt8
+  octet18: std.integer.UInt8
+  octet19: std.integer.UInt8
 }
 
 type MercurialNodeIdentityRole
@@ -98,7 +98,7 @@ type MercurialNodeIdentityObservation {
 }
 
 type MercurialNodeIdentitySyntaxRefusal
-  = MercurialNodeIdentityWrongLength { observed: NonNegativeInt }
+  = MercurialNodeIdentityWrongLength { observed: std.integer.NonNegativeInt }
   | MercurialNodeIdentityNonHexadecimal
   | MercurialNodeIdentityNonCanonicalUppercase
 
@@ -118,11 +118,11 @@ fn mercurial_lower_hex_nibble(cp: Int) -> Int? {
   }
 }
 
-fn mercurial_octet_of_int(value: Int) -> UInt8 {
+fn mercurial_octet_of_int(value: Int) -> std.integer.UInt8 {
   value
 }
 
-fn mercurial_decode_lower_hex_octets(text: String) -> List<UInt8>? {
+fn mercurial_decode_lower_hex_octets(text: String) -> List<std.integer.UInt8>? {
   if text.length() == 0 {
     Present { value: [] }
   } else if text.length() < 2 {
@@ -156,7 +156,7 @@ fn mercurial_decode_lower_hex_octets(text: String) -> List<UInt8>? {
 }
 
 fn mercurial_node_id_from_octets(
-  octets: List<UInt8>,
+  octets: List<std.integer.UInt8>,
 ) -> MercurialNodeId {
   MercurialNodeId {
     octet00: octets.first(),
@@ -184,7 +184,7 @@ fn mercurial_node_id_from_octets(
 
 fn mercurial_node_id_octets(
   node: MercurialNodeId,
-) -> List<UInt8> {
+) -> List<std.integer.UInt8> {
   [
     node.octet00,
     node.octet01,
@@ -265,11 +265,11 @@ type MercurialNamedBranchName = NonEmptyStr where brand("MercurialNamedBranchNam
 type MercurialTagName = NonEmptyStr where brand("MercurialTagName")
 
 type MercurialLocalRevision {
-  value: NonNegativeInt
+  value: std.integer.NonNegativeInt
 }
 
 type MercurialPath {
-  octets: List<UInt8>
+  octets: List<std.integer.UInt8>
 }
 
 type MercurialManifestFlag
@@ -875,7 +875,7 @@ fn mercurial_phase_for(
   }
 }
 
-fn mercurial_phase_rank(phase: MercurialPhase) -> NonNegativeInt {
+fn mercurial_phase_rank(phase: MercurialPhase) -> std.integer.NonNegativeInt {
   match phase {
     MercurialPublic => 0
     MercurialDraft => 1

@@ -12,7 +12,7 @@ data diffutils_module_scope_doc: String = "GNU diffutils interface shapes, one f
 
 service shell.Diff {
   operation Recursive {
-    input { left: FilePath, right: FilePath }
+    input { left: std.types.FilePath, right: std.types.FilePath }
     output { identical: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly
     transport shell { argv: ["diff", "-r", "{left}", "{right}"] }

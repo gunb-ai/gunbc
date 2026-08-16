@@ -43,8 +43,8 @@ type PrefixCacheObservation
 data llm_concurrency_grain_note: String = "Admitted sessions and active sequences are separate observations because they are separate facts: sixteen review agents do not ordinarily decode at once -- most are cloning, compiling, waiting on witnesses or on review. A server sustaining four active sequences can therefore admit considerably more than four agent sessions. Reporting either number as the other is the measurement error that makes a concurrency sweep unreadable, so the receipt records both and derives neither."
 
 type ConcurrencyObservation {
-  admitted_sessions: Nat
-  active_sequences: Nat
+  admitted_sessions: std.nat.Nat
+  active_sequences: std.nat.Nat
 }
 
 data llm_phase_duration_note: String = "Durations are optional per phase and stay on Nanosecond, the canonical exact elapsed-time carrier (std.measure nanosecond_millisecond_projection_note: measurement, ordering, joining and attribution must retain Nanosecond; millisecond is presentation only). Queue delay is recorded beside prefill and decode because time-to-first-token under load is the quantity a concurrency sweep is actually buying, and a receipt that stored only decode would make a queue-bound host look fast."
@@ -87,7 +87,7 @@ type LlmAttemptReceipt {
 }
 
 // Throughput is an exact fraction over the SAME FieldOfFractions of Nat authority gunbc.econ.acquisition ConversionRate consumes -- output tokens over elapsed nanoseconds -- and nothing divides until a consumer explicitly asks for the floor projection. Storing tokens-per-second as a scalar would bake one rounding into the authority and make a cross-host comparison depend on when the division happened. The floor projection below is a DECLARED lossy view and is total by typed refusal: it returns none on a zero denominator rather than dividing, because the record stays publicly constructible even though every derivation that PRODUCES one refuses a zero window first.
-type TokenThroughput = FieldOfFractions<Nat>
+type TokenThroughput = FieldOfFractions<std.nat.Nat>
 
 type ThroughputRefusalCause
   = ThroughputUsageUnobserved
@@ -120,11 +120,11 @@ fn derive_decode_throughput(receipt: LlmAttemptReceipt) -> DecodeThroughputResul
   }
 }
 
-fn nanoseconds_per_second() -> Nat {
+fn nanoseconds_per_second() -> std.nat.Nat {
   1000000000
 }
 
-fn throughput_per_second_floor(t: TokenThroughput) -> Nat? {
+fn throughput_per_second_floor(t: TokenThroughput) -> std.nat.Nat? {
   if t.denom == 0 {
     none
   } else {
@@ -149,7 +149,7 @@ fn attempt_is_escalated(d: ReviewDisposition) -> Bool {
   }
 }
 
-fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
   v2.std.algebra.fold_list(
     xs: receipts,
     empty: 0,
@@ -157,7 +157,7 @@ fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
   )
 }
 
-fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
   v2.std.algebra.fold_list(
     xs: receipts,
     empty: 0,
@@ -165,7 +165,7 @@ fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
   )
 }
 
-fn attempt_roster_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+fn attempt_roster_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
   v2.std.algebra.fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
 
@@ -173,7 +173,7 @@ type GoodputRefusalCause
   = EmptyAttemptRoster
   | ZeroObservationWindow
 
-type AcceptedGoodput = FieldOfFractions<Nat>
+type AcceptedGoodput = FieldOfFractions<std.nat.Nat>
 
 type AcceptedGoodputResult
   = AcceptedGoodputDerived { goodput: AcceptedGoodput }
@@ -201,7 +201,7 @@ fn derive_accepted_goodput(
 
 data llm_escalation_fraction_note: String = "Frontier escalation fraction is derived over the same roster as an exact fraction, so it joins the substrate identity above: the pair of them is what distinguishes 'the local model got better' from 'the work got easier'. Refuses on an empty roster rather than reporting zero escalations out of zero attempts, which reads as a perfect local tier."
 
-type EscalationFraction = FieldOfFractions<Nat>
+type EscalationFraction = FieldOfFractions<std.nat.Nat>
 
 type EscalationFractionResult
   = EscalationFractionDerived { fraction: EscalationFraction }

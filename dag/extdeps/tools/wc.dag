@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service wc.ByteCount {
   operation File {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output {
       stdout: String from "stdout"
       success: Bool from "exit_success"
@@ -51,7 +51,7 @@ type FileByteCountVerification
     }
   | FileByteCountVerificationUnavailable { reason: NonEmptyStr }
 
-fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
+fn file_byte_count_via_wc(path: std.types.FilePath) -> FileByteCountRead {
   let read = wc.ByteCount.File(path: path)
   if !read.success {
     FileByteCountUnavailable { reason: "wc --bytes failed" as NonEmptyStr }

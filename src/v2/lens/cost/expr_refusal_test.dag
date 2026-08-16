@@ -19,7 +19,7 @@ data expr_refusal_effect_operation: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
-fn log_base_two() -> Nat {
+fn log_base_two() -> v2.std.nat.Nat {
   Succ { prev: Succ { prev: Zero } }
 }
 

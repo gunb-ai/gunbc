@@ -233,7 +233,7 @@ type RouteSelection<H>
   | MethodNotAllowed { allowed: List<std.types.HttpMethod> }
   | NoRouteMatched
 
-fn served_route_method<H>(r: ServedRoute<H>) -> HttpMethod {
+fn served_route_method<H>(r: ServedRoute<H>) -> std.types.HttpMethod {
   match r {
     StaticRoute { route: s } => s.method
     DynamicRoute { method: m, path_pattern: _, handler: _ } => m
@@ -248,7 +248,7 @@ fn served_route_pattern<H>(r: ServedRoute<H>) -> PathTemplate {
 }
 
 // Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (DESIGN 5). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions.
-fn serve_route_hit<H>(r: ServedRoute<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+fn serve_route_hit<H>(r: ServedRoute<H>, method: std.types.HttpMethod, path: String) -> RouteSelection<H> {
   if !(served_route_method(r: r) == method) {
     NoRouteMatched
   } else {
@@ -264,7 +264,7 @@ fn serve_route_hit<H>(r: ServedRoute<H>, method: HttpMethod, path: String) -> Ro
   }
 }
 
-fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<HttpMethod> {
+fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<std.types.HttpMethod> {
   table.routes
     |> filter(r => match match_path_template(template: served_route_pattern(r: r), path: path) {
       PathMatched { params: _ } => true
@@ -273,7 +273,7 @@ fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<Ht
     |> map(r => served_route_method(r: r))
 }
 
-fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+fn serve_select_route<H>(table: ServedRouteTable<H>, method: std.types.HttpMethod, path: String) -> RouteSelection<H> {
   let hit = fold(table.routes, init: NoRouteMatched, f: (acc, r) =>
     match acc {
       SelectedStatic { route: _ } => acc

@@ -5,15 +5,15 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data real_execution_home_doc: String = "Wet execution witness for commit_writer_heal_admission_gate — the CommitWriterHealSkewConflictArm transport landed against gunbc#7905. It builds a real throwaway git repository, stages real index entries (via real conflicting merges and real git add), and runs the real gate against the real repo — shell.Mktemp.Dir, Filesystem.Write, git.Core.*InRepo have no mock_response, so this file is excluded from hermetic discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries instead. clean_staged_index_admits is the non-widen control (nothing to refuse, gate must not refuse the ordinary case). unmerged_index_with_no_markers_refuses is the discriminator this gate exists for — a real three-way merge left genuinely unresolved (stages 1/2/3 present, no conflict-marker text anywhere, the exact #7870/#7821 shape) must still refuse on the unmerged-index arm alone. unclaimed_text_blob_with_markers_refuses_red_control is the RED control for the absence-arm classification landed in the prior PR on this branch: a staged blob with no module_storage claim (a path outside dag/ and src/v2/) that happens to carry literal conflict-marker-shaped text must refuse, proving the absence arm is not a silent pass-through. This gate is explicitly NOT a fix for the CommitWriterHealSkewConflictArm's provisional-ours-commit residue (commit_writer_heal_skew_conflict_arm_provisional_bytes_residue_note) — every fixture below stages content that is ALREADY the intended final bytes, so none of these witnesses exercise or claim to close that separate, still-open defect."
 
-fn witness_repo_file(repo: FilePath, name: String) -> String {
+fn witness_repo_file(repo: std.types.FilePath, name: String) -> String {
   concat(concat(repo as String, "/"), name)
 }
 
-fn write_witness_file(repo: FilePath, name: String, content: String) -> Bool {
+fn write_witness_file(repo: std.types.FilePath, name: String, content: String) -> Bool {
   Filesystem.Write(path: witness_repo_file(repo: repo, name: name), content: content).success
 }
 
-fn seed_witness_repository(repo: FilePath) -> Bool {
+fn seed_witness_repository(repo: std.types.FilePath) -> Bool {
   let initialized = git.Core.InitInRepo(repo: repo).success
   let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid").success
   let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc heal admission witness").success
@@ -24,7 +24,7 @@ fn seed_witness_repository(repo: FilePath) -> Bool {
   initialized && email && name && seeded && staged == 0 && committed == 0 && based == 0
 }
 
-fn commit_witness_side(repo: FilePath, branch: String, content: String) -> Bool {
+fn commit_witness_side(repo: std.types.FilePath, branch: String, content: String) -> Bool {
   let branched = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: branch, start_point: "base" as GitRef).exit_code
   let written = write_witness_file(repo: repo, name: "unclaimed.txt", content: content)
   let staged = git.Core.AddAllInRepo(repo: repo).exit_code
@@ -48,7 +48,7 @@ fn refusals_contain_conflict_marker_text(refusals: List<CommitWriterRefusal>) ->
   }
 }
 
-fn with_witness_repo(scenario: fn(FilePath) -> Bool) -> Bool {
+fn with_witness_repo(scenario: fn(std.types.FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
   let seeded = seed_witness_repository(repo: dir.path)
   let observed = scenario(dir.path)

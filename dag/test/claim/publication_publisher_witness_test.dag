@@ -7,7 +7,7 @@ data synthetic_head: CommitSha = "synthetic-head-sha"
 data synthetic_ordinary_session: ModeledSessionId = "synthetic-ordinary-session" as ModeledSessionId
 data synthetic_policy_version: NonEmptyStr = "policy-v1" as NonEmptyStr
 
-fn synthetic_subject(path: FilePath, identity: String) -> PublicProjectionSubject {
+fn synthetic_subject(path: std.types.FilePath, identity: String) -> PublicProjectionSubject {
   PublicProjectionSubject {
     subject_identity: content_hash_of_value(value: identity as NonEmptyStr),
     content_identity: content_hash_of_value(value: identity as NonEmptyStr),
@@ -20,7 +20,7 @@ fn public_docs_policy() -> PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: publication_policy_default_disposition,
     rules: [SubtreePublishRule {
-      prefix: "docs/plans" as FilePath,
+      prefix: "docs/plans" as std.types.FilePath,
       disposition: PublishPublic,
     }],
   }
@@ -85,7 +85,7 @@ test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
     version: synthetic_policy_version,
     default_disposition: publication_policy_default_disposition,
     rules: [SubtreePublishRule {
-      prefix: "private-overlay/secret" as FilePath,
+      prefix: "private-overlay/secret" as std.types.FilePath,
       disposition: PublishPublic,
     }],
   }) {
@@ -103,8 +103,8 @@ test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
     rules: [
-      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: PublishPublic },
-      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: WithholdPrivate },
+      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
+      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: WithholdPrivate },
     ],
   }) {
     PublicationPolicyAccepted { admitted: _ } => false
@@ -121,14 +121,14 @@ test fn publication_policy_most_specific_rule_wins() -> Bool {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
     rules: [
-      SubtreePublishRule { prefix: "docs" as FilePath, disposition: WithholdPrivate },
-      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: PublishPublic },
+      SubtreePublishRule { prefix: "docs" as std.types.FilePath, disposition: WithholdPrivate },
+      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
     ],
   }
   match admit_publication_policy(policy: policy) {
     PublicationPolicyAccepted { admitted: accepted } =>
-      resolve_disposition_for_path(policy: accepted.policy, path: "docs/plans/sole-modeled-publisher-design.md" as FilePath) == PublishPublic
-        && resolve_disposition_for_path(policy: accepted.policy, path: "docs/other.md" as FilePath) == WithholdPrivate
+      resolve_disposition_for_path(policy: accepted.policy, path: "docs/plans/sole-modeled-publisher-design.md" as std.types.FilePath) == PublishPublic
+        && resolve_disposition_for_path(policy: accepted.policy, path: "docs/other.md" as std.types.FilePath) == WithholdPrivate
     PublicationPolicyRefused { cause: _ } => false
   }
 }
@@ -136,7 +136,7 @@ test fn publication_policy_most_specific_rule_wins() -> Bool {
 test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/sole-modeled-publisher-design.md" as FilePath,
+    path: "docs/plans/sole-modeled-publisher-design.md" as std.types.FilePath,
     identity: "subject-docs-plan",
   )
   let plan = derive_public_projection_plan(
@@ -151,7 +151,7 @@ test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool
 test fn change_local_admission_classifies_newly_public_delta() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/new.md" as FilePath,
+    path: "docs/plans/new.md" as std.types.FilePath,
     identity: "subject-new-doc",
   )
   let candidate = derive_public_projection_plan(
@@ -177,7 +177,7 @@ test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,
     authored_subjects: [synthetic_subject(
-      path: "docs/plans/tampered.md" as FilePath,
+      path: "docs/plans/tampered.md" as std.types.FilePath,
       identity: "subject-tampered",
     )],
   )
@@ -204,7 +204,7 @@ test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
 test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/deleted.md" as FilePath,
+    path: "docs/plans/deleted.md" as std.types.FilePath,
     identity: "subject-deleted",
   )
   let current = derive_public_projection_plan(
@@ -232,7 +232,7 @@ test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
 
 test fn publication_decision_authorizes_matching_policy_authority_and_audience() -> Bool {
   let subject = synthetic_subject(
-    path: "docs/plans/receipt-auth.md" as FilePath,
+    path: "docs/plans/receipt-auth.md" as std.types.FilePath,
     identity: "subject-receipt-auth",
   )
   publication_decision_authorizes_newly_public(
@@ -246,7 +246,7 @@ test fn publication_decision_authorizes_matching_policy_authority_and_audience()
 test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/stale-receipt.md" as FilePath,
+    path: "docs/plans/stale-receipt.md" as std.types.FilePath,
     identity: "subject-stale-receipt",
   )
   let candidate = derive_public_projection_plan(
@@ -280,7 +280,7 @@ test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
 
 test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
   let subject = synthetic_subject(
-    path: "docs/plans/wrong-authority.md" as FilePath,
+    path: "docs/plans/wrong-authority.md" as std.types.FilePath,
     identity: "subject-wrong-authority",
   )
   let candidate = derive_public_projection_plan(
@@ -313,7 +313,7 @@ test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
 
 test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
   let subject = synthetic_subject(
-    path: "docs/plans/narrow-audience.md" as FilePath,
+    path: "docs/plans/narrow-audience.md" as std.types.FilePath,
     identity: "subject-narrow-audience",
   )
   let candidate = derive_public_projection_plan(
@@ -364,7 +364,7 @@ test fn ordinary_session_reds_before_projection_check() -> Bool {
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,
     authored_subjects: [synthetic_subject(
-      path: "docs/plans/x.md" as FilePath,
+      path: "docs/plans/x.md" as std.types.FilePath,
       identity: "subject-x",
     )],
   )
@@ -387,7 +387,7 @@ test fn ordinary_session_reds_before_projection_check() -> Bool {
 test fn sole_publisher_admits_change_local_projection() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/y.md" as FilePath,
+    path: "docs/plans/y.md" as std.types.FilePath,
     identity: "subject-y",
   )
   let candidate = derive_public_projection_plan(
@@ -412,7 +412,7 @@ test fn sole_publisher_admits_change_local_projection() -> Bool {
 test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/no-receipt.md" as FilePath,
+    path: "docs/plans/no-receipt.md" as std.types.FilePath,
     identity: "subject-no-receipt",
   )
   let candidate = derive_public_projection_plan(
@@ -440,7 +440,7 @@ test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
 test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/mismatch.md" as FilePath,
+    path: "docs/plans/mismatch.md" as std.types.FilePath,
     identity: "subject-mismatch",
   )
   let candidate = derive_public_projection_plan(
@@ -473,7 +473,7 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
 test fn sole_publisher_refuses_empty_pushed_refs() -> Bool {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
-    path: "docs/plans/empty-push.md" as FilePath,
+    path: "docs/plans/empty-push.md" as std.types.FilePath,
     identity: "subject-empty-push",
   )
   let candidate = derive_public_projection_plan(
@@ -503,7 +503,7 @@ test fn shadow_replay_counts_ordinary_session_refusals() -> Bool {
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,
     authored_subjects: [synthetic_subject(
-      path: "docs/plans/z.md" as FilePath,
+      path: "docs/plans/z.md" as std.types.FilePath,
       identity: "subject-z",
     )],
   )

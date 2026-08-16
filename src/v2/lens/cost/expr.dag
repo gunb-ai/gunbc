@@ -2,7 +2,7 @@ module v2.lens.cost.expr
 
 
 type SizeExpr
-  = SizeConst { value: Nat }
+  = SizeConst { value: v2.std.nat.Nat }
   | SizeOf { variable: SizeVariable }
   | SizeLength { of: SizeVariable }
   | SizeAdd { left: SizeExpr, right: SizeExpr }
@@ -11,21 +11,21 @@ type SizeExpr
 type CostExprRefusalCause
   = UnboundedIteration { at: Locus }
   | UngroundedLogArgument { argument: SizeExpr, at: Locus }
-  | InvalidLogBase { base: Nat, at: Locus }
+  | InvalidLogBase { base: v2.std.nat.Nat, at: Locus }
   | UnmodeledEffect { operation: DeclarationRef, at: Locus }
   | UnresolvedSize { variable: SizeVariable, at: Locus }
 
 type CostExpr
-  = CostConst { value: Nat }
+  = CostConst { value: v2.std.nat.Nat }
   | CostAdd { left: CostExpr, right: CostExpr }
   | CostMul { left: CostExpr, right: CostExpr }
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: SizeVariable, upper: SizeExpr, body: CostExpr }
-  | CostLog { base: Nat, argument: SizeExpr }
+  | CostLog { base: v2.std.nat.Nat, argument: SizeExpr }
   | CostEffect { operation: DeclarationRef }
   | CostRefused { cause: CostExprRefusalCause }
 
-fn size_const(value: Nat) -> SizeExpr {
+fn size_const(value: v2.std.nat.Nat) -> SizeExpr {
   SizeConst { value: value }
 }
 
@@ -37,7 +37,7 @@ fn size_length(of: SizeVariable) -> SizeExpr {
   SizeLength { of: of }
 }
 
-fn cost_const(value: Nat) -> CostExpr {
+fn cost_const(value: v2.std.nat.Nat) -> CostExpr {
   CostConst { value: value }
 }
 
@@ -63,7 +63,7 @@ fn cost_expr_par(a: CostExpr, b: CostExpr) -> CostExpr {
   }
 }
 
-fn cost_log_expr(base: Nat, argument: SizeExpr) -> CostExpr {
+fn cost_log_expr(base: v2.std.nat.Nat, argument: SizeExpr) -> CostExpr {
   CostLog { base: base, argument: argument }
 }
 

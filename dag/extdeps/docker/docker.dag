@@ -15,6 +15,6 @@ type DockerImage {
 }
 
 type DockerMount
-  = BindMount { host_path: FilePath, container_path: FilePath, readonly: Bool }
-  | VolumeMount { volume: NonEmptyStr, container_path: FilePath, readonly: Bool }
-  | TmpfsMount { container_path: FilePath, size_bytes: Int }
+  = BindMount { host_path: std.types.FilePath, container_path: std.types.FilePath, readonly: Bool }
+  | VolumeMount { volume: NonEmptyStr, container_path: std.types.FilePath, readonly: Bool }
+  | TmpfsMount { container_path: std.types.FilePath, size_bytes: Int }

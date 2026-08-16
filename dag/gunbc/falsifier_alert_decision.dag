@@ -88,7 +88,7 @@ data signature_derivation_note: String = "THE SIGNATURE IS DERIVED FROM THE TYPE
 data incident_identity_structure_note: String = "THE INCIDENT IDENTITY IS A SET OF TYPED MEMBERS, NOT A JOINED STRING, and both halves of that sentence were defects in the first revision. It mapped the summaries in receipt order and joined them with a pipe, which made the identity depend on two things it has no business depending on.\\n\\nORDER. The floor emits components in whatever order it walked them, so the same failing set arriving in a different order produced a different string and read as a CHANGED INCIDENT — the alert would announce a new class and re-notify while nothing about the failure had changed. Sorting the members by index fixes it at the identity level rather than by hoping the producer is stable.\\n\\nDELIMITERS. index:label:failure_mode:outcome joined by | is ambiguous the moment a label contains a colon or a pipe, and labels are human-authored component names. Two structurally different populations could serialize to one string, or one population could parse two ways — an identity that collides is not an identity. The label is therefore OUT of the identity entirely: it is display text, while index already identifies the component uniquely (the receipt decoder now refuses a population whose indices are not unique, so that uniqueness is a checked property rather than an assumption). What remains — index, outcome class, failure mode — are the facts that decide whether this is the same incident.\\n\\nComparison is over the STRUCTURED SET. Serialization exists only for writing the marker, and it is canonical because it renders the already-sorted members; nothing compares the rendered forms."
 
 type ComponentIncidentIdentity {
-  index: Nat
+  index: std.nat.Nat
   outcome_tag: NonEmptyStr
   failure_mode_tag: NonEmptyStr
 }
@@ -255,7 +255,7 @@ fn alert_incident_state_of(observation: AlertIssueObservation) -> AlertIncidentS
 
 data marker_signature_readback_note: String = "THE STORED MARKER IS READ BACK INTO THE STRUCTURE, NOT COMPARED AS TEXT. Comparing the rendered strings would work today — the identity is now sorted, and index, outcome tag and failure-mode tag are all delimiter-free closed vocabularies, so the rendering is unambiguous — but it would be correct only by coincidence of what the members happen to contain, and the coincidence is exactly what broke the first version when a label was in the key. Reading it back means the comparison is over the SET in both directions, and a rendering change cannot silently become a behavioural change.\\n\\nThis is the same grammar read backwards: incident_signature_render writes `index:outcome:mode` members joined by |, and this reads them — and the index goes through strict_natural_of_lexeme, the SAME cardinal check the receipt decoder applies to the same semantic, rather than a bare parse. A stored signature is a hand-editable string in an issue body, so `-1` or `6.5` there is at least as reachable as it is on the wire; re-minting a weaker parse for the readback would have left the fail-open exactly where the marker is most exposed. A member that does not parse into three parts refuses by producing no signature, which makes the marker malformed rather than making it compare unequal — an unreadable marker must not read as `the incident changed` and trigger a notification about nothing."
 
-fn nth_string(xs: List<String>, n: Nat) -> String? {
+fn nth_string(xs: List<String>, n: std.nat.Nat) -> String? {
   fold(xs, init: { i: 0, found: none }, f: (acc, x) =>
     if acc.i == n { { i: acc.i + 1, found: Present { value: x } } } else { { i: acc.i + 1, found: acc.found } }
   ).found
@@ -313,11 +313,11 @@ fn alert_signature_of_marker(marker: NonEmptyStr) -> IncidentSignature? {
 data routing_exact_join_note: String = "THE ROUTINGS ARE JOINED TO THE FAILING SET, NOT TRUSTED AS INPUT. They arrive as a parameter, which means nothing in the type stops a caller passing routings for the wrong run, a stale set from the previous incident, a duplicate, or an empty list. Each of those produces an issue that names the wrong owners or no owners while looking entirely normal, and the alert is the thing an operator trusts to tell them who to talk to.\\n\\nSo the join is exact and by index, the same identity the incident signature is keyed on and the same one the receipt decoder now proves unique: every failing component has exactly one routing, no routing names a component that is not failing, and no index is routed twice. Any of the three refuses with the offending indices named rather than being silently dropped or padded — a missing routing is not `route to nobody`, it is a defect in whoever computed the routings.\\n\\nThis is an accept-and-join rather than deriving the routing inside the decision, because the lane roster is a repository fact the decision has no business reading and holding it here would put a second copy of lane ownership inside the alert. The join is what makes the accepted input safe."
 
 type RoutingJoinMismatch
-  = RoutingsMissingForComponents { indices: List<Nat> }
-  | RoutingsForNonFailingComponents { indices: List<Nat> }
-  | RoutingsDuplicated { indices: List<Nat> }
+  = RoutingsMissingForComponents { indices: List<std.nat.Nat> }
+  | RoutingsForNonFailingComponents { indices: List<std.nat.Nat> }
+  | RoutingsDuplicated { indices: List<std.nat.Nat> }
 
-fn routing_index(r: FalsifierRouting) -> Nat {
+fn routing_index(r: FalsifierRouting) -> std.nat.Nat {
   match r {
     RoutedToOwner { index: i, lane: _, owner: _ } => i
     RoutingLaneUndetermined { index: i, cause: _ } => i
@@ -325,11 +325,11 @@ fn routing_index(r: FalsifierRouting) -> Nat {
   }
 }
 
-fn nat_list_contains(xs: List<Nat>, needle: Nat) -> Bool {
+fn nat_list_contains(xs: List<std.nat.Nat>, needle: std.nat.Nat) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || x == needle)
 }
 
-fn nat_list_occurrences(xs: List<Nat>, needle: Nat) -> Nat {
+fn nat_list_occurrences(xs: List<std.nat.Nat>, needle: std.nat.Nat) -> std.nat.Nat {
   fold(xs, init: 0, f: (acc, x) => if x == needle { acc + 1 } else { acc })
 }
 

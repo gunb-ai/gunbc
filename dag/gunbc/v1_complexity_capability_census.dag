@@ -495,7 +495,7 @@ fn capability_all_declaration_refs(rows: List<V1ComplexityInventoryRow>) -> List
   })
 }
 
-fn capability_work_count(rows: List<V1ComplexityInventoryRow>, kind: CapabilityWorkKind) -> Nat {
+fn capability_work_count(rows: List<V1ComplexityInventoryRow>, kind: CapabilityWorkKind) -> std.nat.Nat {
   fold(rows, init: 0, f: (acc, c) =>
     if capability_work_kind(c: c) == kind { acc + 1 } else { acc })
 }
@@ -567,13 +567,13 @@ fn inventory_row_semantic_capability(row: V1ComplexityInventoryRow) -> Complexit
   }
 }
 
-fn inventory_semantic_capability_count() -> Nat {
+fn inventory_semantic_capability_count() -> std.nat.Nat {
   fold(v1_complexity_inventory_roster, init: 0, f: fn(acc, r) {
     if inventory_row_is_semantic_capability(row: r) { acc + 1 } else { acc }
   })
 }
 
-fn inventory_residue_count() -> Nat {
+fn inventory_residue_count() -> std.nat.Nat {
   fold(v1_complexity_inventory_roster, init: 0, f: (acc, r) =>
     if inventory_row_is_semantic_capability(row: r) { acc } else { acc + 1 })
 }
@@ -584,7 +584,7 @@ fn inventory_identity_keys() -> List<String> {
   })
 }
 
-fn key_occurrence_count(keys: List<String>, k: String) -> Nat {
+fn key_occurrence_count(keys: List<String>, k: String) -> std.nat.Nat {
   fold(keys, init: 0, f: (n, other) => if other == k { n + 1 } else { n })
 }
 

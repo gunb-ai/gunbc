@@ -51,7 +51,7 @@ fn verification_execution_host(instance: HostDashboardInstance) -> NonEmptyStr {
 
 fn verification_exec(
   instance: HostDashboardInstance,
-  workdir: FilePath,
+  workdir: std.types.FilePath,
   command: ModeledValidationCommand,
 ) -> VerificationExec {
   match instance.provision_transport {
@@ -91,7 +91,7 @@ fn verification_exec(
 fn verification_run_one(
   node_id: String,
   instance: HostDashboardInstance,
-  workdir: FilePath,
+  workdir: std.types.FilePath,
   validation: ValidationOperation,
 ) -> VerificationOutcome {
   match validation_operation_command(
@@ -142,7 +142,7 @@ fn verification_run_one(
 fn verification_fold(
   node_id: String,
   instance: HostDashboardInstance,
-  workdir: FilePath,
+  workdir: std.types.FilePath,
   validations: List<ValidationOperation>,
 ) -> VerificationOutcome {
   fold(
@@ -170,7 +170,7 @@ fn verification_fold(
 fn verify_contract(
   node_id: String,
   instance: HostDashboardInstance,
-  workdir: FilePath,
+  workdir: std.types.FilePath,
   contract: WorkItemExecutionContract,
 ) -> VerificationOutcome {
   match contract_closure(contract: contract) {
@@ -226,7 +226,7 @@ type LegacySingleValidationVerificationReceipt {
   node_id: String
   attempt_key: String
   host: NonEmptyStr
-  worktree: FilePath
+  worktree: std.types.FilePath
   revision: NonEmptyStr
   validation_label: NonEmptyStr
   command_wire: String
@@ -290,7 +290,7 @@ fn verify_attempt(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
-  worktree: FilePath,
+  worktree: std.types.FilePath,
   revision: NonEmptyStr,
 ) -> AttemptVerification {
   let node_id = node.node as String

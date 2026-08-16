@@ -266,7 +266,7 @@ fn floor_component_failure_mode_of_wire_tag(tag: String) -> FloorComponentFailur
 
 data strict_natural_decode_note: String = "A NUMERIC LEXEME IS NOT A NATURAL NUMBER. The JSON grammar admits `-1`, `6.5`, `6e3` and `1e400` as numbers, and parse_int on any of them produces something — a truncation, a wrong magnitude, or a value the carrier cannot hold — with no signal that the input was not what the field means. Component indices and counts are cardinals: they are positions and tallies, and a negative position or a fractional count is not a small error in a valid value, it is a different kind of thing.\\n\\nSo the lexeme is checked before it is trusted, and the check is a ROUND TRIP rather than a character scan: the parse must reproduce the original lexeme exactly, and the result must be non-negative. That rejects `-1` on the sign test and rejects `6.5`, `6e3`, `+6`, ` 6` and `06` because none of them is what its own parse renders back. It is stronger than a digit scan and needs no character iteration — and it catches the out-of-range case for free, since a magnitude the carrier cannot hold does not render back to what was read. This is the boundary the parse-then-hope shape was hiding: parse_int is total, so it answered for inputs the field cannot represent, and a total function answering for an impossible input is exactly the fabricated-plausible-output the rest of this decoder refuses."
 
-fn strict_natural_of_lexeme(text: String) -> Nat? {
+fn strict_natural_of_lexeme(text: String) -> std.nat.Nat? {
   match parse_int(s: text) {
     Absent => none
     Present { value: parsed } =>
@@ -538,7 +538,7 @@ fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDeco
   }
 }
 
-fn component_alert_summary_identity(s: ComponentAlertSummary) -> Nat {
+fn component_alert_summary_identity(s: ComponentAlertSummary) -> std.nat.Nat {
   s.index
 }
 
@@ -559,7 +559,7 @@ fn summary_outcome_is_unsuccessful(s: ComponentAlertSummary) -> Bool {
 
 data unsuccessful_component_identity_note: String = "EVERY UNSUCCESSFUL COMPONENT MUST HAVE A UNIQUE IDENTITY, and the check is an identity join rather than a count. The incident signature is built by mapping over these rows, so two rows sharing an index and label are either one row duplicated — which silently doubles a member of the signature and makes a red look like it changed when it did not — or two genuinely distinct components the receipt cannot tell apart, which means the signature cannot distinguish them either. Both are defects in the thing the alert decides on, so the decoder refuses rather than deduplicating: deduplicating would be the absorbing fallback, quietly repairing a producer defect until nobody knows it exists."
 
-fn identity_list_contains(seen: List<Nat>, needle: Nat) -> Bool {
+fn identity_list_contains(seen: List<std.nat.Nat>, needle: std.nat.Nat) -> Bool {
   fold(seen, init: false, f: (acc, s) => acc || (s == needle))
 }
 
@@ -572,11 +572,11 @@ fn summaries_have_unique_identity(summaries: List<ComponentAlertSummary>) -> Boo
 
 data unsuccessful_population_join_note: String = "THE UNSUCCESSFUL LIST IS JOINED TO THE COMPLETE POPULATION, NOT MERELY CHECKED FOR INTERNAL UNIQUENESS. Uniqueness inside unsuccessful_components proves the list does not repeat itself. It proves nothing about whether the list IS the unsuccessful set: a row could name a component that does not exist, a successful component could be listed as unsuccessful, or a genuinely failing component could be missing from the list entirely — and the third is the one that matters, because the alert would then report a smaller incident than the one that happened and the operator would be told a component is fine while its receipt says otherwise.\\n\\nSo the law is an identity join, in the form DESIGN states it: the decoded unsuccessful identities must equal the identities of exactly those complete-population components whose TYPED outcome is unsuccessful. Equality of sets, at identity grain, in both directions — an unresolved identity refuses, a successful row listed as unsuccessful refuses, an omitted failing row refuses. It is not a count comparison; two counts can agree while naming different components, which is the failure mode a count check is structurally unable to see.\\n\\nThis is why the complete components list is decoded through the same summary reader rather than left as JSON residue. Deciding whether a row is unsuccessful requires its typed outcome, and asking that question of untyped residue would mean reading the tag as prose — the exact widening the typed outcome recovery closes one layer down."
 
-fn summary_identities(summaries: List<ComponentAlertSummary>) -> List<Nat> {
+fn summary_identities(summaries: List<ComponentAlertSummary>) -> List<std.nat.Nat> {
   map(summaries, x => component_alert_summary_identity(s: x))
 }
 
-fn identity_sets_agree(left: List<Nat>, right: List<Nat>) -> Bool {
+fn identity_sets_agree(left: List<std.nat.Nat>, right: List<std.nat.Nat>) -> Bool {
   count(left) == count(right)
     && fold(left, init: true, f: (acc, x) => acc && identity_list_contains(seen: right, needle: x))
     && fold(right, init: true, f: (acc, x) => acc && identity_list_contains(seen: left, needle: x))

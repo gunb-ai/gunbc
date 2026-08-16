@@ -2,12 +2,12 @@ module gunbc.legacy_test_behavior_disposition
 
 
 type LegacyTestBehavior {
-  source_file: FilePath
+  source_file: std.types.FilePath
   test_fn: NonEmptyStr
 }
 
 type TestBehaviorWitness {
-  entry: FilePath
+  entry: std.types.FilePath
   test_fn: NonEmptyStr
 }
 
@@ -123,7 +123,7 @@ data legacy_test_behavior_family_note: String = "A FAMILY IS A SCOPE OVER THE ON
 
 type LegacyTestBehaviorFamily {
   name: NonEmptyStr
-  source_files: List<FilePath>
+  source_files: List<std.types.FilePath>
 }
 
 fn legacy_test_behavior_family_owns(

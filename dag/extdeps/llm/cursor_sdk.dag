@@ -25,7 +25,7 @@ data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-contro
 data cursor_sdk_belt_worktree_note: String = "Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli."
 
 type CursorSdkLocalWorkspace {
-  cwd: FilePath
+  cwd: std.types.FilePath
 }
 
 type CursorSdkLocalCredential
@@ -124,7 +124,7 @@ type CursorSdkLocalInvocation {
 fn cursor_sdk_local_invocation(
   credential: CursorSdkLocalCredential,
   model_id: CursorModelId,
-  cwd: FilePath,
+  cwd: std.types.FilePath,
   prompt: NonEmptyStr,
 ) -> CursorSdkLocalInvocation {
   CursorSdkLocalInvocation {

@@ -9,8 +9,8 @@ fn cfba_path(dotted: String) -> NonEmptyStr {
   dotted as NonEmptyStr
 }
 
-fn cfba_span(marker: Int) -> SourceSpan {
-  SourceSpan { file: "fixture.dag", start: marker, end: marker + 1 }
+fn cfba_span(marker: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: "fixture.dag", start: marker, end: marker + 1 }
 }
 
 fn cfba_containment(ancestors: List<std.occurrence_identity.OccurrenceId>, terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {
@@ -138,7 +138,7 @@ fn cfba_single_occurrence_closure_row(
       authored_order_rows: [AuthoredOrderRow { occurrence: occ, ordinal: AuthoredTokenOrdinal { value: 0 } }],
     },
     module_path: module_path,
-    file_path: file_path as FilePath,
+    file_path: file_path as std.types.FilePath,
   }
 }
 
@@ -232,7 +232,7 @@ fn cfba_provider_with_reference_closure_row(
       ],
     },
     module_path: module_path,
-    file_path: file_path as FilePath,
+    file_path: file_path as std.types.FilePath,
   }
 }
 
@@ -319,7 +319,7 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
       authored_order_rows: [],
     },
     module_path: cfba_path(dotted: "extdeps.lexical"),
-    file_path: "extdeps/lexical.dag" as FilePath,
+    file_path: "extdeps/lexical.dag" as std.types.FilePath,
   }
   match assemble_cross_file_binding_closure(consumer: consumer, providers: []) {
     AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: _ } => {
@@ -348,8 +348,8 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
 
 test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
   match module_path_file_index_from_rows(rows: [
-    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
-    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
   ]) {
     ModulePathFileIndexRefused { refusal: ModulePathFileDuplicateSame { module_path: module_path, file_path: file_path } } =>
       module_path == cfba_path(dotted: "extdeps.a") && (file_path as String) == "extdeps/a.dag"
@@ -359,8 +359,8 @@ test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
 
 test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool {
   match module_path_file_index_from_rows(rows: [
-    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
-    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a_moved.dag" as FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
+    ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a_moved.dag" as std.types.FilePath },
   ]) {
     ModulePathFileIndexRefused { refusal: ModulePathFileConflict { module_path: module_path, first_file: first_file, second_file: second_file } } =>
       module_path == cfba_path(dotted: "extdeps.a")

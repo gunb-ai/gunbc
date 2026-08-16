@@ -45,13 +45,13 @@ type PinConstraintProjection
   = PinConstraintsEmitted { receipt: PinConstraintReceipt }
   | PinConstraintsRefused { causes: PinChainRefusalSet }
 
-fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> Nat {
+fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> std.nat.Nat {
   fold(assignments, init: 0, f: fn(acc, a) {
     if signal_names_equal(a: a.signal, b: name) { acc + 1 } else { acc }
   })
 }
 
-fn assignment_count_for_pin(assignments: List<DevicePinAssignment>, pin: NonEmptyStr) -> Nat {
+fn assignment_count_for_pin(assignments: List<DevicePinAssignment>, pin: NonEmptyStr) -> std.nat.Nat {
   fold(assignments, init: 0, f: fn(acc, a) {
     if (a.pin as String) == (pin as String) { acc + 1 } else { acc }
   })
@@ -179,7 +179,7 @@ fn push_pin_refusal(acc: PinChainRefusalSet?, r: PinChainRefusal) -> PinChainRef
   }
 }
 
-fn pin_refusal_set_count(s: PinChainRefusalSet) -> Nat {
+fn pin_refusal_set_count(s: PinChainRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 

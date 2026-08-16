@@ -20,7 +20,7 @@ fn v1_complexity_decl_population(pool_roots: List<String>) -> List<v2.std.decl_i
   )
 }
 
-fn v1_complexity_decl_population_count(pool_roots: List<String>) -> Nat {
+fn v1_complexity_decl_population_count(pool_roots: List<String>) -> std.nat.Nat {
   length(xs: v1_complexity_decl_population(pool_roots: pool_roots))
 }
 
@@ -173,6 +173,6 @@ fn population_matches_roster_count(
   length(xs: facts) == length(xs: roster)
 }
 
-fn v1_complexity_decl_classification_roster_count(roster: List<V1ComplexityDeclClassification>) -> Nat {
+fn v1_complexity_decl_classification_roster_count(roster: List<V1ComplexityDeclClassification>) -> std.nat.Nat {
   length(xs: roster)
 }

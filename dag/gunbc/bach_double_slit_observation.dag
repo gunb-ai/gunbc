@@ -59,7 +59,7 @@ fn bach_pattern_status_never_regresses_from(
 }
 
 type StrictIncreaseFoldAcc {
-  previous_count: NonNegativeInt
+  previous_count: std.integer.NonNegativeInt
   has_previous: Bool
   valid: Bool
 }

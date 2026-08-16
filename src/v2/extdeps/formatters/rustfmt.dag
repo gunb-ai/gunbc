@@ -97,19 +97,19 @@ type RustfmtRequiredVersion
 
 type RustfmtConfig {
   indent_style: RustfmtIndentStyle
-  tab_spaces: Outcome<PositiveInt>
+  tab_spaces: Outcome<v2.std.refinement.PositiveInt>
   hard_tabs: Bool
-  max_width: Outcome<PositiveInt>
-  comment_width: Outcome<NonNegativeInt>
-  chain_width: Outcome<PositiveInt>
-  single_line_if_else_max_width: Outcome<NonNegativeInt>
-  single_line_let_else_max_width: Outcome<NonNegativeInt>
-  fn_call_width: Outcome<PositiveInt>
-  attr_fn_like_width: Outcome<PositiveInt>
-  struct_lit_width: Outcome<NonNegativeInt>
-  struct_variant_width: Outcome<NonNegativeInt>
-  array_width: Outcome<PositiveInt>
-  short_array_element_width_threshold: Outcome<PositiveInt>
+  max_width: Outcome<v2.std.refinement.PositiveInt>
+  comment_width: Outcome<v2.std.refinement.NonNegativeInt>
+  chain_width: Outcome<v2.std.refinement.PositiveInt>
+  single_line_if_else_max_width: Outcome<v2.std.refinement.NonNegativeInt>
+  single_line_let_else_max_width: Outcome<v2.std.refinement.NonNegativeInt>
+  fn_call_width: Outcome<v2.std.refinement.PositiveInt>
+  attr_fn_like_width: Outcome<v2.std.refinement.PositiveInt>
+  struct_lit_width: Outcome<v2.std.refinement.NonNegativeInt>
+  struct_variant_width: Outcome<v2.std.refinement.NonNegativeInt>
+  array_width: Outcome<v2.std.refinement.PositiveInt>
+  short_array_element_width_threshold: Outcome<v2.std.refinement.PositiveInt>
   brace_style: RustfmtBraceStyle
   control_brace_style: RustfmtControlBraceStyle
   where_single_line: Bool
@@ -127,18 +127,18 @@ type RustfmtConfig {
   fn_params_layout: RustfmtFnParamsLayout
   fn_args_layout: RustfmtFnParamsLayout
   fn_single_line: Bool
-  inline_attribute_width: Outcome<NonNegativeInt>
+  inline_attribute_width: Outcome<v2.std.refinement.NonNegativeInt>
   reorder_modules: Bool
   reorder_impl_items: Bool
   newline_style: RustfmtNewlineStyle
-  blank_lines_upper_bound: Outcome<NonNegativeInt>
-  blank_lines_lower_bound: Outcome<NonNegativeInt>
+  blank_lines_upper_bound: Outcome<v2.std.refinement.NonNegativeInt>
+  blank_lines_lower_bound: Outcome<v2.std.refinement.NonNegativeInt>
   wrap_comments: Bool
   normalize_comments: Bool
   normalize_doc_attributes: Bool
   format_strings: Bool
   format_code_in_doc_comments: Bool
-  doc_comment_code_block_width: Outcome<PositiveInt>
+  doc_comment_code_block_width: Outcome<v2.std.refinement.PositiveInt>
   format_generated_files: Bool
   hide_parse_errors: Bool
   merge_derives: Bool
@@ -153,8 +153,8 @@ type RustfmtConfig {
   remove_nested_parens: Bool
   combine_control_expr: Bool
   hex_literal_case: RustfmtHexLiteralCase
-  enum_discrim_align_threshold: Outcome<NonNegativeInt>
-  struct_field_align_threshold: Outcome<NonNegativeInt>
+  enum_discrim_align_threshold: Outcome<v2.std.refinement.NonNegativeInt>
+  struct_field_align_threshold: Outcome<v2.std.refinement.NonNegativeInt>
   spaces_around_ranges: Bool
   space_after_colon: Bool
   space_before_colon: Bool

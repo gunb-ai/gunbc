@@ -14,7 +14,7 @@ data refusal_is_aggregated_note: String = "AN ACTIVE REFUSAL IS ONE CRITICAL SUB
 
 type RefusalAggregate
   = NoActiveRefusal
-  | ActiveRefusals { refused_count: PositiveInt }
+  | ActiveRefusals { refused_count: std.integer.PositiveInt }
 
 fn refusal_count(r: RefusalAggregate) -> Int {
   match r {

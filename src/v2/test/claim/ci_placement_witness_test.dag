@@ -53,7 +53,7 @@ fn placement_shadow_receipt(
   }
 }
 
-fn placement_shadow_measured_warm_cost(run_ref: String, measured_ms: Nat) -> PlacementShadowWarmCostEvidence {
+fn placement_shadow_measured_warm_cost(run_ref: String, measured_ms: v2.std.nat.Nat) -> PlacementShadowWarmCostEvidence {
   ShadowWarmCostMeasured {
     receipt: WarmCostReceipt {
       measured_ms: measured_ms,

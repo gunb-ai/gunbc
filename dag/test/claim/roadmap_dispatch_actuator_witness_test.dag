@@ -597,7 +597,7 @@ test fn witness_fingerprint_scaffold_marker_present() -> Bool {
 
 test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let worktree_args = shape_git_worktree_add_argv(
-    path: "/opt/gunbc/dispatch-worktrees/bound-node" as FilePath,
+    path: "/opt/gunbc/dispatch-worktrees/bound-node" as std.types.FilePath,
     branch: "dispatch/bound-node" as NonEmptyStr,
     remote_ref: "origin/main" as GitRef,
   )

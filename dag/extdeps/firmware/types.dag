@@ -34,9 +34,9 @@ type FirmwareSemanticVersion {
 }
 
 fn firmware_semantic_version(
-  major: Nat,
-  minor: Nat,
-  patch: Nat,
+  major: std.nat.Nat,
+  minor: std.nat.Nat,
+  patch: std.nat.Nat,
 ) -> FirmwareSemanticVersion {
   FirmwareSemanticVersion {
     major: major,

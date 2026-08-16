@@ -94,7 +94,7 @@ data all_contact_population_kinds: List<ContactPopulationKind> = [
 
 type ContactPopulation {
   kind: ContactPopulationKind
-  count: Nat
+  count: std.nat.Nat
   authority: NonEmptyStr
 }
 
@@ -103,8 +103,8 @@ type ContactPopulation {
 // someone states the projection between the two inclusion rules. Those are different states with
 // different remedies, so they are different arms.
 type PopulationComparison
-  = PopulationsAgree { kind: ContactPopulationKind, count: Nat }
-  | PopulationsDisagree { kind: ContactPopulationKind, left: Nat, right: Nat }
+  = PopulationsAgree { kind: ContactPopulationKind, count: std.nat.Nat }
+  | PopulationsDisagree { kind: ContactPopulationKind, left: std.nat.Nat, right: std.nat.Nat }
   | PopulationsNotComparable { left: ContactPopulationKind, right: ContactPopulationKind }
 
 fn compare_populations(a: ContactPopulation, b: ContactPopulation) -> PopulationComparison {

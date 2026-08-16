@@ -36,7 +36,7 @@ fn selection_degradation_state_tag(state: SelectionDegradationState) -> String {
   }
 }
 
-fn selection_ratio_basis_points(selected: Nat, total: Nat) -> BasisPoint {
+fn selection_ratio_basis_points(selected: std.nat.Nat, total: std.nat.Nat) -> BasisPoint {
   if total == 0 {
     basis_point(count: 0)
   } else {
@@ -44,7 +44,7 @@ fn selection_ratio_basis_points(selected: Nat, total: Nat) -> BasisPoint {
   }
 }
 
-fn selection_ratio_wire(selected: Nat, total: Nat) -> String {
+fn selection_ratio_wire(selected: std.nat.Nat, total: std.nat.Nat) -> String {
   let bp = basis_point_count(bp: selection_ratio_basis_points(selected: selected, total: total))
   let unit = 10000
   let whole = bp / unit
@@ -63,7 +63,7 @@ fn selection_degradation_fallback_reason_predict_only() -> String {
   "node_frontier_selection=SelectionPredictOnly — all witnesses run cold; divergences counted"
 }
 
-fn selection_degradation_fallback_reason_applied_narrowed(selected: Nat, total: Nat) -> String {
+fn selection_degradation_fallback_reason_applied_narrowed(selected: std.nat.Nat, total: std.nat.Nat) -> String {
   concat(
     "SelectionApplied: ",
     concat(
@@ -73,7 +73,7 @@ fn selection_degradation_fallback_reason_applied_narrowed(selected: Nat, total: 
   )
 }
 
-fn selection_degradation_fallback_reason_superset(total: Nat) -> String {
+fn selection_degradation_fallback_reason_superset(total: std.nat.Nat) -> String {
   concat(
     "SelectionSuperset: all ",
     concat(
@@ -99,8 +99,8 @@ fn selection_degradation_fallback_reason_unknown_mode_tag(tag: NonEmptyStr) -> S
 
 fn selection_degradation_state_of(
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> SelectionDegradationState {
@@ -122,8 +122,8 @@ fn selection_degradation_state_of(
 fn selection_degradation_fallback_reason_of(
   selection_mode_tag: NonEmptyStr,
   state: SelectionDegradationState,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> String {
@@ -161,8 +161,8 @@ fn selection_degradation_fallback_reason_of(
 
 fn selection_degradation_receipt_of(
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> SelectionDegradationReceipt {
@@ -191,8 +191,8 @@ fn selection_degradation_receipt_of(
 
 fn selection_degradation_receipt_line(
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> String {
@@ -223,8 +223,8 @@ fn selection_degradation_receipt_line(
 
 fn selection_degradation_receipt_body(
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> String {
@@ -252,8 +252,8 @@ fn selection_degradation_receipt_body(
 
 fn selection_degradation_receipt_json(
   selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
+  selected: std.nat.Nat,
+  total: std.nat.Nat,
   categorization_unavailable: Bool,
   categorization_reason: String
 ) -> JsonValue {

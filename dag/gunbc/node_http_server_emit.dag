@@ -9,7 +9,7 @@ type NodeHttpStaticServerSpec {
   listen: HttpServerListenConfig
 }
 
-fn emit_http_method_label(method: HttpMethod) -> String {
+fn emit_http_method_label(method: std.types.HttpMethod) -> String {
   match method {
     GET => "GET"
     POST => "POST"

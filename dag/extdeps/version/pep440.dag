@@ -22,24 +22,24 @@ type Pep440PreReleasePhase
 
 type Pep440PreRelease {
   phase: Pep440PreReleasePhase
-  number: NonNegativeInt
+  number: std.integer.NonNegativeInt
 }
 
 type Pep440LocalSegment
-  = Pep440LocalNumeric { value: NonNegativeInt }
+  = Pep440LocalNumeric { value: std.integer.NonNegativeInt }
   | Pep440LocalLexicographic { label: NonEmptyStr }
 
 type Pep440ReleaseSegments {
-  first: NonNegativeInt
-  rest: List<NonNegativeInt>
+  first: std.integer.NonNegativeInt
+  rest: List<std.integer.NonNegativeInt>
 }
 
 type Pep440PublicVersion {
-  epoch: NonNegativeInt
+  epoch: std.integer.NonNegativeInt
   release_segments: Pep440ReleaseSegments
   pre_release: Pep440PreRelease?
-  post_release: NonNegativeInt?
-  dev_release: NonNegativeInt?
+  post_release: std.integer.NonNegativeInt?
+  dev_release: std.integer.NonNegativeInt?
 }
 
 type Pep440Version {
@@ -72,7 +72,7 @@ fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionC
   pep440_version_specifier_label(spec: spec)
 }
 
-fn pep440_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+fn pep440_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> Ordering {
   if a < b { Less }
   else if a > b { Greater }
   else { Equal }
@@ -85,7 +85,7 @@ fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSeg
   }
 }
 
-fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
+fn pep440_compare_release_rest(a_rest: List<std.integer.NonNegativeInt>, b_rest: List<std.integer.NonNegativeInt>) -> Ordering {
   if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
   else if a_rest.length() == 0 {
 
@@ -111,7 +111,7 @@ fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNeg
   }
 }
 
-fn pep440_pre_release_phase_rank(phase: Pep440PreReleasePhase) -> NonNegativeInt {
+fn pep440_pre_release_phase_rank(phase: Pep440PreReleasePhase) -> std.integer.NonNegativeInt {
   match phase {
     Pep440Alpha => 0
     Pep440Beta => 1
@@ -139,7 +139,7 @@ fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> Ord
   }
 }
 
-fn pep440_compare_dev_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Ordering {
+fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> Ordering {
   match a {
     Absent => match b {
       Absent => Equal
@@ -152,7 +152,7 @@ fn pep440_compare_dev_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Orderin
   }
 }
 
-fn pep440_compare_post_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Ordering {
+fn pep440_compare_post_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> Ordering {
   match a {
     Absent => match b {
       Absent => Equal
@@ -233,7 +233,7 @@ fn pep440_release_segments_label(segments: Pep440ReleaseSegments) -> String {
   }
 }
 
-fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
+fn pep440_epoch_prefix(epoch: std.integer.NonNegativeInt) -> String {
   if epoch == 0 { "" } else { concat("{epoch}", "!") }
 }
 

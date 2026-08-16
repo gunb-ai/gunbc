@@ -41,7 +41,7 @@ type AmpereScpTokenClass
 
 type AmpereScpConsoleToken {
   class: AmpereScpTokenClass
-  number: Nat
+  number: std.nat.Nat
 }
 
 // Whether this repository can say what a token MEANS. Separated from the
@@ -90,7 +90,7 @@ type AmpereStructuredBootProgress {
   raw: NonEmptyStr
   decoded_stage: AmpereBootStage?
   decoded_status: AmpereBootStatus?
-  decoded_payload: Nat?
+  decoded_payload: std.nat.Nat?
   decode_authority: ExternalAuthority?
   observed_at: EpochMs
 }

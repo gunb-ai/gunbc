@@ -521,7 +521,7 @@ test fn an_undeclared_escalation_recipient_refuses_before_any_notification_is_bu
 
 data signature_structure_claims_note: String = "The order- and delimiter-independence of the incident identity, asserted directly on the structure. The receipt fixtures cannot easily be reordered through the decoder, so these compare signatures built from the same members in two orders — which is the property that matters and the one the joined string did not have."
 
-fn identity_member(index: Nat, outcome: String, mode: String) -> ComponentIncidentIdentity {
+fn identity_member(index: std.nat.Nat, outcome: String, mode: String) -> ComponentIncidentIdentity {
   ComponentIncidentIdentity { index: index, outcome_tag: outcome as NonEmptyStr, failure_mode_tag: mode as NonEmptyStr }
 }
 
@@ -623,7 +623,7 @@ test fn a_skipped_run_is_a_configuration_fact_not_a_green_corpus() -> Bool {
 
 data routing_join_claims_note: String = "The routing join, one claim per mismatch direction. The missing-routing case is the one that matters operationally: an issue that names no owner for a failing component looks exactly like an issue for a component nobody owns, and the difference is whether the routing computation is broken."
 
-fn routing_for(index: Nat) -> FalsifierRouting {
+fn routing_for(index: std.nat.Nat) -> FalsifierRouting {
   RoutingOwnerUndeclared { index: index, lane: LaneSubstrateLongLane, cause: "no owner row for this lane" as NonEmptyStr }
 }
 

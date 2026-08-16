@@ -10,18 +10,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type RuntimeProcess {
   terminal: Bool?
-  cwd: FilePath
+  cwd: std.types.FilePath
   env: List<String>?
   args: List<String>?
 }
 
 type RuntimeRoot {
-  path: FilePath
+  path: std.types.FilePath
   readonly: Bool?
 }
 
 type RuntimeMount {
-  destination: FilePath
+  destination: std.types.FilePath
   source: RuntimeMountSource?
   mount_type: RuntimeMountKind?
   options: List<String>?

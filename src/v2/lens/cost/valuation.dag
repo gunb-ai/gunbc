@@ -7,20 +7,20 @@ data cost_valuation_exact_core_scope_note: String = "SCOPED TO THE EXACT CORE BY
 
 type CostValuationBinding {
   variable: SizeVariable
-  value: Nat
+  value: v2.std.nat.Nat
 }
 
 type CostEvaluationRefusal
   = MissingSizeBinding { variable: SizeVariable, at: Locus }
   | DuplicateSizeBinding { variable: SizeVariable, at: Locus }
   | UnmodeledEffectCost { operation: DeclarationRef, at: Locus }
-  | IntegerLogarithmUnavailable { base: Nat, argument: SizeExpr, at: Locus }
+  | IntegerLogarithmUnavailable { base: v2.std.nat.Nat, argument: SizeExpr, at: Locus }
   | ExpressionRefused { cause: CostExprRefusalCause, at: Locus }
 
 data cost_evaluation_nonempty_note: String = "The nonempty carrier (std.algebra FreeSemigroup) in the refused arm is load-bearing, not decoration: a refusal carrying no cause is a nonsense state, and the free-semigroup head field makes it unwritable rather than merely unlikely - construction over validation, DESIGN section 5. Do not weaken the field to List."
 
 type CostEvaluation
-  = ExactCost { value: Nat }
+  = ExactCost { value: v2.std.nat.Nat }
   | CostEvaluationRefused { causes: FreeSemigroup<CostEvaluationRefusal> }
 
 data cost_evaluation_two_state_note: String = "Two states, because at the exact core there are exactly two honest answers: the work is this number, or here is why it cannot be. The four-state shape the design carries - adding a partial and a bounded state - is not abandoned; it returns with the work held on session/deep-owl-215-partial-bounded-hold, where each of those states will have a producer AND will carry what its consumer needs: a residual expression for the partial state, an input envelope for the bounded one. Declaring either arm here with no producer would have been rung inflation, a state named for a capability the module does not have, and the bounded arm in particular was carried through an earlier revision of this module while its arithmetic silently collapsed a two-endpoint envelope to its own ceiling."
@@ -65,7 +65,7 @@ fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuati
 fn lookup_bindings(
   bindings: List<CostValuationBinding>,
   variable: SizeVariable
-) -> Optional<Nat> {
+) -> Optional<v2.std.nat.Nat> {
   match bindings {
     Empty => Absent
     Cons { head: h, tail: t } =>
@@ -77,7 +77,7 @@ fn lookup_bindings(
   }
 }
 
-fn env_lookup(env: CostValuationEnv, variable: SizeVariable) -> Optional<Nat> {
+fn env_lookup(env: CostValuationEnv, variable: SizeVariable) -> Optional<v2.std.nat.Nat> {
   lookup_bindings(bindings: env.bindings, variable: variable)
 }
 
@@ -97,7 +97,7 @@ data combine_evaluation_order_note: String = "A refusal dominates a known magnit
 fn combine_evaluation(
   a: CostEvaluation,
   b: CostEvaluation,
-  op: fn(Nat, Nat) -> Nat
+  op: fn(v2.std.nat.Nat, v2.std.nat.Nat) -> v2.std.nat.Nat
 ) -> CostEvaluation {
   match a {
     CostEvaluationRefused { causes: ca } =>
@@ -156,7 +156,7 @@ fn evaluate_size_expr(size: SizeExpr, env: CostValuationEnv) -> CostEvaluation {
 }
 
 type SummationState {
-  index: Nat
+  index: v2.std.nat.Nat
   accumulated: CostEvaluation
 }
 
@@ -166,7 +166,7 @@ data summation_settled_disposition_note: String = "Once the accumulator has refu
 
 fn evaluate_summation(
   binder: SizeVariable,
-  iterations: Nat,
+  iterations: v2.std.nat.Nat,
   env: CostValuationEnv,
   evaluate_body: fn(CostValuationEnv) -> CostEvaluation
 ) -> CostEvaluation {
@@ -197,7 +197,7 @@ fn evaluate_summation(
 data cost_log_evaluation_note: String = "THREE distinct facts, reported as three distinct causes, because a logarithm can fail in three unrelated ways and collapsing them misdirects every reader of the diagnostic. An earlier revision of this arm ignored the base entirely and answered UngroundedLogArgument for every non-refusing case, which reported base 0 as an ARGUMENT problem and called a fully grounded argument UNGROUNDED - two paths disagreeing about one fact, while v2.lens.cost.expr's normalizer right beside this one already checked the base against its own InvalidLogBase vocabulary. (1) An INVALID BASE, 0 or 1, where no logarithm is defined, refuses through that expression authority's InvalidLogBase - the single authority for that fact, cited rather than re-minted. (2) An UNBOUND ARGUMENT refuses as MissingSizeBinding like any other unbound size, because the argument is an ordinary SizeExpr and nothing about a logarithm changes that. (3) A VALID base with an EXACT argument is a well-posed question this module cannot yet answer: an exact Nat-valued logarithm needs a floor-log authority std does not carry, and minting one inside a lens module would be the re-invention DESIGN section 2 calls a failed decomposition - so it refuses as IntegerLogarithmUnavailable, a cause that names the real gap and is countable against it. Dissolve-on: a cited integer-logarithm authority on std.nat, at which point case 3 answers ExactCost and IntegerLogarithmUnavailable is deleted with it."
 
 fn evaluate_cost_log(
-  base: Nat,
+  base: v2.std.nat.Nat,
   argument: SizeExpr,
   env: CostValuationEnv
 ) -> CostEvaluation {

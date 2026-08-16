@@ -21,7 +21,7 @@ type LineItem<Q, S> {
 
 type BudgetBalance = Surplus | Balanced | Deficit
 
-fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, Nat> {
+fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, std.nat.Nat> {
   fold(items, init: Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
 }
 

@@ -45,7 +45,7 @@ type RoadmapServeHandler
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
 type RoadmapServeRouteSpec {
-  method: HttpMethod
+  method: std.types.HttpMethod
   raw: String
   handler: RoadmapServeHandler
 }
@@ -462,7 +462,7 @@ fn serve_sessions_response() -> ServeHttpResponse {
   serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-fn http_method_label_join(methods: List<HttpMethod>) -> String {
+fn http_method_label_join(methods: List<std.types.HttpMethod>) -> String {
   join(map(methods, m => match m {
     GET => "GET"
     POST => "POST"

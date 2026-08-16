@@ -26,7 +26,7 @@ fn mm_registry() -> SpatialFrameRegistry {
 // An extent measures a stated number of millimetres. Every arm other than the one that projects
 // answers false, so an unregistered frame or a non-millimetre frame fails the assertion rather
 // than being quietly read as a count.
-fn extent_is_mm(e: FrameExtent, want: Nat) -> Bool {
+fn extent_is_mm(e: FrameExtent, want: std.nat.Nat) -> Bool {
   match e {
     ExtentFrameUnregistered { identity: _ } => false
     ExtentInFrame { length: l } =>

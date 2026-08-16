@@ -23,8 +23,8 @@ type FleetAchievedRunnerWidths
   | AchievedWidthsUnobserved { reason: String }
 
 type RunnerSlotConnectivityVerdict
-  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
-  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
   | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
   | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
 
@@ -53,7 +53,7 @@ fn github_organization_ref() -> GitHubOrganizationRef {
 }
 
 fn incident_registration(
-  id: Nat,
+  id: std.nat.Nat,
   name: NonEmptyStr,
   status: GitHubRunnerRegistrationStatus,
   busy: Bool,
@@ -152,21 +152,21 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
+data incident_materialized_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5]
 
-data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
+data seven_slot_indices: List<std.nat.Nat> = [1, 2, 3, 4, 5, 6, 7]
 
-data one_slot_index: List<Nat> = [1]
+data one_slot_index: List<std.nat.Nat> = [1]
 
-data empty_nat_list: List<Nat> = []
+data empty_nat_list: List<std.nat.Nat> = []
 
 data converged_seven_roster_observed_on: NonEmptyStr = "converged-seven-fixture" as NonEmptyStr
 
-fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: std.nat.Nat) -> NonEmptyStr {
   join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
 }
 
-fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
+fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
   if width >= 7 {
     seven_slot_indices
   } else if width >= 5 {

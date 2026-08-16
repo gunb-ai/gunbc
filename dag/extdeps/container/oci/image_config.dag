@@ -12,7 +12,7 @@ type ContainerImageConfig {
   Env: List<String>?
   Entrypoint: List<String>?
   Cmd: List<String>?
-  WorkingDir: FilePath?
+  WorkingDir: std.types.FilePath?
   ExposedPorts: List<ContainerExposedPort>?
 }
 

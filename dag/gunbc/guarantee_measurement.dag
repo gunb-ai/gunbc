@@ -35,16 +35,16 @@ type GuaranteePath {
 data probe_observation_note: String = "The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor, FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback) - a probe that failed to execute must never be readable as the subject passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage; the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this stage does not own. On query shape (review 46075, review 46159): probe_observation_fold is the sum's canonical elimination (the std.change KeyedLeafVerdictFold idiom) and owns the ONLY match over ProbeObservation; observed_is_verdict derives through it, so a per-query hand-match has no form to accumulate - a new query is a ProbeObservationFold row. Review 46075's interim carry had named exactly this fold as its dissolution trigger with the claims carrier as second consumer; a catamorphism's shape is sum-determined, so the trigger executed with review 46159 rather than waiting, and the carrier's disposition derivation consumes the same fold when it lands. Counts are Nat because a diagnostic count is a cardinal fact (review 46287), measured with the same honesty as the brand seam: an executed control shows today's checker still ACCEPTING a negative at the Nat field, so the carrier states the cardinal and the refusal belongs to the numeric-refinement acceptance class the probe corpus carries - not yet a wall here."
 
 type ProbeObservation
-  = RefusedTyped { diagnostic_class: NonEmptyStr, count: Nat }
+  = RefusedTyped { diagnostic_class: NonEmptyStr, count: std.nat.Nat }
   | AcceptedClean
-  | AcceptedCounted { diagnostic_class: NonEmptyStr, count: Nat }
+  | AcceptedCounted { diagnostic_class: NonEmptyStr, count: std.nat.Nat }
   | ExecutionDiverged { description: NonEmptyStr }
   | ProbeNotRunnable { cause: NonEmptyStr }
 
 type ProbeObservationFold<R> {
-  refused: fn(NonEmptyStr, Nat) -> R
+  refused: fn(NonEmptyStr, std.nat.Nat) -> R
   accepted_clean: R
-  accepted_counted: fn(NonEmptyStr, Nat) -> R
+  accepted_counted: fn(NonEmptyStr, std.nat.Nat) -> R
   diverged: fn(NonEmptyStr) -> R
   not_runnable: fn(NonEmptyStr) -> R
 }

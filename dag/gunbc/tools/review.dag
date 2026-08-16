@@ -29,7 +29,7 @@ fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
   any(reviews, r => r.commit_id == sha && r.body.contains("Review"))
 }
 
-fn git_show_file_at_ref(ref: GitRef, path: FilePath) -> GitShowAtRef {
+fn git_show_file_at_ref(ref: GitRef, path: std.types.FilePath) -> GitShowAtRef {
   let result = git.Core.Show(ref: ref, path: path)
   if result.success {
     GitShowRead { content: result.content }
@@ -44,10 +44,10 @@ fn git_show_file_at_ref(ref: GitRef, path: FilePath) -> GitShowAtRef {
 }
 
 fn review_context_read(ref: GitRef) -> ReviewContextRead {
-  match git_show_file_at_ref(ref: ref, path: "DESIGN.md" as FilePath) {
+  match git_show_file_at_ref(ref: ref, path: "DESIGN.md" as std.types.FilePath) {
     GitShowRefused { reason: why } => ReviewContextRefused { reason: why }
     GitShowRead { content: design } =>
-      match git_show_file_at_ref(ref: ref, path: "dag/std/algebra.dag" as FilePath) {
+      match git_show_file_at_ref(ref: ref, path: "dag/std/algebra.dag" as std.types.FilePath) {
         GitShowRefused { reason: why } => ReviewContextRefused { reason: why }
         GitShowRead { content: algebra_ref } =>
           ReviewContextReady { design: design, algebra_ref: algebra_ref }

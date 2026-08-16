@@ -1078,24 +1078,24 @@ data module_path_file_row_dissolve_on: DissolutionCondition = unbound_dissolutio
 
 type ModulePathFileRow {
   module_path: NonEmptyStr
-  file_path: FilePath
+  file_path: std.types.FilePath
 }
 
 type ModulePathFileIndexRefusal
-  = ModulePathFileDuplicateSame { module_path: NonEmptyStr, file_path: FilePath }
+  = ModulePathFileDuplicateSame { module_path: NonEmptyStr, file_path: std.types.FilePath }
   | ModulePathFileConflict {
       module_path: NonEmptyStr,
-      first_file: FilePath,
-      second_file: FilePath,
+      first_file: std.types.FilePath,
+      second_file: std.types.FilePath,
     }
 
 type ModulePathFileIndexBuild {
-  entries: Map<String, FilePath>
+  entries: Map<String, std.types.FilePath>
   refusal: ModulePathFileIndexRefusal?
 }
 
 type ModulePathFileIndex
-  = ModulePathFileIndexReady { entries: Map<String, FilePath> }
+  = ModulePathFileIndexReady { entries: Map<String, std.types.FilePath> }
   | ModulePathFileIndexRefused { refusal: ModulePathFileIndexRefusal }
 
 fn module_path_file_index_fold_step(
@@ -1184,20 +1184,20 @@ data cross_file_binding_provenance_note: String = "CrossFileBindingProvenance is
 type CrossFileBindingProvenance {
   reference_occurrence: OccurrenceId
   declaration_occurrence: OccurrenceId
-  consumer_file: FilePath
-  provider_file: FilePath
+  consumer_file: std.types.FilePath
+  provider_file: std.types.FilePath
 }
 
 fn file_for_module_path(
-  module_files: Map<String, FilePath>,
+  module_files: Map<String, std.types.FilePath>,
   module_path: NonEmptyStr
-) -> FilePath? {
+) -> std.types.FilePath? {
   map_get(module_files, module_path as String)
 }
 
 fn cross_file_binding_provenance_from_provider(
   provider: BoundReferenceProvider,
-  module_files: Map<String, FilePath>
+  module_files: Map<String, std.types.FilePath>
 ) -> CrossFileBindingProvenanceProjection {
   match file_for_module_path(module_files: module_files, module_path: provider.consumer_module) {
     Absent =>
@@ -1236,7 +1236,7 @@ type CrossFileBindingProvenancePopulation
     }
 
 type CrossFileBindingProvenanceBuild {
-  module_files: Map<String, FilePath>
+  module_files: Map<String, std.types.FilePath>
   provenances_reversed: List<CrossFileBindingProvenance>
   first_failure: CrossFileBindingProvenanceProjection?
   more_failures_reversed: List<CrossFileBindingProvenanceProjection>
@@ -1277,7 +1277,7 @@ fn cross_file_binding_provenance_fold_step(
 
 fn cross_file_binding_provenance_from_bound_population(
   population: BoundReferencePopulation,
-  module_files: Map<String, FilePath>
+  module_files: Map<String, std.types.FilePath>
 ) -> CrossFileBindingProvenancePopulation {
   match population {
     ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
@@ -1310,12 +1310,12 @@ fn cross_file_binding_provenance_from_bound_population(
 data direct_file_dependency_note: String = "DirectFileDependency is the file-grain projection of accepted cross-file bindings (namespace-reference-derived-closure clause e / P2aReferenceDependencyProjection7515): it dedupes CrossFileBindingProvenance down to distinct (consumer_file, provider_file) pairs required by the bindings — the reference-derived successor to import-list loading edges at storage grain. Same-file ruling: consumer_file == provider_file rows are preserved in the provenance population; this projection emits NO self-edge. Dedup happens ONLY here via a two-level index (Map consumer_file → Set provider_file), with first-seen provider files accumulated in provider-traversal order (prepend during fold, single reverse at end)."
 
 type DirectFileDependency {
-  consumer_file: FilePath
-  provider_file: FilePath
+  consumer_file: std.types.FilePath
+  provider_file: std.types.FilePath
 }
 
 type DirectFileDependencyDedupBuild {
-  providers_by_consumer: Map<FilePath, Set<String>>
+  providers_by_consumer: Map<std.types.FilePath, Set<String>>
   edges_first_seen: List<DirectFileDependency>
 }
 
@@ -1365,8 +1365,8 @@ fn direct_file_dependency_dedup_step(
 
 fn provider_files_for_consumer_file(
   provenances: List<CrossFileBindingProvenance>,
-  consumer_file: FilePath
-) -> List<FilePath> {
+  consumer_file: std.types.FilePath
+) -> List<std.types.FilePath> {
   reverse(
     fold(
       provenances,
@@ -1426,8 +1426,8 @@ fn direct_file_dependencies_from_cross_file_population(
 
 fn reference_derived_provider_files_for_consumer(
   population: BoundReferencePopulation,
-  module_files: Map<String, FilePath>,
-  consumer_file: FilePath
+  module_files: Map<String, std.types.FilePath>,
+  consumer_file: std.types.FilePath
 ) -> ReferenceDerivedProviderFileProjection {
   match cross_file_binding_provenance_from_bound_population(
     population: population,
@@ -1451,7 +1451,7 @@ fn reference_derived_provider_files_for_consumer(
 }
 
 type ReferenceDerivedProviderFileProjection
-  = ReferenceDerivedProviderFileProjectionReady { provider_files: List<FilePath> }
+  = ReferenceDerivedProviderFileProjectionReady { provider_files: List<std.types.FilePath> }
   | ReferenceDerivedProviderFileProjectionBindingRefused { population: BoundReferencePopulation }
   | ReferenceDerivedProviderFileProjectionFileRefused {
       first_failure: CrossFileBindingProvenanceProjection
@@ -1474,7 +1474,7 @@ type ReferenceDerivedDependencyProjection
 
 fn reference_derived_dependency_projection(
   population: BoundReferencePopulation,
-  module_files: Map<String, FilePath>
+  module_files: Map<String, std.types.FilePath>
 ) -> ReferenceDerivedDependencyProjection {
   match cross_file_binding_provenance_from_bound_population(
     population: population,
@@ -1905,7 +1905,7 @@ fn cross_file_binding_closure_row(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
   module_path: NonEmptyStr,
-  file_path: FilePath
+  file_path: std.types.FilePath
 ) -> CrossFileBindingClosureRow {
   CrossFileBindingClosureRow {
     transport: transport,
@@ -1919,7 +1919,7 @@ type CrossFileBindingClosureRow {
   transport: OccurrenceTransport
   inputs: OccurrenceBindingCandidateInputs
   module_path: NonEmptyStr
-  file_path: FilePath
+  file_path: std.types.FilePath
 }
 
 type AssembledCrossFileBindingClosureRefusal
@@ -1932,7 +1932,7 @@ type AssembledCrossFileBindingClosure
       transport: OccurrenceTransport,
       inputs: OccurrenceBindingCandidateInputs,
       module_files: List<ModulePathFileRow>,
-      consumer_file: FilePath,
+      consumer_file: std.types.FilePath,
     }
   | AssembledCrossFileBindingClosureRefused {
       refusal: AssembledCrossFileBindingClosureRefusal,
@@ -2160,7 +2160,7 @@ fn reference_derived_dependency_projection_for_assembled_closure(
 }
 
 type ReferenceDerivedProviderFilesForAssembledClosure
-  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: List<FilePath> }
+  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: List<std.types.FilePath> }
   | ReferenceDerivedProviderFilesForAssembledClosureRefused {
       refusal: AssembledClosureDependencyProjectionRefusal,
     }
@@ -2192,16 +2192,16 @@ type ReferenceDerivedClauseEProductionRefusal
       refusal: AssembledCrossFileBindingClosureRefusal,
     }
   | ReferenceDerivedClauseEProductionConsumerParseRefused {
-      file: FilePath,
+      file: std.types.FilePath,
     }
   | ReferenceDerivedClauseEProductionProviderParseRefused {
-      file: FilePath,
+      file: std.types.FilePath,
     }
 
 type ReferenceDerivedClauseEProduction
   = ReferenceDerivedClauseEProductionReady {
       projection: ReferenceDerivedDependencyProjection,
-      consumer_file: FilePath,
+      consumer_file: std.types.FilePath,
     }
   | ReferenceDerivedClauseEProductionRefused {
       refusal: ReferenceDerivedClauseEProductionRefusal,

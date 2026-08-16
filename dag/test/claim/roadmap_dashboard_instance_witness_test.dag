@@ -437,10 +437,10 @@ test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
 fn witness_synthetic_layout() -> GunbcHostLayout {
   GunbcHostLayout {
     host_identity: "witness-host" as NonEmptyStr,
-    gunbc_serve_binary: "/witness/bin/gunbc" as FilePath,
-    roadmap_codex_home: "/witness/codex-home" as FilePath,
-    controller_repo: "/witness/controller-repo" as FilePath,
-    codex_bundled_executable: Present { value: "/witness/codex-bundled" as FilePath },
+    gunbc_serve_binary: "/witness/bin/gunbc" as std.types.FilePath,
+    roadmap_codex_home: "/witness/codex-home" as std.types.FilePath,
+    controller_repo: "/witness/controller-repo" as std.types.FilePath,
+    codex_bundled_executable: Present { value: "/witness/codex-bundled" as std.types.FilePath },
   }
 }
 
@@ -448,7 +448,7 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: "witness-synthetic" as NonEmptyStr,
     layout: witness_synthetic_layout(),
-    root: "/witness/root" as FilePath,
+    root: "/witness/root" as std.types.FilePath,
     serve_function: "witness_handler" as NonEmptyStr,
     listen_port: 19999,
     source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
@@ -613,7 +613,7 @@ test fn derived_codex_home_matches_the_authenticated_directory() -> Bool {
   (srv1_host_layout().roadmap_codex_home as String) == observed
     && (srv2_host_layout().roadmap_codex_home as String) == observed
     && (codex_account_state_root(
-         home: "/home/briansrls" as FilePath,
+         home: "/home/briansrls" as std.types.FilePath,
          selection: CodexDefaultAccount,
        ) as String) == "/home/briansrls/.codex"
 }
@@ -665,7 +665,7 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
 // THE DISCRIMINATORS FOR HOST-SHARED DISPATCH STATE, built around a counterfactual rather than around the declared slots alone. Asserting only that srv1-live and srv1-green agree would pass for a reason that has nothing to do with the law: both are authored correctly, so the assertion cannot tell a working law from an absent one. witness_production_slot takes the two dispatch roots as parameters, so the SAME constructor produces the agreeing slot and the slot that keeps its own attempt-state root, and the pair goes green and red respectively off one definition.\n\nThe red control is the shape the outage actually had: a production slot deriving dispatch roots under its own instance root. That is what put a teardown of live dispatch evidence on the per-push cutover path, and it is what must never typecheck-and-pass again. The lab control is its mirror — a host-shared root handed to an instance-owned lab breaks the isolation labs exist for, so consistency must refuse that direction too.
 fn witness_production_slot(
   instance_id: NonEmptyStr,
-  root: FilePath,
+  root: std.types.FilePath,
   scope: DispatchStateScope,
   host_identity: NonEmptyStr,
 ) -> HostDashboardInstance {
@@ -673,7 +673,7 @@ fn witness_production_slot(
   HostDashboardInstance {
     instance_id: instance_id,
     host_identity: host_identity,
-    provision_parent_root: "/opt" as FilePath,
+    provision_parent_root: "/opt" as std.types.FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
@@ -703,7 +703,7 @@ fn witness_production_slot(
 fn witness_agreeing_slot() -> HostDashboardInstance {
   witness_production_slot(
     instance_id: "srv1-witness-agreeing" as NonEmptyStr,
-    root: "/opt/gunbc-witness" as FilePath,
+    root: "/opt/gunbc-witness" as std.types.FilePath,
     scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
@@ -713,7 +713,7 @@ fn witness_agreeing_slot() -> HostDashboardInstance {
 }
 
 fn witness_slot_keeping_its_own_dispatch_state() -> HostDashboardInstance {
-  let root = "/opt/gunbc-witness" as FilePath
+  let root = "/opt/gunbc-witness" as std.types.FilePath
   witness_production_slot(
     instance_id: "srv1-witness-own-state" as NonEmptyStr,
     root: root,
@@ -777,7 +777,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
   let live = srv1_live_dashboard_instance()
   let other_host = witness_production_slot(
     instance_id: "srv2-witness-live" as NonEmptyStr,
-    root: "/opt/gunbc" as FilePath,
+    root: "/opt/gunbc" as std.types.FilePath,
     scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,

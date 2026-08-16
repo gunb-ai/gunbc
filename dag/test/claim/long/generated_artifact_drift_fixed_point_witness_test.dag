@@ -9,14 +9,14 @@ data fixed_point_witness_note: String = "Fixed-point / byte-idempotence leg (ci-
 
 data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
 
-fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
+fn artifact_drifted(a: gunbc.generated_artifact.GeneratedArtifact, committed: String) -> Bool {
   match artifact_generate(a: a) {
     ArtifactGenerationRefused { reason: _ } => true
     ArtifactGenerated { content } => !(committed == content)
   }
 }
 
-fn artifact_committed_matches(a: GeneratedArtifact) -> Bool {
+fn artifact_committed_matches(a: gunbc.generated_artifact.GeneratedArtifact) -> Bool {
   let committed = Filesystem.Read(path: artifact_path(a: a))
   committed.success && !artifact_drifted(a: a, committed: committed.content)
 }

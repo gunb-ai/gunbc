@@ -10,8 +10,8 @@ type RoundingMode
 
 type Precision
   = Unbounded
-  | BinaryPrecision { significand_bits: PositiveInt, exponent_bits: PositiveInt }
-  | DecimalPrecision { digits: PositiveInt, exponent_digits: PositiveInt }
+  | BinaryPrecision { significand_bits: std.integer.PositiveInt, exponent_bits: std.integer.PositiveInt }
+  | DecimalPrecision { digits: std.integer.PositiveInt, exponent_digits: std.integer.PositiveInt }
 
 type NanPolicy = NoNaN | QuietNaN | QuietAndSignalingNaN
 type InfinityPolicy = NoInfinity | SignedInfinity

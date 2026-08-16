@@ -3,9 +3,9 @@ module test.claim.gpu_interconnect_and_sm_cache_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data rtx_5090_pcie_lane_count: Nat = 16
-data rtx_5090_sm_shared_memory_bytes: Nat = 102400
-data rtx_5090_sm_register_file_bytes: Nat = 262144
+data rtx_5090_pcie_lane_count: std.nat.Nat = 16
+data rtx_5090_sm_shared_memory_bytes: std.nat.Nat = 102400
+data rtx_5090_sm_register_file_bytes: std.nat.Nat = 262144
 
 test fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
   match nvidia_rtx_5090_catalog.interconnect {

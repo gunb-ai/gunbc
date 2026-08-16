@@ -66,7 +66,7 @@ type AnnotationAttachmentRefusal
 
 
 // Every refusal carries where it happened, so a diagnostic reporting one does not need to carry a second copy of the span beside it. A consumer asks this rather than storing the origin again — a duplicated span is a second representation that can disagree with the first.
-fn annotation_attachment_refusal_origin(refusal: AnnotationAttachmentRefusal) -> SourceSpan {
+fn annotation_attachment_refusal_origin(refusal: AnnotationAttachmentRefusal) -> std.types.SourceSpan {
   match refusal {
     UnattachedAtScopeEnd { origin: origin } => origin
     TrailingNotModeled { origin: origin } => origin
@@ -250,7 +250,7 @@ fn earliest_member_start_after(subjects: List<AnnotationSubject>, after: Int, fa
 
 fn module_header_gap_subject(
   subjects: List<AnnotationSubject>,
-  origin: SourceSpan,
+  origin: std.types.SourceSpan,
   preceded_by_blank_line: Bool,
   preceded_by_annotation_line: Bool
 ) -> AnnotationSubject? {
@@ -277,7 +277,7 @@ fn module_header_gap_subject(
 
 fn annotation_subject_pick(
   subjects: List<AnnotationSubject>,
-  origin: SourceSpan,
+  origin: std.types.SourceSpan,
   preceded_by_blank_line: Bool,
   preceded_by_annotation_line: Bool
 ) -> AnnotationSubjectPick {
@@ -432,7 +432,7 @@ fn annotation_attach_step(
               value: SourceAnnotationDebt {
                 subject: open.subject,
                 text: concat(open.text, concat("\n", capture.text)),
-                origin: SourceSpan {
+                origin: std.types.SourceSpan {
                   file: open.origin.file,
                   start: open.origin.start,
                   end: capture.origin.end,
@@ -480,7 +480,7 @@ fn annotation_attach_resolve(
                 value: SourceAnnotationDebt {
                   subject: open.subject,
                   text: concat(open.text, concat("\n", capture.text)),
-                  origin: SourceSpan {
+                  origin: std.types.SourceSpan {
                     file: open.origin.file,
                     start: open.origin.start,
                     end: capture.origin.end,

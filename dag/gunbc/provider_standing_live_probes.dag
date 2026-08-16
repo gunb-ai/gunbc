@@ -99,7 +99,7 @@ fn dashboard_codex_provider_probe_observation(
 
 fn codex_provider_instance_for_inventory(
   instance: HostDashboardInstance,
-  executable: FilePath,
+  executable: std.types.FilePath,
 ) -> ProviderInstance {
   ProviderInstance {
     kind: CodexCliProvider,

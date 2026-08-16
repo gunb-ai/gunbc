@@ -2,8 +2,8 @@ module v2.extdeps.formatters.swift_format
 
 
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: Outcome<PositiveInt> }
-  | SwiftFormatTabs { count: Outcome<PositiveInt> }
+  = SwiftFormatSpaces { count: Outcome<v2.std.refinement.PositiveInt> }
+  | SwiftFormatTabs { count: Outcome<v2.std.refinement.PositiveInt> }
 
 type SwiftFormatFileScopedAccessLevel
   = SwiftFormatPrivate
@@ -34,11 +34,11 @@ type SwiftFormatOrderedImports {
 
 type SwiftFormatConfig {
   version: Outcome<ExactOneInt>
-  line_length: Outcome<PositiveInt>
+  line_length: Outcome<v2.std.refinement.PositiveInt>
   indentation: SwiftFormatIndentation,
-  tab_width: Outcome<PositiveInt>
-  maximum_blank_lines: Outcome<NonNegativeInt>
-  spaces_before_end_of_line_comments: Outcome<NonNegativeInt>
+  tab_width: Outcome<v2.std.refinement.PositiveInt>
+  maximum_blank_lines: Outcome<v2.std.refinement.NonNegativeInt>
+  spaces_before_end_of_line_comments: Outcome<v2.std.refinement.NonNegativeInt>
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,

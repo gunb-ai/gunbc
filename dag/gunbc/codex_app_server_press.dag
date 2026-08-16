@@ -4,7 +4,7 @@ module gunbc.codex_app_server_press
 
 data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn. Rate-limit standing is PER limit_id (rateLimitsByLimitId): a live Pro account can exhaust the codex bucket while codex_bengalfox remains at usedPercent 0 — collapsing to one account-level Ready|QuotaReached is false. CodexPressAccountReady gates on the native limit_id codex bucket only; every bucket verdict is retained on the evidence for ProviderNativeLimitBucket bridging. Empty rateLimits:\{\} is Incomplete. Trip stdin must send initialized after initialize or id=3 may never arrive."
 
-data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
+data codex_press_hermetic_evidence_root: std.types.FilePath = "/tmp/gunbc-codex-press-evidence" as std.types.FilePath
 
 data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 under a caller-supplied evidence_root. Structural digests are NOT durable content identities; private SHA-512 retention is."
 
@@ -21,7 +21,7 @@ type CodexRuntimeBundleReceiptRef {
 type ProviderProbeKey = NonEmptyStr
 
 type AmbientCodexCredentialContext {
-  codex_home: FilePath
+  codex_home: std.types.FilePath
 }
 
 type CodexAccountPreflightSubject {
@@ -199,8 +199,8 @@ fn binding_from_initialize_session(
 data codex_press_stdio_sentinel_mux_dissolve_note: DissolutionCondition = unbound_dissolution(description: "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites).")
 
 fn codex_press_account_trip_script(
-  executable: FilePath,
-  codex_home: FilePath,
+  executable: std.types.FilePath,
+  codex_home: std.types.FilePath,
 ) -> String {
   concat(
     "export CODEX_HOME='",
@@ -751,7 +751,7 @@ fn empty_account_trip_parse_acc() -> AccountTripParseAcc {
 
 fn digest_account_trip_line(
   line: String,
-  evidence_root: FilePath,
+  evidence_root: std.types.FilePath,
   mode: AccountTripDigestMode,
 ) -> ContentHash? {
   if line == "" {
@@ -773,7 +773,7 @@ fn digest_account_trip_line(
 fn push_unknown_digest(
   acc: AccountTripParseAcc,
   line: String,
-  evidence_root: FilePath,
+  evidence_root: std.types.FilePath,
   mode: AccountTripDigestMode,
 ) -> AccountTripParseAcc {
   match digest_account_trip_line(line: line, evidence_root: evidence_root, mode: mode) {
@@ -829,7 +829,7 @@ fn buckets_from_rate_limits_frame(
 fn absorb_account_trip_line(
   acc: AccountTripParseAcc,
   line: String,
-  evidence_root: FilePath,
+  evidence_root: std.types.FilePath,
   mode: AccountTripDigestMode,
 ) -> AccountTripParseAcc {
   let trimmed = line.trim()
@@ -966,7 +966,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
 fn parse_account_trip_session(
   stdout: String,
   stderr: String,
-  evidence_root: FilePath,
+  evidence_root: std.types.FilePath,
   mode: AccountTripDigestMode,
 ) -> CodexAccountStandingEvidence {
   let acc = fold(
@@ -1074,7 +1074,7 @@ fn preflight_subject_from_bundle(
   bundle: CodexRuntimeBundle,
   binding: ProviderInterfaceBinding,
   probe_key: ProviderProbeKey,
-  codex_home: FilePath,
+  codex_home: std.types.FilePath,
 ) -> CodexAccountPreflightSubject {
   CodexAccountPreflightSubject {
     runtime: CodexRuntimeBundleReceiptRef {
@@ -1161,8 +1161,8 @@ fn process_receipt_from_capture(
 fn observe_codex_account_preflight(
   bundle: CodexRuntimeBundle,
   probe_key: ProviderProbeKey,
-  evidence_root: FilePath,
-  codex_home: FilePath,
+  evidence_root: std.types.FilePath,
+  codex_home: std.types.FilePath,
 ) -> CodexPressOutcome {
   match project_codex_app_server_stdio_binding(bundle: bundle) {
     RequiredProviderInterfaceUnavailable { interface: _, reason } =>

@@ -53,7 +53,7 @@ type RedundancyScope
   | RedundancyUnstated
 
 type DurabilityClaim
-  = DurabilityNines { nines: Nat }
+  = DurabilityNines { nines: std.nat.Nat }
   | DurabilityUnstated
 
 type StorageRateAvailability
@@ -79,14 +79,14 @@ type ObjectStorageClassRow {
   storage_rate: StorageRateAvailability
   durability: DurabilityClaim
   redundancy: RedundancyScope
-  tier_lower_bound_gb: Nat
+  tier_lower_bound_gb: std.nat.Nat
   pricing_citation: NonEmptyStr
 }
 
 type ObjectStorageEgressRow {
   vendor: StorageVendor
   egress_rate: TransferRateAvailability
-  tier_lower_bound_gb: Nat
+  tier_lower_bound_gb: std.nat.Nat
   pricing_citation: NonEmptyStr
 }
 
@@ -352,7 +352,7 @@ fn object_storage_egress_catalog() -> List<ObjectStorageEgressRow> {
   ]
 }
 
-fn storage_rate_micros(row: ObjectStorageClassRow) -> Nat? {
+fn storage_rate_micros(row: ObjectStorageClassRow) -> std.nat.Nat? {
   match row.storage_rate {
     RateCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
       Present { value: money_rate_micros(q: r) }
@@ -360,7 +360,7 @@ fn storage_rate_micros(row: ObjectStorageClassRow) -> Nat? {
   }
 }
 
-fn egress_rate_micros(row: ObjectStorageEgressRow) -> Nat? {
+fn egress_rate_micros(row: ObjectStorageEgressRow) -> std.nat.Nat? {
   match row.egress_rate {
     TransferCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
       Present { value: money_rate_micros(q: r) }
@@ -373,7 +373,7 @@ fn storage_vendor_eq(a: StorageVendor, b: StorageVendor) -> Bool {
   storage_vendor_label(v: a) == storage_vendor_label(v: b)
 }
 
-fn durability_nines(row: ObjectStorageClassRow) -> Nat? {
+fn durability_nines(row: ObjectStorageClassRow) -> std.nat.Nat? {
   match row.durability {
     DurabilityNines { nines: n } => Present { value: n }
     DurabilityUnstated => none
@@ -632,7 +632,7 @@ data azure_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 
 // The operator's framing: decide the reliability posture FIRST, then price only what satisfies it. A requirement is a floor on two independent axes (durability nines, redundancy scope), and the verdict is three-valued on purpose -- Meets, Fails, or RequirementUnknown when the vendor's cited surface does not state the axis at all. Unknown is NOT a pass: a vendor that says nothing about geo-redundancy has not satisfied a geo-redundancy requirement, and collapsing that into a pass is the absorbing fallback DESIGN section 5 forbids. It is also not a fail -- the vendor may well qualify, the pricing surface simply does not say -- so the verdict names what is missing and the operator resolves it with a citation, not a guess.
 type ReliabilityRequirement {
-  min_durability_nines: Nat
+  min_durability_nines: std.nat.Nat
   min_redundancy: RedundancyScope
 }
 
@@ -641,7 +641,7 @@ type ReliabilityVerdict
   | FailsRequirement { axis: NonEmptyStr }
   | RequirementUnknown { unstated_axis: NonEmptyStr }
 
-fn redundancy_rank(scope: RedundancyScope) -> Nat? {
+fn redundancy_rank(scope: RedundancyScope) -> std.nat.Nat? {
   match scope {
     SingleFacility => Present { value: 1 }
     MultiFacilityOneRegion => Present { value: 2 }

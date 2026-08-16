@@ -15,34 +15,34 @@ fn sample_entry() -> NonEmptyStr {
   "dag/test/claim/witness_row_cost_projection_witness_test.dag" as NonEmptyStr
 }
 
-fn witness_wall_ns(count: Nat) -> Nanosecond {
+fn witness_wall_ns(count: std.nat.Nat) -> Nanosecond {
   millisecond_to_nanosecond(m: millisecond(count: count))
 }
 
-fn witness_wall_ms(count: Nat) -> Nanosecond {
+fn witness_wall_ms(count: std.nat.Nat) -> Nanosecond {
   witness_wall_ns(count: count)
 }
 
-fn witness_eval_ms(count: Nat) -> List<TimedMeasurement> {
+fn witness_eval_ms(count: std.nat.Nat) -> List<TimedMeasurement> {
   observation_durations_wall(elapsed: witness_wall_ns(count: count))
 }
 
-fn witness_eval_ns(count: Nat) -> List<TimedMeasurement> {
+fn witness_eval_ns(count: std.nat.Nat) -> List<TimedMeasurement> {
   observation_durations_wall(elapsed: nanosecond(count: count))
 }
 
-fn witness_eval_cpu_and_wall(cpu_ms: Nat, wall_ms: Nat) -> List<TimedMeasurement> {
+fn witness_eval_cpu_and_wall(cpu_ms: std.nat.Nat, wall_ms: std.nat.Nat) -> List<TimedMeasurement> {
   observation_durations_cpu_and_wall(
     cpu: witness_wall_ns(count: cpu_ms),
     wall: witness_wall_ns(count: wall_ms)
   )
 }
 
-fn witness_wall_ms_count(wall: Nanosecond) -> Nat {
+fn witness_wall_ms_count(wall: Nanosecond) -> std.nat.Nat {
   millisecond_count(m: nanosecond_to_millisecond_floor(n: wall))
 }
 
-fn row_clock_ns(row: WitnessCostReceiptRow, basis: ClockBasis) -> Nat {
+fn row_clock_ns(row: WitnessCostReceiptRow, basis: ClockBasis) -> std.nat.Nat {
   match observation_duration_of(durations: row.eval, basis: basis) {
     MeasuredValue { value: v } => nanosecond_count(n: v)
     MeasuredUnavailable { cause: _ } => 0
@@ -56,7 +56,7 @@ fn row_clock_is_unavailable(row: WitnessCostReceiptRow, basis: ClockBasis) -> Bo
   }
 }
 
-fn row_wall_ms_count(row: WitnessCostReceiptRow) -> Nat {
+fn row_wall_ms_count(row: WitnessCostReceiptRow) -> std.nat.Nat {
   millisecond_count(m: nanosecond_to_millisecond_floor(n: nanosecond(count: row_clock_ns(row: row, basis: WallClock))))
 }
 

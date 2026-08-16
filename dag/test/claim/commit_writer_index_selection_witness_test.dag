@@ -26,7 +26,7 @@ fn fallback_path() -> GitPath {
   }
 }
 
-fn path_of(octets: List<UInt8>) -> GitPath {
+fn path_of(octets: List<std.integer.UInt8>) -> GitPath {
   match git_decode_path_octets(octets: octets) {
     GitPathDecoded { path } => path
     GitPathDecodeRefused { cause: _ } => fallback_path()

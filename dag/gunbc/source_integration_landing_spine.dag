@@ -98,8 +98,8 @@ fn landing_native_identity(
 }
 
 type LandingStressProfile {
-  agents_per_developer: PositiveInt
-  overlapping_proposals: PositiveInt
+  agents_per_developer: std.integer.PositiveInt
+  overlapping_proposals: std.integer.PositiveInt
   validation_path: Minute
 }
 
@@ -370,7 +370,7 @@ type LandingRefusalKind
 type LandingRefusal {
   kind: LandingRefusalKind
   locus: NonEmptyStr
-  occurrences: PositiveInt
+  occurrences: std.integer.PositiveInt
   internal_cause: NonEmptyStr
   plain_reason: LandingAudienceReason
   responsible_party: LandingAudienceParty

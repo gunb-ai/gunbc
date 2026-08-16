@@ -8,19 +8,19 @@ data artifact_materialization_decomposition_note: String = "The decision logic i
 data artifact_materialization_unbuilt_note: String = "There is NO arm here that yields ArtifactMaterialized without a digest observation in hand. That is the whole point of the carrier: v2.compiler.self_host.generation makes ObservedArtifactDigest a sole_constructor over a validated Sha512Digest precisely so an artifact identity cannot be authored, and this module is the first producer that has to respect it. Every failure — build nonzero, no artifact message, ambiguous target, unreadable stream, digest refused — lands on its own arm and projects ArtifactNotMaterialized, which promotion admission already refuses BY NAME rather than treating as equivalent."
 
 type ArtifactPathOutcome
-  = ArtifactPathReported { executable: FilePath }
+  = ArtifactPathReported { executable: std.types.FilePath }
   | ArtifactPathBuildFailed { target_name: String }
   | ArtifactPathRefused { selection: CargoArtifactSelection }
 
 type ArtifactMaterializationOutcome
   = ArtifactMaterializationObserved {
-      executable: FilePath
+      executable: std.types.FilePath
       digest: Sha512Digest
     }
   | ArtifactMaterializationBuildFailed { target_name: String }
   | ArtifactMaterializationPathRefused { selection: CargoArtifactSelection }
   | ArtifactMaterializationDigestRefused {
-      executable: FilePath
+      executable: std.types.FilePath
       cause: NonEmptyStr
     }
 
@@ -95,7 +95,7 @@ fn select_artifact_path(
 // the executable is carried into the result so a consumer can prove the digest and any
 // later invocation refer to one file.
 fn materialization_from_digest(
-  executable: FilePath,
+  executable: std.types.FilePath,
   observation: Sha512FileObservation
 ) -> ArtifactMaterializationOutcome {
   match observation {
@@ -132,9 +132,9 @@ fn materialization_outcome_from_path(
 // as written, so if a later edit ever did consult it the result stays fail-closed instead
 // of naming a file nothing observed.
 fn materialize_artifact_wet(
-  workdir: FilePath,
-  manifest_path: FilePath,
-  target_dir: FilePath,
+  workdir: std.types.FilePath,
+  manifest_path: std.types.FilePath,
+  target_dir: std.types.FilePath,
   target_name: String,
   extra_args: List<String>
 ) -> ArtifactMaterializationOutcome {
@@ -180,7 +180,7 @@ fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> GeneratedArt
 // The executable a consumer may invoke, available ONLY when the artifact was observed.
 // A consumer that wants to run the candidate takes the path from here, so the file it
 // executes is the file that was digested, by construction rather than by discipline.
-fn materialized_executable(outcome: ArtifactMaterializationOutcome) -> FilePath? {
+fn materialized_executable(outcome: ArtifactMaterializationOutcome) -> std.types.FilePath? {
   match outcome {
     ArtifactMaterializationObserved { executable: exe, digest: _ } =>
       Present { value: exe }

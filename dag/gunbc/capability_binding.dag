@@ -28,7 +28,7 @@ fn impulse_direction_key(d: ImpulseDirection) -> String {
 
 type PhysicalImpulse {
   source_provider: DeclarationRef
-  magnitude_milli_m_per_s2: Nat
+  magnitude_milli_m_per_s2: std.nat.Nat
   direction: ImpulseDirection
   observed_at_ms: Milliseconds
 }
@@ -62,11 +62,11 @@ fn gravity_handling_key(g: GravityHandling) -> String {
 }
 
 type PhysicalImpulseRequirement {
-  axis_count: Nat
-  minimum_sample_rate_hz: Nat
+  axis_count: std.nat.Nat
+  minimum_sample_rate_hz: std.nat.Nat
   maximum_detection_latency_ms: Milliseconds
   gravity_handling: GravityHandling
-  minimum_discriminating_magnitude_milli_m_per_s2: Nat
+  minimum_discriminating_magnitude_milli_m_per_s2: std.nat.Nat
   standing: RequirementStanding
 }
 
@@ -86,15 +86,15 @@ data bob_impulse_requirement_candidate: PhysicalImpulseRequirement = PhysicalImp
 data observed_quantity_note: String = "AN UNOBSERVED QUANTITY IS NOT ZERO (review finding, 2026-08-06). An earlier revision projected a web reading into a sample receipt carrying frequency_hz: 0 and noise_floor_milli: 0 because the web observation supplied neither — and a zero noise floor is not an absence, it is a claim of a perfect signal, which is the strongest possible statement about a quantity nobody measured. Each measured axis therefore carries its own observed-or-not coproduct, and a qualification that needs a dimension nobody observed REFUSES on that dimension rather than reading the fabricated zero as a pass."
 
 type FrequencyObservation
-  = FrequencyObserved { hz: Nat }
+  = FrequencyObserved { hz: std.nat.Nat }
   | FrequencyUnobserved
 
 type NoiseFloorObservation
-  = NoiseFloorObserved { magnitude_milli: Nat }
+  = NoiseFloorObserved { magnitude_milli: std.nat.Nat }
   | NoiseFloorUnobserved
 
 type AxisCountObservation
-  = AxisCountObserved { n: Nat }
+  = AxisCountObserved { n: std.nat.Nat }
   | AxisCountUnobserved
 
 type LatencyObservation
@@ -111,16 +111,16 @@ data negative_control_note: String = "THE CONTROL THAT MAKES A THRESHOLD A DISCR
 IT CARRIES AN OBSERVATION, NOT A VERDICT (review finding, 2026-08-06). The earlier shape had Passed and Failed arms each carrying an idle peak, and qualification trusted the arm's NAME — so a control recording an idle peak far above the discriminating floor still passed, because someone had written Passed. That is the same defect as the qualified arm one level down: a judgement supplied by the author where a comparison was available. There is one arm now, it carries what was measured, and pass or fail is DERIVED by comparing that peak with the floor the requirement declares."
 
 type NegativeControl
-  = NegativeControlObserved { idle_peak_milli: Nat }
+  = NegativeControlObserved { idle_peak_milli: std.nat.Nat }
   | NegativeControlNotRun
 
 type SampleReceipt {
-  count: Nat
+  count: std.nat.Nat
   frequency: FrequencyObservation
   noise_floor: NoiseFloorObservation
   observed_axes: AxisCountObservation
   gravity: GravityNormalization
-  peak_magnitude_milli: Nat
+  peak_magnitude_milli: std.nat.Nat
   detection_latency_ms: LatencyObservation
   negative_control: NegativeControl
 }
@@ -273,7 +273,7 @@ type BindingStreamState
   | HardwareUnavailable
   | BackendConnectionRefused { error_name: String }
   | NoSamplesObserved { lifecycle: SampleLifecycle }
-  | HollowSamplesObserved { count: Nat }
+  | HollowSamplesObserved { count: std.nat.Nat }
   | SamplesObserved { receipt: SampleReceipt }
   | TapOutcome { receipt: SampleReceipt }
   | BindingStreamUnobserved
@@ -452,7 +452,7 @@ fn synthetic_tap_strength_key(t: SyntheticTapStrength) -> String {
 
 data synthetic_tap_strength_note: String = "Three strengths rather than a slider, because the point of the control is to demonstrate the response AND its bound: a light tap that barely moves the plate and sits below the discriminating floor, a firm one that clears it, and a full knock that reaches the clamp. A continuous input lets a viewer wander the range without ever seeing the two ends that carry the argument."
 
-fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> Nat {
+fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> std.nat.Nat {
   match t {
     SyntheticTapLight => 900
     SyntheticTapFirm => 2600

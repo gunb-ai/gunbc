@@ -1,12 +1,12 @@
 module gunbc.heal_push_plan
 
 
-fn artifact_repository_path(a: GeneratedArtifact) -> RepositoryPath {
+fn artifact_repository_path(a: gunbc.generated_artifact.GeneratedArtifact) -> RepositoryPath {
   RepositoryPath { value: artifact_path(a: a) }
 }
 
 fn artifact_push_authorized(
-  a: GeneratedArtifact,
+  a: gunbc.generated_artifact.GeneratedArtifact,
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> Bool {
@@ -129,7 +129,7 @@ fn refusal_failure_population(
 }
 
 fn derive_refusal(
-  refused: List<GeneratedArtifact>,
+  refused: List<gunbc.generated_artifact.GeneratedArtifact>,
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> RefusalDerivation {
@@ -147,7 +147,7 @@ fn derive_refusal(
 }
 
 fn plan_heal_push(
-  artifacts: List<GeneratedArtifact>,
+  artifacts: List<gunbc.generated_artifact.GeneratedArtifact>,
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> HealPushPlan {
@@ -172,7 +172,7 @@ fn plan_heal_push(
 }
 
 fn plan_heal_push_from_binding(
-  artifacts: List<GeneratedArtifact>,
+  artifacts: List<gunbc.generated_artifact.GeneratedArtifact>,
   resolution: PushBindingResolution,
   control_plane: GitHubAppControlPlaneState
 ) -> HealPushPlan {
@@ -231,7 +231,7 @@ fn step_site(checkout_step: DeclarationRef) -> HealPushBindingSite {
 }
 
 fn binding_refused_plan(
-  artifacts: List<GeneratedArtifact>,
+  artifacts: List<gunbc.generated_artifact.GeneratedArtifact>,
   cause: HealPushRefusalCause,
   site: HealPushBindingSite
 ) -> HealPushPlan {
@@ -254,7 +254,7 @@ data live_heal_push_plan: HealPushPlan = plan_heal_push_from_binding(
   control_plane: live_heal_control_plane
 )
 
-fn plan_ready_artifacts(plan: HealPushPlan) -> List<GeneratedArtifact> {
+fn plan_ready_artifacts(plan: HealPushPlan) -> List<gunbc.generated_artifact.GeneratedArtifact> {
   match plan {
     HealPushNothingToDo => []
     HealPushReady { artifacts } => artifacts
@@ -264,7 +264,7 @@ fn plan_ready_artifacts(plan: HealPushPlan) -> List<GeneratedArtifact> {
   }
 }
 
-fn plan_refused_artifacts(plan: HealPushPlan) -> List<GeneratedArtifact> {
+fn plan_refused_artifacts(plan: HealPushPlan) -> List<gunbc.generated_artifact.GeneratedArtifact> {
   match plan {
     HealPushNothingToDo => []
     HealPushReady { artifacts: _ } => []
@@ -402,11 +402,11 @@ fn remediation_author_commit_paths(r: HealPushRemediation) -> List<RepositoryPat
   }
 }
 
-fn auto_push_eligible_committed_artifacts() -> List<GeneratedArtifact> {
+fn auto_push_eligible_committed_artifacts() -> List<gunbc.generated_artifact.GeneratedArtifact> {
   plan_ready_artifacts(plan: live_heal_push_plan)
 }
 
-fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
+fn author_commit_required_committed_artifacts() -> List<gunbc.generated_artifact.GeneratedArtifact> {
   let author_paths = remediation_author_commit_paths(r: live_heal_remediation)
   filter(
     plan_refused_artifacts(plan: live_heal_push_plan),

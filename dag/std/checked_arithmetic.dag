@@ -210,7 +210,7 @@ fn checked_int_magnitude(a: Int) -> CheckedNat {
 
 data nat_magnitude_residue_note: String = "WHY THIS IS A SEPARATE FUNCTION, and what remains unguarded about it. The Int-to-Nat crossing is admitted at a function RETURN position (std.coercion grounded_primitive_coproduct_identities registers Int -> Nat as an identity: a Nat IS an Int, grounded construction-side by the numeric tower), but not in a record-field position, so the crossing cannot happen inside the CheckedNatReady literal and has to be its own declaration. THE RESIDUE, named rather than left for a reader to find: nat_magnitude is correct for every input except the minimum representable value, whose magnitude is one past the maximum and where the realization's negation overflows. checked_int_magnitude is the sanctioned entry and refuses exactly that input. This is strictly better than the int_to_nat_nonnegative it replaces - no input maps to a fabricated zero, and the one unrepresentable case has a typed refusal rather than a silent clamp - but it is NOT a construction wall: nothing stops a caller invoking nat_magnitude directly. DISSOLVE-ON: a record-field-position crossing (which makes the guard and the crossing one expression) or sole_constructor over the magnitude carrier."
 
-fn nat_magnitude(a: Int) -> Nat {
+fn nat_magnitude(a: Int) -> std.nat.Nat {
   if a < 0 { 0 - a } else { a }
 }
 

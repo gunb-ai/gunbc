@@ -24,7 +24,7 @@ type SemVerVersion {
   build: List<SemVerIdentifier>
 }
 
-fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+fn semver_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> Ordering {
   nat_compare(a: a, b: b)
 }
 

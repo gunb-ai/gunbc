@@ -50,7 +50,7 @@ fn photo_reconstruction_evidence() -> RoomDimensionEvidence {
 // Every fixture below is ordered, so the refused arm is unreachable here; it collapses to the
 // degenerate zero interval rather than fabricating a width. The reversed case is asserted on its
 // own in witness 4, against the mint directly, so this helper never becomes the thing under test.
-fn interval_or_degenerate(low: Nat, high: Nat) -> LengthInterval {
+fn interval_or_degenerate(low: std.nat.Nat, high: std.nat.Nat) -> LengthInterval {
   match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
     IntervalReady { interval: i } => i
     IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))

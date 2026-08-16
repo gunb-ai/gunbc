@@ -26,7 +26,7 @@ test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> 
               placement: srv1_provider_runtime_placement(),
               host: host,
             ) == (
-              "/opt/gunbc/provider-runtime/evidence/codex-provider-runtime/srv1.json" as FilePath
+              "/opt/gunbc/provider-runtime/evidence/codex-provider-runtime/srv1.json" as std.types.FilePath
             )
       }
   }

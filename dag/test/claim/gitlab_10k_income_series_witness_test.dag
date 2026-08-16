@@ -119,7 +119,7 @@ fn w_gross_margin_in_series_band(revenue: FiledMonetaryFact, gross_profit: Filed
   }
 }
 
-fn filed_negative_magnitude(fact: FiledSignedMonetaryFact) -> Nat? {
+fn filed_negative_magnitude(fact: FiledSignedMonetaryFact) -> std.nat.Nat? {
   match filed_signed_value(fact: fact) {
     Present { value: v } =>
       match v {
@@ -148,7 +148,7 @@ fn w_negative_magnitude_shrinks(prev: FiledSignedMonetaryFact, next: FiledSigned
   }
 }
 
-fn w_filed_count_equals(fact: FiledMonetaryFact, expected: Nat) -> Bool {
+fn w_filed_count_equals(fact: FiledMonetaryFact, expected: std.nat.Nat) -> Bool {
   match filed_amount(fact: fact) {
     Present { value: a } => usd_whole_dollars_count(m: a) == expected
     _ => false

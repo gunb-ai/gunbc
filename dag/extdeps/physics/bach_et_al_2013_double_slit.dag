@@ -76,7 +76,7 @@ type Figure3BuildupPanel
 type BachBuildupObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment
   figure_3_panel: Figure3BuildupPanel
-  detected_electrons: NonNegativeInt
+  detected_electrons: std.integer.NonNegativeInt
   pattern_status: PatternStatus
 }
 

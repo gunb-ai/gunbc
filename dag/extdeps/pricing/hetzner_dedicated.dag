@@ -122,7 +122,7 @@ fn hetzner_dedicated_price_catalog() -> List<HetznerDedicatedServerPriceRow> {
   ]
 }
 
-fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> Nat {
+fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> std.nat.Nat {
   money_once_micros(q: row.setup_fee)
 }
 

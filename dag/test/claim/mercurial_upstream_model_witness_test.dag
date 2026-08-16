@@ -1,7 +1,7 @@
 module test.claim.mercurial_upstream_model_witness
 
 
-fn repeated_mercurial_node_id(octet: UInt8) -> MercurialNodeId {
+fn repeated_mercurial_node_id(octet: std.integer.UInt8) -> MercurialNodeId {
   MercurialNodeId {
     octet00: octet,
     octet01: octet,

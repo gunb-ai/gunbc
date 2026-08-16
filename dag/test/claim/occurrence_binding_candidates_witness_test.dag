@@ -61,8 +61,8 @@ fn obc_fixture_inputs(
   }
 }
 
-fn obc_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+fn obc_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 fn obc_fixture_path(

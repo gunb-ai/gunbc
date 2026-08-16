@@ -55,23 +55,23 @@ fn falsifier_planned_components(enrollments: List<FalsifierLaneEnrollment>) -> L
   })
 }
 
-fn falsifier_planned_indices(planned: List<FalsifierPlannedComponent>) -> List<Nat> {
+fn falsifier_planned_indices(planned: List<FalsifierPlannedComponent>) -> List<std.nat.Nat> {
   planned |> map(p => p.index)
 }
 
-fn falsifier_reported_indices(rows: List<FloorComponentRow>) -> List<Nat> {
+fn falsifier_reported_indices(rows: List<FloorComponentRow>) -> List<std.nat.Nat> {
   rows |> map(r => floor_component_row_index(row: r))
 }
 
-fn index_occurrence_count(xs: List<Nat>, target: Nat) -> Nat {
+fn index_occurrence_count(xs: List<std.nat.Nat>, target: std.nat.Nat) -> std.nat.Nat {
   fold(xs, init: 0, f: fn(acc, x) { if x == target { acc + 1 } else { acc } })
 }
 
-fn list_contains_index(xs: List<Nat>, target: Nat) -> Bool {
+fn list_contains_index(xs: List<std.nat.Nat>, target: std.nat.Nat) -> Bool {
   index_occurrence_count(xs: xs, target: target) > 0
 }
 
-fn duplicated_indices(xs: List<Nat>) -> List<Nat> {
+fn duplicated_indices(xs: List<std.nat.Nat>) -> List<std.nat.Nat> {
   fold(xs, init: [], f: fn(acc, x) {
     if (index_occurrence_count(xs: xs, target: x) > 1) && !list_contains_index(xs: acc, target: x) {
       concat(acc, [x])
@@ -179,7 +179,7 @@ type FalsifierRouting
   | RoutingLaneUndetermined { index: std.nat.Nat, cause: NonEmptyStr }
   | RoutingOwnerUndeclared { index: std.nat.Nat, lane: FalsifierLane, cause: NonEmptyStr }
 
-fn falsifier_lane_of_index(planned: List<FalsifierPlannedComponent>, index: Nat) -> FalsifierLane? {
+fn falsifier_lane_of_index(planned: List<FalsifierPlannedComponent>, index: std.nat.Nat) -> FalsifierLane? {
   fold(planned, init: none, f: fn(acc, p) {
     match acc {
       Present { value: l } => Present { value: l }
@@ -313,7 +313,7 @@ fn falsifier_failing_class_signature(failing: List<FalsifierFailingComponent>) -
 
 data falsifier_lane_witness_note: String = "Witness functions live in the carrier and are imported by dag/test/claim/falsifier_lane_witness_test.dag, the same shape tools.dag_compile_clean_shard_totality uses. Every red control is SYNTHETIC — hand-built planned rosters and fixture component rows — so each defect axis is exercised by a discriminating input that goes red when the algebra is wrong, never by waiting for a real cadence run to misbehave (DESIGN section 5: green by execution plus a discriminating red). The fixture rows are built through floor_component_row_of, the receipt's own constructor, so a change to the row shape breaks these witnesses rather than letting them drift onto a private copy."
 
-fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
+fn falsifier_witness_row(index: std.nat.Nat, done: Bool) -> FloorComponentRow {
   floor_component_row_of(
     run_id: "witness" as NonEmptyStr,
     index: index,
@@ -530,7 +530,7 @@ fn witness_unsuccessful_routings_exclude_done_rows() -> Bool {
        }
 }
 
-fn falsifier_witness_row_with(index: Nat, mode: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+fn falsifier_witness_row_with(index: std.nat.Nat, mode: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
   floor_component_row_of_failure_mode(
     run_id: "witness" as NonEmptyStr,
     index: index,

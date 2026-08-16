@@ -26,13 +26,13 @@ type SyntheticArrivalCountObservationRow {
   arrangement: SlitMaskConfiguration
   band: ScreenBand
   exposure: SyntheticMatchedExposureSession
-  arrival_count: NonNegativeInt
+  arrival_count: std.integer.NonNegativeInt
 }
 
 type ArrivalCountResolution
   = ArrivalCountResolved {
-      count: NonNegativeInt
-      contributing_rows: NonNegativeInt
+      count: std.integer.NonNegativeInt
+      contributing_rows: std.integer.NonNegativeInt
     }
   | ArrivalCountMissing {
       arrangement: SlitMaskConfiguration
@@ -43,17 +43,17 @@ type ArrivalCountResolution
       arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
-      matching_rows: NonNegativeInt
+      matching_rows: std.integer.NonNegativeInt
     }
 
 type AdditivityInputResolution
   = AdditivityInputsResolved {
-      left: NonNegativeInt
-      right: NonNegativeInt
-      both: NonNegativeInt
-      left_contributing_rows: NonNegativeInt
-      right_contributing_rows: NonNegativeInt
-      both_contributing_rows: NonNegativeInt
+      left: std.integer.NonNegativeInt
+      right: std.integer.NonNegativeInt
+      both: std.integer.NonNegativeInt
+      left_contributing_rows: std.integer.NonNegativeInt
+      right_contributing_rows: std.integer.NonNegativeInt
+      both_contributing_rows: std.integer.NonNegativeInt
     }
   | AdditivityInputsIncomplete {
       missing_arrangement: SlitMaskConfiguration
@@ -64,7 +64,7 @@ type AdditivityInputResolution
       arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
-      matching_rows: NonNegativeInt
+      matching_rows: std.integer.NonNegativeInt
     }
 
 type AdditivityInputFailure
@@ -77,13 +77,13 @@ type AdditivityInputFailure
       arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
-      matching_rows: NonNegativeInt
+      matching_rows: std.integer.NonNegativeInt
     }
 
 type PathAdditivityCounterexampleWitness {
-  left_alternative_count: NonNegativeInt
-  right_alternative_count: NonNegativeInt
-  both_open_observed_count: NonNegativeInt
+  left_alternative_count: std.integer.NonNegativeInt
+  right_alternative_count: std.integer.NonNegativeInt
+  both_open_observed_count: std.integer.NonNegativeInt
 }
 
 type PathAdditivitySubject
@@ -144,9 +144,9 @@ fn refutation_receipt_resolution_from_band_verdict(
 }
 
 fn classical_exclusive_alternative_arrival_prediction(
-  left_only_count: NonNegativeInt,
-  right_only_count: NonNegativeInt,
-) -> NonNegativeInt {
+  left_only_count: std.integer.NonNegativeInt,
+  right_only_count: std.integer.NonNegativeInt,
+) -> std.integer.NonNegativeInt {
   left_only_count + right_only_count
 }
 
@@ -164,8 +164,8 @@ fn arrival_count_row_matches(
 }
 
 type ArrivalCountFoldAcc {
-  match_count: NonNegativeInt
-  sum: NonNegativeInt
+  match_count: std.integer.NonNegativeInt
+  sum: std.integer.NonNegativeInt
 }
 
 fn resolve_arrival_count_at(
@@ -307,8 +307,8 @@ fn resolve_additivity_inputs(
 }
 
 fn path_additivity_compare_observed_to_prediction(
-  observed_both: NonNegativeInt,
-  prediction: NonNegativeInt,
+  observed_both: std.integer.NonNegativeInt,
+  prediction: std.integer.NonNegativeInt,
 ) -> Ordering {
   if observed_both < prediction {
     Less
@@ -323,7 +323,7 @@ fn path_additivity_compare_observed_to_prediction(
 
 fn path_additivity_witness_classical_additive_prediction(
   witness: PathAdditivityCounterexampleWitness,
-) -> NonNegativeInt {
+) -> std.integer.NonNegativeInt {
   classical_exclusive_alternative_arrival_prediction(
     left_only_count: witness.left_alternative_count,
     right_only_count: witness.right_alternative_count,
@@ -355,9 +355,9 @@ fn path_additivity_refutation_holds_for_synthetic_fixture(
 }
 
 fn path_additivity_refutation_receipt_from_resolved_counts(
-  left: NonNegativeInt,
-  right: NonNegativeInt,
-  both: NonNegativeInt,
+  left: std.integer.NonNegativeInt,
+  right: std.integer.NonNegativeInt,
+  both: std.integer.NonNegativeInt,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> PathAdditivityRefutationReceipt {
@@ -376,9 +376,9 @@ fn path_additivity_refutation_receipt_from_resolved_counts(
 }
 
 fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
-  left: NonNegativeInt,
-  right: NonNegativeInt,
-  both: NonNegativeInt,
+  left: std.integer.NonNegativeInt,
+  right: std.integer.NonNegativeInt,
+  both: std.integer.NonNegativeInt,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> RefutationReceiptResolution {

@@ -15,7 +15,7 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     && environment.architecture == Aarch64
     && environment.presentation_mode == HeadlessPresentation
     && environment.launch_configuration == PlaywrightDefaultChromiumLaunch {
-      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
+      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     }
     && run.observed_on == "2026-08-01T04:58:15Z" as Rfc3339Timestamp
 }

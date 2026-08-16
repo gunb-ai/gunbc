@@ -6,20 +6,20 @@ data observation_ci_render_note: String = "P1 of the progress-and-observation la
 data observation_ci_render_tone_note: String = "Tone contract (operator, 2026-07-24). Arm's-length lines are plain sentences a human reads without decoding — not dense key-equals-value chains, which belong in receipt boxes and files. Magnitudes are in human units: gibibytes, minutes, percent. The named negative example is the floor memory heartbeat's current shape, sixty-plus context-free byte dumps an hour, each carrying a raw current=16106717184 and no subject at all; that line is what the operator watched for ten minutes while a single module typechecked, and it is the exact shape this renderer must not reproduce."
 
 // The scale factors are CONSUMED from std.measure, never respelled here. A renderer carrying its own copy of how many bytes are in a gibibyte is a second unit authority hiding inside a formatting helper, and the fork is easy to miss precisely because it looks like arithmetic rather than modelling.
-data ci_one_decimal: Nat = 10
+data ci_one_decimal: std.nat.Nat = 10
 
-fn ci_gibibyte_tenths(b: ByteSize) -> Nat {
+fn ci_gibibyte_tenths(b: ByteSize) -> std.nat.Nat {
   (byte_size_count(b) * ci_one_decimal) / gibibyte_scale_factor_bytes()
 }
 
-fn ci_milliseconds_per_minute() -> Nat {
+fn ci_milliseconds_per_minute() -> std.nat.Nat {
   milliseconds_per_second() * seconds_per_minute()
 }
 
-data ci_minute_switch_seconds: Nat = 90
+data ci_minute_switch_seconds: std.nat.Nat = 90
 
 // Where the sentence form switches from seconds to minutes is a DISPLAY policy, not a unit: ninety seconds reads better as ninety seconds than as one minute. It is named rather than buried as a literal so it stays visible as the judgement it is, distinct from the scale factors above, which are facts.
-fn ci_tenths_text(tenths: Nat) -> String {
+fn ci_tenths_text(tenths: std.nat.Nat) -> String {
   concat(to_string(tenths / 10), concat(".", to_string(tenths % 10)))
 }
 
@@ -251,8 +251,8 @@ fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine
 type HeartbeatSample {
   elapsed: Millisecond
   active: ObservationSubject
-  entry_index: Nat
-  entry_total: Nat
+  entry_index: std.nat.Nat
+  entry_total: std.nat.Nat
   rss: Measured<ByteSize>
   swap: Measured<ByteSize>
   pressure: Measured<BasisPoint>
@@ -317,12 +317,12 @@ fn ci_escalation_blocked_line(quiet_subject: ObservationSubject, active_leaf: Ob
 data ci_escalation_exponents: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 type EscalationScan {
-  count: Nat
-  threshold: Nat
+  count: std.nat.Nat
+  threshold: std.nat.Nat
 }
 
 // The escalation law has two rates and they are not the same number. The REVEAL DEPTH grows linearly — quiet over T — because the tree is walked one level per threshold. The EMISSION POINTS double — T, 2T, 4T, 8T — so a window that stays quiet does not turn into a per-minute drumbeat saying the same thing; each successive line costs twice the silence to earn and carries strictly more information than the last. That is law 4 and law 3 agreeing rather than competing: attention escalates, but the log stays quiet at arm's length. The exponent roster is bounded by construction, so a window that never ends emits a bounded number of lines instead of growing without limit.
-fn ci_escalation_emission_count(quiet: Millisecond, t: DwellThreshold) -> Nat {
+fn ci_escalation_emission_count(quiet: Millisecond, t: DwellThreshold) -> std.nat.Nat {
   let q = millisecond_count(m: quiet)
   let scanned = fold(
     ci_escalation_exponents,
@@ -355,16 +355,16 @@ fn ci_group_close() -> String {
   annotation_endgroup
 }
 
-fn ci_collapsed_summary(green_count: Nat) -> String {
+fn ci_collapsed_summary(green_count: std.nat.Nat) -> String {
   concat("… ", concat(to_string(green_count), " more finished cleanly"))
 }
 
 // Law 4's quiet half: sub-threshold work collapses to a count rather than a line each. The count is a projection of the events that were collapsed, so the summary is true by construction and the reader can always expand the group to see them.
 type FloorRunSummary {
-  entries_complete: Nat
-  entries_total: Nat
-  refusals: Nat
-  failures: Nat
+  entries_complete: std.nat.Nat
+  entries_total: std.nat.Nat
+  refusals: std.nat.Nat
+  failures: std.nat.Nat
   wall: Millisecond
 }
 
@@ -557,7 +557,7 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
 // neither count to give, and a displayed zero is a claim that the fold looked and found none. A
 // timed-out row reaches the seed inside the failure list, so it is already counted under `failed`;
 // carrying a separate zero beside it would have been a silent claim AND a double-count hazard.
-fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
+fn ci_population_reconciliation_text(declared: std.nat.Nat, classified: std.nat.Nat) -> String {
   if classified == declared {
     ""
   } else if classified < declared {
@@ -574,13 +574,13 @@ fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
 // teaches a reader to ignore the parenthetical. The reconciliation covers exactly the rows the run
 // disposed of; deferred is printed beside it as its own number.
 fn ci_batch_summary_text(
-  batch_index: Nat,
+  batch_index: std.nat.Nat,
   batch_label: NonEmptyStr,
-  declared_population: Nat,
-  passed: Nat,
-  unaffected: Nat,
-  deferred: Nat,
-  failed: Nat,
+  declared_population: std.nat.Nat,
+  passed: std.nat.Nat,
+  unaffected: std.nat.Nat,
+  deferred: std.nat.Nat,
+  failed: std.nat.Nat,
   work: Nanosecond,
 ) -> String {
   let classified = passed + unaffected + failed

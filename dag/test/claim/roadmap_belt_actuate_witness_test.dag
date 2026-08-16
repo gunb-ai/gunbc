@@ -770,7 +770,7 @@ data oracle_refs_execution_note: String = "This witness exists because its subje
 
 test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
   let claim_contract = gunbc_claim_execution_contract(
-    entry: "dag/test/claim/probe_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/probe_witness_test.dag" as std.types.FilePath,
     function: "probe_holds" as NonEmptyStr,
   )
   let claim_refs = belt_oracle_refs_for_contract(contract: claim_contract)

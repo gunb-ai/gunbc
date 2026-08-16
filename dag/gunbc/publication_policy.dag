@@ -7,7 +7,7 @@ type PublicationDisposition
   | WithholdPrivate
 
 type SubtreePublishRule {
-  prefix: FilePath
+  prefix: std.types.FilePath
   disposition: PublicationDisposition
 }
 
@@ -22,8 +22,8 @@ type AdmittedPublicationPolicy {
 }
 
 type PublicationPolicyConstructionRefusal
-  = UnknownTopLevelRoot { prefix: FilePath }
-  | ConflictingSubtreeRule { prefix: FilePath }
+  = UnknownTopLevelRoot { prefix: std.types.FilePath }
+  | ConflictingSubtreeRule { prefix: std.types.FilePath }
 
 type PublicationPolicyConstructionOutcome
   = PublicationPolicyAccepted { admitted: AdmittedPublicationPolicy }
@@ -37,7 +37,7 @@ data known_publication_roots: List<String> = [
   "src",
 ]
 
-fn path_segments(path: FilePath) -> List<String> {
+fn path_segments(path: std.types.FilePath) -> List<String> {
   split(s: path as String, delimiter: "/")
 }
 
@@ -52,18 +52,18 @@ fn segment_prefix_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
   }
 }
 
-fn path_under_prefix(path: FilePath, prefix: FilePath) -> Bool {
+fn path_under_prefix(path: std.types.FilePath, prefix: std.types.FilePath) -> Bool {
   segment_prefix_is_prefix(prefix: path_segments(path: prefix), path: path_segments(path: path))
 }
 
-fn top_level_root(path: FilePath) -> String? {
+fn top_level_root(path: std.types.FilePath) -> String? {
   match path_segments(path: path).first() {
     Absent => Absent
     Present { value: root } => Present { value: root }
   }
 }
 
-fn known_publication_root(path: FilePath) -> Bool {
+fn known_publication_root(path: std.types.FilePath) -> Bool {
   match top_level_root(path: path) {
     Absent => false
     Present { value: root } => contains(known_publication_roots, root)
@@ -87,7 +87,7 @@ fn rule_eq(left: SubtreePublishRule, right: SubtreePublishRule) -> Bool {
 
 fn matching_rules_for_path(
   policy: PublicationPolicy,
-  path: FilePath,
+  path: std.types.FilePath,
 ) -> List<SubtreePublishRule> {
   fold(policy.rules, init: [], f: fn(acc, rule) {
     if path_under_prefix(path: path, prefix: rule.prefix) {
@@ -114,7 +114,7 @@ fn most_specific_rule(rules: List<SubtreePublishRule>) -> SubtreePublishRule? {
 
 fn resolve_disposition_for_path(
   policy: PublicationPolicy,
-  path: FilePath,
+  path: std.types.FilePath,
 ) -> PublicationDisposition {
   match most_specific_rule(rules: matching_rules_for_path(policy: policy, path: path)) {
     Absent => policy.default_disposition
@@ -122,7 +122,7 @@ fn resolve_disposition_for_path(
   }
 }
 
-fn same_prefix_rule_count(rules: List<SubtreePublishRule>, prefix: FilePath) -> Int {
+fn same_prefix_rule_count(rules: List<SubtreePublishRule>, prefix: std.types.FilePath) -> Int {
   fold(rules, init: 0, f: fn(count, rule) {
     if rule.prefix == prefix { count + 1 } else { count }
   })
@@ -130,7 +130,7 @@ fn same_prefix_rule_count(rules: List<SubtreePublishRule>, prefix: FilePath) -> 
 
 fn same_prefix_rules_share_disposition(
   rules: List<SubtreePublishRule>,
-  prefix: FilePath,
+  prefix: std.types.FilePath,
   disposition: PublicationDisposition,
 ) -> Bool {
   fold(rules, init: true, f: fn(ok, rule) {

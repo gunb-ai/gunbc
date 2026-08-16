@@ -11,8 +11,8 @@ type FreeTierUserEnvelope {
 }
 
 type FreeTierServingAssumptions {
-  user_count: Nat
-  replica_count: Nat
+  user_count: std.nat.Nat
+  replica_count: std.nat.Nat
   per_box_monthly_egress_allowance: ByteSize
 }
 
@@ -29,7 +29,7 @@ type FreeTierServingRefusalCause
   | BoxStorageZero
 
 type FreeTierServingFloor {
-  box_count: Nat
+  box_count: std.nat.Nat
   monthly_floor: MoneyPerMonth
 }
 
@@ -82,7 +82,7 @@ fn derive_free_tier_serving_floor(
 fn average_serving_cost_per_registered_user_year_micros_upper_bound(
   annual_cost_of_revenue: FiledMonetaryFact,
   registered_users: RegisteredUserCountRow
-) -> Nat? {
+) -> std.nat.Nat? {
   match filed_amount(fact: annual_cost_of_revenue) {
     Present { value: c } => {
       let cost_whole_usd = usd_whole_dollars_count(m: c)

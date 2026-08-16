@@ -458,7 +458,7 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
 test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let request_credential = ClaudeStateRootRef {
-    root: "/managed/claude-enrollment" as FilePath,
+    root: "/managed/claude-enrollment" as std.types.FilePath,
   }
   let request_model = "claude-managed-model" as NonEmptyStr
   let claude_provider = ProviderInstance {

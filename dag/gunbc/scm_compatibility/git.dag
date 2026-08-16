@@ -52,7 +52,7 @@ type GitCompatibilityRefusal
   | GitCompatibilityAdvanceMissing { name: GitRefName }
   | GitCompatibilityAdvanceDuplicate {
       name: GitRefName,
-      count: NonNegativeInt,
+      count: std.integer.NonNegativeInt,
     }
   | GitCompatibilityAdvanceSymbolicCycle {
       name: GitRefName,
@@ -318,7 +318,7 @@ fn git_compatibility_bind(
 
 fn git_compatibility_octets_identity(
   tag: NonEmptyStr,
-  octets: List<UInt8>,
+  octets: List<std.integer.UInt8>,
 ) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
