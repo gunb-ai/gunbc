@@ -119,6 +119,22 @@ fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
+/// Two `pick` binders BOTH on the caller's ancestor chain, so containment
+/// lookup reaches both and must refuse rather than silently pick one.
+fn fn_chain_homonym_fixture() -> Vec<Rc<SourceFile>> {
+    vec![
+        src("fixchain.dag", "module fixchain\nfn pick() -> Int { 1 }\n"),
+        src(
+            "fixchain_mid.dag",
+            "module fixchain.mid\nfn pick() -> Int { 2 }\n",
+        ),
+        src(
+            "leaf.dag",
+            "module fixchain.mid.leaf\nfn call_pick() -> Int { pick() }\n",
+        ),
+    ]
+}
+
 /// Control fixture: a genuinely-unbound name (declared nowhere).
 fn unbound_fixture() -> Vec<Rc<SourceFile>> {
     vec![src(
@@ -150,20 +166,46 @@ fn namespace_only_refuses_chain_homonym_on_type_path() {
 #[test]
 fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
     let _guard = ResolutionPolicyGuard::set(true);
-    let diags = error_diag_messages(homonym_fixture());
+    let diags = error_diag_messages(fn_chain_homonym_fixture());
     let pick_refusals: Vec<&String> = diags
         .iter()
         .filter(|m| m.contains("ambiguous reference 'pick'"))
         .collect();
     assert!(
         !pick_refusals.is_empty(),
-        "NamespaceOnlyY must refuse the 2-parent-matches fn homonym (the \
+        "NamespaceOnlyY must refuse the 2-binders-on-chain fn homonym (the \
          fn_parent_first_hit silent-pick class) with a typed AmbiguousReference; got {diags:?}"
     );
     let listing = pick_refusals[0];
     assert!(
-        listing.contains("fixfns.one.pick") && listing.contains("fixfns.two.pick"),
-        "the fn refusal must carry both parent candidates; got {listing}"
+        listing.contains("fixchain.pick") && listing.contains("fixchain.mid.pick"),
+        "the fn refusal must carry both candidates; got {listing}"
+    );
+}
+
+/// The OFF-chain companion, and the reason the fixture above changed.
+///
+/// `fixfns.one.pick` / `fixfns.two.pick` are not ancestors of the caller, so
+/// under containment lookup a bare `pick` does not reach them at all. This is
+/// not the silent-pick class getting weaker: refusing an off-chain name
+/// outright is strictly safer than choosing between two candidates, and the
+/// members of a sibling module are reachable as `fixfns.one.pick`, never bare.
+#[test]
+fn namespace_only_does_not_reach_off_chain_fn_homonyms_at_all() {
+    let _guard = ResolutionPolicyGuard::set(true);
+    let diags = error_diag_messages(homonym_fixture());
+    assert!(
+        diags
+            .iter()
+            .any(|m| m.contains("'pick' not found in scope")),
+        "an off-chain fn homonym must not resolve; got {diags:?}"
+    );
+    assert!(
+        !diags
+            .iter()
+            .any(|m| m.contains("ambiguous reference 'pick'")),
+        "an unreachable name is not an ambiguous one -- the two states have \
+         different remedies (qualify vs. it is not visible here); got {diags:?}"
     );
 }
 

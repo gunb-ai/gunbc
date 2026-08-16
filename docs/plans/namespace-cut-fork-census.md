@@ -494,3 +494,41 @@ with the same pattern at read time. It never touched `diags.txt`.
 difference as a change in the world. This is a *subject* error like measuring the wrong tree,
 except the wrong subject is one's own earlier extraction. The discipline: state which tree
 **and which extraction** a number came from — a derived file is provenance too.
+
+## Semantic change surfaced by CI: off-chain bare references stop resolving
+
+The cut changes one resolution behavior in a way worth stating plainly, because
+a test encoded the old one and the difference is easy to misread as a regression.
+
+Two sibling tests in `namespace_unique_on_chain_policy_test` form the
+discriminator, and neither had to be built for the purpose:
+
+| fixture   | binders                        | on caller's ancestor chain | before | after       |
+|-----------|--------------------------------|----------------------------|--------|-------------|
+| `Homonym` | `fixchain`, `fixchain.mid`     | yes                        | ambiguous | ambiguous |
+| `pick`    | `fixfns.one`, `fixfns.two`     | no                         | ambiguous | not found |
+
+Only the off-chain row moved. That is containment lookup behaving as DESIGN
+specifies: a reference is a lexical walk up the ancestor chain, and a sibling
+module's members are reachable as `fixfns.one.pick`, never as a bare `pick`.
+
+**The safety claim survives; only its fixture was invalid.** The test's subject
+is the `fn_parent_first_hit` silent-pick class -- a resolver choosing one of two
+candidates instead of refusing. That class is still reachable for ON-chain
+binders, so the witness was re-aimed at an on-chain fixture rather than retired.
+Retiring it would have deleted live evidence for a claim the cut still makes,
+which is the failure mode DESIGN 4b names: evidence follows a rejected claim, not
+a rejected fixture.
+
+**And an off-chain name now gets a different diagnostic, not a weaker one.**
+`not found in scope` and `ambiguous reference` are different states with
+different remedies -- *qualify it* versus *it is not visible from here* -- so
+collapsing them would be a state-space conflation. A companion test
+(`namespace_only_does_not_reach_off_chain_fn_homonyms_at_all`) now asserts both
+halves: the off-chain name refuses, AND it does not refuse as ambiguous.
+
+Open question for the operator, not decided here: whether sibling-module member
+projection should eventually make `fixfns.one.pick` reachable as `one.pick` from
+a `fixchain.*` caller. DESIGN describes sibling modules as visible with members
+projected; that projection is not implemented today, and nothing in this cut
+depends on it.
