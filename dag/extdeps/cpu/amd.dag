@@ -224,3 +224,15 @@ data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
     sustained_per_thread_hz: hertz(4200000000),
   },
 }
+
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS. It lives here rather than in a witness so that a
+// consumer asking "every AMD processor this repository models" reads one authority, and so that
+// an author adding a row is editing the roster in the same file rather than remembering a test
+// elsewhere. The roster is still hand-authored -- a genuinely closed denominator would have to be
+// discovered from the module tree, which is lens work -- so this narrows the gap rather than
+// closing it, and says so.
+data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+  ryzen_5_3600_catalog,
+  ryzen_7_pro_8700ge_catalog,
+  ryzen_9_7950x3d_catalog,
+]

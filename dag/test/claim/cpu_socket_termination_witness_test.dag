@@ -1,14 +1,15 @@
 module test.claim.cpu_socket_termination_witness
 
 import std.logic { Bool }
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import extdeps.cpu.types { CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.types { CpuModelCatalogRow, SocketFactCitation }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_cpu_catalog_rows }
 import extdeps.cpu.amd {
+  amd_cpu_catalog_rows,
   amd_ryzen_5_3600_authority,
   socket_am5_authority,
   ryzen_5_3600_catalog,
@@ -109,15 +110,52 @@ test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
     && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "contact_count", authority: socket_am5_authority)
 }
 
-// EVERY CATALOG ROW CITES ITS SOCKET, not only the ones this PR touched. The field is required by
-// the row type, so an uncited socket is unwritable -- this pins that the requirement is met with
-// real authorities rather than empty lists, which is the one way the type could be satisfied
-// vacuously.
-test fn w_every_catalog_row_carries_a_nonempty_socket_citation() -> Bool {
-  count(ryzen_5_3600_catalog.socket_citations) == 2
-    && count(ryzen_7_pro_8700ge_catalog.socket_citations) == 2
-    && count(ryzen_9_7950x3d_catalog.socket_citations) == 2
-    && count(altra_max_m12830_catalog.socket_citations) == 2
+// EVERY CATALOG ROW CITES ITS SOCKET, joined over the modules' own rosters rather than a list
+// re-typed here. review 52588 caught the previous form enumerating four rows and omitting
+// altra_q6430_catalog, so a row could have regressed to an empty citation list with this witness
+// still green. Re-listing rows in a test is the shape that produced that hole, not just the
+// omission: a hand-picked subset is a change detector for the rows someone remembered.
+//
+// HONEST CEILING: the rosters are themselves hand-authored, so a NEW row that is never added to
+// its module's roster is still invisible here. What this buys is that the roster sits beside the
+// rows it names, in the file an author is already editing, rather than in a test module they have
+// no reason to open. A genuinely closed denominator would have to be discovered from the module
+// tree, which is lens work and is not attempted here.
+fn every_row_cites_its_socket(rows: List<CpuModelCatalogRow>) -> Bool {
+  count(rows |> filter(r => count(r.socket_citations) >= 2)) == count(rows)
+}
+
+test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
+  every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
+    && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
+    && count(amd_cpu_catalog_rows) == 3
+    && count(ampere_cpu_catalog_rows) == 2
+}
+
+// RED control: the census discriminates. A roster carrying a row with no citations must fail, or
+// the check above would pass on any population -- including an empty roster, which is the way a
+// count-based census most often lies.
+test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
+  let uncited = CpuModelCatalogRow {
+    model_number: ryzen_9_7950x3d_catalog.model_number,
+    oem_listing_id: ryzen_9_7950x3d_catalog.oem_listing_id,
+    vendor: ryzen_9_7950x3d_catalog.vendor,
+    architecture: ryzen_9_7950x3d_catalog.architecture,
+    cores: ryzen_9_7950x3d_catalog.cores,
+    threads: ryzen_9_7950x3d_catalog.threads,
+    nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
+    socket: ryzen_9_7950x3d_catalog.socket,
+    socket_citations: [],
+    tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
+    l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
+    l1_cache_citations: ryzen_9_7950x3d_catalog.l1_cache_citations,
+    l2_cache: ryzen_9_7950x3d_catalog.l2_cache,
+    l2_cache_citations: ryzen_9_7950x3d_catalog.l2_cache_citations,
+    l3_cache: ryzen_9_7950x3d_catalog.l3_cache,
+    l3_cache_citations: ryzen_9_7950x3d_catalog.l3_cache_citations,
+  }
+  !every_row_cites_its_socket(rows: [uncited])
+    && every_row_cites_its_socket(rows: [ryzen_9_7950x3d_catalog])
 }
 
 // RED control: the join is discriminating. A field the rows do not cite, and an authority that did
