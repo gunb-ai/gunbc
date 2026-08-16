@@ -42214,8 +42214,17 @@ fn floor_resource_sample() -> String {
     let cur_kb = cg("memory.current", usize::MAX);
     let ev_high = cg("memory.events", 1);
     let ev_max = cg("memory.events", 2);
+    // The LOCAL counter beside the hierarchical one, on every beat. `memory.events` at this
+    // level already includes everything its descendants generated, so `ev_high` rising says
+    // "something in this subtree was throttled" and cannot say it was us. `ev_local_high` is
+    // the same event restricted to this exact cgroup, and the pair is the only way to separate
+    // our own reclaim from a neighbour's. Carried per beat rather than only in the periodic
+    // envelope because a killed run keeps only what was already printed, and this is the field
+    // the neighbour-pressure hypothesis is decided on.
+    let ev_local_high = cg("memory.events.local", 1);
     format!(
-        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} ev_high={ev_high} ev_max={ev_max}"
+        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} \
+         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high}"
     )
 }
 
@@ -42357,17 +42366,35 @@ fn floor_cgroup_envelope(when: &str) {
     // parent slices recorded 141M against unlimited maxima, so the level doing the throttling
     // and the level holding the limit are different levels, and reading only our own would have
     // reported a process comfortably inside its envelope while it took 16M major faults.
+    //
+    // BOTH `memory.events` AND `memory.events.local`, because the first is HIERARCHICAL — an
+    // ancestor's counters include every event generated anywhere beneath it — and only the
+    // second reports events at that exact cgroup. Reading the hierarchical file alone is how a
+    // parent slice's 141M-versus-476K was read as a difference in neighbour pressure when it is
+    // an aggregate over each subtree's whole history: both parents carry `high=max` and so
+    // cannot be throttled themselves, meaning every one of those events belongs to some
+    // descendant. Local and hierarchical are the split that makes the question decidable at
+    // all — a rising ancestor-hierarchical count beside a flat leaf-local count is the
+    // signature of OTHER descendants being throttled, and without the pair a process cannot
+    // tell its own reclaim from its neighbours'.
+    //
+    // `memory.pressure` (PSI) comes along because the events counters are cumulative totals
+    // rather than rates: two snapshots of a monotone counter give an interval delta, but stall
+    // time is what says whether that reclaim actually cost this process anything.
     let mut dir = std::path::PathBuf::from(&leaf);
     loop {
         let d = dir.to_string_lossy().to_string();
         if std::fs::metadata(format!("{d}/memory.current")).is_ok() {
             eprintln!(
-                "[floor-cgroup] when={when} level={d} max={} high={} current={} peak={} events=[{}]",
+                "[floor-cgroup] when={when} level={d} max={} high={} current={} peak={} \
+                 events=[{}] events_local=[{}] pressure=[{}]",
                 field(&d, "memory.max"),
                 field(&d, "memory.high"),
                 field(&d, "memory.current"),
                 field(&d, "memory.peak"),
                 field(&d, "memory.events"),
+                field(&d, "memory.events.local"),
+                field(&d, "memory.pressure"),
             );
         }
         if d == "/sys/fs/cgroup" || !dir.pop() {
