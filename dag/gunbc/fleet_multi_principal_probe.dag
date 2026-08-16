@@ -23,6 +23,8 @@ import gunbc.fleet_known_hosts_anchor {
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import product.placement_supply { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
@@ -233,6 +235,69 @@ fn fleet_ssh_attempt_raw_from_env() -> String? {
               compose_fleet_ssh_attempt_raw(run_id: run_id, run_attempt: run_attempt)
           }
       }
+  }
+}
+
+data spark_converge_target_env_name: NonEmptyStr = "SPARK_CONVERGE_TARGET"
+
+data spark_converge_execute_env_name: NonEmptyStr = "SPARK_CONVERGE_EXECUTE"
+
+// TARGET SELECTION REFUSES; IT NEVER WIDENS. The earlier reader returned HostIdentity?
+// and its consumer read Absent as "every enrolled Spark", which fused three different
+// states onto one arm: no target requested, an unrecognized target, and an actuating run
+// with no target at all. On the observing path that is merely imprecise; on the actuating
+// path it is DESIGN section 5's absorbing fallback with effects — SPARK_CONVERGE_EXECUTE is
+// set unconditionally by the emitted step and the workflow's target input is optional, so a
+// dispatch that omitted or misspelled the target would have run enable-linger against BOTH
+// Sparks while reporting a normal converge. Widening is never the answer to not knowing.
+type SparkConvergeTargetSelection =
+    SparkConvergeTargetSingle { host: HostIdentity }
+  | SparkConvergeTargetAllObserveOnly
+  | SparkConvergeTargetRefused { reason: String }
+
+fn spark_converge_target_selection(execute_apply: Bool) -> SparkConvergeTargetSelection {
+  spark_converge_target_selection_of(
+    raw: env_var_nonempty(name: spark_converge_target_env_name),
+    execute_apply: execute_apply,
+  )
+}
+
+// The decision, separated from the environment read so it is witnessable at all. A rule
+// that can only be exercised by setting a process env var is a rule no hermetic witness
+// can hold, which is how the widening arm survived unnoticed in the first place.
+fn spark_converge_target_selection_of(
+  raw: NonEmptyStr?,
+  execute_apply: Bool,
+) -> SparkConvergeTargetSelection {
+  match raw {
+    Present { value: raw } =>
+      if raw == "srv5" {
+        SparkConvergeTargetSingle { host: operator_host_srv5 }
+      } else if raw == "srv6" {
+        SparkConvergeTargetSingle { host: operator_host_srv6 }
+      } else {
+        SparkConvergeTargetRefused {
+          reason: join([
+            "SPARK_CONVERGE_TARGET names no enrolled Spark target (expected srv5 or srv6): ",
+            raw as String,
+          ], ""),
+        }
+      }
+    Absent =>
+      if execute_apply {
+        SparkConvergeTargetRefused {
+          reason: "SPARK_CONVERGE_EXECUTE=1 with no SPARK_CONVERGE_TARGET — refusing rather than actuating against every enrolled Spark",
+        }
+      } else {
+        SparkConvergeTargetAllObserveOnly
+      }
+  }
+}
+
+fn spark_converge_execute_apply_from_env() -> Bool {
+  match env_var_nonempty(name: spark_converge_execute_env_name) {
+    Present { value: v } => v == "1"
+    Absent => false
   }
 }
 

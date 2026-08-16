@@ -11,7 +11,7 @@ import gunbc.replacement_cut {
   RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
   BoundaryConsumer,
   BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty,
-  HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut,
+  HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
   EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
   ExternalXRole, BootstrapProducer, ExternalDifferentialOracle, MechanicalCorpusRewriter, HistoricalMeasurementSource,
   ExternalXAnswer, ExternalXRoles, NoExternalOracleRequired,
@@ -419,5 +419,96 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
     DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
       (p as String) == "cut-a0" && (r as String) == "escaping consumer q0 uncovered"
     OutermostBoundary => false
+    DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
   }
+}
+
+fn is_admitted(a: PlanAdmission) -> Bool {
+  match a {
+    PlanAdmitted { admitted: _ } => true
+    PlanRefused { causes: _ } => false
+  }
+}
+
+fn cut_answering(identity: String, answer: HigherBoundaryAnswer) -> ReplacementCut {
+  ReplacementCut {
+    identity: identity as ReplacementCutId,
+    old_root_consumer: nes(s: "b0 boundary"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "b1"),
+    why_not_higher: answer,
+    covered_region: two_region(),
+    boundary_census: ConsumersEnumerated { consumers: [covered_consumer()] },
+    external_x: typed_oracle(),
+    evidence_dispositions: [],
+  }
+}
+
+// The honest state a real first subject lands in: not outermost, and no cut has
+// been authored at the boundary above. It admits, and it carries no identifier
+// that could be mistaken for a resolvable join.
+test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
+  let cut = cut_answering(
+    identity: "cut-interpreter",
+    answer: DescentParentUnauthored {
+      intended_parent_boundary: nes(s: "the engine cut through the v1 driver region"),
+      basis: nes(s: "no cut authored at that boundary by any lane"),
+    },
+  )
+  is_admitted(a: admit_replacement_cut_plan(cut: cut))
+    && match cut.why_not_higher {
+      DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+        (b as String) == "the engine cut through the v1 driver region"
+      OutermostBoundary => false
+      DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+    }
+}
+
+// The new arm's self-reference: naming your own old root as the boundary above
+// you is the same incoherence SelfReferentialDescent already names.
+test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_answering(
+    identity: "cut-self-boundary",
+    answer: DescentParentUnauthored {
+      intended_parent_boundary: nes(s: "b0 boundary"),
+      basis: nes(s: "claims the boundary it is cutting is also the boundary above it"),
+    },
+  )))
+  list_length(items: causes) == 1
+    && causes_include(causes: causes, tag: "self-referential-descent", subject: "")
+}
+
+// POSITIVE CONTROL for the two declared-gap probes below: admission is not
+// vacuous. Without this, "it admits" carries no information.
+test fn probe_control_refuses_undecided() -> Bool {
+  !is_admitted(a: admit_replacement_cut_plan(cut: cut_with(
+    consumers: [undecided_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+}
+
+// DECLARED GAP, enrolled so it is counted rather than rediscovered: parent_cut
+// is an unjoined reference and a parent that exists nowhere is admitted. This
+// test asserts the gap. It goes RED when a cut registry makes the reference
+// joinable -- which is the next-rung trigger firing, not a regression.
+test fn probe_admits_nonexistent_parent() -> Bool {
+  is_admitted(a: admit_replacement_cut_plan(cut: cut_answering(
+    identity: "cut-b0",
+    answer: DescendedFromRefusedCut {
+      parent_cut: "cut-that-exists-nowhere-in-any-tree-zzz" as ReplacementCutId,
+      refusal_summary: nes(s: "a parent never authored cannot have refused anything"),
+    },
+  )))
+}
+
+// SCOPE, not a gap: plan admission judges the authored plan's internal
+// coherence, never the world, so a well-formed OutermostBoundary claim admits
+// whether or not a higher boundary exists in fact.
+test fn probe_admits_outermost_claim() -> Bool {
+  is_admitted(a: admit_replacement_cut_plan(cut: cut_answering(
+    identity: "cut-outermost",
+    answer: OutermostBoundary,
+  )))
 }

@@ -3,9 +3,8 @@
 // P1 retention cohort + width-2 crossover harness. Calls the SAME production entrypoint
 // `run_discovery_corpus_with_options` that `claim_executor` uses.
 //
-// Default (no width override): `DiscoveryWidthPolicy::Adaptive` — fleet-equivalent path;
-// schedule-retention arms here and `[p1-cohort]` per-entry lines emit on this branch
-// (`gunbc.p1_retention_cohort_receipt`, `p1-retention-vs-drain-cohort-receipt.md`).
+// Default (no width override): `DiscoveryWidthPolicy::DerivedSchedule` — fleet-equivalent
+// path; schedule-retention arms on the width-1 special case inside discovery.
 //
 // Width-2 crossover overrides (one run per invocation — interleave by alternating env):
 //   GUNBC_P1_COHORT_WIDTH=1  → DiscoveryWidthPolicy::Serial (width-1 baseline)
@@ -37,9 +36,7 @@ use v1_compiler::cli_run::{
     run_discovery_corpus_with_options, shared_typecheck_store_counters_snapshot,
     typecheck_compute_count, DiscoveryCorpusOptions, DiscoveryWidthPolicy,
 };
-use v1_compiler::memory_governor::{
-    leaf_cgroup_dir, read_cgroup_raw, read_cgroup_u64, MemoryGovernor,
-};
+use v1_compiler::memory_governor::{leaf_cgroup_dir, read_cgroup_raw, read_cgroup_u64};
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn cohort_roster_relative_path() -> String {
@@ -87,7 +84,7 @@ fn matrix_cell_label() -> Option<String> {
     }
 }
 
-fn cohort_width_policy(governor: Arc<MemoryGovernor>) -> Result<DiscoveryWidthPolicy, String> {
+fn cohort_width_policy() -> Result<DiscoveryWidthPolicy, String> {
     if let Some(cell) = matrix_cell_label() {
         match cell.as_str() {
             "A" | "B" => Ok(DiscoveryWidthPolicy::Serial),
@@ -103,7 +100,7 @@ fn cohort_width_policy(governor: Arc<MemoryGovernor>) -> Result<DiscoveryWidthPo
             )),
         }
     } else {
-        Ok(DiscoveryWidthPolicy::Adaptive(governor))
+        Ok(DiscoveryWidthPolicy::DerivedSchedule)
     }
 }
 
@@ -120,7 +117,14 @@ fn width_label(width_policy: &DiscoveryWidthPolicy) -> &'static str {
     match width_policy {
         DiscoveryWidthPolicy::Serial => "serial-width-1",
         DiscoveryWidthPolicy::ControlledWidthTwo => "controlled-width-2",
-        DiscoveryWidthPolicy::Adaptive(_) => "adaptive",
+        DiscoveryWidthPolicy::DerivedSchedule => "derived-schedule",
+        DiscoveryWidthPolicy::FixedWidth(w) => {
+            if *w <= 1 {
+                "fixed-width-1"
+            } else {
+                "fixed-width-n"
+            }
+        }
     }
 }
 
@@ -128,7 +132,17 @@ fn scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
     match width_policy {
         DiscoveryWidthPolicy::Serial => 1,
         DiscoveryWidthPolicy::ControlledWidthTwo => 2,
-        DiscoveryWidthPolicy::Adaptive(governor) => governor.current_target_width(),
+        DiscoveryWidthPolicy::DerivedSchedule => {
+            let hardware_max = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1);
+            v1_compiler::derived_realization_schedule::RealizationConcurrency::for_walk(
+                hardware_max,
+            )
+            .map(|s| s.current_target_width())
+            .unwrap_or(1)
+        }
+        DiscoveryWidthPolicy::FixedWidth(w) => *w,
     }
 }
 
@@ -261,13 +275,7 @@ fn main() -> ExitCode {
         std::env::set_var("GUNBC_P1_COHORT_RECEIPT", "1");
     }
 
-    let governor = Arc::new(MemoryGovernor::from_environment(
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1),
-    ));
-
-    let width_policy = match cohort_width_policy(Arc::clone(&governor)) {
+    let width_policy = match cohort_width_policy() {
         Ok(p) => p,
         Err(msg) => {
             eprintln!("p1_cohort_probe: refused: {msg}");
