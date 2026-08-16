@@ -571,7 +571,11 @@ probe, which costs tens of minutes.
 Root B **is** instance 1: its whole mechanism is a closure-content branch.
 
 **A third candidate, same shape, NOT executed:** `05_emit_rust`
-`type_leaf_is_unbound_in_closure_scope` returns `true` on `Absent` — a name missing from the
+`type_leaf_is_unbound_in_closure_scope` returns `true` on the `Absent` **match arm of
+`lookup_type_by_name`** (which returns `Node?`) — i.e. on a lookup MISS, nothing whatsoever to do
+with a type or variant *named* `Absent`. **My original wording here read "returns `true` on
+`Absent`" and that was ambiguous enough to be misread as the name; corrected 2026-08-16 after it
+did exactly that.** A name missing from the
 closure's type env is treated as unbound, which then drives spurious-generic suppression in fold
 rendering. Narrower closure, silent defaulting arm. I have not shown it takes the *wrong* arm in a
 pure-v2 closure, so it is a candidate and must not be counted as a confirmed instance. What would
@@ -648,9 +652,14 @@ genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not
 mis-spelling was always there; unit-collapse was **fabricating plausible output** over it (§5). The
 arity finding survives as a real second defect, now typed and located instead of masked.
 
-**Relation to the candidate above.** eager-deer-389's `type_leaf_is_unbound_in_closure_scope`
-candidate also fires on `Absent`. These are *different* mechanisms on one name and neither
-subsumes the other; they should not be merged without a measurement showing one arm gates the other.
+**Relation to the candidate above — RETRACTED 2026-08-16 by `eager-deer-389`, whose wording caused
+it.** The two mechanisms do **not** share the name `Absent` and the apparent coincidence was an
+artifact of this document. `is_value_variant_type_arg` fires on the *variant name* `Absent`
+declared by `v2.std.optional` and `dag/std/upsert_decision`. `type_leaf_is_unbound_in_closure_scope`
+fires on the `Absent` **arm of an `Option`** returned by `lookup_type_by_name` — a lookup miss. One
+is a name in the corpus; the other is a coproduct arm in the emitter's own control flow. They are
+still both closure-membership facts, so an interaction is not excluded — but the specific
+same-name premise is false and no experiment should be designed around it.
 
 **Not claimed:** that the seed closure lacks these collisions (the obvious next measurement, and it
 would make this structurally identical to Root B rather than analogous); any attribution of the
@@ -662,3 +671,58 @@ ambiguous population is empty (single authority; deletes the class). The emitter
 fail-closed backstop and is required regardless — today an ambiguous name silently produces `()`
 rather than a typed located refusal, so the landed guard should **refuse**, not the non-empty-owner
 test used for measurement, which still silently proceeds.
+
+#### §10 — instance 3, QUALIFIED against the meta-root by a follow-up measurement (`gentle-dove-833`, 2026-08-16)
+
+**I claimed this was a third instance of "the emitter has never been exercised on a seed-free
+closure." That claim is now partly falsified, by my own instrument, and the qualification matters
+more than the instance did.**
+
+`derive_variant_to_enum`'s sentinel insert was instrumented to dump the ambiguous set per closure,
+and run on a pure-v2 entry and a seed entry under identical source roots:
+
+```
+src/v2/compiler/05_emit.dag   6 distinct ambiguous names:
+    Absent · Named · Optional · Repeat · Terminal · TypeExprKindAuthorityInvalid
+src/v1/05_emit_rust.dag       6 distinct ambiguous names:
+    Absent · AsAuthored · Bind · Named · SnakeCase · Text
+```
+
+**The seed closure is not protected.** It carries ambiguous names too — six of them, including
+`Absent`, which both closures share — and the emitter collapses them by the same predicate. So
+this mechanism **is** closure-shaped (the *set* is a function of closure membership, and the two
+sets genuinely differ) but it does **not** correlate in the direction the meta-root asserts: there
+is no favourable seed arm and unfavourable v2 arm here. Both closures take the same arm; the v2
+closure merely happens to have ambiguous names (`Optional`, `Absent`) that occupy far more type-arg
+positions.
+
+§10 names its own falsifier as "a third closure-shape branch that does NOT correlate." **This is
+that.** It does not touch Root B, whose path-substring branch is genuinely seed-vs-v2. It does mean
+the meta-root should be stated as *several independent decisions keyed off under-modeled closure
+facts* — which is how `eager-deer-389` already restated it — rather than as *the seed is the
+exercised configuration*, because at least one closure-shaped branch damages the seed equally.
+
+**A second correction, and it makes the finding smaller and much more actionable.** I described
+this as a state-space conflation in the carrier. Reading every consumer says otherwise: the other
+six read sites **already guard the sentinel** —
+
+```
+2031  Present { value: parent } => if parent != "" { concat(parent, "::", name) } else { name }
+2515  let enum_name = …; if enum_name == "" { [] } else { … }
+2873  Present { value: enum_name } => if enum_name == "" { [] } else { … }
+```
+
+Only line 705 does not, because `map_contains_key` cannot see the value. So this is **one consumer
+diverging from a convention its six siblings already follow**, not a design-wide gap. The minimal
+correct change restores the authority's own convention rather than inventing a rule.
+
+That said, the guard being hand-repeated at six sites is itself the §2 duplication that let the
+seventh omit it, so the terminal shape is still to make the value a coproduct
+(`Unowned | OwnedBy { enum } | Ambiguous { enums }`) so the conflated read has no constructor —
+and, per `smart-ram-730`'s sequencing, land the refusal first so the renames can be *verified* to
+empty the population instead of proving a negative against a silent predicate.
+
+**Also retracted here, since it was written against a premise `eager-deer-389` has now withdrawn:**
+my "Relation to the candidate above" paragraph assumed our two mechanisms shared the name `Absent`.
+They do not — theirs is the absent arm of an `Option` returned by `lookup_type_by_name`, not a
+corpus name. The three-run partition I proposed is cancelled; there was no overlap to partition.
