@@ -192,3 +192,9 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
       acc && (r.authority.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     })
 }
+
+// THE BMC REFERENCE PART JOINS THE ASPEED CHIP AUTHORITY, NOT ONLY OCP PROSE LABELS.
+test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
+  (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
+    && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
+}

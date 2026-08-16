@@ -274,6 +274,11 @@ type MtJadeReferencePartRow {
   authority: ExternalAuthority
 }
 
+// THE OCP REFERENCE-PART ROW NAMES AST2500 IN PROSE; THE CHIP FACTS LIVE IN THE ASPEED
+// AUTHORITY. This edge joins the platform BMC role to extdeps.bmc.aspeed_ast2500 rather than
+// retyping the part number as the only source of chip identity.
+data mt_jade_bmc_chip_catalog: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
+
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
     ordering_part_number: "AST2500",
