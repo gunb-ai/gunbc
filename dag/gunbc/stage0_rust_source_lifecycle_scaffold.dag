@@ -22,7 +22,7 @@ import std.keyed_roster { path_occurrence_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import gunbc.roadmap_model { RoadmapNodeId }
-import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
+import v2.compiler.self_host.stage0_crate_layout { hand_maintained_stage0_filenames }
 import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }

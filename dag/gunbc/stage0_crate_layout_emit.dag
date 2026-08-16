@@ -1,6 +1,6 @@
 module gunbc.stage0_crate_layout_emit
 
-import v2.compiler.self_host.frontier {
+import v2.compiler.self_host.stage0_crate_layout {
   emit_hand_maintained_pub_mod_block,
   hand_maintained_pub_mod_basenames,
   hand_maintained_stage0_dirs,

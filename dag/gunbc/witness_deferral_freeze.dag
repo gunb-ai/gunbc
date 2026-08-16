@@ -689,29 +689,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/compile_door_ledger_test.dag", functions: ["ledger_cause_histogram_over_mixed_affected_set"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/compiler_frontier_measured_roster_test.dag",
-    functions: [
-      "compiler_frontier_structural_census_invariants_holds",
-      "compiler_frontier_measured_parse_engine_hooks_self_emit_ready_holds",
-      "compiler_frontier_measured_tokenize_emit_surface_holds",
-      "compiler_frontier_measured_compile_emit_surface_holds",
-      "compiler_frontier_sweep_order_has_expected_length_holds",
-      "compiler_frontier_measured_sweep_order_matches_tractability_rank_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag",
-    functions: [
-      "compiler_frontier_per_module_probe_survey_holds",
-      "compiler_frontier_gap_clustering_common_root_at_blocker_class_holds",
-      "compiler_frontier_wave2_blocker_partition_totality_holds",
-      "compiler_frontier_roster_bidirectional_totality_live_survey_holds",
-      "compiler_frontier_receipt_totality_wall_live_survey_holds",
-      "compiler_frontier_wave2_emit_surface_dominates_holds",
-      "compiler_frontier_wave2_sizing_band_a_leaf_count_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag",
     functions: [
       "frontier_probe_entry_blocker_is_emit_surface",

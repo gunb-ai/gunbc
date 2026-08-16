@@ -89,15 +89,6 @@ path = "src/bin/discover_owned_data.rs"
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
 
-# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — per-module emit-frontier survey host transport.
-# Authority: module census reads `compiler_frontier_sweep_order` from `frontier.dag` at runtime (no parallel roster).
-# NOT floor-enrolled — long-lane local recipe via `frontier_probe_survey_transport.dag`.
-# CHECKABLE RECEIPT: census before=27 (`compiler_frontier_roster_count`); after shrink=0 LOC when manifest witness greens.
-# Bin LOC: 821 (origin/main) → 1088 (+267 Lane 2 assemble_detail/overlap manifest serialize; see frontier_probe_survey_transport_scaffold_note).
-# DISSOLUTION: `gunbc.plans.wave2_prep_design` §2.3 + `^migrate_when_frontier_per_module_probe_receipt_binds`; then delete bin.
-[[bin]]
-name = "frontier_probe_survey"
-path = "src/bin/frontier_probe_survey.rs"
 
 # CI2-0 Commit B sweep driver — local recipe only (NOT floor-enrolled, not WitnessBin-addressed):
 # per-entry canonical realization sweep over the frontier-probe overlay transport.

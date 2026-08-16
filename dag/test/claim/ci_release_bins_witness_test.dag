@@ -41,13 +41,11 @@ test fn witness_pack_includes_every_witness_declared() -> Bool {
 
 test fn witness_measured_gap_bins_enrolled() -> Bool {
   release_bin_is_enrolled(bin_name: "cssl_assemble")
-    && release_bin_is_enrolled(bin_name: "frontier_probe_survey")
 }
 
 test fn witness_build_line_carries_gap_bins() -> Bool {
   let line = ci_release_build_line()
   string_contains(s: line, pattern: "--bin cssl_assemble")
-    && string_contains(s: line, pattern: "--bin frontier_probe_survey")
     && string_contains(s: line, pattern: "--bin claim_executor")
 }
 
