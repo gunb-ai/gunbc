@@ -2,6 +2,8 @@ module gunbc.codex_supervised_turn
 
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.temporal_effect {
   HeldLease,
@@ -55,7 +57,7 @@ import gunbc.provider_wire_evidence {
   ProviderWireCaptureRefused,
   retain_provider_wire_capture,
 }
-import gunbc.retained_shell_script { retained_foreign }
+import gunbc.retained_shell_script { retained_transport }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.llm.codex_app_server {
@@ -69,6 +71,7 @@ import extdeps.llm.codex_app_server {
   codex_thread_start_result_thread_key,
   codex_turn_start_result_turn_key,
   codex_entity_id_key,
+  codex_app_server_turn_start_request_line,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -100,7 +103,17 @@ data codex_supervised_client_command_id_file_name: String = "/codex_supervised_c
 
 data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
 
-data codex_supervised_python_extract_thread_id: String = "import sys,json; o=json.loads(sys.stdin.read()); r=o.get('result',dict()); t=r.get('thread',dict()); print(t.get('id',''))"
+data codex_supervised_thread_id_slot: NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as NonEmptyStr
+
+data codex_supervised_turn_script_dissolve_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.codex_supervised_turn",
+  decl_name: "codex_supervised_turn_script_dissolve_note",
+  field: WholeDeclaration,
+}
+
+data codex_supervised_turn_script_dissolve_note: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: codex_supervised_turn_script — concat-built bash fifo coprocess (setsid, held-open stdin, poll loop, in-shell thread-id slot substitution) for runtime-present bundled native app-server. DISSOLVES WHEN supervised Codex session realizes as typed host_effect_apply ops or grammar-emitted bash without hand-built JSON/sed (docs/plans/shell-intent-emit-realization-design.md Phase 2; operator ruling #8166 wet receipt gate).")
+
+data codex_supervised_turn_script_scaffold_note: String = "DECLARED SCAFFOLD (review 52586/52587, DESIGN §shell→intent). Runtime-present supervised app-server turn still routes through retained_transport + shell.Exec.Run because no typed app-server stdin session transport exists yet. turn/start wire bytes come from extdeps.llm.codex_app_server codex_app_server_turn_start_request_line (serialize_json); in-shell thread-id extraction and slot substitution are interim until Phase 2 host_effect_apply lands. Stay draft per codex_supervised_lease_selection_receipt_note until bounded wet CodexRunnerTurnTerminalReceipt."
 
 type CodexThreadActivity
   = CodexThreadAbsent
@@ -378,6 +391,33 @@ fn codex_supervised_turn_user_input(turn: WorkerTurn) -> String {
   }
 }
 
+fn codex_supervised_turn_start_line_template(user_input: String) -> String {
+  codex_app_server_turn_start_request_line(
+    thread_id: codex_supervised_thread_id_slot,
+    user_input: user_input,
+  ) as String
+}
+
+fn supervised_thread_id_from_line(line: String) -> NonEmptyStr? {
+  let trimmed = line.trim()
+  if trimmed == "" {
+    none
+  } else {
+    match parse_json(s: trimmed) {
+      Absent => none
+      Present { value: parsed } =>
+        match supervised_rpc_from_id_response(
+          id: codex_supervised_thread_start_id,
+          obj: parsed,
+          entity_key: codex_thread_start_result_thread_key as String,
+        ) {
+          SupervisedRpcOk { native_id: id } => Present { value: id }
+          _ => none
+        }
+    }
+  }
+}
+
 fn codex_supervised_turn_script(
   executable: FilePath,
   codex_home: FilePath,
@@ -386,10 +426,15 @@ fn codex_supervised_turn_script(
   client_command_id: NonEmptyStr,
   evidence_root: FilePath,
 ) -> String {
-  let escaped_input = bash_single_quote_escape(s: user_input)
   let escaped_cmd_id = bash_single_quote_escape(s: client_command_id as String)
   let cmd_id_path = bash_single_quote_escape(
     s: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
+  )
+  let turn_line_template = bash_single_quote_escape(
+    s: codex_supervised_turn_start_line_template(user_input: user_input),
+  )
+  let thread_id_slot = bash_single_quote_escape(
+    s: codex_supervised_thread_id_slot as String,
   )
   concat(
     "export CODEX_HOME='",
@@ -431,51 +476,43 @@ fn codex_supervised_turn_script(
                                         to_string(n: codex_supervised_thread_start_id),
                                         concat(
                                           "' \"$OUT\" | tail -1); if [ -n \"$LINE\" ]; then ",
-                                          "THREAD_ID=$(printf '%s' \"$LINE\" | python3 -c '",
+                                          "THREAD_ID=$(printf '%s' \"$LINE\" | sed -n 's/.*\"thread\"[^}]*\"id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); fi; fi; ",
                                           concat(
-                                            codex_supervised_python_extract_thread_id,
+                                            "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
                                             concat(
-                                              "'); fi; fi; ",
+                                              "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
                                               concat(
-                                                "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
+                                                "printf '%s' '",
                                                 concat(
-                                                  "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
+                                                  escaped_cmd_id,
                                                   concat(
-                                                    "printf '%s' '",
+                                                    "' >'",
                                                     concat(
-                                                      escaped_cmd_id,
+                                                      cmd_id_path,
                                                       concat(
-                                                        "' >'",
+                                                        "'; TURN_LINE=$(printf '%s' '",
                                                         concat(
-                                                          cmd_id_path,
+                                                          turn_line_template,
                                                           concat(
-                                                            "'; TURN_LINE=$(printf '{\"jsonrpc\":\"2.0\",\"id\":",
+                                                            "' | sed \"s/",
                                                             concat(
-                                                              to_string(
-                                                                n: codex_supervised_turn_start_wire_id,
-                                                              ),
+                                                              thread_id_slot,
                                                               concat(
-                                                                ",\"method\":\"turn/start\",\"params\":{\"threadId\":\"%s\",\"input\":[{\"type\":\"text\",\"text\":\"",
+                                                                "/$THREAD_ID/\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
+                                                                "TERMINAL=0; for _ in $(seq 1 600); do ",
                                                                 concat(
-                                                                  escaped_input,
+                                                                  "if grep -q 'turn/completed' \"$OUT\" || grep -q 'turn/failed' \"$OUT\"; then TERMINAL=1; break; fi; ",
                                                                   concat(
-                                                                    "\"}]}}' \"$THREAD_ID\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
-                                                                    "TERMINAL=0; for _ in $(seq 1 600); do ",
+                                                                    "sleep 0.05; done; exec 3>&-; ",
+                                                                    "wait \"$APID\"; EC=$?; ",
                                                                     concat(
-                                                                      "if grep -q 'turn/completed' \"$OUT\" || grep -q 'turn/failed' \"$OUT\"; then TERMINAL=1; break; fi; ",
+                                                                      "if [ \"$TERMINAL\" -eq 0 ]; then EC=98; fi; ",
+                                                                      "fi; ",
                                                                       concat(
-                                                                        "sleep 0.05; done; exec 3>&-; ",
-                                                                        "wait \"$APID\"; EC=$?; ",
+                                                                        "kill -TERM -$APID 2>/dev/null || true; wait \"$APID\" 2>/dev/null || true; ",
                                                                         concat(
-                                                                          "if [ \"$TERMINAL\" -eq 0 ]; then EC=98; fi; ",
-                                                                          "fi; ",
-                                                                          concat(
-                                                                            "kill -TERM -$APID 2>/dev/null || true; wait \"$APID\" 2>/dev/null || true; ",
-                                                                            concat(
-                                                                              "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
-                                                                              "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
-                                                                            ),
-                                                                          ),
+                                                                          "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
+                                                                          "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
                                                                         ),
                                                                       ),
                                                                     ),
@@ -865,7 +902,7 @@ fn run_codex_supervised_turn(
             binding: binding,
             observed: LeaseRunningExpected,
           )
-          let script = retained_foreign(
+          let script = retained_transport(
             body: codex_supervised_turn_script(
               executable: projected.executable.path,
               codex_home: codex_supervised_turn_codex_home(
@@ -877,7 +914,8 @@ fn run_codex_supervised_turn(
               client_command_id: cmd_id,
               evidence_root: evidence_root,
             ),
-            reason: "Codex supervised turn: bundled native app-server held open through thread/start then turn/start; stdout/stderr captured until turn terminal notification" as NonEmptyStr,
+            reason: "Codex supervised turn: interim runtime-present fifo coprocess until host_effect_apply typed app-server transport (codex_supervised_turn_script_dissolve_note)" as NonEmptyStr,
+            dissolves_to: codex_supervised_turn_script_dissolve_ref,
           )
           let run = shell.Exec.Run(script: script)
           let capture = split_gunbc_stdio_capture(combined: run.stdout)

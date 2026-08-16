@@ -20,12 +20,16 @@ import gunbc.codex_supervised_turn {
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
   codex_supervised_turn_session_policy,
+  codex_supervised_turn_start_line_template,
   codex_turn_start_admission,
   codex_runner_turn_terminal_receipt,
   disposition_from_supervised_parse,
   empty_supervised_turn_parse_acc,
   parse_supervised_turn_stdout,
+  supervised_thread_id_from_line,
 }
+
+import extdeps.languages.json.parse { parse_json }
 
 import std.temporal_effect {
   HeldSessionLease,
@@ -158,6 +162,24 @@ test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
     ProviderTurnNotObserved => true
     _ => false
+  }
+}
+
+test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
+  let line =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
+  match supervised_thread_id_from_line(line: line) {
+    Present { value: id } => (id as String) == "thread-uuid-1"
+    Absent => false
+  }
+}
+
+test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
+  let user_input = "say \"hello\"\nline2\\backslash"
+  let line = codex_supervised_turn_start_line_template(user_input: user_input)
+  match parse_json(s: line) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
