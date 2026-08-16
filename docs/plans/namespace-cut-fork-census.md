@@ -99,6 +99,40 @@ census run decides both. Note that bare `row` was only ever resolving through th
 import list; under namespace-only resolution a sibling's member was always going to
 need a projection, so this is the cut exposing a form the corpus never had to state.
 
+## Diagnostic spans do not reliably locate the failing reference
+
+Discovered while building the repair, and it constrains how any mechanical pass can
+be written. The obvious safe instrument is **span-directed rewriting**: the compiler
+has already located every refusal at byte grain, so the rewrite is driven by the
+instrument's own output rather than by a regex over source text (a regex is a *model*
+of the resolver, and this lane has already paid for one of those). Each edit verifies
+that the span's bytes equal the diagnostic's name before writing anything.
+
+That verification immediately refused a third of the corpus:
+
+| diagnostic class | total | span points at the name |
+|---|---|---|
+| `unresolved type` | 1745 | 1095 (62%) |
+| `undefined variable` | 1073 | 756 (70%) |
+| `function … not found` | 1678 | **517 (30%)** |
+
+Worked example — `unresolved type 'ModuleIdentity' (repo_atlas_projection.dag:10819-10833)`
+points at `AtlasChangeMar`, the *enclosing declaration's* name, while the failing
+reference sits ~28 bytes later inside the record body. Both names are 14 bytes, so a
+length check would have passed and a naive rewrite would have corrupted the declaration
+while leaving the reference untouched.
+
+**This is a §5 locatedness gap**, not merely an inconvenience: "typed, located
+diagnostic" is the standard, and a span that names a reference's container has located
+the wrong thing. The root fix belongs in `04_infer` — report the reference's own span —
+and it converges with the repair already owed there.
+
+**Until then the pass is iterative, not one-shot**, which is the fail-closed shape
+anyway: qualify only the sites whose span verifies, re-run the census, and let the
+newly-resolving declarations expose the residue with fresh spans. Each round edits
+only what it can prove and re-measures rather than modelling the remainder. A round
+that stops shrinking is the signal to fix the spans rather than to widen the rewriter.
+
 ## Sequencing consequence
 
 Class 3 is now eight names, all small, none blocking. The rule that survives is
