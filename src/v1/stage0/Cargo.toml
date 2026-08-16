@@ -78,6 +78,11 @@ path = "src/bin/claim_batch.rs"
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
 
+# CHARAT-0 measurement scaffold (not floor-enrolled).
+[[bin]]
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
+
 # Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
 # Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
 [[bin]]
