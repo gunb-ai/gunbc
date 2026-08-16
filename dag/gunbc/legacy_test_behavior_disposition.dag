@@ -285,7 +285,19 @@ fn legacy_test_behavior_unclassified_count_live() -> Int {
 // Each side therefore names ONE exact identity that exists independently of
 // this migration. Both are full `path::fn` identities, the format the scanners
 // actually emit (verified by execution, not assumed).
-data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_refuses_in_narrow_pool_without_algebra_authority"
+// REPOINTED by the namespace cut. The previous identity lived in
+// class_b_trim_specimen_test.rs, whose whole subject was `import` binding
+// semantics ("explicit `import std.algebra { trim }` binds in a narrow pool
+// while a bare `trim` refuses"), so the cut that makes `import` a parse error
+// retired the module along with four of the five cli_run symbols it consumed.
+// That is the hazard this control's own comment names -- an identity chosen to
+// exist "independently of this migration" was independent of the TEST
+// migration and not of the import cut, so the control would have gone false
+// while looking like a scanner regression rather than a deleted subject.
+// The replacement is deliberately algebraic: FieldOfFractions construction has
+// no relationship to imports, namespaces, or test migration, so no lane
+// currently in flight can drain it.
+data legacy_discovery_known_positive: String = "src/v1/tests/src/field_of_fractions_construction_test.rs::field_of_fractions_pair_stays_boxed_record_not_native_collapse"
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.

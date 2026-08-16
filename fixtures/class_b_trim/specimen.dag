@@ -1,7 +1,7 @@
 module test.claim.class_b_trim_specimen
 
 
-data class_b_trim_specimen_note: String = "Class B trim fix specimen: trim binds via explicit import std.algebra { trim } — ListedImport closure, not pool-membership coincidence. Narrow pool overlay removes std.types transitive algebra import; trim still compiles when std.algebra is in the import closure. Coincidence regression lives in coincidence_specimen.dag. Executing receipt: v1-compiler-tests class_b_trim_specimen_test."
+data class_b_trim_specimen_note: String = "Class B trim fix specimen: trim binds via explicit import std.algebra { trim } — ListedImport closure, not pool-membership coincidence. Narrow pool overlay removes std.types transitive algebra import; trim still compiles when std.algebra is in the import closure. Coincidence regression lives in coincidence_specimen.dag. NO EXECUTING RECEIPT: this previously cited v1-compiler-tests class_b_trim_specimen_test, which the namespace cut deleted along with the `import` binding semantics that were its entire subject. The specimen is retained because other consumers reference it, not because anything executes it."
 
 fn free_trim(s: String) -> String {
   trim(s)

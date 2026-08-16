@@ -37,7 +37,6 @@ fn retained_module_source_file(m: RetainedLegacyRustTestModule) -> String {
 // appear nowhere below.
 fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
   [
-    retained_class_b_trim_specimen,
     retained_namespace_unique_on_chain_policy,
     retained_materialization_provider_resolved_graph_consumer,
     retained_decl_facts_dimensionless_projection,
@@ -47,12 +46,6 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
     retained_whole_tree_wiring_enum,
     retained_helpers,
   ]
-}
-
-data retained_class_b_trim_specimen: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
-  source_file: "class_b_trim_specimen_test.rs",
-  purpose: "Class B trim discrimination needs primary-precedence pool overlays and observes v1 infer_env binding directly: explicit `import std.algebra { trim }` binds in a narrow pool while a bare `trim` refuses even when std.algebra is already in the compilation pool. Pool-overlay precedence is a property of the seed resolver's pool assembly, not of any program the substrate can author." as NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The v2 witness route covers compiler-subject tests (CI2), at which point the pool-overlay specimen migrates and this row is deleted." as NonEmptyStr },
 }
 
 data retained_namespace_unique_on_chain_policy: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
