@@ -11,6 +11,7 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_added_count,
 }
 import gunbc.ownership { Ownership }
@@ -100,12 +101,14 @@ fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
 ) -> MembershipPlan<RunnerSlotMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: runner_slot_membership_key_relation,
-    value_eq: runner_slot_member_value_eq,
-    ownership_of: runner_slot_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: runner_slot_membership_key_relation,
+      value_eq: runner_slot_member_value_eq,
+      ownership_of: runner_slot_member_ownership,
+    )
   )
 }
 

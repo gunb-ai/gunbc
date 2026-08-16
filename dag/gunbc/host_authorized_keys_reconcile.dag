@@ -12,6 +12,7 @@ import gunbc.ownership { Ownership, Owned }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
+  membership_plan_admitting_outcome,
 }
 
 type HostAuthorizedKeysMembershipKeyRelation
@@ -58,12 +59,14 @@ data host_authorized_keys_membership_key_relation: KeyRelation<HostAuthorizedKey
 )
 
 fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey> {
-  membership_reconcile(
-    desired: fleet_authorized_keys,
-    observed: observed,
-    relation: host_authorized_keys_membership_key_relation,
-    value_eq: authorized_key_value_eq,
-    ownership_of: authorized_key_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: fleet_authorized_keys,
+      observed: observed,
+      relation: host_authorized_keys_membership_key_relation,
+      value_eq: authorized_key_value_eq,
+      ownership_of: authorized_key_ownership,
+    )
   )
 }
 

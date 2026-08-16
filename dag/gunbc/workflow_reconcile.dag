@@ -17,6 +17,7 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
 }
 import gunbc.ownership { Ownership, Ensured }
 
@@ -394,12 +395,14 @@ fn workflow_fact_reconcile(
   desired: List<WorkflowFactTree>,
   observed: List<WorkflowFactTree>,
 ) -> MembershipPlan<WorkflowFactMember> {
-  membership_reconcile(
-    desired: workflow_fact_forest_members(forest: desired),
-    observed: workflow_fact_forest_members(forest: observed),
-    relation: workflow_fact_membership_key_relation,
-    value_eq: workflow_fact_member_value_equal,
-    ownership_of: workflow_fact_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: workflow_fact_forest_members(forest: desired),
+      observed: workflow_fact_forest_members(forest: observed),
+      relation: workflow_fact_membership_key_relation,
+      value_eq: workflow_fact_member_value_equal,
+      ownership_of: workflow_fact_member_ownership,
+    )
   )
 }
 

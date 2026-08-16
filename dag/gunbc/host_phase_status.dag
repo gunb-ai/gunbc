@@ -32,6 +32,7 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_write_count,
 }
 import gunbc.ownership { Ownership, Owned }
@@ -265,12 +266,14 @@ fn host_phase_reconcile(
   desired: List<HostPhaseCellStatus>,
   observed: List<HostPhaseCellStatus>,
 ) -> MembershipPlan<HostPhaseCellStatus> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: host_phase_membership_key_relation,
-    value_eq: host_phase_cell_status_eq,
-    ownership_of: host_phase_cell_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: host_phase_membership_key_relation,
+      value_eq: host_phase_cell_status_eq,
+      ownership_of: host_phase_cell_ownership,
+    )
   )
 }
 

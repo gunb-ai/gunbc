@@ -26,6 +26,7 @@ import extdeps.realization.emit_on_demand_host {
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_tally,
 }
 import gunbc.ownership { Ownership, Ensured }
@@ -87,12 +88,14 @@ fn tool_pin_reconcile(
   desired: List<Pin<CliTool>>,
   observed: List<Pin<CliTool>>,
 ) -> MembershipPlan<Pin<CliTool>> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: cli_tool_pin_membership_key_relation,
-    value_eq: pin_value_eq,
-    ownership_of: tool_pin_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: cli_tool_pin_membership_key_relation,
+      value_eq: pin_value_eq,
+      ownership_of: tool_pin_ownership,
+    )
   )
 }
 

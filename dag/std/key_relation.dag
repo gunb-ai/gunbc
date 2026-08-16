@@ -1,25 +1,12 @@
 module std.key_relation
 
-import std.types { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.nat { Zero, Succ, nat_compare, Equal, Less, Greater }
-import v2.std.cardinality {
-  UpperBoundedNat,
-  NatLeWitness,
-  LeqZero,
-  upper_bounded_nat_inclusive_max,
-  upper_bounded_nat_well_formed,
-}
 
-data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, a phantom Relation brand, and a fiber bound (v2.std.cardinality UpperBoundedNat) so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work. Fiber: key_of is total and single-valued, so keys-per-subject is already exactly one by construction — the old KeyAtMostOne|KeyExactlyOne half was dead. The carried question is subjects-per-scoped-key; KEY-0 declares key_fiber_unique_per_scope (UpperBoundedNat inclusive max 1) only. No parallel KeyFiberCardinality enum — v2.std.cardinality already carries Never/Unit/UpperBoundedNat for the closed decidable fragment. Multiplicity/fiber is prose on the record until membership paths refuse unsupported bounds (key_relation_supports_membership_reconcile exists but is not yet a production gate). Rung today: mitigatable — law stated beside named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity cannot inhabit SubjectKey (impostor separation in docs/plans/keying-relation-design.md)."
+data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, and a phantom Relation brand so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work until a consumer grounds a real scope type. Functional-key cardinality for membership_reconcile is NOT stored on this carrier: std.keyed_roster keyed_roster_build over ScopedKey rows PRODUCES the evidence by refusing KeyedRosterBuildDuplicateKey (operator ruling 2026-08-16). An authored 0<=1 magnitude proved nothing about a population; the roster constructor is the wall. Rung today: mitigatable — law stated beside named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity cannot inhabit SubjectKey (impostor separation in docs/plans/keying-relation-design.md)."
 
 data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
 
 data key_relation_brand_type_tag_note: String = "Relation brand types (e.g. TailscaleServeRouteKeyRelation) are uninhabited phantom tags — legitimate under the hollow-alias rule because they are never construction-reached, only used as type parameters to keep unrelated relations non-substitutable when Subject/Scope/Key carriers coincide."
-
-data key_fiber_unique_per_scope_witness: NatLeWitness = LeqZero { upper: Succ { prev: Zero } }
-
-data key_fiber_unique_per_scope: UpperBoundedNat = UpperBoundedNat { le: key_fiber_unique_per_scope_witness }
 
 type ScopedKey<Relation, Scope, Key> {
   scope: Scope
@@ -31,7 +18,6 @@ type KeyRelation<Relation, Subject, Scope, Key> {
   key_of: fn(Subject) -> Key
   scope_eq: fn(Scope, Scope) -> Bool
   key_eq: fn(Key, Key) -> Bool
-  fiber_cardinality: UpperBoundedNat
 }
 
 type GlobalKeyScope {}
@@ -78,27 +64,5 @@ fn key_relation_global<Relation, Subject, Key>(
     key_of: key_of,
     scope_eq: global_key_scope_eq,
     key_eq: key_eq,
-    fiber_cardinality: key_fiber_unique_per_scope,
   }
-}
-
-fn key_relation_fiber_supports_membership_reconcile(fiber: UpperBoundedNat) -> Bool {
-  if !upper_bounded_nat_well_formed(b: fiber) {
-    false
-  } else {
-    match nat_compare(
-      a: upper_bounded_nat_inclusive_max(b: fiber),
-      b: Succ { prev: Zero },
-    ) {
-      Greater => false
-      Equal => true
-      Less => true
-    }
-  }
-}
-
-fn key_relation_supports_membership_reconcile<Relation, Subject, Scope, Key>(
-  relation: KeyRelation<Relation, Subject, Scope, Key>,
-) -> Bool {
-  key_relation_fiber_supports_membership_reconcile(fiber: relation.fiber_cardinality)
 }

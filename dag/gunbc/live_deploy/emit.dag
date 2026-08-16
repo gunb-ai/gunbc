@@ -73,6 +73,7 @@ import gunbc.membership_reconcile {
   MemberRefusal,
   EffectsOrRefusal, EffectsReady, ApplyRefused,
   membership_reconcile, membership_effects,
+  membership_plan_admitting_outcome,
 }
 import gunbc.live_deploy.operations {
   dpkg_status_command,
@@ -430,22 +431,26 @@ data deployment_step_membership_key_relation: KeyRelation<DeploymentStepMembersh
 )
 
 fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
-  membership_reconcile(
-    desired: spec.steps,
-    observed: [],
-    relation: deployment_step_membership_key_relation,
-    value_eq: deployment_step_value_eq,
-    ownership_of: deployment_step_ownership_opt,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: spec.steps,
+      observed: [],
+      relation: deployment_step_membership_key_relation,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    )
   )
 }
 
 fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
-  membership_reconcile(
-    desired: [],
-    observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
-    relation: deployment_step_membership_key_relation,
-    value_eq: deployment_step_value_eq,
-    ownership_of: deployment_step_ownership_opt,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [],
+      observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
+      relation: deployment_step_membership_key_relation,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    )
   )
 }
 

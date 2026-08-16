@@ -7,6 +7,7 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_effects,
   EffectsOrRefusal,
   EffectsReady,
@@ -101,12 +102,14 @@ data cap_membership_key_relation: KeyRelation<CapMembershipKeyRelation, CapMembe
 )
 
 fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: cap_membership_key_relation,
-    value_eq: cap_member_value_eq,
-    ownership_of: cap_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: cap_membership_key_relation,
+      value_eq: cap_member_value_eq,
+      ownership_of: cap_member_ownership,
+    )
   )
 }
 
@@ -304,12 +307,14 @@ fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
 ) -> MembershipPlan<ControlShadowUnit> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: control_shadow_membership_key_relation,
-    value_eq: control_shadow_unit_value_eq,
-    ownership_of: control_shadow_unit_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: control_shadow_membership_key_relation,
+      value_eq: control_shadow_unit_value_eq,
+      ownership_of: control_shadow_unit_ownership,
+    )
   )
 }
 

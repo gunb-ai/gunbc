@@ -14,6 +14,7 @@ import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
   MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
@@ -250,12 +251,14 @@ fn belt_membership_plan(
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
 ) -> MembershipPlan<DispatchMember> {
-  membership_reconcile(
-    desired: belt_desired_members(frontier: frontier),
-    observed: belt_observed_members(live: live),
-    relation: belt_membership_key_relation,
-    value_eq: dispatch_member_value_eq,
-    ownership_of: dispatch_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: belt_desired_members(frontier: frontier),
+      observed: belt_observed_members(live: live),
+      relation: belt_membership_key_relation,
+      value_eq: dispatch_member_value_eq,
+      ownership_of: dispatch_member_ownership,
+    )
   )
 }
 

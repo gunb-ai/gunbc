@@ -31,6 +31,7 @@ import gunbc.membership_reconcile {
   MemberNotOwned,
   OwnershipUnknown,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_refusal_count,
 }
 import gunbc.ownership { Ownership, Owned }
@@ -214,12 +215,14 @@ fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
 }
 
 fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember> {
-  membership_reconcile(
-    desired: timer_retirement_desired(),
-    observed: observed,
-    relation: timer_retirement_membership_key_relation,
-    value_eq: timer_member_value_eq,
-    ownership_of: timer_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: timer_retirement_desired(),
+      observed: observed,
+      relation: timer_retirement_membership_key_relation,
+      value_eq: timer_member_value_eq,
+      ownership_of: timer_member_ownership,
+    )
   )
 }
 

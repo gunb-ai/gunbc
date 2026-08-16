@@ -8,7 +8,6 @@ import std.key_relation {
   key_relation_global,
   key_relation_scoped_key,
   key_relation_scoped_key_eq,
-  key_fiber_unique_per_scope,
 }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
@@ -16,6 +15,11 @@ import gunbc.membership_reconcile {
   MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
   TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
   membership_reconcile,
+  membership_plan_admitting_outcome,
+  MembershipReconcileOutcome,
+  MembershipReconcileReady,
+  MembershipReconcileDuplicateScopedKey,
+  MembershipDesiredRoster,
   membership_write_count, membership_removal_count, membership_refusal_count,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   membership_added_count, membership_change_count,
@@ -55,12 +59,14 @@ data t_membership_key_relation: KeyRelation<TMembershipKeyRelation, TMember, Glo
 )
 
 fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: t_membership_key_relation,
-    value_eq: t_val_eq,
-    ownership_of: t_own,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: t_membership_key_relation,
+      value_eq: t_val_eq,
+      ownership_of: t_own,
+    )
   )
 }
 
@@ -277,7 +283,6 @@ data scoped_witness_key_relation: KeyRelation<ScopedWitnessKeyRelation, ScopedWi
   key_of: scoped_witness_key_of,
   scope_eq: scoped_witness_scope_eq,
   key_eq: scoped_witness_key_eq,
-  fiber_cardinality: key_fiber_unique_per_scope,
 }
 
 data w_same_key_different_scope_note: String = "DISCRIMINATING (P0 #1): two subjects with the same key in DIFFERENT scopes must NOT collapse into one reconcile row. An unscoped key_of seam treats host-a and host-b both owning route 443:/ as one member; ScopedKey carries scope and key together so both stay distinct."
@@ -285,12 +290,14 @@ data w_same_key_different_scope_note: String = "DISCRIMINATING (P0 #1): two subj
 test fn w_same_key_different_scope_stays_distinct() -> Bool {
   let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
   let b = ScopedWitnessMember { node: "host-b", mid: "route", ver: "1" }
-  let plan = membership_reconcile(
-    desired: [a, b],
-    observed: [a, b],
-    relation: scoped_witness_key_relation,
-    value_eq: scoped_witness_val_eq,
-    ownership_of: scoped_witness_own,
+  let plan = membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [a, b],
+      observed: [a, b],
+      relation: scoped_witness_key_relation,
+      value_eq: scoped_witness_val_eq,
+      ownership_of: scoped_witness_own,
+    )
   )
   membership_write_count(plan: plan) == 0
     && membership_removal_count(plan: plan) == 0
@@ -300,5 +307,23 @@ test fn w_same_key_different_scope_stays_distinct() -> Bool {
       a: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: a),
       b: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: b),
     )
+}
+
+data w_duplicate_scoped_key_refuses_note: String = "DISCRIMINATING: two desired members sharing one scoped key must refuse at roster build — MembershipReconcileDuplicateScopedKey on the desired roster, never a 1:1 diff."
+
+test fn w_duplicate_scoped_key_refuses() -> Bool {
+  let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
+  let b = ScopedWitnessMember { node: "host-a", mid: "route", ver: "2" }
+  match membership_reconcile(
+    desired: [a, b],
+    observed: [],
+    relation: scoped_witness_key_relation,
+    value_eq: scoped_witness_val_eq,
+    ownership_of: scoped_witness_own,
+  ) {
+    MembershipReconcileDuplicateScopedKey { roster: MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
+      f.value.mid == "route" && d.value.mid == "route" && f.value.ver == "1" && d.value.ver == "2"
+    MembershipReconcileReady { plan: _ } => false
+  }
 }
 

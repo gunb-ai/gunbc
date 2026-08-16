@@ -11,6 +11,7 @@ import gunbc.membership_reconcile {
   MemberAdded,
   MemberChanged,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_write_count,
   membership_removal_count,
   membership_refusal_count,
@@ -90,12 +91,14 @@ fn repo_local_git_config_reconcile(
   desired: List<RepoLocalGitConfigBinding>,
   observed: List<RepoLocalGitConfigBinding>,
 ) -> MembershipPlan<RepoLocalGitConfigBinding> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    relation: repo_local_git_config_membership_key_relation,
-    value_eq: binding_value_eq,
-    ownership_of: binding_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      relation: repo_local_git_config_membership_key_relation,
+      value_eq: binding_value_eq,
+      ownership_of: binding_ownership,
+    )
   )
 }
 
