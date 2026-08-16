@@ -18,7 +18,7 @@ on:
         options: [srv5, srv6]
         type: choice
       plan_artifact_hash:
-        description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)
+        description: Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match.
         required: false
         type: string
       plan_workflow_run_id:
