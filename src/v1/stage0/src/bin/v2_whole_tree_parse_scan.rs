@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::{discover_source_root_reads, load_sources_for_entry};
 use v1_compiler::v1_compiler_compile::compile_to_resolved;
-use v1_compiler::v1_interpreter::{self, Value};
+use v1_compiler::v1_interpreter::{self, str_value, Value};
 
 const PARSE_HARNESS_ENTRY: &str = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag";
 const PARSE_FN: &str = "parses";
@@ -94,7 +94,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 records.len()
             );
         }
-        let args = [(Some("src".to_string()), Value::Str(rec.source.clone()))];
+        let args = [(Some("src".to_string()), str_value(rec.source.clone()))];
         match v1_interpreter::run_in_context_with_args(&ctx, PARSE_FN, &args, false) {
             Ok(Value::Bool(true)) => ok += 1,
             Ok(Value::Bool(false)) => {
