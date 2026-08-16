@@ -14,13 +14,15 @@ import v2.std.logic { Bool }
 
 data proactive_verification_ledger_witness_note: String = "OVERLAP-START structural receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (13 rows: 3 spine + 10 equals_eval execution receipts across the nine #6879 partition families — meet_join contributes meet and join peer primaries, review 43336). Family KnownRed disposition projects from gunbc.ci_layer_roots known_red_probe_entries (§3 single authority — never hand-declared). Hermetic per-PR discovery pins enumeration invariants only. Family equals_eval execution lives in src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag — excluded from hermetic discovery (run_gunbc_claims needs IsExecutable; two-tier policy: wet evidence does not gate per-PR CI). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/proactive_verification_ledger_overlap_execution_test.dag --function proactive_verification_ledger_overlap_execution_holds"
 
+data ledger_spine_count_basis_note: String = "WHY THE SPINE COUNTS MOVED 3 -> 2 AND 13 -> 12 (v1 cut, tree integration/v1-cut, 2026-08-16). The regen behavioral fixed-point row was RETIRED, not marked blocked: it claimed two-generation equivalence via regen_stage0 --verify, and the cut deleted both the emitter authority and the regen binary, so its dissolution trigger can never fire and its subject cannot be observed. THIS IS NOT A LITERAL BUMPED TO RESTORE GREEN. The row's absence is asserted structurally beside the counts -- ledger_all_spine_kinds_present() now enumerates exactly the two surviving kinds, and VerificationReceiptKind no longer HAS a regen variant, so a re-added regen row could not typecheck into this ledger without also re-adding the variant and failing that check. The counts are the shape of a closed hand-authored roster and are pinned as such; the discriminating claim is the kind enumeration, which is why it is conjoined here rather than trusted separately."
+
 test fn proactive_verification_ledger_enumeration_holds() -> Bool {
-  ledger_spine_row_count() == 3
+  ledger_spine_row_count() == 2
     && ledger_family_row_count() == 10
-    && ledger_total_row_count() == 13
-    && ledger_v1_delete_required_green_count() == 13
+    && ledger_total_row_count() == 12
+    && ledger_v1_delete_required_green_count() == 12
     && ledger_all_spine_kinds_present() == true
-    && ledger_blocked_count() == 3
+    && ledger_blocked_count() == 2
     && ledger_known_red_count() == 0
     && ledger_executable_now_count() == 10
 }
