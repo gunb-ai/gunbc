@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SCAFFOLD — STR-RC-0 clean-process survival experiment beside json_parse_scaling_probe
+# (not a general scripts/ home; same transport class as docs/probes/run_frontier_probe_survey_per_module.sh).
+# dissolve-on: delete when STR-RC-0 survival receipts are floor-enrolled or the branch reverts.
+# Runtime-present: invokes json_parse_scaling_probe seed bin per (carrier, size) in a fresh process.
 # STR-RC-0 clean-process survival experiment: pre (String) vs post (Rc<str>).
 # One fresh process per (carrier, size) pair; cgroup memory.peak/events when available.
 set -euo pipefail
