@@ -1,7 +1,7 @@
 module test.claim.class_b_trim_coincidence_specimen
 
 
-data class_b_trim_coincidence_specimen_note: String = "Negative control for Class B trim (#6985 / #8062): trim free-call WITHOUT explicit std.algebra import. Must REFUSE even when std.algebra is already in the compilation pool via unrelated transitive import — pool coincidence binding for trim is the defect this specimen guards against. Explicit-import specimen is class_b_trim_specimen.dag."
+data class_b_trim_coincidence_specimen_note: String = "Negative control for Class B trim (#6985 / #8062): trim free-call WITHOUT explicit std.algebra import. Must REFUSE even when std.algebra is already in the compilation pool via unrelated transitive import — pool coincidence binding for trim is the defect this specimen guards against. Explicit-import specimen is class_b_trim_specimen.dag. NO EXECUTING RECEIPT: the tests that exercised this negative control lived in v1-compiler-tests class_b_trim_specimen_test, which the namespace cut deleted along with the `import` binding semantics that were their entire subject. Retained as a specimen for other consumers, not because anything executes it — same standing as its explicit-import sibling."
 
 fn free_trim(s: String) -> String {
   trim(s)
