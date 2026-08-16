@@ -122,11 +122,38 @@ now computes agrees with what the surviving path-literal rosters and directory
 scans reach. **Those are different populations, and only one of them is affected
 by this change.**
 
-**OWED, and not answered by anything in this branch today:** after the cut, is
-there a module reachable by a surviving path-literal roster or directory scan
-that whole-pool resolution does NOT reach — or the reverse? That is a **set
-comparison at identity grain**, not a count, and `source_closure.rs` is the
-closest existing machinery to being able to answer it.
+**Channel 1 (path literals) — ANSWERED, at identity grain.** Extracting every
+repo-relative `*.dag` path literal from `dag/**`, `src/**` `.dag` and `.rs`
+sources on `origin/main` and on this branch, and diffing the sets that do not
+resolve to an existing file:
+
+```
+dangling on main:                284
+dangling on branch:              283
+NEWLY dangling (cut's doing):      0
+no longer dangling:                1   src/v2/std/some_other_module.dag
+```
+
+**Zero path literals were broken by the cut.** Stating the subject explicitly,
+because three earlier passes at this number used the wrong one: the subject is
+*repo-relative paths naming a `.dag` file*, which excludes globs, diff fragments
+inside witness fixtures, relative paths, and prose that merely contains the
+string `.dag`. An unfiltered extraction reports 791 and means nothing. The
+absolute counts are also not the finding — most of the 283 are deliberate
+sentinels (`does_not_exist_sentinel.dag`, `__bogus_never_imported__.dag`) and
+synthetic fixture inputs. **The diff is the finding**, because it is the only
+part attributable to this change.
+
+**Channel 2 (directory scans) — STILL OWED, and it is the larger channel** (45 of
+62 in the v1 census, against 20 for path literals). A scan cannot "dangle": it
+names no files, it enumerates them. So this check cannot cover it by
+construction. The failure modes there are different — a scan picking up a file
+that no longer parses, or missing one that moved — and answering it requires
+comparing enumerated sets, not resolving literals.
+
+**Also still owed:** the reverse direction — a module the rosters/scans reach
+that whole-pool resolution does NOT, or vice versa. `source_closure.rs` is the
+closest existing machinery.
 
 Recorded here rather than left implicit because it is the third time in this lane
 that a guard's subject turned out narrower than the claim it was used to license
