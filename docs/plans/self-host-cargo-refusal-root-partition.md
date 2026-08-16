@@ -1091,3 +1091,46 @@ That bound is the useful half of this answer: name-keying is a real deficit with
 the alias will expose refinement-carrier work (`Fnv1a64StructuralDigestHex = String where lower_hex_16`)
 that the type error is currently firing ahead of. A burn-down of 105 that does not budget for the
 unmasked population will overshoot, exactly as the algebra-carrier fix exposed 125 `Rc<i64>` sites.
+
+### 11.11 The name-keyed substitution, located — and it is one authored table, not a code path
+
+Following 11.10 to its cause rather than leaving it at "the emitter uses the name". The chain, by
+symbol:
+
+1. `dag/extdeps/languages/rust/types.dag` `rust_type_checkpoints` is a row table **keyed on
+   `dag_name: String`** — a bare authored spelling carrying no module, no declaration reference.
+   One of its rows is `{ dag_name: "Hash", target_type: "v1_rt::Hash", … }`, authored for the v1
+   seed's builtin `Hash` (`src/v1/00_core.dag` `hash_type`, the return type registered in
+   `04_method.dag` for `atom_identity_hash` / `hash_combine`).
+2. `src/v1/coercion.dag` `lookup_checkpoint` / `coerce_primitive_type` resolve against that table
+   by name alone.
+3. `src/v1/05_emit_rust.dag`, in the `is_type_alias_item` arm of item emission, calls
+   `rust_scalar_checkpoint_render_base(dag_name: item_text, …)` **before** rendering the declared
+   right-hand side, and on a hit emits `pub type <name> = <cp.target_type>;` — the RHS is never
+   consulted.
+4. `src/v2/std/node.dag:14` declares `type Hash = Fnv1a64Structural`. The name matches the row.
+   Output: `pub type Hash = v1_rt::Hash;`, and `v1_rt::Hash = String`.
+
+So the substitution is not a bug in a rendering function; it is **an authored row whose key cannot
+express which declaration it is about**. That is the same table `eager-deer-389`'s `Bool` finding
+names, which makes the table — not the emitter — the shared subject of at least two lanes.
+
+**One consequence for `vivid-wren`, and it splits Root D rather than claiming it.** Root D's 116
+sites are two mechanisms, and only one is name-keyed:
+
+- **`missing generics for enum Witness` (33) — name-keyed, same table.** `rust_type_checkpoints`
+  carries `{ dag_name: "Witness", target_type: "Witness" }` *and* a second row spelled `"witness"`.
+  A checkpoint row states a bare target type, i.e. arity zero, for a name whose declaration is
+  generic. This is "the checkpoint row that claims arity for a bare name" exactly.
+- **`type alias takes 0 generic arguments but N were supplied` (73) — NOT name-keyed.** Executed
+  check: the emitted `src/v2_lens_coverage.rs:45` reads
+  `pub type CoverageDefectAcceptance = Rc<Coverage<Rc<CoverageDefectAcceptanceKey>>>;` — the alias
+  is emitted **already applied**, with its generic parameter list dropped at the declaration while
+  use sites still supply an argument. Nothing about naming decides that; the parameter list was
+  lost on the way to the declaration. (It also accounts for my residue's 13
+  `expected Coverage<Rc<…>>, found CoverageDefectAcceptanceKey`.)
+
+Keeping that split is the same discipline as the T3 one above: a real mechanism must not absorb the
+symptoms next to it. **Name-keying's directly-attributable total therefore moves from 253 to 286
+sites (15.3%)** — T7 105 + K 132 + R5 16 + D-Witness 33 — with T3's 110 still exposure rather than
+cause, and the ~1,470 NO unchanged in substance.
