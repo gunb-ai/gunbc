@@ -27,10 +27,10 @@ use v1_compiler::cli_run::{
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
     WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
+use v1_compiler::derived_realization_schedule::{RealizationConcurrency, RealizationSlot};
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
-    AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
@@ -3317,7 +3317,7 @@ fn scoped_execution_authority_source_roots(
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
-    governor: Arc<MemoryGovernor>,
+    governor: Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     obligation_subjects: Option<&ObligationSubjectSet>,
@@ -3349,8 +3349,8 @@ fn run_batch_unit(
             selector_function,
             execution_mode,
         } => {
-            let mut slot =
-                AdmittedSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
+            let slot =
+                RealizationSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
             let result =
                 run_native_bundle_unit(&source_roots, entry, selector_function, execution_mode);
             slot.note_unit_complete();
@@ -3458,7 +3458,7 @@ fn run_batch_unit(
             // A gate unit's resolved graph is a real memory resident: take a governor
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
-            let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
+            let slot = RealizationSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
             let results = run_shared_entry_claims(
                 &source_roots,
                 &entry,
@@ -4360,7 +4360,7 @@ fn run_discovery_batch_node(
     node_frontier_selection: NodeFrontierSelectionMode,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
-    governor: Arc<MemoryGovernor>,
+    _governor: Arc<RealizationConcurrency>,
     execution_mode: ExecutionMode,
     spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
@@ -4384,7 +4384,7 @@ fn run_discovery_batch_node(
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
-        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, derived schedule width{}]",
         source_roots.len(),
         explicit_entries.len(),
         if batch_entries_all_in(&explicit_entries, &expected_red) {
@@ -4398,7 +4398,7 @@ fn run_discovery_batch_node(
         &scan_dirs,
         &explicit_entries,
         execution_mode,
-        DiscoveryWidthPolicy::Adaptive(governor),
+        DiscoveryWidthPolicy::DerivedSchedule,
         DiscoveryCorpusOptions {
             node_frontier_selection,
             execution_authority_source_roots,
@@ -8076,7 +8076,7 @@ fn run_stage(
     feed_index: u64,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
     memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
-    governor: &Arc<MemoryGovernor>,
+    governor: &Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
     clamp_params: Option<ResolvedFloorBatchClamp>,
@@ -8653,7 +8653,7 @@ fn run_walk(
     // SIGKILL it cannot conclude through. `None` leaves the walk's admission unbounded,
     // exactly as before.
     soft_deadline_ms: Option<u64>,
-    governor: &Arc<MemoryGovernor>,
+    governor: &Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
@@ -9561,7 +9561,7 @@ fn run_perturb_check(
         None,
         None,
         None,
-        &Arc::new(MemoryGovernor::from_environment(1)),
+        &RealizationConcurrency::for_walk(1).expect("test schedule"),
         None,
         FalsifierSelfHostWetBudgets::default(),
         FloorBatchStopPolicy::StopBeforeDependents,
@@ -11448,21 +11448,25 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         phase_mark("pre-walk execution");
     }
-    // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
-    // the governor admits workers against the slot's own declared budget (AIMD), so the
-    // width story for the run is its announce line here plus its end-of-run receipt.
-    let governor = Arc::new(MemoryGovernor::from_environment(
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1),
-    ));
+    // Derived schedule width: no plan-evaluated spawn width — realize_pack chooses
+    // concurrency up front from host budget and derived space bounds (P4).
+    let hardware_max = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let governor = match RealizationConcurrency::for_walk(hardware_max) {
+        Ok(g) => g,
+        Err(msg) => {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
     if plan_requires_floor_arm_time_budget_refusal(&plan_function) {
         if let Some(msg) = floor_budget_below_minimum_footprint(governor.budget_bytes()) {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("memory-governor arm");
+    phase_mark("realization-schedule arm");
     spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
@@ -11523,7 +11527,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!(
                 "{}",
                 v1_compiler::cli_run::render_peak_rss_line_mirror(
-                    "floor peak RSS (adaptive width)",
+                    "floor peak RSS (derived schedule width)",
                     Some(bytes),
                     std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
                 )
@@ -11532,7 +11536,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         None => eprintln!(
             "{}",
             v1_compiler::cli_run::render_peak_rss_line_mirror(
-                "floor peak RSS (adaptive width)",
+                "floor peak RSS (derived schedule width)",
                 None,
                 std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
             )
@@ -11545,7 +11549,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
-    emit_cgroup_measurement("floor adaptive-width");
+    emit_cgroup_measurement("floor derived-schedule width");
     // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
     // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
     // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
@@ -12943,7 +12947,7 @@ mod tests {
             None,
             None,
             None,
-            &Arc::new(MemoryGovernor::from_environment(1)),
+            &RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             FloorBatchStopPolicy::StopBeforeDependents,
@@ -15441,7 +15445,7 @@ mod tests {
                 None,
                 None,
                 deadline,
-                &Arc::new(MemoryGovernor::from_environment(1)),
+                &RealizationConcurrency::for_walk(1).expect("test schedule"),
                 None,
                 FalsifierSelfHostWetBudgets::default(),
                 FloorBatchStopPolicy::StopBeforeDependents,
@@ -15525,7 +15529,7 @@ mod tests {
             None,
             None,
             None,
-            &Arc::new(MemoryGovernor::from_environment(1)),
+            &RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             FloorBatchStopPolicy::StopBeforeDependents,
@@ -16026,7 +16030,7 @@ mod tests {
         let results = run_batch_unit(
             vec!["src/v2".to_string()],
             unit,
-            Arc::new(MemoryGovernor::from_environment(1)),
+            RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             None,

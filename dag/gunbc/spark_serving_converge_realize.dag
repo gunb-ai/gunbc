@@ -1,0 +1,137 @@
+module gunbc.spark_serving_converge_realize
+
+import std.types { String, List, NonEmptyStr, Bool }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
+import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+
+data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to admitted portable remote argv — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Linger slice: [sudo, -n, loginctl, enable-linger, login] with no interpolation."
+
+type SparkServingInstallRemoteArgvVerdict =
+    SparkServingInstallRemoteArgvPresent { argv: List<String> }
+  | SparkServingInstallRemoteArgvRefused { reason: String }
+
+fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingInstallRemoteArgvVerdict {
+  match portable_remote_words(raws: raws) {
+    Present { value: words } =>
+      SparkServingInstallRemoteArgvPresent {
+        argv: portable_remote_words_strings(words: words),
+      }
+    Absent =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: remote argv is not portable — refuse rather than shell-interpolate",
+      }
+  }
+}
+
+fn spark_serving_enable_linger_remote_argv(login: NonEmptyStr) -> SparkServingInstallRemoteArgvVerdict {
+  spark_serving_admit_portable_remote_argv(
+    raws: ["sudo", "-n", "loginctl", "enable-linger", login as String],
+  )
+}
+
+// NO WILDCARD, and the refusal now NAMES the effect. The wildcard refused correctly but said only
+// that something other than linger was asked for, so a thirteenth variant would have been absorbed
+// into that same sentence rather than forcing a decision. Each unimplemented effect refuses under
+// its own name; adding a variant makes this non-exhaustive instead of silently refusing.
+fn realize_spark_serving_install_effect_argv(
+  effect: ServingInstallEffect,
+  executor_login: NonEmptyStr,
+) -> SparkServingInstallRemoteArgvVerdict {
+  match effect {
+    EnableLingerForOwnAccount =>
+      spark_serving_enable_linger_remote_argv(login: executor_login)
+    WriteSystemUnitFile =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the linger vertical slice",
+      }
+    ReloadSystemManager =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the linger vertical slice",
+      }
+    EnableSystemUnit =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the linger vertical slice",
+      }
+    WriteUserUnitFile =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: WriteUserUnitFile is not implemented in the linger vertical slice",
+      }
+    ReloadUserManager =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: ReloadUserManager is not implemented in the linger vertical slice",
+      }
+    EnableUserUnit =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: EnableUserUnit is not implemented in the linger vertical slice",
+      }
+    InstallRuntimePackage =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the linger vertical slice",
+      }
+    InstallOwnedRuntimeClosure =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: InstallOwnedRuntimeClosure is not implemented in the linger vertical slice",
+      }
+    PullModelArtifact =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: PullModelArtifact is not implemented in the linger vertical slice",
+      }
+    GrantContainerRuntimeAccess =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the linger vertical slice",
+      }
+    RunContainerAsOwnUser =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the linger vertical slice",
+      }
+  }
+}
+
+fn realize_spark_serving_install_effects_argv(
+  effects: List<ServingInstallEffect>,
+  executor_login: NonEmptyStr,
+) -> SparkServingInstallRemoteArgvVerdict {
+  fold(
+    effects,
+    init: SparkServingInstallRemoteArgvPresent { argv: [] },
+    f: fn(acc, effect) {
+      match acc {
+        SparkServingInstallRemoteArgvRefused { reason: _ } => acc
+        SparkServingInstallRemoteArgvPresent { argv: prior } =>
+          match realize_spark_serving_install_effect_argv(
+            effect: effect,
+            executor_login: executor_login,
+          ) {
+            SparkServingInstallRemoteArgvRefused { reason: why } =>
+              SparkServingInstallRemoteArgvRefused { reason: why }
+            SparkServingInstallRemoteArgvPresent { argv: next } =>
+              SparkServingInstallRemoteArgvPresent {
+                argv: concat(prior, next),
+              }
+          }
+      }
+    },
+  )
+}
+
+fn spark_serving_install_remote_argv_refused(v: SparkServingInstallRemoteArgvVerdict) -> Bool {
+  match v {
+    SparkServingInstallRemoteArgvRefused { reason: _ } => true
+    SparkServingInstallRemoteArgvPresent { argv: _ } => false
+  }
+}
+
+fn spark_serving_default_executor_login() -> NonEmptyStr {
+  spark_serving_automation_principal_login()
+}
+
+fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool {
+  match spark_serving_enable_linger_remote_argv(
+    login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteArgvPresent { argv: expected } =>
+      join(argv, "\0") == join(expected, "\0")
+    SparkServingInstallRemoteArgvRefused { reason: _ } => false
+  }
+}
