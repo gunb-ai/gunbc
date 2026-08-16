@@ -319,6 +319,25 @@ data legacy_discovery_known_positive: String = "src/v1/tests/src/field_of_fracti
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.
+//
+// ADVERSARY CHECK, run 2026-08-16 during the namespace cut and recorded here
+// because the person re-deciding is on a different branch. This side is in far
+// better shape than its legacy sibling above, and for a structural reason: its
+// subject is a .dag witness rather than a retained Rust module, so it sits
+// outside the kernel that is being drained to zero, and the ContentHash work
+// its subject belongs to dissolves by FEATURE ADDITION (Phase B: substrate
+// typecheck refuses union-level ContentHash equality), never by deletion.
+// Addition-dissolving subjects survive cuts and die to feature work.
+//
+// Verified against the namespace cut specifically, since that lane rewrote 632
+// files: the subject file was NOT among them, and it carries zero diagnostics
+// both before and after the pass. That zero is meaningful rather than a false
+// absence -- dag/test/claim is demonstrably compiled, sibling files in it report
+// diagnostics -- which is the check a bare "no hits" would have failed.
+//
+// So the accurate claim is UNTHREATENED BY THE CUTS IN FLIGHT, not independent.
+// What would invalidate it: ContentHash Phase B landing, or any lane retiring
+// the cited witness. Re-check on either.
 data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
 
 fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {
