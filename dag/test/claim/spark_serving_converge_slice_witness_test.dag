@@ -41,11 +41,14 @@ import gunbc.spark_serving_converge_realize {
   spark_serving_enable_linger_remote_argv,
   spark_serving_enable_linger_argv_matches_expected,
   realize_spark_serving_install_effects_argv,
+  spark_serving_reload_user_manager_remote_argv,
+  spark_serving_enable_user_unit_remote_argv,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
-import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, PullModelArtifact }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -111,7 +114,7 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize_spark_serving_install_effects_argv(
-    effects: [EnableLingerForOwnAccount, ReloadUserManager],
+    effects: [EnableLingerForOwnAccount, PullModelArtifact],
     executor_login: spark_serving_automation_principal_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
@@ -358,4 +361,47 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
   )
   converged.converged && !failed.converged
     && string_contains(s: failed.line, pattern: "observed_linger=unobserved")
+}
+
+// USER-SCOPE ARMS. A sudo word appearing in either of these would be a privilege escalation the
+// effect does not call for, so absence of sudo is asserted rather than assumed.
+test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
+  match spark_serving_reload_user_manager_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 1
+        && join(cmds.first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && !any(cmds.first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The unit name is asserted against gunbc.spark_serving_unit_identity, NOT against a literal
+// repeated here. A literal would pass while the enabled unit and the observed unit drifted apart,
+// which is the single-authority failure this grounding exists to prevent.
+test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
+  match spark_serving_enable_user_unit_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 1
+        && join(cmds.first(), "\0")
+          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
+        && !any(cmds.first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// ORDER IS THE POINT. Reloading the manager after enabling the unit would enable against a
+// manager that had not re-read the unit file. This is the first witness with two DIFFERENT
+// realized effects, so it is the first that can observe order at all.
+test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
+  match realize_spark_serving_install_effects_argv(
+    effects: [ReloadUserManager, EnableUserUnit],
+    executor_login: spark_serving_automation_principal_login(),
+  ) {
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 2
+        && join(cmds[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && join(cmds[1], "\0")
+          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
 }
