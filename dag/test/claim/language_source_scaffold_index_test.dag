@@ -41,17 +41,9 @@ test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
   language_source_scaffold_roster_all_dispositioned()
 }
 
-test fn runtime_rust_blobs_are_all_rostered() -> Bool {
-  let declared = declared_fn_count(path: runtime_rust_source_path, prefix: "\nfn rt_")
-  let rostered = rostered_count_for(carrier: "v1.compiler.runtime_rust")
-  declared == rostered
-}
 
-test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
-  let declared = declared_fn_count(path: compiler_tests_rust_source_path, prefix: "\nfn ct_")
-  let rostered = rostered_count_for(carrier: "v1.compiler.compiler_tests_rust")
-  declared == rostered
-}
+
+data v1_rust_blob_roster_retirement_receipt: String = "RETIREMENT RECEIPT (v1 cut, tree integration/v1-cut, 2026-08-16). RETIRED: compiler_tests_rust_blobs_are_all_rostered, runtime_rust_blobs_are_all_rostered. Each counted declarations inside a v1 .dag rust-blob carrier (src/v1/compiler_tests_rust.dag, src/v1/runtime_rust.dag) and joined that count against the scaffold roster. BOTH CARRIERS ARE DELETED BY THIS CUT, so the counted population is not merely empty, it is unreadable -- the rows failed with the substrate refusing to fabricate a Unit for a read it cannot perform, which is the correct fail-closed behavior and the reason the loss was visible at all. RESOLVED PER ROW, NOT PER FILE: three rows in this file have nothing to do with v1 rust blobs and pass unchanged. Attribution measured, not inferred: these fail at head and their carriers exist at fork base 8a799b61c4."
 
 test fn reasoned_terminal_is_accepted() -> Bool {
   let is_scaffold = match legitimate_terminal_control_row.disposition {

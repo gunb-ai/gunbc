@@ -445,18 +445,14 @@ fn cfba_source_text(path: String) -> String {
   filesystem_read(path: path).content
 }
 
+data single_authority_row_narrowed_note: String = "NARROWED, NOT RETIRED (v1 cut, tree integration/v1-cut, 2026-08-16). single_authority_lives_only_in_std_occurrence_binding_candidates_holds asserted a section 3 single-authority property across THREE files. Two survive and their clauses are untouched: std.occurrence_binding_candidates still declares declaration_exposure_from_containment and structural_binding_walk, and gunbc.type_reference_binding_context still consumes rather than re-declares them. The third, src/v1/gunbc/occurrence_binding_parser_walk.dag, is deleted by this cut, and FIVE clauses named it, and they were NOT all of one kind -- a distinction I got wrong on the first pass and am recording rather than quietly fixing. Four were NEGATIVE (the fork does not exist there); a deleted file trivially cannot carry a fork, so those became vacuous rather than false, and keeping them would have meant asserting something no longer capable of being violated. THE FIFTH WAS POSITIVE: it asserted the v1 parser walk CONSUMES declaration_exposure_from_containment, i.e. that the single authority actually had that consumer. That clause did not go vacuous, it went away with its subject, AND ITS LOSS IS REAL -- one consumer of the std authority is no longer witnessed by anything, because the consumer itself is deleted. Stated as a loss rather than folded into the vacuous four. THE ROW ITSELF WAS NEVER SUBJECT-LESS: this is assertion grain, one finer than the carrier grain -- the file died, two of seven clauses died with it, and the invariant did not. Dropping the row wholesale would have vanished a live section 3 guard over two surviving authorities."
+
 test fn single_authority_lives_only_in_std_occurrence_binding_candidates_holds() -> Bool {
   let std_text = cfba_source_text(path: "dag/std/occurrence_binding_candidates.dag")
   let type_ref_ctx_text = cfba_source_text(path: "dag/gunbc/type_reference_binding_context.dag")
-  let parser_walk_text = cfba_source_text(path: "src/v1/gunbc/occurrence_binding_parser_walk.dag")
   string_contains(s: std_text, pattern: "fn declaration_exposure_from_containment(")
     && string_contains(s: std_text, pattern: "fn structural_binding_walk(")
     && !string_contains(s: type_ref_ctx_text, pattern: "fn declaration_exposure_from_containment_tree(")
     && !string_contains(s: type_ref_ctx_text, pattern: "fn occurrence_containment_parent_scope(")
     && string_contains(s: type_ref_ctx_text, pattern: "declaration_exposure_from_containment(")
-    && !string_contains(s: parser_walk_text, pattern: "type StructuralBindingWalk")
-    && !string_contains(s: parser_walk_text, pattern: "fn structural_binding_walk(")
-    && !string_contains(s: parser_walk_text, pattern: "fn occurrence_containment_parent_scope(")
-    && !string_contains(s: parser_walk_text, pattern: "fn declaration_exposure_from_containment(")
-    && string_contains(s: parser_walk_text, pattern: "declaration_exposure_from_containment(")
 }
