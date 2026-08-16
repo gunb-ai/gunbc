@@ -726,3 +726,260 @@ empty the population instead of proving a negative against a silent predicate.
 my "Relation to the candidate above" paragraph assumed our two mechanisms shared the name `Absent`.
 They do not — theirs is the absent arm of an `Option` returned by `lookup_type_by_name`, not a
 corpus name. The three-run partition I proposed is cancelled; there was no overlap to partition.
+
+---
+
+## 11. THE UNCLASSIFIED TAIL — live partition (`smart-ibex-716`, 2026-08-16)
+
+**Subject as dispatched:** the ~64% of the July cause-signature corpus that A+B+C+D did not
+claim. **Answer, in one line:** the tail is not a long tail of singletons. It is **six further
+mid-sized roots** (each 1.5–7% of live distinct sites) plus a genuine singleton residue of
+**3.3%** — and the largest root in the whole live corpus is not A, B, C or D but the
+**algebra-carrier representation** family at 27.2%.
+
+### 11.1 Instrument and stamp (every number below is from this run, nothing transcribed)
+
+| field | value |
+|---|---|
+| date | 2026-08-16 |
+| tree | `5e1a73fa33` (`origin/main` tip at probe) |
+| route | `gunbc compile --source-root dag --source-root src/v2 --entry <mod> --target rust --dependency-pool-index primary-precedence` → `cssl_assemble` → `cargo check --release --lib --message-format=json` |
+| contract | `CSSL_STD_SEED_LINK=1`, empty shim (per §9.2 and the probe script's invocation contract) |
+| modules | `05_emit`, `06_translate`, `04_infer`, `03_ingest`, `emit_host`, `01_tokenize`, `materialization_carriers` |
+| unit of count | **one distinct `(generated file, line, column, rustc code, cause signature)`**, deduplicated — not one diagnostic |
+| signature | expected/found pair for E0308-family; receiver+method for E0599; trait+self-type for E0277; message otherwise — extracted from the JSON `spans[].label` / `children[]`, never from rendered text |
+
+`frontier_probe_survey` was not used. The JSON route was chosen over the text log because
+expected/found lives in a span label, and a text grep recovers it only by heuristic.
+
+### 11.2 The count everyone has been quoting is inflated ~2.75×, and here is the exact factor
+
+```
+sum over the seven modules      5,156   <- the shape every prior census reports
+distinct sites, deduplicated    1,874   <- the number of things that are actually wrong
+inflation factor                 2.75x
+```
+
+**05_emit (35 source lines) and 06_translate (4,226) do not merely have similar histograms —
+their diagnostic sets are byte-identical: 666 rows each, intersection 666, symmetric difference
+0**, at file, line, column, code and signature. Their emitted closures are *not* identical (89
+vs 88 resolved sources), so the difference between those two entry modules contributes **zero**
+cargo diagnostics. `04_infer`'s 614 rows are a strict **subset** of that same set.
+
+Consequence, stated plainly because §6 assigns work by it: **a per-module error total is not a
+measurement of that module.** It is mostly a measurement of the shared closure, and for these
+three entries it is *only* that.
+
+| entry module | distinct sites | in the five-module floor | own delta |
+|---|---:|---:|---:|
+| 05_emit | 666 | 605 | 61 |
+| 06_translate | 666 | 605 | 61 |
+| 04_infer | 614 | 605 | 9 |
+| 01_tokenize | 203 | 110 | 93 |
+| materialization_carriers | 386 | 108 | 278 |
+| emit_host | 1,073 | 605 | 468 |
+| 03_ingest | 1,548 | 605 | 943 |
+
+Two refinements of H1 that matter, because the strong form is false:
+
+- The floor is **cluster-shaped, not universal.** Intersecting all seven gives only **96** rows.
+  Intersecting the five larger entries gives **605**. `01_tokenize` and `materialization_carriers`
+  sit on a different closure and share ~110 rows with it, which is why §4's H3 was right to call
+  `01_tokenize` unrepresentative — but for a measured reason now: it shares 110 of the floor's 605.
+- The delta is **not small** for the two largest entries (943 and 468). "One core plus twenty
+  thin deltas" is wrong; it is one core plus two thick deltas plus four thin ones.
+
+### 11.3 The partition
+
+Every one of the 1,874 rows is in exactly one row of this table. `RESIDUE` is printed, never
+absorbed — the classifier is fail-closed, so an unmatched signature raises the residue count
+rather than joining the nearest root.
+
+| root | sites | % | in floor | in delta |
+|---|---:|---:|---:|---:|
+| **B1 — algebra-carrier representation** (`CommutativeSemiring<Magnitude>` / `Measure<…>`) | 509 | 27.2 | 80 | 429 |
+| **C — Optional collapses to `()`** (owner `gentle-dove-833`) | 167 | 8.9 | 136 | 31 |
+| **A — generic Clone bound not emitted** (owner `smart-ram-730`) | 142 | 7.6 | 98 | 44 |
+| **K — unsynthesized use-line** (E0433/E0425/E0422 unresolved names) | 132 | 7.0 | 13 | 119 |
+| **D — generic argument count** (owner `vivid-wren`) | 116 | 6.2 | 25 | 91 |
+| **T3 — collection-carrier fork** (`PartialFunction`/`PointwisePower`/`OrdSet` vs `im`) | 110 | 5.9 | 53 | 57 |
+| **T7 — ContentHash carrier vs `String`** (`Fnv1a64Structural`) | 105 | 5.6 | 8 | 97 |
+| **T5 — missing derives on named types** (serde/Debug/Hash/Eq/PartialEq) | 92 | 4.9 | 48 | 44 |
+| **B3 — numeric representation** (`Nat`/`Int` vs `{integer}`/`i64`) | 75 | 4.0 | 21 | 54 |
+| **RESIDUE — genuine singletons** | 62 | 3.3 | 22 | 40 |
+| R1 — bare↔`Rc` wrap decision (same leaf type, one side wrapped) | 55 | 2.9 | 9 | 46 |
+| E — unreachable patterns (lint) | 42 | 2.2 | 33 | 9 |
+| T5b — deref of a non-pointer (`Option<_>`) | 33 | 1.8 | 4 | 29 |
+| T2 — text carrier (`String` vs `Vector<i64>`/`FreeMonoid`) | 31 | 1.7 | 4 | 27 |
+| R2 — Optional *variant* surface (`Present`/`Absent` vs `Option`) | 29 | 1.5 | 6 | 23 |
+| T4 — record emitted as a tuple (`(Rc<Node>, Rc<Node>)`) | 27 | 1.4 | 10 | 17 |
+| L — borrow lifetime (E0597) | 26 | 1.4 | 15 | 11 |
+| R3 — function-value carrier (`Rc<dyn Fn>` vs closure / `Fn` bound) | 23 | 1.2 | 3 | 20 |
+| B2 — `Bool` vs `bool` | 20 | 1.1 | 11 | 9 |
+| F — type annotations needed (E0282) | 19 | 1.0 | 5 | 14 |
+| N — argument count (E0061) | 19 | 1.0 | 1 | 18 |
+| M — struct-literal missing fields (E0063) | 18 | 1.0 | 16 | 2 |
+| R5 — duplicate type authority across emitted modules | 16 | 0.9 | 2 | 14 |
+| O — misc generics (E0392/E0631/E0271/E0310) | 4 | 0.2 | 1 | 3 |
+| P — emitter refusal embedded in the source | 2 | 0.1 | 2 | 0 |
+
+**Answer to the dispatched question:** A+B+C+D as owned today account for roughly 1,029 of 1,874
+(≈55%) once B is read as B1+B2+B3. The remainder is **not** 140 singletons; it is K, T3, T7, T5,
+R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
+
+### 11.4 The six unowned roots: mechanism, assigning evidence, size, falsifier
+
+**K — unsynthesized use-line. 132 sites.**
+*Mechanism, already named in tree:* `reference_derived_use_lines_note` (`src/v1/05_emit_rust.dag`)
+states that namespace-only resolution references cross-module names without importing them, the
+resolver declines the use-line as a non-error advisory `UnlistedImportUse`, and the emitted Rust
+is invalid — the note itself predicts "E0422/E0433/E0425 downstream". This root is that
+prediction, measured: 132 sites, and the note's own §5 fail-open language is the root cause.
+*Evidence rule:* rustc code in {E0433, E0425, E0422, E0412, E0573} — "cannot find type/struct X
+in this scope" for a name the corpus does declare elsewhere.
+*Falsified by:* any of these names not being declared in the compiled closure at all (that would
+make it a real missing declaration, not a missing `use`), or by the synthesis walk being disabled
+for these modules for an unrelated reason.
+
+**T3 — collection-carrier fork. 110 sites.**
+*Mechanism:* modeled collection algebra (`PartialFunction`, `PointwisePower`, `OrdSet`) is
+constructed and field-accessed as a record (`.member`, `.lookup`, `.keys`) while the emitted Rust
+type is a native `im` container that has no such field. Same shape as Root B one level up: a
+model↔realization fork, but over *containers* rather than scalars.
+*Evidence rule:* E0560/E0609/E0615 naming `member`/`lookup`/`keys` on those carriers, plus the
+E0308 pairs `OrdSet<_>` ↔ `Rc<PointwisePower<_>>` and `HashMap<_,_>` ↔ `Rc<PartialFunction<_,_>>`.
+*Falsified by:* the field names resolving on some emitted definition of those types (i.e. the
+emitter *does* emit a record with `.member` and the failures are wrapper-depth only), which would
+move this population into R1.
+
+**T7 — ContentHash carrier vs `String`. 105 sites.**
+*Mechanism:* `Fnv1a64Structural` (DESIGN's landed ContentHash family grounding) is emitted where a
+`String` is expected and vice versa — 63 one way, 39 the other. The bidirectionality is the tell:
+this is not one wrong declaration but a seam where the modeled hash carrier and its wire/string
+serialization are not distinguished at emission.
+*Evidence rule:* signature mentions `Fnv1a64` or `ContentHash`.
+*Falsified by:* the two directions localizing to disjoint files with unrelated causes — in which
+case this is two roots, not one. **Not yet checked; the cheapest next observation for this root.**
+
+**T5 — missing derives on named types. 92 sites.**
+*Mechanism:* an emitted struct/enum is used as a map key, a serde payload or a `Debug` argument
+without the corresponding derive. Distinct from Root A: A is a **bound on a generic parameter**,
+T5 is a **derive on a concrete type**. Both surface as E0277, which is exactly why grouping by
+code hid them.
+*Evidence rule:* E0277 whose self-type is a concrete named type and whose trait is
+Serialize/Deserialize/Debug/Hash/Eq/Ord; plus E0369 `==`/`!=` on a plain named type.
+*Falsified by:* a fix that adds the missing generic bounds (Root A) also closing these — which
+would prove they were A's derived-impl bounds all along. **Separating observation:** T5's self
+types (`Node`, `EnvironmentBindingKey`, `ParsePositionKey`, `ValueInterpreter`) are non-generic,
+so no bound on a type parameter can reach them.
+
+**R1 — bare↔`Rc` wrap decision. 55 sites.**
+*Mechanism:* DESIGN's open `Rc`-ownership wrap-decision thread, measured. `expected X, found Rc<X>`
+and the exact reverse, for `SpanIndex`, `ScopeRoster`, `SubjectRoster`, `ConsumerRequirement`,
+`DecimalDigitsStep`, `Edge`. July's diagnosis reported this as "RC_WRAP/OWNERSHIP 17–23% of
+E0308"; live it is 2.9% of all sites, so **this root has shrunk substantially** and is no longer a
+headline.
+*Evidence rule:* the expected and found strings differ only by an `Rc<…>` or `&` wrapper.
+*Falsified by:* the wrapper difference being a consequence of a wrong upstream carrier (in which
+case the row belongs to that carrier's root, not here).
+
+**R3 — function-value carrier. 23 sites. R5 — duplicate type authority. 16 sites. T4 — record as
+tuple. 27 sites.** Small, named for completeness. R5 is the one worth a second look for its
+*kind* rather than its size: it is two modules declaring one concept (`OccurrenceId` in both
+`std_occurrence_identity` and `v2_std_node`; `Nat` in both `std.nat` and `v2.std.nat`, the latter
+fork already declared in tree at `nat_max_two_nat_authorities_note`). That is a §3 violation
+producing type errors, and no amount of emitter work fixes it.
+
+### 11.5 Two July roots are DEAD, and one is far larger than its ticket
+
+Checked because §9.1 says nothing here is current unless it names today's measurement:
+
+- **"DIAGNOSTICS carrier fork — 26–30% of E0308, the largest single bucket"**
+  (`gate1_repr_mismatch_e0308_diagnosis_2026-07-24.md` Root 1) is **8 sites, 0.4%**, and none of
+  them is the `Option<String>` vs `Diagnostics` pair that defined it. That root closed.
+- **"WITNESS<T> parametrization gap — 18–23%"** (same document, Root 2) is **zero sites**. The
+  string `Witness<_>` does not occur in the live corpus at all. What remains under D is
+  `missing generics for enum Witness` (33), a different signature.
+- **Root B, as ticketed at ~196, is undersized if the algebra carrier belongs to it.** B1 alone is
+  509 sites. See 11.6 for why I believe B1 and B3 are one mechanism, and what would separate them.
+
+This is the receipt-staleness class §9.1 warns about, caught twice more. Anyone planning against
+the July E0308 bucket shares should stop.
+
+### 11.6 The closure-shape meta-root: checked as asked, and it is bigger than two instances
+
+§10 asks each lane to check cheaply whether its root's mechanism has a closure-shape branch. Mine
+does, and the fan-out is wider than the numeric representation:
+
+`corpus_has_v1_seed_source_indices` has **three** call sites (`04_infer` `reconcile_with_census_extra`,
+`05_emit_rust` `emit_rust`, `05_emit_rust` `emit_module`). Each feeds `build_emit_graph_info`,
+which stores `rust_corpus_repr(has_v1_seed)` on `EmitGraphInfo.corpus_repr`. That one field is
+then read at these decision sites in `src/v1/05_emit_rust.dag` — named by symbol, per §3:
+
+| reader | what it decides | root it lands in |
+|---|---|---|
+| `rust_seed_host_numeric_alias` | `Nat`/`Int` → `i64`, or stay modeled | B3, and via `std.nat Nat = CommutativeSemiring<Magnitude>`, **B1** |
+| `rust_zero_value` | `String` zero is `"".to_string()` or `v1_rt::freemonoid_empty::<i64>()` | T2 |
+| `emit_fn_def` (`host_text_op` via `rust_host_string_op_fn_emit`) | emit a host string-op fn at all | T2 |
+| `module_needs_faithful_carrier_imports` / `module_renders_faithful_text_carrier` | faithful carrier imports | T2 |
+| `emit_v2_std_text_closure_stub_module`, `v2_std_integer_stub` gates | whether stub modules exist in the crate | B3/T2 |
+| `emit_module_full`'s `reference_derived_use_lines` arm | whether import-bearing modules get synthesized use-lines | **K** |
+
+So the flag decides numeric representation, text representation, stub-module presence **and
+import synthesis**. B1 + B3 + T2 + K is **347 sites, 18.5% of the live corpus**, downstream of one
+`contains(k, "src/v1")` test. With `eager-deer-389`'s instance that is not a third instance — it
+is the same instance, correctly sized.
+
+**Two facts that bound the hypothesis rather than support it**, reported because §10 asks for the
+falsifier:
+
+1. **Two gates take `corpus_repr` and never read it.** `rust_seed_host_container_base` and
+   `is_host_text_carrier_type` both accept the parameter and branch only on the type's name. So
+   container realization and text-carrier *detection* are **not** closure-branched, and T3's 110
+   sites are therefore **not** downstream of the flag. A dead parameter threaded through a
+   decision surface is its own §3 smell, and it is the reason a reader can over-attribute here.
+2. **K's direction is the opposite of B's.** The faithful (pure-v2) branch is the one that *runs*
+   `reference_derived_use_lines`; the seed branch gets `[]`. So K is not "the v2 path was never
+   exercised" — it is "the v2-only path exists, runs, and is incomplete". Flipping the repr switch
+   would not close K; it would disable the walk that is trying to fix it.
+
+*Falsified by:* forcing `HostNative` on a pure-v2 closure and finding B1's population unchanged
+(which would mean the algebra carrier is not the numeric alias), or finding that `std.nat Nat` is
+not the type behind `Rc<CommutativeSemiring<Magnitude>>` at these sites. **The second is cheap and
+I have only the declaration-level evidence for it** (`src/v2/std/nat.dag` `nat_max_two_nat_authorities_note`
+states `std.nat Nat` *is* `CommutativeSemiring<Magnitude>`); I have not executed the flip.
+
+### 11.7 The negative result, stated as a result
+
+The residue is **62 sites, 3.3%**, and it is genuinely miscellaneous: the largest single entry is
+13 (`Coverage<Rc<…>>` vs `CoverageDefectAcceptanceKey`), then 9 (`arguments to this function are
+incorrect`, a rustc message that carries no pair), then a 3-and-below tail including two `await`
+outside `async`. There is **no eighth root hiding in the residue** at this measurement.
+
+So the dispatch's hoped-for outcome — "a root larger than B sitting in there unnamed" — is
+**answered yes, but not in the residue**: it was sitting in plain sight as the algebra carrier,
+mis-sized at 196 because the July TSV counted its numeric surface and not its algebra surface.
+
+### 11.8 What I did not establish
+
+- **No before/after.** This is one measurement of one head; nothing here says a root is shrinking
+  or growing except where I compare to a July *document* (11.5), and those comparisons inherit
+  that document's staleness in the other direction.
+- **Seven modules, not twenty.** The four unprobed groups (`emit_produced`, `03_normalize`,
+  `program_partition`, `05_emit_orchestration`, …) had near-identical July histograms to the
+  cluster I did probe, which is *suggestive* that they sit on the same 605-row floor and no more.
+  Unmeasured.
+- **`unreachable_patterns` is counted as an error row** because the crate denies it; if the
+  denial is lifted, E drops out of the denominator and every percentage above moves ~2%.
+- **Root ownership is by generated file, and I have not published the file map.** The per-root
+  file concentration is available in the receipts and is sometimes extreme — Root C is 113 of its
+  167 sites inside `src/v2_compiler_body_lowering_fold.rs` alone, which is a fact `gentle-dove-833`
+  should have.
+
+### 11.9 Receipts
+
+Raw JSON diagnostic logs, the extracted per-module signature TSVs, and the classifier are in this
+session's scratchpad, not committed: a dated snapshot nothing regenerates is the attractor §2
+names. The two scripts are ~60 lines each and the route is fully specified in 11.1 — re-derive
+rather than trusting the table. Anything above that is not reproducible by that route is a defect
+in this section.
