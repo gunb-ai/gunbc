@@ -18,9 +18,9 @@ import gunbc.runner_slot_allocation {
   runner_slot_effective_memory_max_drifts_from_declaration,
   runner_slot_effective_memory_high_drifts_from_declaration,
   gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation,
-  srv2_03_converge_would_oom_floor_at_declared_cap,
-  srv2_03_floor_t5_entry_exceeds_declared_memory_max,
-  srv2_03_floor_t5_entry_exceeds_declared_memory_high,
+  srv2_03_converge_floor_consumer_may_not_fit_declared_cap,
+  srv2_03_floor_t5_entry_rss_exceeds_declared_memory_max,
+  srv2_03_floor_t5_entry_rss_exceeds_declared_memory_high,
   RunnerSlotEffectiveCapMeasured,
 }
 import std.measure { byte_size, byte_size_count }
@@ -118,13 +118,13 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
   byte_size_count(b: gunbc_floor_minimum_viable_armed_budget_bytes()) == byte_size_count(b: byte_size(12884901888))
 }
 
-data srv2_03_effective_cap_drift_note: String = "SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB while gunbc_runner_slot_desired declares 14GiB/13GiB. DRIFTED is the correct verdict — unconverged until host_axis_caps apply (runner_lifecycle_memory_cap_apply_note). Blind apply OOM-kills the floor: gunbc_srv2_03_converge_floor_fit_note. Dissolve-on: post-apply readback replaces gunbc_srv2_03_effective_cap_observation."
+data srv2_03_effective_cap_drift_note: String = "SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB while gunbc_runner_slot_desired declares 14GiB/13GiB. DRIFTED is the correct verdict — unconverged until host_axis_caps apply (runner_lifecycle_memory_cap_apply_note). Converge may not fit the floor consumer: gunbc_srv2_03_converge_floor_fit_note. Dissolve-on: post-apply readback replaces gunbc_srv2_03_effective_cap_observation."
 
 data declared_row_floor_peak_derivation_note: String = "SUBJECT A (declared row): 14GiB/13GiB derives from the 2026-08-05 floor_peak_post calibration (gunbc_runner_slot_memory_max_ruling_note), NOT from srv2-03 live readback. This witness pins only the declared constants."
 
 data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is the structural predicate — effective readback must not become declaration authority when drift exists."
 
-data srv2_03_converge_floor_oom_note: String = "SUBJECT D (floor fit at converge): floor T5 entry RSS on srv2-03 exceeds both declared memory.max and memory.high, so converging the slot to the declared row OOM-kills the CI floor on that host. Floor lane must shrink footprint before apply (sleek-moth-351 / PR 8283)."
+data srv2_03_converge_floor_fit_note: String = "SUBJECT D (floor fit at converge): floor process RSS at T5 alone exceeds declared memory.max on srv2-03; cgroup memory.current charge at T5 has not been measured (gunbc_srv2_03_floor_t5_entry_rss_counter_note). Converging the slot enforces the entitlement and has a live consumer which may not fit — floor lane must shrink footprint before apply (sleek-moth-351 / PR 8283). No specific GiB overage is asserted across RSS and charge."
 
 test fn witness_declared_row_pins_14_13_gib_from_floor_peak_calibration() -> Bool {
   byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(15032385536))
@@ -149,10 +149,9 @@ test fn witness_srv2_03_refuses_effective_readback_as_declaration_authority() ->
   )
 }
 
-test fn witness_srv2_03_converge_would_oom_floor_at_declared_cap() -> Bool {
-  srv2_03_converge_would_oom_floor_at_declared_cap()
-    && srv2_03_floor_t5_entry_exceeds_declared_memory_max()
-    && srv2_03_floor_t5_entry_exceeds_declared_memory_high()
+test fn witness_srv2_03_converge_floor_consumer_may_not_fit_declared_cap() -> Bool {
+  srv2_03_converge_floor_consumer_may_not_fit_declared_cap()
+    && srv2_03_floor_t5_entry_rss_exceeds_declared_memory_max()
 }
 
 test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliation() -> Bool {
