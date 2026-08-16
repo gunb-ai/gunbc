@@ -1,0 +1,109 @@
+module extdeps.bmc.aspeed_ast2500
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.aspeed { aspeed }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.aspeedtech.com/server_ast2500/"
+  }
+}
+
+data aspeed_ast2500_datasheet_note: String = "AST2500/AST2520 A2 Datasheet V1.6 (ASPEED Technology Inc., 2017-05-12). The six management acquisition paths below are the closed set of on-chip mechanisms through which platform management firmware acquires host and board state from this SoC. They are split into hardwired trip lines — digital inputs whose controllers expose per-line interrupt generation with programmable level and edge sensitivity (sections 1.3.26 and 1.3.27) — and pollable sensor readings — paths whose useful value is obtained only by initiating a read transaction or counter sample (sections 1.3.25, 1.3.39, 1.3.41, and 1.3.42). Conflating the two modes is the state-space error this module refuses: a GPIO fault line is not an I2C temperature read, and treating them as one undifferentiated sensor surface hides which failures can be interrupt-driven versus which require a poll loop."
+
+// HOW THE BMC ACQUIRES PLATFORM STATE THROUGH THE AST2500 SILICON. Six paths,
+// closed — not an open-ended sensor enum — because the datasheet names exactly
+// these controller blocks for management I/O.
+type Ast2500ManagementAcquisitionPath
+  = GpioDigitalTripInput { gpio_pin_count: Int }
+  | SgpioShiftRegisterTripInput { sgpio_input_port_count: Int }
+  | I2cSmbusSensorBus { controller_count: Int }
+  | AdcAnalogInput { channel_count: Int }
+  | PeciProcessorTelemetry { max_cpu_count: Int, max_domain_per_cpu: Int }
+  | FanTachPulseCounter { tach_input_count: Int }
+
+// THE INTERACTION MODE IS ORTHOGONAL TO THE CONTROLLER IDENTITY. Two arms, not
+// a preference flag on each path: hardwired trip lines are interrupt-qualified
+// digital fault/status inputs; pollable sensor readings require software to
+// initiate a bus transaction or counter read.
+type Ast2500ManagementAcquisitionMode
+  = HardwiredTripLine
+  | PollableSensorReading
+
+fn ast2500_management_acquisition_mode(
+  path: Ast2500ManagementAcquisitionPath,
+) -> Ast2500ManagementAcquisitionMode {
+  match path {
+    GpioDigitalTripInput { gpio_pin_count: _ } => HardwiredTripLine
+    SgpioShiftRegisterTripInput { sgpio_input_port_count: _ } => HardwiredTripLine
+    I2cSmbusSensorBus { controller_count: _ } => PollableSensorReading
+    AdcAnalogInput { channel_count: _ } => PollableSensorReading
+    PeciProcessorTelemetry { max_cpu_count: _, max_domain_per_cpu: _ } =>
+      PollableSensorReading
+    FanTachPulseCounter { tach_input_count: _ } => PollableSensorReading
+  }
+}
+
+// Cited counts from AST2500/AST2520 A2 Datasheet V1.6 sections 1.3.25–1.3.27,
+// 1.3.39, 1.3.41, and 1.3.42.
+data ast2500_management_acquisition_paths: List<Ast2500ManagementAcquisitionPath> = [
+  GpioDigitalTripInput { gpio_pin_count: 228 },
+  SgpioShiftRegisterTripInput { sgpio_input_port_count: 80 },
+  I2cSmbusSensorBus { controller_count: 14 },
+  AdcAnalogInput { channel_count: 16 },
+  PeciProcessorTelemetry { max_cpu_count: 8, max_domain_per_cpu: 2 },
+  FanTachPulseCounter { tach_input_count: 16 },
+]
+
+type AspeedAst2500CatalogRow {
+  ordering_part_number: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  management_acquisition_paths: List<Ast2500ManagementAcquisitionPath>
+}
+
+data aspeed_ast2500_catalog: AspeedAst2500CatalogRow = AspeedAst2500CatalogRow {
+  ordering_part_number: "AST2500",
+  manufacturer: aspeed,
+  management_acquisition_paths: ast2500_management_acquisition_paths,
+}
+
+fn ast2500_hardwired_trip_line_path_count(
+  paths: List<Ast2500ManagementAcquisitionPath>,
+) -> Int {
+  fold(paths, init: 0, f: fn(acc, p) {
+    match ast2500_management_acquisition_mode(path: p) {
+      HardwiredTripLine => acc + 1
+      PollableSensorReading => acc
+    }
+  })
+}
+
+fn ast2500_pollable_sensor_reading_path_count(
+  paths: List<Ast2500ManagementAcquisitionPath>,
+) -> Int {
+  fold(paths, init: 0, f: fn(acc, p) {
+    match ast2500_management_acquisition_mode(path: p) {
+      HardwiredTripLine => acc
+      PollableSensorReading => acc + 1
+    }
+  })
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.aspeed_ast2500",
+      decl_name: "aspeed_ast2500_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -163,6 +163,7 @@ pub mod cli_run;
 pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
+pub mod derived_realization_schedule;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;

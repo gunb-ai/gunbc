@@ -18,7 +18,6 @@ import std.claim_evidence {
   EvidenceFidelity,
   EvidenceSupports,
   EvidenceChallenges,
-  EvidenceLink,
   claim_evidence_grounding_authorities,
   claim_assessment_from_links,
   claim_information_state,
@@ -40,7 +39,6 @@ import extdeps.llm.cli_lifecycle {
 }
 import extdeps.languages.dag.syntax { dag_syntax_spec }
 import gunbc.provider_readiness_claim_evidence {
-  ProviderReadinessEvidenceLink,
   ProviderReadinessObservation,
   ProviderLoginCredentialRecorded,
   ProviderLiveModelResponseReceived,
@@ -50,6 +48,7 @@ import gunbc.provider_readiness_claim_evidence {
   provider_login_status_inference,
   provider_live_request_failed_inference,
   provider_live_request_succeeded_inference,
+  provider_readiness_evidence_link,
   provider_readiness_evidence_admission_policy,
 }
 import gunbc.readback_independence {
@@ -391,7 +390,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     provider: provider,
     bound: provider_other_evidence_bound,
   )
-  let forged: ProviderReadinessEvidenceLink = EvidenceLink {
+  let forged = provider_readiness_evidence_link(
     fact: provider_live_request_succeeded_fact(
       id: "forged-provider-support-link",
     ),
@@ -411,14 +410,14 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
       boundary: ProviderAuthenticated,
       losses: ["the response was not independently classified"],
     },
-    probe_independence: ReadBackProbe {
+    probe: ReadBackProbe {
       label: "ensure provider then claim success",
       subject: "provider authentication",
       effect_on_subject: ProbeMayEstablish {
         mechanism: "the operation refreshes credentials before reporting",
       },
     },
-  }
+  )
   let readiness = claim_readiness_assessment(
     policy: ClaimReadinessPolicy {
       first_required: required,

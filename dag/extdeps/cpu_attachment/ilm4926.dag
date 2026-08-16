@@ -7,6 +7,11 @@ import extdeps.cpu.ampere {
   ampere_altra_classic_rev_a1_datasheet_authority,
   ampere_altra_rev_a1_datasheet_authority,
 }
+import extdeps.ocp.mt_jade.subject { mt_jade_subject_authority_anchor }
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
+import extdeps.vendor.lotes { lotes }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 import extdeps.uri { Uri, Https }
 
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
@@ -18,21 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_
 
 data altra_classic_datasheet_authority: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
-// THE MT. JADE LOCATOR IS AUTHORED HERE BECAUSE NO MODULE ON MAIN OWNS IT.
-// This is a sequencing fact, not admitted debt: on main today this row IS the
-// single authority for that locator, and gunbc#8257 introduces a module that
-// will own it. Whichever of the two lands second reconciles, and the direction
-// is fixed in advance so nobody has to decide it later — the OCP document's own
-// module owns its anchor, this row is deleted, and the attestation consumes
-// extdeps.ocp.mt_jade.subject exactly as the two Ampere rows above already
-// consume extdeps.cpu.ampere. Stacking this PR on that branch instead would
-// trade one reconciliation for a base that CI does not run against at all.
-data ocp_mt_jade_specification_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
-  }
-}
+data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_authority_anchor
 
 // THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
 // THIS MODULE. ILM4926 is named by documents from two different publishers —
@@ -159,4 +150,286 @@ fn attested_by_ocp_specification() -> Bool {
 
 fn attested_by_independent_publishers() -> Bool {
   attested_by_ampere_datasheets() && attested_by_ocp_specification()
+}
+
+// ================= THIRD-PARTY ATTRIBUTION, CARRIED AT ITS REAL STRENGTH =================
+//
+// A community thread on Ampere's own developer forum names a vendor and two part numbers for this
+// designation. That is the first source of any kind to do so, and it is a genuine advance: it
+// gives the search a vendor to approach. It is NOT a publisher of record, and the distinction is
+// modelled rather than softened in prose, because the whole failure this module guards against is
+// a plausible attribution hardening into a fact nobody checked.
+//
+// WHO SAID IT: a community member, in a thread with no Ampere staff response. Ampere hosts the
+// forum; it did not author the claim. Hosting is not endorsement, so the authority row is the
+// thread, and the claim's strength is a property of the CLAIMANT, not of the domain it sits on.
+type AttestationStanding
+  = PublisherOfRecord
+  | ThirdPartyUnofficial { claimant: NonEmptyStr }
+
+// THE VENDOR'S OWN CATALOGUE PAGE, which is a publisher of record for its own part and therefore
+// outranks the forum for anything it states. It resolves what the community thread could not.
+data lotes_azif0222_product_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lotes.cc/en/product.php?act=view&id=566"
+  }
+}
+
+data ampere_community_lga4926_thread_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "community.amperecomputing.com/t/lga4926-socket-details/2837"
+  }
+}
+
+// THE TWO PART NUMBERS, AND THE FACT THAT THEIR ASSIGNMENT IS DISPUTED. Two readings of the same
+// thread disagreed about which number names the socket body and which names the loading mechanism.
+// That disagreement is the reason this is a candidate row and not a resolution: writing the pair
+// down in one order would make a coin-flip look like a citation, and the referent split is exactly
+// the question this module exists to leave open.
+// THE REFERENT ARMS INCLUDE A COMBINED ASSEMBLY, because the vendor sells one. Lotes lists the
+// loading mechanism and the backplate as a single orderable product, so a model offering only
+// "socket body" or "loading mechanism" would force a real catalogue entry into the wrong arm.
+type PartReferentClaim
+  = ClaimedSocketBody
+  | ClaimedLoadingMechanism
+  | ClaimedLoadingMechanismWithBackplate
+  | ReferentAssignmentDisputed { because: NonEmptyStr }
+
+type PartNumberCandidate {
+  part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  claimed_referent: PartReferentClaim
+  standing: AttestationStanding
+  authority: ExternalAuthority
+}
+
+// ONE PART, NOT TWO, AND THE VENDOR SAYS WHICH. An earlier revision of this module carried
+// "SKT 4926 ILM" and "AZIF0222-P002C56" as two candidates whose referents were disputed, because
+// the only source was a forum line joining them with an ampersand and two readings disagreed
+// about which named the socket and which the loading mechanism.
+//
+// The Lotes catalogue page settles it: ARM P/N AZIF0222 has Product Overview
+// "SKT 4926 ILM & BP, Top-mount, HF" and Component Type "CPU Socket ILM & BP". So SKT 4926 ILM is
+// the vendor's PRODUCT NAME for AZIF0222, not a second part number -- the forum was giving one
+// part's name and number, and the ampersand joined a name to a number rather than two parts.
+// Modelling it as two candidates was an over-reading of the forum line, corrected here.
+//
+// WHAT IT IS: the independent loading mechanism together with the backplate, sold as one
+// top-mount assembly. WHAT IT IS NOT: the socket body. That part is a different orderable item
+// which no consulted source names, and it is the one that carries the board land pattern -- so
+// this resolution advances the retention layers and leaves the land pattern exactly where it was.
+data lotes_part_attestations: List<PartNumberCandidate> = [
+  PartNumberCandidate {
+    part_number: "AZIF0222",
+    vendor: lotes,
+    claimed_referent: ClaimedLoadingMechanismWithBackplate,
+    standing: PublisherOfRecord,
+    authority: lotes_azif0222_product_authority,
+  },
+]
+
+data lotes_azif0222_catalogue_note: String = "Lotes catalogue page for ARM P/N AZIF0222. Product Overview: SKT 4926 ILM and BP, Top-mount, HF. Component Type: CPU Socket ILM and BP. RoHS/Halogen-Free: HF. Packaging: Tray. The page states no dimensions, contact count, pitch, land pattern or mating socket-body part number, so it establishes the retention assembly's identity and nothing about board geometry."
+
+// THE SOCKET BODY IS A SEPARATE, UNNAMED PART, and this row exists so that resolving the
+// retention assembly cannot be mistaken for resolving the attachment. It is the layer that
+// carries the board land pattern.
+data socket_body_part_is_unnamed_note: String = "No consulted source names an orderable socket-body part for LGA4926. Lotes AZIF0222 is the ILM and backplate assembly; the socket body that receives the processor and solders to the board is a different item. Resolving it is what would make the board land pattern obtainable."
+
+// THE MECHANICAL DRAWING THE SAME THREAD CARRIES, AND WHAT IT IS NOT. A dimensioned plan view of
+// the retention frame was posted alongside the part numbers: a bezel with a central opening, a cam
+// feature on one edge, twelve mounting holes, datums A and B, and callouts including 2X97.00+/-0.1,
+// 2X94.00+/-0.05, 2X72.00+/-0.1, 2X60.00+/-0.05 and a 150 degree corner chamfer.
+//
+// It answers MOUNTING geometry -- where retention hardware bolts to the board. It contains NO pad
+// array, no pitch and no contact count, so it does not touch the board land pattern, and recording
+// it as attachment-stack progress must not be allowed to read as land-pattern progress. The two
+// layers are separate in product.altra_motherboard.attachment_stack for exactly this reason.
+type MechanicalDrawingScope
+  = MountingAndOutlineGeometry
+  | BoardSidePadArray
+
+data lga4926_retention_drawing_scope: MechanicalDrawingScope = MountingAndOutlineGeometry
+
+data lga4926_retention_drawing_note: String = "Community-posted dimensioned plan view of the LGA4926 retention frame: twelve mounting holes, datums A and B, symmetric callouts 2X97.00 +/-0.1 and 2X94.00 +/-0.05 across the width, 2X72.00 +/-0.1 and 2X60.00 +/-0.05 vertically, 150 degree corner chamfer. Mounting and outline geometry only. It carries no pad array, pitch or contact count, so it establishes nothing about the board land pattern."
+
+fn part_candidate_is_officially_attested(c: PartNumberCandidate) -> Bool {
+  match c.standing {
+    PublisherOfRecord => true
+    ThirdPartyUnofficial { claimant: _ } => false
+  }
+}
+
+fn any_part_officially_attested() -> Bool {
+  any(lotes_part_attestations, c => part_candidate_is_officially_attested(c: c))
+}
+
+fn part_referent_is_assigned(c: PartNumberCandidate) -> Bool {
+  match c.claimed_referent {
+    ClaimedSocketBody => true
+    ClaimedLoadingMechanism => true
+    ClaimedLoadingMechanismWithBackplate => true
+    ReferentAssignmentDisputed { because: _ } => false
+  }
+}
+
+// THE FOUR BOARD-DESIGN QUESTIONS A DESIGNATION MUST ANSWER BEFORE A PART CAN BE
+// ORDERED OR A LAND PATTERN RELEASED. They are four named fields rather than a
+// tagged list because the axis set is closed and fixed: a missing or duplicate
+// axis must be unwritable, not caught by a witness counting list rows. Each
+// field is a resolved-vs-unresolved sum so absence prose cannot masquerade as a
+// cited fact — a vendor name without an authority is a different arm from a
+// reason the cited set does not yet establish.
+type DesignationResolutionStanding
+  = DesignationFactEstablished {
+      value: NonEmptyStr
+      authority: ExternalAuthority
+    }
+  | DesignationFactUnresolved {
+      reason: NonEmptyStr
+      next_authority_to_consult: ExternalAuthority?
+    }
+
+// THE OBLIGATIONS ARE PER CONSTITUENT, BECAUSE THE CONSTITUENTS ARE SEPARATELY SOURCED.
+// A flat record with one vendor_identity and one orderable_part_number could not express the
+// state this module actually reached: Lotes established for the retention assembly, unknown
+// for the socket body. That is not a contradiction, it is two constituents resolving at
+// different rates, and a single field forced one of them to impersonate the other.
+//
+// THE LAND PATTERN IS A FIELD OF THE SOCKET BODY AND OF NOTHING ELSE. It is the board-side
+// termination of the part the processor lands in, so ConstituentStanding deliberately has no
+// such field: attaching a land pattern to a retention assembly or to mounting hardware has no
+// representation rather than being caught by a witness after the fact (DESIGN section 4b --
+// construction over validation). The 4,926 processor contacts do not derive it either; they
+// are the package's side of a connection whose other side is the socket's own geometry.
+type ConstituentStanding {
+  vendor_identity: DesignationResolutionStanding
+  orderable_part_number: DesignationResolutionStanding
+}
+
+type SocketBodyStanding {
+  vendor_identity: DesignationResolutionStanding
+  orderable_part_number: DesignationResolutionStanding
+
+  board_land_pattern: DesignationResolutionStanding
+}
+
+// THE RETENTION ASSEMBLY IS ONE CONSTITUENT BECAUSE LOTES SELLS IT AS ONE ITEM. AZIF0222 is
+// catalogued as 'SKT 4926 ILM & BP' -- the independent loading mechanism together with its
+// backplate, one orderable part. Splitting them into two constituents here would invent a
+// procurement boundary the vendor does not offer, which is the fabricated-structure failure
+// rather than a finer model.
+type AttachmentStanding {
+  socket_body: SocketBodyStanding
+  retention_assembly: ConstituentStanding
+  mounting_hardware: ConstituentStanding
+}
+
+fn standing_is_established(s: DesignationResolutionStanding) -> Bool {
+  match s {
+    DesignationFactEstablished { value: _, authority: _ } => true
+    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+  }
+}
+
+// THE LAND PATTERN IS REACHED THROUGH THE SOCKET BODY, never as a top-level field. A consumer
+// that wants the board geometry has to go through the constituent that owns it, so the routing
+// says out loud which part must be identified before a footprint can be released.
+fn attachment_board_land_pattern(a: AttachmentStanding) -> DesignationResolutionStanding {
+  a.socket_body.board_land_pattern
+}
+
+fn attachment_socket_body_is_identified(a: AttachmentStanding) -> Bool {
+  standing_is_established(s: a.socket_body.vendor_identity)
+    && standing_is_established(s: a.socket_body.orderable_part_number)
+}
+
+// A FOOTPRINT MAY NOT EMIT WHILE THE SOCKET BODY IS UNIDENTIFIED. The land pattern belongs to a
+// part, so a released footprint whose part is unknown is a drawing of nothing -- this is the
+// predicate a footprint emitter consults, not a comment asking it to be careful.
+fn attachment_footprint_may_emit(a: AttachmentStanding) -> Bool {
+  attachment_socket_body_is_identified(a: a)
+    && standing_is_established(s: attachment_board_land_pattern(a: a))
+}
+
+fn attachment_unresolved_constituent_count(a: AttachmentStanding) -> Int {
+  let socket_unresolved = if attachment_socket_body_is_identified(a: a) { 0 } else { 1 }
+  let retention_unresolved = if standing_is_established(s: a.retention_assembly.orderable_part_number) { 0 } else { 1 }
+  let mounting_unresolved = if standing_is_established(s: a.mounting_hardware.orderable_part_number) { 0 } else { 1 }
+  socket_unresolved + retention_unresolved + mounting_unresolved
+}
+
+// TWO ROUTES TO ONE FACT, AND THEY ARE NOT INTERCHANGEABLE. The gated Ampere route is carried as
+// the land pattern's next authority because that is where the fact is known to be written. But a
+// document this repository could obtain and never publish is not the same as one it could publish,
+// and collapsing them would let an NDA acquisition read as progress toward a public model.
+//
+// The socket vendor is the route that ends in a carriable fact: a recommended land pattern is
+// ordinary published connector documentation, because a customer cannot design the part in without
+// it. Lotes manufactures the retention assembly for this designation and manufactures LGA socket
+// bodies generally, including AMD Socket AM5. Nothing obtained under NDA may enter this model, so
+// this route is not a fallback to the gated one -- it is the only route whose result can land.
+type LandPatternRoute
+  = PublicSocketVendorDrawing {
+      vendor_authority: ExternalAuthority
+      what_to_request: NonEmptyStr
+    }
+  | AccessGatedReferenceCollateral {
+      access_route: ExternalAuthority
+      why_not_carriable: NonEmptyStr
+    }
+
+data lga4926_land_pattern_public_route: LandPatternRoute = PublicSocketVendorDrawing {
+  vendor_authority: lotes_azif0222_product_authority,
+  what_to_request: "the socket-body part number that mates with AZIF0222, then its customer drawing or recommended PCB layout: board-side land count and pad geometry, pitch, A1 orientation, solder-mask and paste rules, socket outline and keepouts, and mounting-hole positions",
+}
+
+data lga4926_land_pattern_gated_route: LandPatternRoute = AccessGatedReferenceCollateral {
+  access_route: ampere_customer_reference_boards_authority,
+  why_not_carriable: "Ampere reference materials are released under NDA through Customer Connect. This repository is public, so geometry taken from that package could not be carried here even once obtained -- the acquisition would resolve the question for a reader and leave the model exactly as unresolved as before.",
+}
+
+fn route_yields_a_carriable_fact(r: LandPatternRoute) -> Bool {
+  match r {
+    PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => true
+    AccessGatedReferenceCollateral { access_route: _, why_not_carriable: _ } => false
+  }
+}
+
+data ilm4926_attachment_standing: AttachmentStanding = AttachmentStanding {
+  socket_body: SocketBodyStanding {
+    vendor_identity: DesignationFactUnresolved {
+      reason: "no publisher of record attributes the socket body to a manufacturer. Ampere and OCP name the designator ILM4926 only, and Lotes publishes the retention assembly without naming what it mates with. Lotes is the strongest lead precisely because it manufactures the retention assembly for this designation and manufactures LGA socket bodies generally, including for AMD Socket AM5 -- but manufacturing one constituent is not attribution of another.",
+      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    },
+    orderable_part_number: DesignationFactUnresolved {
+      reason: "no source names an orderable socket-body part for LGA4926. AZIF0222 is the retention assembly and is recorded there; it is not the item that receives the processor and solders to the board. Public retail search found no socket-body listing either, which is an observation about distribution rather than evidence the part has no number -- a low-volume server socket sold direct to board makers would not appear in retail regardless.",
+      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    },
+    board_land_pattern: DesignationFactUnresolved {
+      reason: "the board-side land pattern is stated in no public document consulted. The Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated. A SECOND and independent route exists and is carried separately in lga4926_land_pattern_public_route, because one next-authority field cannot hold two routes whose carriage consequences differ.",
+      next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
+    },
+  },
+  retention_assembly: ConstituentStanding {
+    vendor_identity: DesignationFactEstablished {
+      value: "Lotes Co., Ltd",
+      authority: lotes_azif0222_product_authority,
+    },
+    orderable_part_number: DesignationFactEstablished {
+      value: "AZIF0222, product name SKT 4926 ILM & BP, Top-mount, HF -- the independent loading mechanism together with the backplate, sold as one top-mount assembly",
+      authority: lotes_azif0222_product_authority,
+    },
+  },
+  mounting_hardware: ConstituentStanding {
+    vendor_identity: DesignationFactUnresolved {
+      reason: "no consulted source names the screws, standoffs or springs that fasten the retention assembly to the board. The community drawing shows twelve mounting holes and their datums, which constrains where hardware goes without naming what it is.",
+      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    },
+    orderable_part_number: DesignationFactUnresolved {
+      reason: "unnamed by every consulted source. Whether the hardware ships with AZIF0222 or is ordered separately is itself unestablished, so this is not assumed to be covered by the retention assembly.",
+      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    },
+  },
 }

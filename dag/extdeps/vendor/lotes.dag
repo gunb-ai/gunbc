@@ -1,0 +1,41 @@
+module extdeps.vendor.lotes
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// THE CONNECTOR MAKER NAMED AS THE SOURCE OF THE LGA4926 ATTACHMENT HARDWARE.
+// Lotes Co., Ltd is a Taiwanese manufacturer of sockets and connectors. This row grounds the
+// company entity only; whether Lotes is in fact the manufacturer of the parts the ILM4926
+// designation names is a separate claim carried at its own attestation strength in
+// extdeps.cpu_attachment.ilm4926 -- see lotes_part_attestations there.
+//
+// The entity is modelled even though the attribution is not yet established, because the two are
+// different facts: Lotes exists and is citable regardless of whether a community forum post
+// correctly identifies it as this socket's maker. Minting the company only once the attribution
+// firms up would mean the attribution row had nowhere to point.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lotes.cc/en/about.php"
+  }
+}
+
+data lotes_registrant_note: String = "Lotes Co., Ltd is cited from its corporate site as a manufacturer of sockets, connectors and loading mechanisms. This module owns only the company entity. The LGA4926 attachment part numbers attributed to it, and the strength of that attribution, live in extdeps.cpu_attachment.ilm4926."
+
+data lotes: Vendor<Hardware> = Vendor { legal_name: "Lotes Co., Ltd" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.lotes",
+      decl_name: "lotes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

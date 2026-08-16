@@ -27,6 +27,7 @@ const SUITE_TYPE_AND_ARITY: &str = "type_and_arity";
 const SUITE_EMPTY_LIST_CONTEXT: &str = "empty_list_context";
 const SUITE_CONSTRUCTOR_OWNER: &str = "constructor_owner";
 const SUITE_RECORD_FIELD_WALLS: &str = "record_field_walls";
+const SUITE_ESTABLISHMENT: &str = "establishment";
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("diagnostics_witness: {msg}");
@@ -156,6 +157,82 @@ fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
     let idx = build_newline_index(file.to_string(), source.to_string());
     let lc = byte_to_line_col(idx, span.start);
     (lc.line, lc.col)
+}
+
+fn type_mismatch_count(result: &PipelineResult) -> usize {
+    result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. }))
+        .count()
+}
+
+fn establishment_report(module_index: &ModuleIndex) {
+    let probes: &[(&str, &str, &str)] = &[
+        (
+            "distinct_record_at_arg",
+            "establish_distinct.dag",
+            "module establish_distinct\n\
+             type Box { label: String }\n\
+             type Other { x: Int }\n\
+             fn takes_other(o: Other) -> Bool { true }\n\
+             fn bad() -> Bool { takes_other(o: Box { label: \"x\" }) }\n",
+        ),
+        (
+            "record_at_node_arg",
+            "establish_node.dag",
+            "module establish_node\n\
+             type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+             type Box { label: String }\n\
+             fn takes_node(n: Node) -> Bool { true }\n\
+             fn bad() -> Bool { takes_node(n: Box { label: \"x\" }) }\n",
+        ),
+        (
+            "alias_normalized_tree_at_node",
+            "establish_alias.dag",
+            "module establish_alias\n\
+             type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+             type NormalizedTree = Node\n\
+             fn takes_node(n: Node) -> Bool { true }\n\
+             fn via_alias() -> Bool {\n\
+               takes_node(n: NormalizedTree { kind: 0, children: [], occurrence_id: 0 })\n\
+             }\n",
+        ),
+        (
+            "record_at_coproduct_field",
+            "establish_union.dag",
+            "module establish_union\n\
+             type Ev = EvA | EvB { n: Int, m: Int }\n\
+             type Box { label: String }\n\
+             type Prov { id: String, ev: Ev }\n\
+             data bad: Prov = Prov { id: \"x\", ev: Box { label: \"y\" } }\n",
+        ),
+        (
+            "wrong_coproduct_variant_field",
+            "establish_wrong_variant.dag",
+            "module establish_wrong_variant\n\
+             type Ev = EvA | EvB { n: Int, m: Int }\n\
+             type Other = OtherA | OtherB { k: Int }\n\
+             type Prov { id: String, ev: Ev }\n\
+             data bad: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n",
+        ),
+        (
+            "optional_present_at_product_field",
+            "establish_opt_product.dag",
+            "module establish_opt_product\n\
+             type AnnotationSubject { span: Int }\n\
+             type Pick { following: AnnotationSubject? }\n\
+             fn f() -> Pick { Pick { following: Present { value: AnnotationSubject { span: 1 } } } }\n",
+        ),
+    ];
+    for (label, path, source) in probes {
+        let result = compile_multi(module_index, &[(path, source)]);
+        eprintln!(
+            "establishment {label}: type_mismatch={} total_diags={}",
+            type_mismatch_count(&result),
+            result.diagnostics.len()
+        );
+    }
 }
 
 fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
@@ -432,6 +509,7 @@ fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
             "record_literal_field_walls",
             record_literal_field_walls,
         )]),
+        SUITE_ESTABLISHMENT => Ok(vec![("establishment_report", establishment_report)]),
         _ => Err(format!(
             "unknown suite '{suite}'; expected one of: {SUITE_IMPORT_RESOLUTION}, \
              {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}, \
@@ -513,6 +591,114 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         diagnostic_messages(&kernel_result)
     );
 
+    // RED (original wall specimen, enrolled): record literal at a Node parameter.
+    let record_at_node = "module fieldwall_node_arg\n\
+        type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+        type Box { label: String }\n\
+        fn takes_node(n: Node) -> Bool { true }\n\
+        fn bad_node_arg() -> Bool { takes_node(n: Box { label: \"x\" }) }\n";
+    let node_arg_result =
+        compile_multi(module_index, &[("fieldwall_node_arg.dag", record_at_node)]);
+    assert!(
+        node_arg_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Box at Node param, got: {:?}",
+        diagnostic_messages(&node_arg_result)
+    );
+
+    // RED (original wall specimen, enrolled): record literal at a coproduct field.
+    let record_at_union = "module fieldwall_record_at_union\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Box { label: String }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data r: Prov = Prov { id: \"x\", ev: Box { label: \"y\" } }\n";
+    let record_union_result = compile_multi(
+        module_index,
+        &[("fieldwall_record_at_union.dag", record_at_union)],
+    );
+    assert!(
+        record_union_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Box at Ev field, got: {:?}",
+        diagnostic_messages(&record_union_result)
+    );
+
+    // RED: variant from the wrong coproduct at a union field
+    let wrong_variant = "module fieldwall_wrong_variant\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Other = OtherA | OtherB { k: Int }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data w: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n";
+    let wrong_variant_result = compile_multi(
+        module_index,
+        &[("fieldwall_wrong_variant.dag", wrong_variant)],
+    );
+    assert!(
+        wrong_variant_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for OtherA at Ev field, got: {:?}",
+        diagnostic_messages(&wrong_variant_result)
+    );
+
+    // RED (permanent regression control — review 52087): pre-wall decl_facts
+    // missing_variant specimen inlined Terminal at a ConstructionMechanism field.
+    let missing_variant_mechanism = "module fieldwall_missing_variant_mechanism\n\
+        type ConstructionMechanism = SingleAuthority | RealizationDispatch\n\
+        type Disposition\n\
+          = Terminal { reason: String }\n\
+          | Scaffold { dissolves_to: ConstructionMechanism, bind: String }\n\
+        data missing_variant_specimen: Disposition = Scaffold {\n\
+          dissolves_to: Terminal { reason: \"phantom-mechanism\" },\n\
+          bind: \"anchor\",\n\
+        }\n";
+    let missing_variant_mechanism_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_missing_variant_mechanism.dag",
+            missing_variant_mechanism,
+        )],
+    );
+    assert!(
+        missing_variant_mechanism_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Terminal at ConstructionMechanism field, got: {:?}",
+        diagnostic_messages(&missing_variant_mechanism_result)
+    );
+
+    // GREEN (positive control — review 52087): valid mechanism arm at same site.
+    let missing_variant_mechanism_green = "module fieldwall_missing_variant_mechanism_green\n\
+        type ConstructionMechanism = SingleAuthority | RealizationDispatch\n\
+        type Disposition\n\
+          = Terminal { reason: String }\n\
+          | Scaffold { dissolves_to: ConstructionMechanism, bind: String }\n\
+        data missing_variant_specimen: Disposition = Scaffold {\n\
+          dissolves_to: SingleAuthority,\n\
+          bind: \"anchor\",\n\
+        }\n";
+    let missing_variant_mechanism_green_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_missing_variant_mechanism_green.dag",
+            missing_variant_mechanism_green,
+        )],
+    );
+    assert!(
+        !missing_variant_mechanism_green_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "SingleAuthority at ConstructionMechanism field must stay green, got: {:?}",
+        diagnostic_messages(&missing_variant_mechanism_green_result)
+    );
+
     // RED: kernel value where a declared coproduct is expected (direct call arg)
     let call_arg = "module fieldwall_callarg\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
@@ -541,6 +727,51 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         )),
         "complete literal must stay green, got: {:?}",
         diagnostic_messages(&complete_result)
+    );
+
+    // GREEN (exclusion boundary): Optional wrapper at a CardOptional formal.
+    let optional_wrapper_green = "module fieldwall_optional_wrapper_green\n\
+        type Payload { n: Int }\n\
+        type Holder { value: Payload? }\n\
+        data h: Holder = Holder { value: Present { value: Payload { n: 1 } } }\n";
+    let optional_wrapper_green_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_optional_wrapper_green.dag",
+            optional_wrapper_green,
+        )],
+    );
+    assert!(
+        !optional_wrapper_green_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "Present wrapper at CardOptional formal must stay green, got: {:?}",
+        diagnostic_messages(&optional_wrapper_green_result)
+    );
+
+    // RED (exclusion boundary): same wrapper shape at a Required formal.
+    let optional_wrapper_red = "module fieldwall_optional_wrapper_red\n\
+        type NonEmptyDiagnostics { head: Int, tail: List<Int> }\n\
+        type Rejected { diagnostics: NonEmptyDiagnostics }\n\
+        fn bad() -> Rejected {\n\
+          Rejected {\n\
+            diagnostics: Some {\n\
+              diagnostics: NonEmptyDiagnostics { head: 1, tail: [] }\n\
+            }\n\
+          }\n\
+        }\n";
+    let optional_wrapper_red_result = compile_multi(
+        module_index,
+        &[("fieldwall_optional_wrapper_red.dag", optional_wrapper_red)],
+    );
+    assert!(
+        optional_wrapper_red_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "Some wrapper at required NonEmptyDiagnostics must stay red, got: {:?}",
+        diagnostic_messages(&optional_wrapper_red_result)
     );
 
     // GREEN: optional field may be omitted

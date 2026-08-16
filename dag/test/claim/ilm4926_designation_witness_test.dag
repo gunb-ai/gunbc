@@ -2,7 +2,26 @@ module test.claim.ilm4926_designation_witness
 
 import std.logic { Bool }
 import std.types { list_length }
+import extdeps.vendor.lotes { lotes }
 import extdeps.cpu_attachment.ilm4926 {
+  lotes_part_attestations,
+  any_part_officially_attested,
+  part_referent_is_assigned,
+  part_candidate_is_officially_attested,
+  PublisherOfRecord,
+  ThirdPartyUnofficial,
+  ClaimedSocketBody,
+  ClaimedLoadingMechanism,
+  ReferentAssignmentDisputed,
+  PartNumberCandidate,
+  MountingAndOutlineGeometry,
+  BoardSidePadArray,
+  lga4926_retention_drawing_scope,
+  lotes_azif0222_product_authority,
+  ClaimedLoadingMechanismWithBackplate,
+  ampere_community_lga4926_thread_authority,
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
   IndependentLoadingMechanismOnly,
   ReferentUnresolvedByCitedDocuments,
   SocketAssemblyIncludingLoadingMechanism,
@@ -18,6 +37,21 @@ import extdeps.cpu_attachment.ilm4926 {
   ilm4926,
   ilm4926_attestations,
   ilm4926_referent,
+  attachment_board_land_pattern,
+  attachment_footprint_may_emit,
+  attachment_socket_body_is_identified,
+  attachment_unresolved_constituent_count,
+  ilm4926_attachment_standing,
+  AccessGatedReferenceCollateral,
+  PublicSocketVendorDrawing,
+  ampere_customer_reference_boards_authority,
+  lga4926_land_pattern_gated_route,
+  lga4926_land_pattern_public_route,
+  route_yields_a_carriable_fact,
+  AttachmentStanding,
+  ConstituentStanding,
+  SocketBodyStanding,
+  standing_is_established,
   ocp_mt_jade_specification_authority,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -73,4 +107,208 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
   let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
   list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
     && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
+}
+
+// THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
+// match on each field rather than a Bool predicate over the coproduct.
+// THE SOCKET BODY IS UNIDENTIFIED ON BOTH OF ITS AXES, and the land pattern with it. These are
+// read through the socket-body constituent rather than off a flat record, which is the point of
+// the restructure: there is no top-level vendor_identity to answer for the whole assembly.
+test fn w_the_socket_body_is_unidentified_on_every_axis() -> Bool {
+  let a = ilm4926_attachment_standing
+  !standing_is_established(s: a.socket_body.vendor_identity)
+    && !standing_is_established(s: a.socket_body.orderable_part_number)
+    && !standing_is_established(s: attachment_board_land_pattern(a: a))
+    && !attachment_socket_body_is_identified(a: a)
+    && !designation_referent_is_resolved(referent: ilm4926_referent)
+}
+
+// THE RETENTION ASSEMBLY RESOLVES; THE SOCKET BODY DOES NOT. Lotes is a publisher of record for
+// its own catalogue, so AZIF0222 establishes both retention axes. This witness is the pair to
+// that: establishing them must leave every socket-body axis exactly where it was, because the
+// socket body is a different item and it is the one that carries the pads.
+test fn w_the_retention_assembly_resolves_without_touching_the_land_pattern() -> Bool {
+  let a = ilm4926_attachment_standing
+  (match a.retention_assembly.orderable_part_number {
+    DesignationFactEstablished { value: _, authority: auth } => auth == lotes_azif0222_product_authority
+    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+  })
+    && standing_is_established(s: a.retention_assembly.vendor_identity)
+    && !standing_is_established(s: attachment_board_land_pattern(a: a))
+    && !standing_is_established(s: a.socket_body.vendor_identity)
+    && !standing_is_established(s: a.socket_body.orderable_part_number)
+}
+
+// MOUNTING HARDWARE IS ITS OWN CONSTITUENT AND IS NOT COVERED BY THE RETENTION PART. Whether the
+// screws ship with AZIF0222 is unestablished, so assuming the retention row covers them would be
+// inventing a procurement fact -- three constituents, two of them unresolved.
+test fn w_mounting_hardware_is_separately_unresolved() -> Bool {
+  let a = ilm4926_attachment_standing
+  !standing_is_established(s: a.mounting_hardware.orderable_part_number)
+    && attachment_unresolved_constituent_count(a: a) == 2
+}
+
+// NO FOOTPRINT MAY EMIT. The gate is conjunctive on socket-body identity AND land pattern, so
+// resolving the retention assembly cannot open it -- which is the failure this whole module exists
+// to prevent: a released pad array for a part nobody has named.
+test fn w_no_footprint_may_emit_while_the_socket_body_is_unnamed() -> Bool {
+  !attachment_footprint_may_emit(a: ilm4926_attachment_standing)
+}
+
+// RED control: the emit gate is reachable. A predicate that can only answer false would prove
+// nothing about the corpus, so a fully identified socket body must open it -- and dropping either
+// axis alone must close it again, which is what makes the conjunction real rather than decorative.
+test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emission() -> Bool {
+  let cited = DesignationFactEstablished {
+    value: "some cited value",
+    authority: lotes_azif0222_product_authority,
+  }
+  let missing = DesignationFactUnresolved {
+    reason: "any reason at all",
+    next_authority_to_consult: none,
+  }
+  let complete = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+      board_land_pattern: cited,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  let no_land_pattern = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+      board_land_pattern: missing,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  let unnamed_socket = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: missing,
+      orderable_part_number: missing,
+      board_land_pattern: cited,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  attachment_footprint_may_emit(a: complete)
+    && !attachment_footprint_may_emit(a: no_land_pattern)
+    && !attachment_footprint_may_emit(a: unnamed_socket)
+    && attachment_unresolved_constituent_count(a: complete) == 0
+}
+
+// RED control: the established arm is reachable only by inhabiting DesignationFactEstablished.
+test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
+  let established = DesignationFactEstablished {
+    value: "Lotes",
+    authority: extdeps_external_authority_anchor,
+  }
+  let unresolved = DesignationFactUnresolved {
+    reason: "any reason at all",
+    next_authority_to_consult: none,
+  }
+  match established {
+    DesignationFactEstablished { value: _, authority: _ } => true
+    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+  }
+    && match unresolved {
+      DesignationFactEstablished { value: _, authority: _ } => false
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+    }
+}
+
+
+// THE ATTRIBUTION MUST NOT HARDEN INTO A FACT. Two part numbers and a vendor now exist in the
+// model, and the whole risk of recording them is that a later reader takes their presence for
+// resolution. These three witnesses are the wall against that: the candidates are carried, and
+// NONE of them is officially attested or referent-assigned.
+test fn w_one_lotes_part_is_carried_and_vendor_attested() -> Bool {
+  count(lotes_part_attestations) == 1
+    && any_part_officially_attested()
+    && all(lotes_part_attestations, c => part_referent_is_assigned(c: c))
+    && all(lotes_part_attestations, c => match c.claimed_referent {
+      ClaimedLoadingMechanismWithBackplate => true
+      ClaimedSocketBody => false
+      ClaimedLoadingMechanism => false
+      ReferentAssignmentDisputed { because: _ } => false
+    })
+}
+
+// THE ARM THAT MATTERS MOST IS THE ONE NOT TAKEN. A vendor-attested retention assembly must never
+// be read as a socket body, because only the socket body carries the land pattern. This asserts
+// the negative directly rather than trusting the row above to stay correct.
+test fn w_no_carried_part_claims_to_be_the_socket_body() -> Bool {
+  all(lotes_part_attestations, c => match c.claimed_referent {
+    ClaimedSocketBody => false
+    ClaimedLoadingMechanism => true
+    ClaimedLoadingMechanismWithBackplate => true
+    ReferentAssignmentDisputed { because: _ } => true
+  })
+}
+
+// RED control: the official arm is reachable, so the claim above is a measurement and not a
+// vacuous truth about a predicate that can never be true.
+test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
+  let official = PartNumberCandidate {
+    part_number: "SOME-PART",
+    vendor: lotes,
+    claimed_referent: ClaimedSocketBody,
+    standing: PublisherOfRecord,
+    authority: ampere_community_lga4926_thread_authority,
+  }
+  part_candidate_is_officially_attested(c: official)
+    && part_referent_is_assigned(c: official)
+}
+
+// THE DRAWING IS MOUNTING GEOMETRY, NOT A LAND PATTERN, and this witness is what stops the
+// attachment-stack progress from being read as land-pattern progress. The retention drawing
+// carries no pad array, so the board land pattern obligation must remain unresolved even though
+// a real dimensioned drawing for this designation now exists.
+test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
+  (match lga4926_retention_drawing_scope {
+    MountingAndOutlineGeometry => true
+    BoardSidePadArray => false
+  })
+    && !standing_is_established(s: attachment_board_land_pattern(a: ilm4926_attachment_standing))
+}
+
+// THE TWO ROUTES ARE DISTINGUISHED BY CARRIAGE, NOT BY PREFERENCE. Obtaining the gated Ampere
+// package would answer the question for a reader and leave this public model exactly as unresolved
+// as before, so an NDA acquisition must never register as progress toward a carriable fact. Only
+// the socket-vendor route ends somewhere this repository can publish.
+test fn w_only_the_public_socket_vendor_route_yields_a_carriable_fact() -> Bool {
+  route_yields_a_carriable_fact(r: lga4926_land_pattern_public_route)
+    && !route_yields_a_carriable_fact(r: lga4926_land_pattern_gated_route)
+}
+
+// AND THE GATED ROUTE STILL EXISTS. Recording that the land pattern is written down somewhere is a
+// different claim from being able to carry it, and dropping the gated route would have made the
+// fact look undiscovered rather than unpublishable.
+test fn w_the_gated_route_is_retained_beside_the_public_one() -> Bool {
+  match lga4926_land_pattern_gated_route {
+    AccessGatedReferenceCollateral { access_route: a, why_not_carriable: _ } =>
+      a == ampere_customer_reference_boards_authority
+    PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => false
+  }
 }

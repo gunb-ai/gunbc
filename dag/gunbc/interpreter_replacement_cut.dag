@@ -1,0 +1,161 @@
+module gunbc.interpreter_replacement_cut
+
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.replacement_cut {
+  ReplacementCutId,
+  CoverageOpen,
+  ConsumerDisposition, RetainSameContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
+  BoundaryConsumer,
+  BoundaryCensus, ConsumersEnumerated,
+  HigherBoundaryAnswer, DescentParentUnauthored,
+  EvidenceDisposition, ReenrollAgainstY, RetireEvidence,
+  ExternalXAnswer, ExternalXRoles, ExternalDifferentialOracle, HistoricalMeasurementSource,
+  ReplacementCut,
+  PlanAdmission,
+  admit_replacement_cut_plan,
+}
+
+data interpreter_replacement_cut_note: String = "THE FIRST PRODUCTION ReplacementCut IN THE REPOSITORY. X is the v1 tree-walking interpreter; Y is native execution of the same .dag subjects. The row is authored from a measured deletion rather than from imagination: the deletion was performed on integration/interpreter-cut and the boundary population read from the far side of it, which is the only side it is visible from.\n\nWHY THIS PLAN REFUSES, and why the refusal is the deliverable: admit_replacement_cut_plan returns PlanRefused with counted causes, and every cause is a TRUE open decision rather than an authoring defect. Two classes. UNDECIDED: the driver region is another lane's boundary and the cut above it is unauthored, so no disposition can be earned here. UNCOVERED SURVIVING: the consumers that must keep working have no coverage authority to name, because the routing roster that would execute what X executes declares its own landing state as all-interpreted with the native flip LAST -- 77 ReadsLiveTree plus 35 host-effect entries ceilinged into a lane that does not exist. Naming a coverage authority anyway would be the fallback-wearing-a-disposition move the carrier already refuses; naming Y as covering a consumer Y does not cover is the same lie one level up. So the plan is authored to refuse, the causes are counted, and the count is the honest size of what remains.\n\nCENSUS GRAIN, declared: one row per distinct consuming module or binary, selected as the measured top of the reference distribution on main at 7f5fa6a94ec1 (1350 line-hits across 125 files; the ten rows below carry 1004 of them). This is NOT proven equal to the real boundary population -- the carrier states that limitation for every plan, and it holds here: an omitted consumer cannot be detected at this grain. The remaining 115 files are the residue this row does not enumerate, and that residue is a known omission rather than a claim of completeness."
+
+data interpreter_cut_identity: ReplacementCutId = "cut-v1-interpreter" as ReplacementCutId
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn consumer(name: String, disposition: ConsumerDisposition) -> BoundaryConsumer {
+  BoundaryConsumer { consumer: nes(s: name), disposition: disposition }
+}
+
+// Retired: every row whose ONLY subject is X itself. These are not losses --
+// their subject leaves with X, so retaining them would be retaining a claim
+// about a thing that no longer exists.
+fn retired_with_x() -> List<BoundaryConsumer> {
+  [
+    consumer(
+      name: "gunbc.v1_interpreter_primitive_surface",
+      disposition: Retire { reason: nes(s: "its entire subject is X's primitive dispatch arms") },
+    ),
+    consumer(
+      name: "v1_compiler.v1_interpreter_dispatch_generated",
+      disposition: Retire { reason: nes(s: "generated projection of X's dispatch table; no authority survives it") },
+    ),
+    consumer(
+      name: "gunbc.v1_interpreter_dispatch_emit",
+      disposition: Retire { reason: nes(s: "the emitter whose only output is X's dispatch table") },
+    ),
+  ]
+}
+
+// Undecided, and honestly so: the driver region belongs to another lane's
+// boundary, and the cut above BOTH lanes has not been authored. A disposition
+// here would be authored by the wrong lane at the wrong boundary.
+fn undecided_at_the_parent_boundary() -> List<BoundaryConsumer> {
+  [
+    consumer(name: "v1_compiler.cli_run", disposition: Undecided),
+    consumer(name: "v1_compiler.coproduct_reflection", disposition: Undecided),
+    consumer(name: "v1_compiler.pre_push", disposition: Undecided),
+  ]
+}
+
+// Surviving with no coverage authority to name. Y does not cover them today and
+// saying otherwise is the whole class this carrier exists to refuse.
+fn surviving_without_coverage() -> List<BoundaryConsumer> {
+  [
+    consumer(
+      name: "v1_compiler.bin.claim_executor",
+      disposition: RetainSameContract {
+        justification: nes(s: "the floor executor must keep executing every enrolled witness"),
+        coverage: CoverageOpen,
+      },
+    ),
+    consumer(
+      name: "v1_compiler.bin.interp_recorded_fixture_witness",
+      disposition: RetainSameContract {
+        justification: nes(s: "recorded-fixture replay has no native route"),
+        coverage: CoverageOpen,
+      },
+    ),
+    consumer(
+      name: "v1_compiler.bin.auth_declared_but_unwired_witness",
+      disposition: RetainSameContract {
+        justification: nes(s: "probe binary still reached through X's evaluation entry"),
+        coverage: CoverageOpen,
+      },
+    ),
+  ]
+}
+
+// Already carried by an authority that is not X: the primitive identity join was
+// re-grounded on its four surviving surfaces when X's roster left.
+fn regrounded_on_y() -> List<BoundaryConsumer> {
+  [
+    consumer(
+      name: "std.primitive_identity",
+      disposition: ReplacedByY { new_authority: nes(s: "std.primitive_identity four-surface derived census") },
+    ),
+  ]
+}
+
+fn interpreter_cut_consumers() -> List<BoundaryConsumer> {
+  concat(
+    concat(retired_with_x(), undecided_at_the_parent_boundary()),
+    concat(surviving_without_coverage(), regrounded_on_y()),
+  )
+}
+
+fn interpreter_cut_region() -> List<NonEmptyStr> {
+  [
+    nes(s: "v1_compiler.v1_interpreter"),
+    nes(s: "v1_compiler.v1_interpreter_dispatch_generated"),
+    nes(s: "gunbc.v1_interpreter_primitive_surface"),
+    nes(s: "gunbc.v1_interpreter_dispatch_emit"),
+  ]
+}
+
+// X's permitted external roles. The standing operator grant is compile-checking
+// only: a main-built binary containing X may typecheck sources on a branch that
+// has deleted X. It is never a fallback, never an internal resolver, never a
+// production second opinion -- and none of those has a constructor here, which
+// is what makes the grant structural rather than remembered.
+fn interpreter_cut_external_x() -> ExternalXAnswer {
+  ExternalXRoles { roles: [ExternalDifferentialOracle, HistoricalMeasurementSource] }
+}
+
+fn interpreter_cut_evidence() -> List<EvidenceDisposition> {
+  [
+    ReenrollAgainstY {
+      evidence: nes(s: "cross_representation_equality guard witness"),
+      surviving_claim: nes(s: "a cross-representation equality straddle refuses rather than answering false"),
+    },
+    RetireEvidence {
+      evidence: nes(s: "interpreter_dispatch_bijection_real_roster_red"),
+      retired_subject: nes(s: "bijection between X's dispatch arms and its declared roster"),
+      retirement_reason: nes(s: "the bijection's two sides both leave with X") ,
+    },
+  ]
+}
+
+fn interpreter_cut_why_not_higher() -> HigherBoundaryAnswer {
+  DescentParentUnauthored {
+    intended_parent_boundary: nes(s: "the engine cut through the v1 driver region"),
+    basis: nes(s: "no cut is authored at that boundary by any lane: the cli_run lane's ruled scope is the driver verbs and it places this region explicitly outside its own, so both lanes descend from one unauthored parent"),
+  }
+}
+
+fn interpreter_replacement_cut() -> ReplacementCut {
+  ReplacementCut {
+    identity: interpreter_cut_identity,
+    old_root_consumer: nes(s: "v1 .dag evaluation entry"),
+    subject: nes(s: "every .dag subject executed by the v1 tree-walking interpreter: enrolled witnesses, plan evaluation, and lens execution"),
+    contract: nes(s: "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"),
+    new_root: nes(s: "native execution of the same subjects through emitted Rust"),
+    why_not_higher: interpreter_cut_why_not_higher(),
+    covered_region: interpreter_cut_region(),
+    boundary_census: ConsumersEnumerated { consumers: interpreter_cut_consumers() },
+    external_x: interpreter_cut_external_x(),
+    evidence_dispositions: interpreter_cut_evidence(),
+  }
+}
+
+fn interpreter_cut_admission() -> PlanAdmission {
+  admit_replacement_cut_plan(cut: interpreter_replacement_cut())
+}

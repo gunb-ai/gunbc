@@ -25,6 +25,7 @@ import extdeps.ocp.mt_jade.subject {
   mt_jade_specification_publication_date,
   mt_jade_specification_version_label,
 }
+import extdeps.bmc.aspeed_ast2500 { aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
   CpuBmcGpioVoltageIsolation,
@@ -54,6 +55,7 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_cpld_timer_clock,
   mt_jade_motherboard_mechanical,
   mt_jade_platform_subject,
+  mt_jade_bmc_chip_catalog,
   mt_jade_reference_parts,
   processor_power_rail_enable_order,
   processor_power_rail_name,
@@ -257,4 +259,10 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
     && fold(mt_jade_reference_parts, init: true, f: fn(acc, r) {
       acc && (r.authority.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     })
+}
+
+// THE BMC REFERENCE PART JOINS THE ASPEED CHIP AUTHORITY, NOT ONLY OCP PROSE LABELS.
+test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
+  (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
+    && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
 }
