@@ -1,13 +1,12 @@
 module gunbc.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.algebra { trim }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
   membership_effects,
   EffectsOrRefusal,
   EffectsReady,
@@ -16,6 +15,7 @@ import gunbc.membership_reconcile {
   membership_removal_count,
   membership_refusal_count,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
@@ -37,10 +37,11 @@ import extdeps.systemd {
 import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
 import std.measure { byte_size_count }
 
-type CapMembershipKeyRelation
-type ControlShadowMembershipKeyRelation
-
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+
+type CapMemberMembershipKeyRelation
+
+type CapMemberAt = ScopedKey<CapMemberMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
 
 type CapMember {
   dropin_path: NonEmptyStr
@@ -78,6 +79,13 @@ fn cap_member_ownership(m: CapMember) -> Ownership? {
   }
 }
 
+data cap_member_resource: KeyedResourceRelation<CapMemberMembershipKeyRelation, CapMember, GlobalKeyScope, NonEmptyStr, CapMember> = key_resource_relation_global(
+  key_of: cap_member_key,
+  key_eq: cap_member_key_eq,
+  state_of: membership_subject_self_state_of,
+  state_eq: cap_member_value_eq,
+)
+
 fn cap_dropin_content(property: NonEmptyStr, bytes_value: NonEmptyStr) -> String {
   join(["[Service]\n", property as String, "=", bytes_value as String, "\n"], "")
 }
@@ -96,20 +104,12 @@ fn cap_upsert_script(m: CapMember) -> String {
   ], "")
 }
 
-data cap_membership_key_relation: KeyRelation<CapMembershipKeyRelation, CapMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
-  key_of: cap_member_key,
-  key_eq: cap_member_key_eq,
-)
-
-fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      relation: cap_membership_key_relation,
-      value_eq: cap_member_value_eq,
-      ownership_of: cap_member_ownership,
-    )
+fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember, CapMemberAt> {
+  membership_reconcile_global(
+    desired: desired,
+    observed: observed,
+    resource: cap_member_resource,
+    ownership_of: cap_member_ownership,
   )
 }
 
@@ -130,6 +130,10 @@ fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> In
 }
 
 // system.control set-property residue — shadows deploy-authored drop-ins (sorts later, wins).
+type ControlShadowUnitMembershipKeyRelation
+
+type ControlShadowMemberAt = ScopedKey<ControlShadowUnitMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
+
 type ControlShadowUnit {
   unit: NonEmptyStr
 }
@@ -170,6 +174,13 @@ fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> B
 fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
   Present { value: Owned }
 }
+
+data control_shadow_unit_resource: KeyedResourceRelation<ControlShadowUnitMembershipKeyRelation, ControlShadowUnit, GlobalKeyScope, NonEmptyStr, ControlShadowUnit> = key_resource_relation_global(
+  key_of: control_shadow_unit_key,
+  key_eq: control_shadow_unit_key_eq,
+  state_of: membership_subject_self_state_of,
+  state_eq: control_shadow_unit_value_eq,
+)
 
 fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
   concat(join(systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
@@ -298,23 +309,15 @@ fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units:
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
 data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
 
-data control_shadow_membership_key_relation: KeyRelation<ControlShadowMembershipKeyRelation, ControlShadowUnit, GlobalKeyScope, NonEmptyStr> = key_relation_global(
-  key_of: control_shadow_unit_key,
-  key_eq: control_shadow_unit_key_eq,
-)
-
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
-) -> MembershipPlan<ControlShadowUnit> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      relation: control_shadow_membership_key_relation,
-      value_eq: control_shadow_unit_value_eq,
-      ownership_of: control_shadow_unit_ownership,
-    )
+) -> MembershipPlan<ControlShadowUnit, ControlShadowMemberAt> {
+  membership_reconcile_global(
+    desired: desired,
+    observed: observed,
+    resource: control_shadow_unit_resource,
+    ownership_of: control_shadow_unit_ownership,
   )
 }
 

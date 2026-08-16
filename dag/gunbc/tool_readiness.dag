@@ -1,7 +1,6 @@
 module gunbc.tool_readiness
 
 import std.types { Int, List, NonEmptyStr, String }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.integer { NonNegativeInt }
 import std.decl_ref { DeclarationRef }
 import extdeps.tools { CliTool }
@@ -25,13 +24,23 @@ import extdeps.realization.emit_on_demand_host {
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
   membership_tally,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Ensured }
 
 type CliToolPinMembershipKeyRelation
+
+type CliToolPinMemberAt = ScopedKey<CliToolPinMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
+
+data cli_tool_pin_resource: KeyedResourceRelation<CliToolPinMembershipKeyRelation, Pin<CliTool>, GlobalKeyScope, NonEmptyStr, Pin<CliTool>> = key_resource_relation_global(
+  key_of: cli_tool_pin_key_of,
+  key_eq: (a, b) => a == b,
+  state_of: membership_subject_self_state_of,
+  state_eq: pin_value_eq,
+)
 
 type UnpinnedToolFrontierRow {
   tool: CliTool
@@ -43,12 +52,12 @@ type ToolReadinessRefusalCause
   = ToolObservationMissing { tool_name: NonEmptyStr }
   | ToolObservationDuplicate { tool_name: NonEmptyStr, count: NonNegativeInt }
   | ToolMembershipNotConverged {
-      plan: MembershipPlan<Pin<CliTool>>,
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>,
       admission: PinAdmission<CliTool>
     }
   | ToolPinIntegrityRefused {
       cause: PinRefusalCause,
-      plan: MembershipPlan<Pin<CliTool>>
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>
     }
   | UnpinnedToolUndeclared
   | UnpinnedToolFrontierDuplicate { count: NonNegativeInt }
@@ -61,7 +70,7 @@ type ToolReadinessRefusal {
 type ToolReadiness
   = PinnedAdmitted {
       pin: Pin<CliTool>,
-      plan: MembershipPlan<Pin<CliTool>>
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>
     }
   | PinnedRefused { refusals: List<ToolReadinessRefusal> }
   | UnpinnedFrontier {
@@ -79,23 +88,15 @@ fn tool_pin_ownership(pin: Pin<CliTool>) -> Ownership? {
   Present { value: Ensured }
 }
 
-data cli_tool_pin_membership_key_relation: KeyRelation<CliToolPinMembershipKeyRelation, Pin<CliTool>, GlobalKeyScope, NonEmptyStr> = key_relation_global(
-  key_of: cli_tool_pin_key_of,
-  key_eq: (a, b) => a == b,
-)
-
 fn tool_pin_reconcile(
   desired: List<Pin<CliTool>>,
   observed: List<Pin<CliTool>>,
-) -> MembershipPlan<Pin<CliTool>> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      relation: cli_tool_pin_membership_key_relation,
-      value_eq: pin_value_eq,
-      ownership_of: tool_pin_ownership,
-    )
+) -> MembershipPlan<Pin<CliTool>, CliToolPinMemberAt> {
+  membership_reconcile_global(
+    desired: desired,
+    observed: observed,
+    resource: cli_tool_pin_resource,
+    ownership_of: tool_pin_ownership,
   )
 }
 

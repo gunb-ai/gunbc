@@ -1,7 +1,6 @@
 module gunbc.workflow_reconcile
 
 import std.types { String, Bool, Int, List }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.reducible { ReduceVerdict, Reduced, Unknown }
 import std.workflow_recursive {
   VerdictTree,
@@ -16,12 +15,15 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Ensured }
 
 type WorkflowFactMembershipKeyRelation
+
+type WorkflowFactMemberAt = ScopedKey<WorkflowFactMembershipKeyRelation, GlobalKeyScope, String>
 
 type WorkflowFactState
   = WorkflowFactPending
@@ -87,7 +89,7 @@ type WorkflowReconcileReport {
   observed_failure_count: Int
   observed_refusal_count: Int
   plan_refusal_count: Int
-  plan: MembershipPlan<WorkflowFactMember>
+  plan: MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>
   verdict: ReduceVerdict
 }
 
@@ -262,13 +264,11 @@ fn workflow_fact_member_ownership(
   workflow_fact_ownership(fact: member.fact)
 }
 
-fn workflow_fact_member_key_of(member: WorkflowFactMember) -> WorkflowFactKey {
-  member.fact.key
-}
-
-data workflow_fact_membership_key_relation: KeyRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, GlobalKeyScope, WorkflowFactKey> = key_relation_global(
-  key_of: workflow_fact_member_key_of,
+data workflow_fact_member_resource: KeyedResourceRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, GlobalKeyScope, String, WorkflowFactMember> = key_resource_relation_global(
+  key_of: fn(member) { member.fact.key },
   key_eq: workflow_fact_key_equal,
+  state_of: membership_subject_self_state_of,
+  state_eq: workflow_fact_member_value_equal,
 )
 
 fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> ReduceVerdict {
@@ -394,24 +394,21 @@ fn workflow_fact_forest_verdict(
 fn workflow_fact_reconcile(
   desired: List<WorkflowFactTree>,
   observed: List<WorkflowFactTree>,
-) -> MembershipPlan<WorkflowFactMember> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: workflow_fact_forest_members(forest: desired),
-      observed: workflow_fact_forest_members(forest: observed),
-      relation: workflow_fact_membership_key_relation,
-      value_eq: workflow_fact_member_value_equal,
-      ownership_of: workflow_fact_member_ownership,
-    )
+) -> MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt> {
+  membership_reconcile_global(
+    desired: workflow_fact_forest_members(forest: desired),
+    observed: workflow_fact_forest_members(forest: observed),
+    resource: workflow_fact_member_resource,
+    ownership_of: workflow_fact_member_ownership,
   )
 }
 
 fn workflow_reconcile_fold_action(
   acc: WorkflowReconcileFold,
-  action: MemberAction<WorkflowFactMember>,
+  action: MemberAction<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   match action {
-    MemberAdded { to: member } =>
+    MemberAdded { at: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -421,7 +418,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberChanged { from: _, to: member } =>
+    MemberChanged { at: _, from: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -431,7 +428,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberRemoved { from: member } =>
+    MemberRemoved { at: _, from: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
@@ -455,7 +452,7 @@ fn workflow_reconcile_fold_action(
 }
 
 fn workflow_reconcile_fold(
-  plan: MembershipPlan<WorkflowFactMember>,
+  plan: MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   fold(
     plan.actions,

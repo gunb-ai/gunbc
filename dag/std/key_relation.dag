@@ -66,3 +66,33 @@ fn key_relation_global<Relation, Subject, Key>(
     key_eq: key_eq,
   }
 }
+
+type StateRelation<Relation, Subject, State> {
+  state_of: fn(Subject) -> State
+  state_eq: fn(State, State) -> Bool
+}
+
+type KeyedResourceRelation<Relation, Subject, Scope, Key, State> {
+  key: KeyRelation<Relation, Subject, Scope, Key>
+  state: StateRelation<Relation, Subject, State>
+}
+
+fn keyed_resource_subject_value_eq<M, Relation, Scope, Key, State>(
+  resource: KeyedResourceRelation<Relation, M, Scope, Key, State>,
+) -> fn(M, M) -> Bool {
+  let state_of = resource.state.state_of
+  let state_eq = resource.state.state_eq
+  fn(a, b) { state_eq(state_of(a), state_of(b)) }
+}
+
+fn key_resource_relation_global<Relation, Subject, Key, State>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+  state_of: fn(Subject) -> State,
+  state_eq: fn(State, State) -> Bool,
+) -> KeyedResourceRelation<Relation, Subject, GlobalKeyScope, Key, State> {
+  KeyedResourceRelation {
+    key: key_relation_global(key_of: key_of, key_eq: key_eq),
+    state: StateRelation { state_of: state_of, state_eq: state_eq },
+  }
+}

@@ -1,7 +1,6 @@
 module gunbc.runner_slot_provision
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.membership_reconcile {
@@ -10,10 +9,11 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
   membership_added_count,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy,
@@ -29,8 +29,6 @@ import extdeps.github.actions_runner {
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 
-type RunnerSlotMembershipKeyRelation
-
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
 // Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
@@ -45,6 +43,10 @@ data runner_slot_provision_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+
+type RunnerSlotMemberMembershipKeyRelation
+
+type RunnerSlotMemberAt = ScopedKey<RunnerSlotMemberMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
 
 type RunnerSlotMember {
   instance_name: NonEmptyStr
@@ -92,24 +94,30 @@ fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
   Absent
 }
 
-data runner_slot_membership_key_relation: KeyRelation<RunnerSlotMembershipKeyRelation, RunnerSlotMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data runner_slot_member_resource: KeyedResourceRelation<RunnerSlotMemberMembershipKeyRelation, RunnerSlotMember, GlobalKeyScope, NonEmptyStr, RunnerSlotMember> = key_resource_relation_global(
   key_of: runner_slot_member_key,
   key_eq: runner_slot_member_key_eq,
+  state_of: membership_subject_self_state_of,
+  state_eq: runner_slot_member_value_eq,
 )
+
+fn runner_slot_membership_reconcile_global(
+  desired: List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
+) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  membership_reconcile_global(
+    desired: desired,
+    observed: observed,
+    resource: runner_slot_member_resource,
+    ownership_of: runner_slot_member_ownership,
+  )
+}
 
 fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
-) -> MembershipPlan<RunnerSlotMember> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      relation: runner_slot_membership_key_relation,
-      value_eq: runner_slot_member_value_eq,
-      ownership_of: runner_slot_member_ownership,
-    )
-  )
+) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  runner_slot_membership_reconcile_global(desired: desired, observed: observed)
 }
 
 type RunnerSlotEnumerationPostcondition
@@ -139,7 +147,7 @@ fn runner_slot_enumeration_postcondition(
 
 type RunnerSlotProvisionPlan {
   host_label: NonEmptyStr
-  membership: MembershipPlan<RunnerSlotMember>
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
 }
@@ -149,7 +157,7 @@ fn runner_slot_provision_plan(
   artifact: ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
-  let membership = runner_slot_membership_reconcile(
+  let membership = runner_slot_membership_reconcile_global(
     desired: desired_runner_slot_members(deploy: deploy),
     observed: observed,
   )
@@ -159,14 +167,14 @@ fn runner_slot_provision_plan(
     base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        MemberAdded { to: m } =>
+        MemberAdded { at: _, to: m } =>
           [actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        MemberChanged { from: _, to: _ } => []
-        MemberRemoved { from: _ } => []
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemoved { at: _, from: _ } => []
         MemberRemovalRefused { from: _, cause: _ } => []
       }
     ),

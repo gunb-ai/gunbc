@@ -1,7 +1,6 @@
 module gunbc.host_authorized_keys_reconcile
 
 import std.types { String, List, Bool, NonEmptyStr }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import extdeps.ssh { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
 import gunbc.fleet_ssh_access {
   fleet_authorized_keys,
@@ -11,11 +10,14 @@ import gunbc.fleet_ssh_access {
 import gunbc.ownership { Ownership, Owned }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 
 type HostAuthorizedKeysMembershipKeyRelation
+
+type HostAuthorizedKeysMemberAt = ScopedKey<HostAuthorizedKeysMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
 
 data host_authorized_keys_reconcile_authority_note: String = "Instantiates the grain-agnostic gunbc.membership_reconcile spine for one host's ~/.ssh/authorized_keys, keyed by SSH key IDENTITY. This is the durable fix for the srv3 first-contact gap (fleet_subsumption_manual_gaps A1/B2) AND for every future key rotation, both instances of the same silent drift: authorized_keys is materialized once at install and never re-converged against fleet_ssh_access.fleet_authorized_keys, so a key added to the model after a host was installed never reaches that host. srv3 is the live proof: installed via the pre-#7027 lane before fleet_automation_ssh_key existed, so its ubuntu authorized_keys carries the operator macbook key (operator reach) but NOT fleet-automation (workflow reach) — observed 2026-07-24. This module does NOT fork the spine: member = SshPublicKey, and the (key_of, key_eq, value_eq, ownership_of) bundle below is passed to the ONE membership_reconcile fn (a Realization — one fn, N bundles; a forked reconcile would mean the genericity bought nothing). key_of returns the key MATERIAL (the cryptographic identity), never the whole line, so a comment-only drift is Modified (re-upsert the line), not Remove+Add (which would delete then re-add the key)."
 
@@ -37,6 +39,13 @@ fn authorized_key_value_eq(a: SshPublicKey, b: SshPublicKey) -> Bool {
     && (a.comment == b.comment)
 }
 
+data host_authorized_keys_resource: KeyedResourceRelation<HostAuthorizedKeysMembershipKeyRelation, SshPublicKey, GlobalKeyScope, NonEmptyStr, SshPublicKey> = key_resource_relation_global(
+  key_of: authorized_key_identity,
+  key_eq: authorized_key_identity_eq,
+  state_of: membership_subject_self_state_of,
+  state_eq: authorized_key_value_eq,
+)
+
 data fleet_owned_key_materials_note: String = "The registry of key materials the FLEET manages — the ownership authority the R5 teardown-owned-only wall reads for a Removed key. DERIVED from fleet_authorized_keys (single authority, never a hand-copied material list), so today it is exactly the two declared fleet keys. A key NOT in this registry (an out-of-band key like node-orch@srv2 or briansrls@srv1 hand-added in the node-orch bootstrap era) has NO ownership record -> ownership_of returns Absent -> OwnershipUnknown -> the spine REFUSES to tear it down (fail-closed; we never delete a key we did not place). ROTATION EXTENSION (dissolution trigger, not built here): when a fleet key rotates, its retired material must be appended to a retired-owned list so the Removed old key resolves Owned -> teardown-eligible; until that lands, a rotated-out fleet key drops out of this derived registry and is REFUSED rather than removed — a safe leak, not a silent delete. That extension is what makes the Owned teardown arm non-degenerate; today every teardown-refusal is OwnershipUnknown by construction, which is honest for the srv3 case (zero teardowns needed)."
 
 fn fleet_owned_key_materials() -> List<NonEmptyStr> {
@@ -53,12 +62,7 @@ fn authorized_key_ownership(k: SshPublicKey) -> Ownership? {
 
 data host_authorized_keys_reconcile_note: String = "desired = fleet_authorized_keys (the model's declared key set); observed = a live read of the host's authorized_keys (an OBSERVATION effect, staged — the fixtures below are point-in-time reads, not the live provider). The apply-grain POLICY is deliberately NOT resolved in this module: authorized_keys is an EVERYTHING-ON-HOST observed scope (foreign keys are normal, not anomalies), which is exactly the scope where membership_reconcile's wholesale-refuse policy (membership_effects) would be wrong — a foreign key's refusal would block our owned upsert. That is the conscious wholesale-vs-siblings-continue call the spine reserves to a human (membership_effects_wholesale_refuse_policy_note); this module produces the PLAN grain only and leaves the apply projection to that decision."
 
-data host_authorized_keys_membership_key_relation: KeyRelation<HostAuthorizedKeysMembershipKeyRelation, SshPublicKey, GlobalKeyScope, NonEmptyStr> = key_relation_global(
-  key_of: authorized_key_identity,
-  key_eq: authorized_key_identity_eq,
-)
-
-fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey> {
+fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile_with_ownership(
     observed: observed,
     ownership_of: authorized_key_ownership,
@@ -68,15 +72,12 @@ fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPla
 fn host_authorized_keys_reconcile_with_ownership(
   observed: List<SshPublicKey>,
   ownership_of: fn(SshPublicKey) -> Ownership?,
-) -> MembershipPlan<SshPublicKey> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: fleet_authorized_keys,
-      observed: observed,
-      relation: host_authorized_keys_membership_key_relation,
-      value_eq: authorized_key_value_eq,
-      ownership_of: ownership_of,
-    )
+) -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
+  membership_reconcile_global(
+    desired: fleet_authorized_keys,
+    observed: observed,
+    resource: host_authorized_keys_resource,
+    ownership_of: ownership_of,
   )
 }
 

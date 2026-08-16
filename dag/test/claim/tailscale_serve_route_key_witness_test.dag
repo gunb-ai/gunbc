@@ -1,7 +1,7 @@
 module test.claim.tailscale_serve_route_key_witness
 
 import std.types { Bool, NonEmptyStr, String, List }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global, ScopedKey, KeyedResourceRelation, StateRelation }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeRootMount,
@@ -10,6 +10,9 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_key_eq,
   tailscale_serve_route_key_label,
   tailscale_serve_route_key_relation,
+  tailscale_serve_resource_relation,
+  TailscaleServeRouteKeyRelation,
+  TailscaleServeRouteKey,
   tailscale_serve_endpoint_flags,
   tailscale_serve_mount_eq,
   tailscale_serve_enable_argv,
@@ -31,6 +34,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 type RetiredFlattenedServeFlagsKeyRelation
 type TailscaleEnableArgvIdentityKeyRelation
+
+type TailscaleServeEndpointMemberAt = ScopedKey<TailscaleServeRouteKeyRelation, GlobalKeyScope, TailscaleServeRouteKey>
+
+type TailscaleEnableArgvMemberAt = ScopedKey<TailscaleEnableArgvIdentityKeyRelation, GlobalKeyScope, NonEmptyStr>
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,23 +80,23 @@ data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArg
 )
 
 fn plan_has_change_between_backends(
-  plan: MembershipPlan<TailscaleServeEndpoint>,
+  plan: MembershipPlan<TailscaleServeEndpoint, TailscaleServeEndpointMemberAt>,
   from_backend: String,
   to_backend: String,
 ) -> Bool {
   any(plan.actions, a =>
     match a {
-      MemberChanged { from: f, to: t } =>
+      MemberChanged { at: _, from: f, to: t } =>
         f.backend as String == from_backend && t.backend as String == to_backend
       _ => false
     }
   )
 }
 
-fn plan_has_remove_add_not_change(plan: MembershipPlan<TailscaleServeEndpoint>) -> Bool {
-  let has_remove = any(plan.actions, a => match a { MemberRemoved { from: _ } => true  _ => false })
-  let has_add = any(plan.actions, a => match a { MemberAdded { to: _ } => true  _ => false })
-  let has_change = any(plan.actions, a => match a { MemberChanged { from: _, to: _ } => true  _ => false })
+fn plan_has_remove_add_not_change(plan: MembershipPlan<TailscaleServeEndpoint, TailscaleEnableArgvMemberAt>) -> Bool {
+  let has_remove = any(plan.actions, a => match a { MemberRemoved { at: _, from: _ } => true  _ => false })
+  let has_add = any(plan.actions, a => match a { MemberAdded { at: _, to: _ } => true  _ => false })
+  let has_change = any(plan.actions, a => match a { MemberChanged { at: _, from: _, to: _ } => true  _ => false })
   has_remove && has_add && !has_change
 }
 
@@ -110,8 +117,7 @@ test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
     outcome: membership_reconcile(
       desired: desired,
       observed: observed,
-      relation: tailscale_serve_route_key_relation,
-      value_eq: tailscale_endpoint_value_eq,
+      resource: tailscale_serve_resource_relation,
       ownership_of: tailscale_endpoint_ownership,
     )
   )
@@ -119,6 +125,22 @@ test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
     && membership_change_count(plan: plan) == 1
     && membership_added_count(plan: plan) == 0
     && membership_removal_count(plan: plan) == 0
+}
+
+fn tailscale_enable_argv_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  endpoint.backend
+}
+
+fn tailscale_enable_argv_endpoint_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a == b
+}
+
+data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr, NonEmptyStr> = KeyedResourceRelation {
+  key: tailscale_enable_argv_identity_key_relation,
+  state: StateRelation {
+    state_of: tailscale_enable_argv_endpoint_state_of,
+    state_eq: tailscale_enable_argv_endpoint_state_eq,
+  },
 }
 
 data w_enable_argv_key_backend_repoint_red_note: String = "RED CONTROL for the Remove+Add failure class. Using the rendered enable argv (which includes backend) as identity makes a backend re-point look like two different members — Remove+Add with zero MemberChanged. This is the discriminating half the step-1 witness must pin; a key-equality test alone cannot catch it."
@@ -130,8 +152,7 @@ test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
     outcome: membership_reconcile(
       desired: desired,
       observed: observed,
-      relation: tailscale_enable_argv_identity_key_relation,
-      value_eq: tailscale_endpoint_value_eq,
+      resource: tailscale_enable_argv_resource_relation,
       ownership_of: tailscale_endpoint_ownership,
     )
   )

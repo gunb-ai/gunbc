@@ -1,7 +1,7 @@
 module extdeps.tailscale.serve
 
 import std.types { NonEmptyStr, Port, String, List, Bool }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global, KeyedResourceRelation, StateRelation }
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
@@ -203,10 +203,33 @@ fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
+fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  endpoint.backend
+}
+
+fn tailscale_endpoint_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a == b
+}
+
+fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> Bool {
+  tailscale_endpoint_state_eq(
+    a: tailscale_endpoint_state_of(endpoint: a),
+    b: tailscale_endpoint_state_of(endpoint: b),
+  )
+}
+
 data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
   key_of: tailscale_serve_route_key,
   key_eq: tailscale_serve_route_key_eq,
 )
+
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
+  key: tailscale_serve_route_key_relation,
+  state: StateRelation {
+    state_of: tailscale_endpoint_state_of,
+    state_eq: tailscale_endpoint_state_eq,
+  },
+}
 
 // EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.
 service tailscale.Serve {

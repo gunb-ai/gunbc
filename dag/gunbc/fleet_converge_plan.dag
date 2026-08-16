@@ -1,7 +1,6 @@
 module gunbc.fleet_converge_plan
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.measure { byte_size_count }
 import std.algebra { trim }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -30,10 +29,11 @@ import gunbc.membership_reconcile {
   TeardownRefusalCause,
   MemberNotOwned,
   OwnershipUnknown,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_global,
+  membership_subject_self_state_of,
   membership_refusal_count,
 }
+import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
@@ -46,6 +46,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.host_axis_caps {
   CapMember,
+  CapMemberAt,
   caps_reconcile,
   desired_cap_member,
   cap_upsert_script,
@@ -62,7 +63,9 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
-type TimerRetirementMembershipKeyRelation
+type TimerRetirementMemberMembershipKeyRelation
+
+type TimerRetirementMemberAt = ScopedKey<TimerRetirementMemberMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
@@ -191,9 +194,11 @@ fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
   Present { value: Owned }
 }
 
-data timer_retirement_membership_key_relation: KeyRelation<TimerRetirementMembershipKeyRelation, TimerRetirementMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data timer_retirement_member_resource: KeyedResourceRelation<TimerRetirementMemberMembershipKeyRelation, TimerRetirementMember, GlobalKeyScope, NonEmptyStr, TimerRetirementMember> = key_resource_relation_global(
   key_of: timer_member_key,
   key_eq: timer_member_key_eq,
+  state_of: membership_subject_self_state_of,
+  state_eq: timer_member_value_eq,
 )
 
 fn timer_member_unit_path(unit_name: NonEmptyStr) -> NonEmptyStr {
@@ -214,15 +219,12 @@ fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
   ]
 }
 
-fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: timer_retirement_desired(),
-      observed: observed,
-      relation: timer_retirement_membership_key_relation,
-      value_eq: timer_member_value_eq,
-      ownership_of: timer_member_ownership,
-    )
+fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
+  membership_reconcile_global(
+    desired: timer_retirement_desired(),
+    observed: observed,
+    resource: timer_retirement_member_resource,
+    ownership_of: timer_member_ownership,
   )
 }
 
@@ -233,12 +235,12 @@ fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {
   }
 }
 
-fn timer_action_line(action: MemberAction<TimerRetirementMember>) -> String {
+fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
   match action {
-    MemberAdded { to: m } => concat("ADD timer-unit ", m.unit_name as String)
-    MemberChanged { from: f, to: t } =>
+    MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
+    MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE timer-unit ", f.unit_name as String), concat(" -> ", t.unit_name as String))
-    MemberRemoved { from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
+    MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
     MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
@@ -247,12 +249,12 @@ fn timer_action_line(action: MemberAction<TimerRetirementMember>) -> String {
   }
 }
 
-fn cap_action_line(action: MemberAction<CapMember>) -> String {
+fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
   match action {
-    MemberAdded { to: m } => concat("ADD cap ", m.dropin_path as String)
-    MemberChanged { from: f, to: t } =>
+    MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
+    MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
-    MemberRemoved { from: m } => concat("REMOVE cap ", m.dropin_path as String)
+    MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
     MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
@@ -261,11 +263,11 @@ fn cap_action_line(action: MemberAction<CapMember>) -> String {
   }
 }
 
-fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember>) -> List<String> {
+fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
   map(plan.actions, a => timer_action_line(action: a))
 }
 
-fn membership_plan_lines_cap(plan: MembershipPlan<CapMember>) -> List<String> {
+fn membership_plan_lines_cap(plan: MembershipPlan<CapMember, CapMemberAt>) -> List<String> {
   map(plan.actions, a => cap_action_line(action: a))
 }
 
@@ -391,18 +393,18 @@ fn timer_retirement_remove_line(unit_name: NonEmptyStr) -> String {
   concat("sudo -n rm -f /etc/systemd/system/", unit_name as String)
 }
 
-fn cap_apply_line(action: MemberAction<CapMember>) -> String {
+fn cap_apply_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
   match action {
-    MemberAdded { to: m } => cap_upsert_script(m: m)
-    MemberChanged { from: _, to: t } => cap_upsert_script(m: t)
-    MemberRemoved { from: m } => concat("rm -f ", m.dropin_path as String)
+    MemberAdded { at: _, to: m } => cap_upsert_script(m: m)
+    MemberChanged { at: _, from: _, to: t } => cap_upsert_script(m: t)
+    MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
     MemberRemovalRefused { from: _, cause: _ } => ""
   }
 }
 
 data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Removed arms are rendered in plan.txt for human review but are NOT emitted into apply.sh — PerSlotMemoryCap drop-in writes are live_deploy deploy-principal authority (host_axis_caps host_axis_caps_note); converge on the operator runner does not sudo-write /etc/systemd drop-ins."
 
-fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String> {
+fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
   flat_map(plan.actions, a =>
     match a {
       MemberRemoved { from: m } =>
@@ -492,7 +494,7 @@ fn fleet_converge_locked_apply_script(
   )
 }
 
-fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember>) -> String {
+fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
   join(
     concat(
       [
