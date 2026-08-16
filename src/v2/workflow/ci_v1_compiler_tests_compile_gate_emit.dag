@@ -46,7 +46,7 @@ fn ci_v1_compiler_tests_compile_gate_check_step() -> BashBoundOperationInvocatio
 
 fn ci_v1_compiler_tests_compile_gate_intent() -> EffectPlan<BashBoundOperationInvocation> {
   EffectPlan {
-    steps: [Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
+    steps: [v2.std.effect_plan.Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
     on_failure: FailFast
   }
 }

@@ -34,7 +34,7 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
     locality: CrossHostNetwork
     retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: WriteThenCommit
-    auth: ApiKey
+    auth: std.cache_interface.ApiKey
     read_latency: LanMs
     consistency: Strong
   }

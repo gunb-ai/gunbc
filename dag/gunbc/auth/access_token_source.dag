@@ -31,7 +31,7 @@ fn gcloud_access_ensure_classification(
 ) -> UpsertClassification<AccessEnsurePlan> {
   if success {
     UpsertClassification {
-      verdict: Converged,
+      verdict: std.upsert_decision.Converged,
       decision: Noop,
     }
   } else {

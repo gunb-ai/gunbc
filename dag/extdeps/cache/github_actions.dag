@@ -41,7 +41,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
     locality: CrossHostNetwork
     retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
-    auth: ApiKey
+    auth: std.cache_interface.ApiKey
     read_latency: WanTensMs
     consistency: Eventual
   }

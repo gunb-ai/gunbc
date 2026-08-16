@@ -614,11 +614,11 @@ fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
 // needs contents:write.
 fn ci_fleet_permissions() -> WorkflowPermissions {
   WorkflowPermissions {
-    contents: Present { value: PermWrite },
+    contents: Present { value: extdeps.github.actions.PermWrite },
     pull_requests: none,
     issues: none,
     actions: none,
-    id_token: Present { value: PermWrite }
+    id_token: Present { value: extdeps.github.actions.PermWrite }
   }
 }
 
@@ -1080,8 +1080,8 @@ data ci_workflow: Workflow = {
   },
   permissions: Present {
     value: WorkflowPermissions {
-      contents: Present { value: PermRead },
-      pull_requests: Present { value: PermRead },
+      contents: Present { value: extdeps.github.actions.PermRead },
+      pull_requests: Present { value: extdeps.github.actions.PermRead },
       issues: none,
       actions: none,
       id_token: none

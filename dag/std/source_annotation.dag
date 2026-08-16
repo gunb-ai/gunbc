@@ -29,7 +29,7 @@ type UnboundAnnotationCapture {
 
 // NOTE WHAT IS ABSENT: this row has no identity of its own. Giving an annotation an OccurrenceId would draw from the graph-scoped semantic occurrence allocator, so inserting a comment could shift the identities of declarations later in the same source and in later-parsed modules — the exact hazard DESIGN 4c forbids. `subject` REFERS to a semantic occurrence; it never mints one. Multiplicity and source order are carried by the ordered graph below, not by per-row ids, and a dedicated SourceAnnotationId arrives only when a real consumer must address one annotation independently.
 type SourceAnnotationDebt {
-  subject: OccurrenceId
+  subject: std.occurrence_identity.OccurrenceId
   text: String
   origin: std.types.SourceSpan
 }
@@ -170,7 +170,7 @@ fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
 // What a realization offers as attachable subjects, and deliberately NOT DeclarationOccurrence. Two reasons, both structural. First, this module would otherwise depend on the whole occurrence transport to express a rule that needs exactly two facts per subject — an identity to refer to and a span to compare against. Second, the roster IS where the module-item narrowing lives: a realization admitting only module-scope declarations supplies only those, and widening to a finer grain later is a change in what the caller enumerates, not a change to the fold. The occurrence is REFERRED to, never minted; every id in a roster was already allocated by the semantic parser before attachment runs.
 // `module_root` says this subject IS the module declaration itself, stated by the realization because only the realization knows — the fold sees identities and spans, and guessing the module structurally (say, as the earliest subject by start) would misread any roster whose earliest subject is an ordinary member. The module-header rule below fires only for a roster that declares one.
 type AnnotationSubject {
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
   span: std.types.SourceSpan
   module_root: Bool
 }

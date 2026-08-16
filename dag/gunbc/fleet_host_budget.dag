@@ -13,7 +13,7 @@ fn build_cost_account(cfg: JobserverConfig) -> CostAccount<Nano> {
 
 fn build_realization(cfg: JobserverConfig) -> RealizedStep<Nano> {
   RealizedStep {
-    shape: CreateEffect { cause: CreateIfAbsent { key_source: CompositeKey { fields: ["compile_unit_content_hash", "toolchain_content_hash"] } } },
+    shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: CompositeKey { fields: ["compile_unit_content_hash", "toolchain_content_hash"] } } },
     placement: LocalFilesystem,
     materialization: Share,
     cost: build_cost_account(cfg: cfg),

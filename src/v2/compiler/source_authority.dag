@@ -1362,7 +1362,7 @@ fn canonical_dag_source_emission_law_from_parts(
                   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
                 Holds { value: parse_print_law_value } =>
                   outcome_accepted(
-                    value: Holds {
+                    value: v2.std.witness.Holds {
                       value: CanonicalDagSourceEmissionLaw {
                         canonical_source: canonical_source_first,
                         serializer_law: serializer_law_value,
@@ -1399,7 +1399,7 @@ fn source_authority_law_from_parts(
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: semantic_law_value } =>
           outcome_accepted(
-            value: Holds {
+            value: v2.std.witness.Holds {
               value: SourceAuthorityRoundTripLaw {
                 canonical_source: canonical_source,
                 source_law: source_law_value,

@@ -268,7 +268,7 @@ fn workflow_fact_tree_verdict_tree(tree: WorkflowFactTree) -> VerdictTree {
     tree: tree,
     algebra: WorkflowFactTreeFold {
       init: fn(fact) {
-        Leaf {
+        std.workflow_recursive.Leaf {
           verdict: workflow_fact_reduce_verdict(fact: fact),
         }
       },
@@ -457,7 +457,7 @@ fn workflow_reconcile_report(
       if folded.remaining == 0 {
         observed_verdict
       } else {
-        Unknown { missing: folded.first_missing }
+        std.reducible.Unknown { missing: folded.first_missing }
       }
   }
   WorkflowReconcileReport {

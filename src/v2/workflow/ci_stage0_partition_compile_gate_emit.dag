@@ -44,7 +44,7 @@ fn ci_stage0_partition_compile_gate_check_step(package_name: String) -> BashBoun
 
 fn ci_stage0_partition_compile_gate_steps() -> List<EffectPlanStep<BashBoundOperationInvocation>> {
   stage0_partition_package_names()
-    |> map(package_name => Do { effect: ci_stage0_partition_compile_gate_check_step(package_name: package_name) })
+    |> map(package_name => v2.std.effect_plan.Do { effect: ci_stage0_partition_compile_gate_check_step(package_name: package_name) })
 }
 
 fn ci_stage0_partition_compile_gate_intent() -> EffectPlan<BashBoundOperationInvocation> {

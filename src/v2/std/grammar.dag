@@ -610,7 +610,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
     TypeNode { connective: Conj } =>
       match fold(
         node.children,
-        init: Holds { value: Empty },
+        init: v2.std.witness.Holds { value: Empty },
         f: fn(acc, edge) {
           match acc {
             Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -619,7 +619,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
                 Positional =>
                   match formal_grammar_symbol_from_node(node: edge.target) {
                     Holds { value: symbol } =>
-                      Holds {
+                      v2.std.witness.Holds {
                         value: list_snoc_item(xs: symbols, item: symbol)
                       }
                     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1426,7 +1426,7 @@ fn derive_grammar_relation_token_edges_recursive(
   let conj_children = conj_positional_children(parent: emitted)
   match fold_list(
     xs: production.rhs,
-    empty: Holds {
+    empty: v2.std.witness.Holds {
       value: DeriveGrammarRelationTokensProgress {
         edges: Empty,
         conj_index: 0,

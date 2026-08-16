@@ -180,11 +180,11 @@ data bmc_token_smoke_workflow: Workflow = {
   env: none,
   permissions: Present {
     value: WorkflowPermissions {
-      contents: Present { value: PermRead },
+      contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: Present { value: PermWrite }
+      id_token: Present { value: extdeps.github.actions.PermWrite }
     }
   },
   jobs: [bmc_token_smoke_job()]

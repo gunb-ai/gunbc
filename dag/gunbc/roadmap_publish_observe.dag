@@ -142,7 +142,7 @@ fn observe_pull_requests(
         auth_token: source,
         owner: repo.owner,
         repo: repo.name,
-        state: Open,
+        state: extdeps.github.pulls.Open,
       )
       match result.outcome {
         RestOk => PullRequestsRead { pulls: result.pulls }

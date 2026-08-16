@@ -24,7 +24,7 @@ fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> std.observation.OccurrenceId
   std.observation.OccurrenceId { attempt: attempt, id: id }
 }
 
-fn rec(p: ObservationProducer, seq: std.nat.Nat, occ: std.observation.OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
+fn rec(p: std.observation.ObservationProducer, seq: std.nat.Nat, occ: std.observation.OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
   RecordedObservation {
     producer: p,
     producer_sequence: seq,
@@ -243,7 +243,7 @@ test fn w_a_root_occurrence_resolves_as_root_under_either_scope() -> Bool {
     }
 }
 
-fn began(p: ObservationProducer, seq: std.nat.Nat, id: NonEmptyStr, origin: OccurrenceOrigin) -> RecordedObservation {
+fn began(p: std.observation.ObservationProducer, seq: std.nat.Nat, id: NonEmptyStr, origin: OccurrenceOrigin) -> RecordedObservation {
   let base = rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: id), origin: origin)
   RecordedObservation {
     producer: base.producer,
@@ -260,7 +260,7 @@ fn began(p: ObservationProducer, seq: std.nat.Nat, id: NonEmptyStr, origin: Occu
   }
 }
 
-fn concluded(p: ObservationProducer, seq: std.nat.Nat, id: NonEmptyStr) -> RecordedObservation {
+fn concluded(p: std.observation.ObservationProducer, seq: std.nat.Nat, id: NonEmptyStr) -> RecordedObservation {
   rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: id), origin: RootOccurrence)
 }
 

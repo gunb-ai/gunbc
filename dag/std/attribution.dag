@@ -28,7 +28,7 @@ fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
 }
 
 type OccurrenceExtent {
-  occurrence: OccurrenceId
+  occurrence: std.observation.OccurrenceId
   interval: OrderedClosedInterval<Nanosecond>
 }
 
@@ -77,13 +77,13 @@ fn extent_from_ordered(
 // Unattributed is the complement of their union, so no instant is ever unattributed and attributed
 // at once.
 type AttributionSpan
-  = Attributed { occurrence: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
-  | Unattributed { parent: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  = Attributed { occurrence: std.observation.OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  | Unattributed { parent: std.observation.OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
 
 type AttributionResult
   = AttributionComputed { spans: List<AttributionSpan> }
-  | AttributionRefusedForeignClock { child: OccurrenceId }
-  | AttributionRefusedChildOutsideParent { child: OccurrenceId }
+  | AttributionRefusedForeignClock { child: std.observation.OccurrenceId }
+  | AttributionRefusedChildOutsideParent { child: std.observation.OccurrenceId }
   | AttributionRefusedImpossibleInterval { cause: NonEmptyStr }
 
 type ExtentInFrame {
@@ -222,7 +222,7 @@ fn attribute_within(
 // under Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
 // carrier and not a licence to fabricate a span if it ever does.
 type ExtentSpec {
-  occurrence: OccurrenceId
+  occurrence: std.observation.OccurrenceId
   frame: ClockFrame
   start_ns: std.nat.Nat
   width_ns: std.nat.Nat
