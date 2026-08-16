@@ -29,11 +29,10 @@ import gunbc.membership_reconcile {
   TeardownRefusalCause,
   MemberNotOwned,
   OwnershipUnknown,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_refusal_count,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
@@ -69,9 +68,7 @@ import gunbc.spark_serving_membership {
 }
 import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 
-type TimerRetirementMemberMembershipKeyRelation
-
-type TimerRetirementMemberAt = ScopedKey<TimerRetirementMemberMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
+type TimerRetirementMemberAt = NonEmptyStr
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
@@ -200,12 +197,18 @@ fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
   Present { value: Owned }
 }
 
-data timer_retirement_member_resource: KeyedResourceRelation<TimerRetirementMemberMembershipKeyRelation, TimerRetirementMember, GlobalKeyScope, NonEmptyStr, TimerRetirementMember> = key_resource_relation_global(
-  key_of: timer_member_key,
-  key_eq: timer_member_key_eq,
-  state_of: membership_subject_self_state_of,
-  state_eq: timer_member_value_eq,
-)
+fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: timer_retirement_desired(),
+      observed: observed,
+      key_of: timer_member_key,
+      key_eq: timer_member_key_eq,
+      value_eq: timer_member_value_eq,
+      ownership_of: timer_member_ownership,
+    ),
+  )
+}
 
 fn timer_member_unit_path(unit_name: NonEmptyStr) -> NonEmptyStr {
   concat("/etc/systemd/system/", unit_name as String) as NonEmptyStr
@@ -223,15 +226,6 @@ fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
     TimerRetirementMember { unit_name: deployment_fleet_converge_timer_unit_name(names: names) },
     TimerRetirementMember { unit_name: deployment_fleet_converge_service_unit_name(names: names) },
   ]
-}
-
-fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
-  membership_reconcile_global(
-    desired: timer_retirement_desired(),
-    observed: observed,
-    resource: timer_retirement_member_resource,
-    ownership_of: timer_member_ownership,
-  )
 }
 
 fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {

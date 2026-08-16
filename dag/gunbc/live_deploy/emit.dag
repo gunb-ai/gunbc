@@ -73,10 +73,10 @@ import gunbc.membership_reconcile {
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   MemberRefusal,
   EffectsOrRefusal, EffectsReady, ApplyRefused,
-  membership_reconcile_global,
-  membership_subject_self_state_of, membership_effects,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_effects,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.live_deploy.operations {
   dpkg_status_command,
   apt_install_command,
@@ -409,9 +409,7 @@ fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 
 data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
 
-type DeploymentStepMembershipKeyRelation
-
-type DeploymentStepMemberAt = ScopedKey<DeploymentStepMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
+type DeploymentStepMemberAt = NonEmptyStr
 
 fn deployment_artifact_reconcile_key(art: DeploymentArtifactStep) -> NonEmptyStr {
   match art.kind {
@@ -439,28 +437,29 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
   Present { value: deployment_step_ownership(step: step) }
 }
 
-data deployment_step_resource: KeyedResourceRelation<DeploymentStepMembershipKeyRelation, DeploymentStep, GlobalKeyScope, NonEmptyStr, DeploymentStep> = key_resource_relation_global(
-  key_of: deployment_step_key,
-  key_eq: deployment_step_key_eq,
-  state_of: membership_subject_self_state_of,
-  state_eq: deployment_step_value_eq,
-)
-
 fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
-  membership_reconcile_global(
-    desired: spec.steps,
-    observed: [],
-    resource: deployment_step_resource,
-    ownership_of: deployment_step_ownership_opt,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: spec.steps,
+      observed: [],
+      key_of: deployment_step_key,
+      key_eq: deployment_step_key_eq,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    ),
   )
 }
 
 fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
-  membership_reconcile_global(
-    desired: [],
-    observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
-    resource: deployment_step_resource,
-    ownership_of: deployment_step_ownership_opt,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [],
+      observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
+      key_of: deployment_step_key,
+      key_eq: deployment_step_key_eq,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    ),
   )
 }
 

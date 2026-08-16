@@ -15,15 +15,12 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Ensured }
 
-type WorkflowFactMembershipKeyRelation
-
-type WorkflowFactMemberAt = ScopedKey<WorkflowFactMembershipKeyRelation, GlobalKeyScope, String>
+type WorkflowFactMemberAt = WorkflowFactKey
 
 type WorkflowFactState
   = WorkflowFactPending
@@ -264,16 +261,9 @@ fn workflow_fact_member_ownership(
   workflow_fact_ownership(fact: member.fact)
 }
 
-fn workflow_fact_member_key(member: WorkflowFactMember) -> String {
+fn workflow_fact_member_key(member: WorkflowFactMember) -> WorkflowFactKey {
   member.fact.key
 }
-
-data workflow_fact_member_resource: KeyedResourceRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, GlobalKeyScope, String, WorkflowFactMember> = key_resource_relation_global(
-  key_of: workflow_fact_member_key,
-  key_eq: workflow_fact_key_equal,
-  state_of: membership_subject_self_state_of,
-  state_eq: workflow_fact_member_value_equal,
-)
 
 fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> ReduceVerdict {
   match fact.state {
@@ -399,11 +389,15 @@ fn workflow_fact_reconcile(
   desired: List<WorkflowFactTree>,
   observed: List<WorkflowFactTree>,
 ) -> MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt> {
-  membership_reconcile_global(
-    desired: workflow_fact_forest_members(forest: desired),
-    observed: workflow_fact_forest_members(forest: observed),
-    resource: workflow_fact_member_resource,
-    ownership_of: workflow_fact_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: workflow_fact_forest_members(forest: desired),
+      observed: workflow_fact_forest_members(forest: observed),
+      key_of: workflow_fact_member_key,
+      key_eq: workflow_fact_key_equal,
+      value_eq: workflow_fact_member_value_equal,
+      ownership_of: workflow_fact_member_ownership,
+    )
   )
 }
 

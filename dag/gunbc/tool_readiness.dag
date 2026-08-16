@@ -24,23 +24,13 @@ import extdeps.realization.emit_on_demand_host {
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_tally,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Ensured }
 
-type CliToolPinMembershipKeyRelation
-
-type CliToolPinMemberAt = ScopedKey<CliToolPinMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
-
-data cli_tool_pin_resource: KeyedResourceRelation<CliToolPinMembershipKeyRelation, Pin<CliTool>, GlobalKeyScope, NonEmptyStr, Pin<CliTool>> = key_resource_relation_global(
-  key_of: cli_tool_pin_key_of,
-  key_eq: (a, b) => a == b,
-  state_of: membership_subject_self_state_of,
-  state_eq: pin_value_eq,
-)
+type CliToolPinMemberAt = NonEmptyStr
 
 type UnpinnedToolFrontierRow {
   tool: CliTool
@@ -92,11 +82,15 @@ fn tool_pin_reconcile(
   desired: List<Pin<CliTool>>,
   observed: List<Pin<CliTool>>,
 ) -> MembershipPlan<Pin<CliTool>, CliToolPinMemberAt> {
-  membership_reconcile_global(
-    desired: desired,
-    observed: observed,
-    resource: cli_tool_pin_resource,
-    ownership_of: tool_pin_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: cli_tool_pin_key_of,
+      key_eq: (a, b) => a == b,
+      value_eq: pin_value_eq,
+      ownership_of: tool_pin_ownership,
+    )
   )
 }
 

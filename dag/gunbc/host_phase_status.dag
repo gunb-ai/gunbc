@@ -30,19 +30,16 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_write_count,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import product.placement_supply { HostIdentity }
 import std.measure { millisecond }
 
-type HostPhaseCellMembershipKeyRelation
-
-type HostPhaseCellMemberAt = ScopedKey<HostPhaseCellMembershipKeyRelation, GlobalKeyScope, String>
+type HostPhaseCellMemberAt = String
 
 data host_phase_status_authority_note: String = "THE per-(host x phase) status axis for the host-standup spine. It exists because the spine could describe itself but not its RELATIONSHIP TO THE LIVE FLEET: every phase carried a PhaseDisposition (is there a modeled authority?) and nothing carried an observation (does this host actually agree with it?). Answering 'where does subsumption stand' therefore meant a session reconstruction — hand ssh probes, prose transcription — and the answer went stale the moment it was written. Two axes, kept ORTHOGONAL on purpose, because collapsing them is the state-space conflation this lane keeps paying for: the MODELED axis is PhaseDisposition, a property of the phase, the same for every host; the LIVE axis is std.upsert_decision.ObservationVerdict, a property of the (host, phase) CELL. A phase can be fully modeled AND Inaccessible on a given host — that is exactly srv1/srv2 for the build-cache phase today — and a single fused enum could not say it. Note what is NOT minted here: no Converged|Diverged|Unreachable|Unmodeled verdict of our own. ObservationVerdict already carries Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused, which is STRICTLY FINER on the diverged and unreachable axes, and it is already consumed by twelve modules including host_standup itself; a parallel four-arm verdict beside it would be the §3 nickname, duplicated again in everything derived from it. 'Unmodeled' is likewise not an observation and does not become a verdict arm — it stays on PhaseDisposition, carried on the cell beside the observation and derived from the spine, never authored. CORRECTION, found by execution 2026-07-25: the cell was FIRST written as a SUM (StatusUnmodeled | StatusObserved), which forced the two axes to be mutually exclusive and made the fold discard the observation on any DeclaredGap phase. The witness caught it immediately, because the single cell that CARRIES AN OBSERVATION today is (srv3, prefix:os-install-actuated) — a DeclaredGap phase — so live-observation coverage computed as 0 while a real Converged verdict sat one branch away. The sum was the very conflation this note claims to avoid, written into the type by the same hand that wrote the warning. The cell is now a PRODUCT of both axes, which also gives the lane a state it could not previously say: observed Converged on an unmodeled phase means the host is in the desired condition by means the model cannot reproduce — true of srv3's OS install, and exactly the kind of fact that should never round to either 'modeled' or 'gap'."
 
@@ -232,13 +229,6 @@ fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> Ownership? {
   Present { value: Owned }
 }
 
-data host_phase_cell_resource: KeyedResourceRelation<HostPhaseCellMembershipKeyRelation, HostPhaseCellStatus, GlobalKeyScope, String, HostPhaseCellStatus> = key_resource_relation_global(
-  key_of: host_phase_cell_key,
-  key_eq: host_phase_cell_key_eq,
-  state_of: membership_subject_self_state_of,
-  state_eq: host_phase_cell_status_eq,
-)
-
 data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_write_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
 
 fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
@@ -270,11 +260,15 @@ fn host_phase_reconcile(
   desired: List<HostPhaseCellStatus>,
   observed: List<HostPhaseCellStatus>,
 ) -> MembershipPlan<HostPhaseCellStatus, HostPhaseCellMemberAt> {
-  membership_reconcile_global(
-    desired: desired,
-    observed: observed,
-    resource: host_phase_cell_resource,
-    ownership_of: host_phase_cell_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: host_phase_cell_key,
+      key_eq: host_phase_cell_key_eq,
+      value_eq: host_phase_cell_status_eq,
+      ownership_of: host_phase_cell_ownership,
+    ),
   )
 }
 

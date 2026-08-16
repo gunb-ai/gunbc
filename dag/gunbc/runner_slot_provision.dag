@@ -9,11 +9,10 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_added_count,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership }
 import gunbc.runner_host_deploy {
   RunnerHostDeploy,
@@ -44,9 +43,7 @@ data runner_slot_provision_scaffold: Disposition = Scaffold {
   }
 }
 
-type RunnerSlotMemberMembershipKeyRelation
-
-type RunnerSlotMemberAt = ScopedKey<RunnerSlotMemberMembershipKeyRelation, GlobalKeyScope, NonEmptyStr>
+type RunnerSlotMemberAt = NonEmptyStr
 
 type RunnerSlotMember {
   instance_name: NonEmptyStr
@@ -94,30 +91,20 @@ fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
   Absent
 }
 
-data runner_slot_member_resource: KeyedResourceRelation<RunnerSlotMemberMembershipKeyRelation, RunnerSlotMember, GlobalKeyScope, NonEmptyStr, RunnerSlotMember> = key_resource_relation_global(
-  key_of: runner_slot_member_key,
-  key_eq: runner_slot_member_key_eq,
-  state_of: membership_subject_self_state_of,
-  state_eq: runner_slot_member_value_eq,
-)
-
-fn runner_slot_membership_reconcile_global(
-  desired: List<RunnerSlotMember>,
-  observed: List<RunnerSlotMember>,
-) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
-  membership_reconcile_global(
-    desired: desired,
-    observed: observed,
-    resource: runner_slot_member_resource,
-    ownership_of: runner_slot_member_ownership,
-  )
-}
-
 fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
 ) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
-  runner_slot_membership_reconcile_global(desired: desired, observed: observed)
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: runner_slot_member_key,
+      key_eq: runner_slot_member_key_eq,
+      value_eq: runner_slot_member_value_eq,
+      ownership_of: runner_slot_member_ownership,
+    ),
+  )
 }
 
 type RunnerSlotEnumerationPostcondition
@@ -157,7 +144,7 @@ fn runner_slot_provision_plan(
   artifact: ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
-  let membership = runner_slot_membership_reconcile_global(
+  let membership = runner_slot_membership_reconcile(
     desired: desired_runner_slot_members(deploy: deploy),
     observed: observed,
   )

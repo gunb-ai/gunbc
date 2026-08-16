@@ -23,8 +23,8 @@ import gunbc.membership_reconcile {
   MemberAdded,
   MemberChanged,
   MemberRemoved,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
+  membership_reconcile_scoped,
+  membership_plan_admitting_scoped_outcome,
   membership_change_count,
   membership_added_count,
   membership_removal_count,
@@ -113,13 +113,13 @@ data w_route_key_backend_repoint_note: String = "THE STEP-1 POSITIVE CONTROL. Sa
 test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
   let observed = [root_endpoint(backend: "8080")]
   let desired = [root_endpoint(backend: "18081")]
-  let plan = membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+  let plan = membership_plan_admitting_scoped_outcome(
+    outcome: membership_reconcile_scoped(
       desired: desired,
       observed: observed,
       resource: tailscale_serve_resource_relation,
       ownership_of: tailscale_endpoint_ownership,
-    )
+    ),
   )
   plan_has_change_between_backends(plan: plan, from_backend: "8080", to_backend: "18081")
     && membership_change_count(plan: plan) == 1
@@ -148,13 +148,13 @@ data w_enable_argv_key_backend_repoint_red_note: String = "RED CONTROL for the R
 test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
   let observed = [root_endpoint(backend: "8080")]
   let desired = [root_endpoint(backend: "18081")]
-  let plan = membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+  let plan = membership_plan_admitting_scoped_outcome(
+    outcome: membership_reconcile_scoped(
       desired: desired,
       observed: observed,
       resource: tailscale_enable_argv_resource_relation,
       ownership_of: tailscale_endpoint_ownership,
-    )
+    ),
   )
   plan_has_remove_add_not_change(plan: plan)
     && membership_change_count(plan: plan) == 0

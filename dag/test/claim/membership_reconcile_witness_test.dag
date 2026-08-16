@@ -4,11 +4,8 @@ import std.types { String, List, Bool, Int }
 import std.key_relation {
   KeyRelation,
   ScopedKey,
-  GlobalKeyScope,
   KeyedResourceRelation,
   StateRelation,
-  key_relation_global,
-  key_resource_relation_global,
   key_relation_scoped_key,
   key_relation_scoped_key_eq,
 }
@@ -19,8 +16,11 @@ import gunbc.membership_reconcile {
   TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
   membership_reconcile,
   membership_plan_admitting_outcome,
+  membership_reconcile_scoped,
+  membership_plan_admitting_scoped_outcome,
   MembershipReconcileOutcome,
-  MembershipReconcileReady,
+  MembershipReconcileScopedOutcome,
+  MembershipReconcileScopedReady,
   MembershipReconcileDuplicateScopedKey,
   MembershipDesiredRoster,
   membership_write_count, membership_removal_count, membership_refusal_count,
@@ -33,11 +33,9 @@ import gunbc.membership_reconcile {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-type TMembershipKeyRelation
-
-type TMemberAt = ScopedKey<TMembershipKeyRelation, GlobalKeyScope, String>
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type TMemberAt = String
 
 type TMember { mid: String, ver: String, own: Ownership? }
 
@@ -58,24 +56,16 @@ fn t_key_eq(a: String, b: String) -> Bool { a == b }
 fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
 fn t_own(m: TMember) -> Ownership? { m.own }
 
-fn t_member_state_of(m: TMember) -> String { m.ver }
-fn t_member_state_eq(a: String, b: String) -> Bool { a == b }
-
-data t_membership_resource: KeyedResourceRelation<TMembershipKeyRelation, TMember, GlobalKeyScope, String, String> = key_resource_relation_global(
-  key_of: t_key,
-  key_eq: t_key_eq,
-  state_of: t_member_state_of,
-  state_eq: t_member_state_eq,
-)
-
 fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember, TMemberAt> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(
       desired: desired,
       observed: observed,
-      resource: t_membership_resource,
+      key_of: t_key,
+      key_eq: t_key_eq,
+      value_eq: t_val_eq,
       ownership_of: t_own,
-    )
+    ),
   )
 }
 
@@ -310,13 +300,13 @@ data w_same_key_different_scope_note: String = "DISCRIMINATING (P0 #1): two subj
 test fn w_same_key_different_scope_stays_distinct() -> Bool {
   let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
   let b = ScopedWitnessMember { node: "host-b", mid: "route", ver: "1" }
-  let plan = membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+  let plan = membership_plan_admitting_scoped_outcome(
+    outcome: membership_reconcile_scoped(
       desired: [a, b],
       observed: [a, b],
       resource: scoped_witness_resource,
       ownership_of: scoped_witness_own,
-    )
+    ),
   )
   membership_write_count(plan: plan) == 0
     && membership_removal_count(plan: plan) == 0
@@ -333,7 +323,7 @@ data w_duplicate_scoped_key_refuses_note: String = "DISCRIMINATING: two desired 
 test fn w_duplicate_scoped_key_refuses() -> Bool {
   let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
   let b = ScopedWitnessMember { node: "host-a", mid: "route", ver: "2" }
-  match membership_reconcile(
+  match membership_reconcile_scoped(
     desired: [a, b],
     observed: [],
     resource: scoped_witness_resource,
@@ -341,7 +331,7 @@ test fn w_duplicate_scoped_key_refuses() -> Bool {
   ) {
     MembershipReconcileDuplicateScopedKey { roster: MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
       f.value.mid == "route" && d.value.mid == "route" && f.value.ver == "1" && d.value.ver == "2"
-    MembershipReconcileReady { plan: _ } => false
+    MembershipReconcileScopedReady { plan: _ } => false
   }
 }
 

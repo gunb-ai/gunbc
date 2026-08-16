@@ -10,14 +10,14 @@ import gunbc.spark_serving_release {
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  membership_reconcile_global,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_write_count,
   membership_removal_count,
   membership_refusal_count,
   membership_effects,
   EffectsOrRefusal,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.spark_serving_install_paths {
   SparkServingUserUnitSpec,
   spark_serving_user_unit_path,
@@ -40,9 +40,7 @@ type SparkServingResourceAddress
   | SparkServingModelSlotAddress { slot: NonEmptyStr }
   | SparkServingLingerAddress
 
-type SparkServingMemberMembershipKeyRelation
-
-type SparkServingMemberAt = ScopedKey<SparkServingMemberMembershipKeyRelation, GlobalKeyScope, String>
+type SparkServingMemberAt = String
 
 type SparkServingMember {
   host: HostIdentity
@@ -208,30 +206,19 @@ fn spark_serving_desired_members(
   ]
 }
 
-fn spark_serving_member_state_of(member: SparkServingMember) -> NonEmptyStr {
-  member.state_digest
-}
-
-fn spark_serving_member_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a == b
-}
-
-data spark_serving_member_resource: KeyedResourceRelation<SparkServingMemberMembershipKeyRelation, SparkServingMember, GlobalKeyScope, String, NonEmptyStr> = key_resource_relation_global(
-  key_of: spark_serving_member_key,
-  key_eq: spark_serving_member_key_eq,
-  state_of: spark_serving_member_state_of,
-  state_eq: spark_serving_member_state_eq,
-)
-
 fn spark_serving_membership_reconcile(
   desired: List<SparkServingMember>,
   observed: List<SparkServingMember>,
 ) -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
-  membership_reconcile_global(
-    desired: desired,
-    observed: observed,
-    resource: spark_serving_member_resource,
-    ownership_of: spark_serving_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: spark_serving_member_key,
+      key_eq: spark_serving_member_key_eq,
+      value_eq: spark_serving_member_value_eq,
+      ownership_of: spark_serving_member_ownership,
+    ),
   )
 }
 

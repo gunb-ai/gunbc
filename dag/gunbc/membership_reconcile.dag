@@ -11,11 +11,7 @@ import std.keyed_roster {
 import std.key_relation {
   KeyRelation,
   ScopedKey,
-  GlobalKeyScope,
   KeyedResourceRelation,
-  KeyedResourceRelation,
-  key_relation_global,
-  key_resource_relation_global,
   keyed_resource_subject_value_eq,
   key_relation_scoped_key,
   key_relation_scoped_key_eq,
@@ -57,8 +53,17 @@ type EffectsOrRefusal<M>
 
 type MembershipRosterSide = MembershipDesiredRoster | MembershipObservedRoster
 
-type MembershipReconcileOutcome<M, Relation, Scope, K>
-  = MembershipReconcileReady { plan: MembershipPlan<M, ScopedKey<Relation, Scope, K>> }
+type MembershipReconcileOutcome<M, K>
+  = MembershipReconcileReady { plan: MembershipPlan<M, K> }
+  | MembershipReconcileDuplicateKey {
+      roster: MembershipRosterSide,
+      key: K,
+      first: KeyedRow<K, M>,
+      duplicate: KeyedRow<K, M>,
+    }
+
+type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
+  = MembershipReconcileScopedReady { plan: MembershipPlan<M, ScopedKey<Relation, Scope, K>> }
   | MembershipReconcileDuplicateScopedKey {
       roster: MembershipRosterSide,
       key: ScopedKey<Relation, Scope, K>,
@@ -66,27 +71,23 @@ type MembershipReconcileOutcome<M, Relation, Scope, K>
       duplicate: KeyedRow<ScopedKey<Relation, Scope, K>, M>,
     }
 
-data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity under a DECLARED KeyRelation (std.key_relation) — naming the relation, NOT enforcing that key_of returns identity rather than content (std.key_relation key_relation_authority_note; the wall is a declared next-rung trigger, not this PR): Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M, scope S, and key K — consumers NAME their KeyRelation bundle, they NEVER copy-adapt this fn. Rows are ScopedKey<Relation, Scope, K> via key_relation_scoped_key; equality via key_relation_scoped_key_eq passed to std.change keyed_two_way_diff and std.keyed_roster keyed_roster_build (no fork). FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. Reaching MembershipReconcileReady means both rosters survived duplicate-free construction for THAT population. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused."
+data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq, ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` = the reconcile key so effect realization does not re-derive identity from mutable value. FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused. membership_reconcile_scoped is the KeyRelation/KeyedResourceRelation path for relations with grounded scope (Tailscale vertical only until scope lands elsewhere)."
 
-fn member_rows<M, Relation, Scope, K>(
+fn plain_member_rows<M, K>(
   members: List<M>,
-  relation: KeyRelation<Relation, M, Scope, K>,
-) -> List<KeyedRow<ScopedKey<Relation, Scope, K>, M>> {
-  map(members, m =>
-    KeyedRow {
-      row_key: key_relation_scoped_key(relation: relation, subject: m),
-      value: m,
-    }
-  )
+  key_of: fn(M) -> K,
+) -> List<KeyedRow<K, M>> {
+  map(members, m => KeyedRow { row_key: key_of(m), value: m })
 }
 
-fn membership_scoped_roster_build<M, Relation, Scope, K>(
+fn membership_plain_roster_build<M, K>(
   members: List<M>,
-  relation: KeyRelation<Relation, M, Scope, K>,
-) -> KeyedRosterBuild<ScopedKey<Relation, Scope, K>, M> {
+  key_of: fn(M) -> K,
+  key_eq: fn(K, K) -> Bool,
+) -> KeyedRosterBuild<K, M> {
   keyed_roster_build(
-    incomings: member_rows(members: members, relation: relation),
-    key_eq: fn(a, b) { key_relation_scoped_key_eq(relation: relation, a: a, b: b) },
+    incomings: plain_member_rows(members: members, key_of: key_of),
+    key_eq: key_eq,
   )
 }
 
@@ -107,7 +108,115 @@ fn removal_admission<M>(existing: M, ownership_of: fn(M) -> Ownership?) -> Remov
   }
 }
 
-fn hunk_to_action<M, Relation, Scope, K>(
+fn plain_hunk_to_action<M, K>(
+  hunk: KeyedDiffHunk<K, M>,
+  ownership_of: fn(M) -> Ownership?,
+) -> MemberAction<M, K> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
+    KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
+    KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
+      match removal_admission(existing: m, ownership_of: ownership_of) {
+        RemovalAdmitted => MemberRemoved { at: at, from: m }
+        RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
+      }
+  }
+}
+
+fn membership_reconcile_built<M, K>(
+  desired_rows: List<KeyedRow<K, M>>,
+  observed_rows: List<KeyedRow<K, M>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
+  ownership_of: fn(M) -> Ownership?,
+) -> MembershipPlan<M, K> {
+  let patch = keyed_two_way_diff(
+    left: observed_rows,
+    right: desired_rows,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  MembershipPlan {
+    actions: map(patch.hunks, h => plain_hunk_to_action(hunk: h, ownership_of: ownership_of))
+  }
+}
+
+fn membership_reconcile<M, K>(
+  desired: List<M>,
+  observed: List<M>,
+  key_of: fn(M) -> K,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
+  ownership_of: fn(M) -> Ownership?,
+) -> MembershipReconcileOutcome<M, K> {
+  match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      MembershipReconcileDuplicateKey {
+        roster: MembershipDesiredRoster,
+        key: k,
+        first: f,
+        duplicate: d,
+      }
+    KeyedRosterBuilt { rows: desired_rows } =>
+      match membership_plain_roster_build(members: observed, key_of: key_of, key_eq: key_eq) {
+        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+          MembershipReconcileDuplicateKey {
+            roster: MembershipObservedRoster,
+            key: k,
+            first: f,
+            duplicate: d,
+          }
+        KeyedRosterBuilt { rows: observed_rows } =>
+          MembershipReconcileReady {
+            plan: membership_reconcile_built(
+              desired_rows: desired_rows,
+              observed_rows: observed_rows,
+              key_eq: key_eq,
+              value_eq: value_eq,
+              ownership_of: ownership_of,
+            )
+          }
+      }
+  }
+}
+
+fn membership_plan_admitting_outcome<M, K>(
+  outcome: MembershipReconcileOutcome<M, K>,
+) -> MembershipPlan<M, K> {
+  match outcome {
+    MembershipReconcileReady { plan: plan } => plan
+    MembershipReconcileDuplicateKey { first: f, duplicate: _, key: _, roster: _ } =>
+      MembershipPlan {
+        actions: [
+          MemberRemovalRefused { from: f.value, cause: OwnershipUnknown }
+        ]
+      }
+  }
+}
+
+fn scoped_member_rows<M, Relation, Scope, K>(
+  members: List<M>,
+  relation: KeyRelation<Relation, M, Scope, K>,
+) -> List<KeyedRow<ScopedKey<Relation, Scope, K>, M>> {
+  map(members, m =>
+    KeyedRow {
+      row_key: key_relation_scoped_key(relation: relation, subject: m),
+      value: m,
+    }
+  )
+}
+
+fn membership_scoped_roster_build<M, Relation, Scope, K>(
+  members: List<M>,
+  relation: KeyRelation<Relation, M, Scope, K>,
+) -> KeyedRosterBuild<ScopedKey<Relation, Scope, K>, M> {
+  keyed_roster_build(
+    incomings: scoped_member_rows(members: members, relation: relation),
+    key_eq: fn(a, b) { key_relation_scoped_key_eq(relation: relation, a: a, b: b) },
+  )
+}
+
+fn scoped_hunk_to_action<M, Relation, Scope, K>(
   hunk: KeyedDiffHunk<ScopedKey<Relation, Scope, K>, M>,
   ownership_of: fn(M) -> Ownership?,
 ) -> MemberAction<M, ScopedKey<Relation, Scope, K>> {
@@ -122,7 +231,7 @@ fn hunk_to_action<M, Relation, Scope, K>(
   }
 }
 
-fn membership_reconcile_built<M, Relation, Scope, K, State>(
+fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
   desired_rows: List<KeyedRow<ScopedKey<Relation, Scope, K>, M>>,
   observed_rows: List<KeyedRow<ScopedKey<Relation, Scope, K>, M>>,
   resource: KeyedResourceRelation<Relation, M, Scope, K, State>,
@@ -137,16 +246,16 @@ fn membership_reconcile_built<M, Relation, Scope, K, State>(
     value_eq: value_eq,
   )
   MembershipPlan {
-    actions: map(patch.hunks, h => hunk_to_action(hunk: h, ownership_of: ownership_of))
+    actions: map(patch.hunks, h => scoped_hunk_to_action(hunk: h, ownership_of: ownership_of))
   }
 }
 
-fn membership_reconcile<M, Relation, Scope, K, State>(
+fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
   desired: List<M>,
   observed: List<M>,
   resource: KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> Ownership?,
-) -> MembershipReconcileOutcome<M, Relation, Scope, K> {
+) -> MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
   let relation = resource.key
   match membership_scoped_roster_build(members: desired, relation: relation) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
@@ -166,8 +275,8 @@ fn membership_reconcile<M, Relation, Scope, K, State>(
             duplicate: d,
           }
         KeyedRosterBuilt { rows: observed_rows } =>
-          MembershipReconcileReady {
-            plan: membership_reconcile_built(
+          MembershipReconcileScopedReady {
+            plan: membership_reconcile_scoped_built(
               desired_rows: desired_rows,
               observed_rows: observed_rows,
               resource: resource,
@@ -178,11 +287,11 @@ fn membership_reconcile<M, Relation, Scope, K, State>(
   }
 }
 
-fn membership_plan_admitting_outcome<M, Relation, Scope, K>(
-  outcome: MembershipReconcileOutcome<M, Relation, Scope, K>,
+fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
+  outcome: MembershipReconcileScopedOutcome<M, Relation, Scope, K>,
 ) -> MembershipPlan<M, ScopedKey<Relation, Scope, K>> {
   match outcome {
-    MembershipReconcileReady { plan: plan } => plan
+    MembershipReconcileScopedReady { plan: plan } => plan
     MembershipReconcileDuplicateScopedKey { first: f, duplicate: _, key: _, roster: _ } =>
       MembershipPlan {
         actions: [
@@ -193,22 +302,6 @@ fn membership_plan_admitting_outcome<M, Relation, Scope, K>(
 }
 
 fn membership_subject_self_state_of<M>(m: M) -> M { m }
-
-fn membership_reconcile_global<M, Relation, K, State>(
-  desired: List<M>,
-  observed: List<M>,
-  resource: KeyedResourceRelation<Relation, M, GlobalKeyScope, K, State>,
-  ownership_of: fn(M) -> Ownership?,
-) -> MembershipPlan<M, ScopedKey<Relation, GlobalKeyScope, K>> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      resource: resource,
-      ownership_of: ownership_of,
-    )
-  )
-}
 
 data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
 

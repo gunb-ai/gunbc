@@ -12,10 +12,9 @@ import gunbc.roadmap_authority {
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
   MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
-  membership_reconcile_global,
-  membership_subject_self_state_of,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
 }
-import std.key_relation { ScopedKey, GlobalKeyScope, KeyedResourceRelation, key_resource_relation_global }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
 import extdeps.languages.json.emit {
@@ -195,9 +194,7 @@ fn roadmap_belt_status_json() -> String {
 
 data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMES belt_step (spawn-only, observed hardcoded empty): belt_step is the degenerate slice-1 precursor and retires when the host-effect driver (slice 2b: MemberAdded/MemberChanged -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision. The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
 
-type DispatchMemberMembershipKeyRelation
-
-type DispatchMemberAt = ScopedKey<DispatchMemberMembershipKeyRelation, GlobalKeyScope, String>
+type DispatchMemberAt = String
 
 type DispatchMember
   = DesiredMember { node_id: String, node: RoadmapNode }
@@ -236,13 +233,6 @@ fn dispatch_member_ownership(m: DispatchMember) -> Ownership? {
   }
 }
 
-data dispatch_member_resource: KeyedResourceRelation<DispatchMemberMembershipKeyRelation, DispatchMember, GlobalKeyScope, String, DispatchMember> = key_resource_relation_global(
-  key_of: dispatch_member_key,
-  key_eq: dispatch_member_key_eq,
-  state_of: membership_subject_self_state_of,
-  state_eq: dispatch_member_value_eq,
-)
-
 fn belt_desired_members(frontier: SpawnFrontier) -> List<DispatchMember> {
   frontier.ready |> map(n => DesiredMember { node_id: n.node as String, node: n })
 }
@@ -255,11 +245,15 @@ fn belt_membership_plan(
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
 ) -> MembershipPlan<DispatchMember, DispatchMemberAt> {
-  membership_reconcile_global(
-    desired: belt_desired_members(frontier: frontier),
-    observed: belt_observed_members(live: live),
-    resource: dispatch_member_resource,
-    ownership_of: dispatch_member_ownership,
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: belt_desired_members(frontier: frontier),
+      observed: belt_observed_members(live: live),
+      key_of: dispatch_member_key,
+      key_eq: dispatch_member_key_eq,
+      value_eq: dispatch_member_value_eq,
+      ownership_of: dispatch_member_ownership,
+    ),
   )
 }
 
