@@ -460,7 +460,7 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
-pub(crate) fn str_value(s: impl AsRef<str>) -> Value {
+pub fn str_value(s: impl AsRef<str>) -> Value {
     Value::Str(Rc::from(s.as_ref()))
 }
 
