@@ -327,3 +327,53 @@ Checked and found **already correct**, so it needs nothing: `cli_run.rs`
 same defect. It is a proper retirement receipt — it names the deleted arm and row, the
 authorization, and the date, and explains that every class now delegates to the one
 `00_core.dag` authority. That is what a retired citation should look like.
+
+## Control adversary checks this cut performed
+
+Recorded here rather than at the carriers, by ownership: a per-cut verification is a
+judgement made *by this branch*, and authoring it into a carrier that made no such claim
+hands a branch-scoped statement to every later reader who is not on this branch. Only
+lane-independent structural facts belong at the site.
+
+**`legacy_discovery_known_positive` — repointed by this cut.** Its previous identity was
+inside `class_b_trim_specimen_test.rs`, whose entire subject was `import` binding
+semantics, so this cut deleted it. The carrier's own comment said the identity "exists
+independently of this migration" — it was independent of the *test* migration, not of the
+import cut. Repointed to `field_of_fractions_construction`. The claim recorded is the weak
+true one: **unthreatened by the cuts in flight, not independent.** Its dissolution has a
+single arm and that arm is an addition (a typed interpreter representation receipt), so no
+cut removes it. It dies with the retained kernel; re-check whenever a lane drains a
+retained module.
+
+**`witness_discovery_known_positive` — not touched, verified anyway.** The subject file was
+not among this pass's 632 edited files, and carries zero diagnostics before and after. That
+zero is meaningful rather than a false absence: `dag/test/claim/` is demonstrably compiled,
+since sibling files in it report diagnostics. This is the check a bare "no hits" would have
+failed — and did fail earlier in this lane, on a directory that turned out never to have
+been compiled at all.
+
+### Correction to the kernel survey, and why it cannot be automated
+
+An earlier survey of the retained kernel classified rows by their dissolution's adversary
+at **row grain**. Re-checked at **arm grain**, two entries were mislabelled — in the safe
+direction:
+
+```
+none_undetermined_carrier_refuse        listed as floor-coupled  →  ADDITION ("a floor witness pins…")
+field_of_fractions_single_declaration   listed as floor-coupled  →  ADDITION ("a floor witness derives…")
+```
+
+Both dissolve when someone *builds* a floor witness. The floor **cut** does not drain them;
+floor witness **work** does. More of the kernel is unthreatened than first reported.
+
+The method note matters more than the correction. The first arm-grain pass detected
+disjunction by scanning dissolution text for `" or "` / `"either"` / `"whichever"`, and
+flagged exactly those two rows as disjunctive. **They are not** — the matches were
+incidental prose inside single arms ("a malformed fixture **or** an unrelated earlier
+failure"; "refusing unreadable **or** missing members"). The keyword scan was a *model* of
+disjunction and produced two false positives; only reading the full text settled it.
+
+So "classify at arm grain" is not automatable by scanning for a conjunction. **The arms
+have to be read.** This is the same failure as every other instrument error in this lane —
+a regex standing in for the resolver, a filtered grep for the corpus, a name list for a
+relation, and now a keyword for an arm.
