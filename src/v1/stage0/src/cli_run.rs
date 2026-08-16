@@ -42228,8 +42228,20 @@ pub fn floor_seam(name: &str) {
 // slow, which is the property that makes it useful.
 fn spawn_floor_heartbeat() {
     let started = std::time::Instant::now();
+    // 60s is the CI cadence: dense enough to bound a phase, sparse enough not to bloat a
+    // job log. It is too coarse to LOCALISE anything — a 2.7 GB step between two samples
+    // names a minute, not a cause — so a local investigation can tighten it. Bounded below
+    // at 1s so a typo cannot turn the instrument into the load being measured, and left at
+    // 60s whenever the variable is absent or unparseable: an override that silently
+    // succeeded at a value nobody chose would make the sample rate a fact about the
+    // environment rather than about the run.
+    let period_s = std::env::var("GUNBC_FLOOR_HEARTBEAT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|v| v.max(1))
+        .unwrap_or(60);
     std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(60));
+        std::thread::sleep(std::time::Duration::from_secs(period_s));
         let seam = FLOOR_SEAM
             .lock()
             .map(|g| g.clone())
@@ -42265,6 +42277,33 @@ pub fn run_required_floor(
          modules_excluded={} digest={}",
         prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
     );
+    // WHERE PREPARATION'S WALL AND POPULATION GO: `compile.reconcile`, measured 2026-08-16.
+    //
+    // No dump is emitted here, and that is the finding rather than an omission. A
+    // `[floor-prepare-split]` line reading `resolve_stage_slot_add`'s accumulators was added
+    // here and printed every stage as 0.0ms against a 569,079ms phase — because those
+    // accumulators are written only by `resolved_graph_from_sources_with_index`, and
+    // `prepare_repository_once` reaches `v1_compiler_compile::compile_to_resolved` through
+    // `resolved_graph_from_sources`, which takes no index and no memo share and touches none
+    // of them. The zeros meant "unwired path", not "free"; that reading was recorded before
+    // the run, because `typecheck=0.0ms` on a typecheck-dominated phase is otherwise exactly
+    // the shape that gets reported as a result.
+    //
+    // The attribution already existed, in `compile_to_resolved_with_options`'s `trace_mark`
+    // pairs, and had been printing in every floor log:
+    //
+    //     compile.frontend    39s
+    //     compile.normalize    2s
+    //     compile.reconcile    8min      <- 520s of a 569s phase
+    //     compile.analyses     1s
+    //
+    // Cross-read against a 5s heartbeat (`GUNBC_FLOOR_HEARTBEAT_SECS`), reconcile spans
+    // t=45s..565s and RSS 3.53 GB -> 9.28 GB, so it owns ~91% of the wall AND essentially all
+    // of preparation's ~5.85 GiB. Everything else in preparation totals 42 seconds.
+    //
+    // So preparation is not diffusely large and does not need new instrumentation; it needs
+    // `reconcile_with_census_extra` over 3,668 modules to get smaller. Anyone adding a probe
+    // here should read the existing trace marks first.
 
     // ── 2. the evaluation frames ──────────────────────────────────────────────────────────
     //
