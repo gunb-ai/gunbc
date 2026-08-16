@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
-# CHARAT-0: compare parse_json survival slope post vs origin/main at small sizes.
+# SCAFFOLD — CHARAT-0 parse_json survival slope comparison beside json_parse_scaling_probe
+# (not a general scripts/ home; same transport class as docs/probes/run_frontier_probe_survey_per_module.sh).
+# dissolve-on: delete when CHARAT-0 string-indexing acceptance enrolls a floor witness,
+# STR-RC-0 scaffold retires, or large-regime measurement refutes and the branch reverts.
+# Runtime-present: invokes json_parse_scaling_probe seed bin with JSON_PARSE_PROBE_MODE=survival
+# per (carrier, size) in a fresh process; compares origin/main interpreter vs dispatch HEAD.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-POST_DIR="$ROOT"
 PRE_DIR="/tmp/charat0-main-measure"
 SIZES=(20000 40000 80000)
 TIMEOUT_SEC=600
+
+termination_label() {
+  local ec="$1"
+  case "$ec" in
+    0) echo "completed" ;;
+    2) echo "parse_failed" ;;
+    137|134|9) echo "killed (OOM or signal)" ;;
+    124) echo "timeout" ;;
+    *) echo "failed" ;;
+  esac
+}
 
 git fetch origin main --depth=1
 MAIN_REF="origin/main"
@@ -28,7 +43,8 @@ cp "$PROBE_SRC" "$PRE_DIR/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 if ! grep -q json_parse_scaling_probe "$PRE_DIR/src/v1/stage0/Cargo.toml"; then
   cat >>"$PRE_DIR/src/v1/stage0/Cargo.toml" <<'EOF'
 
-# CHARAT-0 measurement scaffold (not floor-enrolled).
+# SCAFFOLD — CHARAT-0 / STR-RC-0 measurement transport (not floor-enrolled).
+# dissolve-on: enrolled witness or refuted hypothesis (see json_parse_scaling_probe.rs marker).
 [[bin]]
 name = "json_parse_scaling_probe"
 path = "src/bin/json_parse_scaling_probe.rs"
@@ -45,7 +61,19 @@ run_one() {
   local bin="$2"
   local size="$3"
   echo "=== $label target_bytes=$size (fresh process) ==="
-  timeout "$TIMEOUT_SEC" env JSON_PARSE_PROBE_MODE=survival JSON_PARSE_TARGET_BYTES="$size" "$bin" || echo "exit=$?"
+  set +e
+  timeout "$TIMEOUT_SEC" env \
+    JSON_PARSE_PROBE_MODE=survival \
+    JSON_PARSE_TARGET_BYTES="$size" \
+    "$bin"
+  local ec=$?
+  set -e
+  echo "# exit_code=$ec"
+  echo "# termination=$(termination_label "$ec")"
+  if [ "$ec" -ne 0 ]; then
+    echo "probe_refused label=$label target_bytes=$size exit_code=$ec termination=$(termination_label "$ec")" >&2
+    exit "$ec"
+  fi
 }
 
 echo "label\ttarget_bytes\telapsed_ms\tmembers_found\toutcome"
