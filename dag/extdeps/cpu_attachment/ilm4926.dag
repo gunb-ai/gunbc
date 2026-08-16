@@ -12,6 +12,7 @@ import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 import extdeps.vendor.lotes { lotes }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
+import extdeps.uri { Uri, Https }
 
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
 // Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are
@@ -166,6 +167,15 @@ type AttestationStanding
   = PublisherOfRecord
   | ThirdPartyUnofficial { claimant: NonEmptyStr }
 
+// THE VENDOR'S OWN CATALOGUE PAGE, which is a publisher of record for its own part and therefore
+// outranks the forum for anything it states. It resolves what the community thread could not.
+data lotes_azif0222_product_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lotes.cc/en/product.php?act=view&id=566"
+  }
+}
+
 data ampere_community_lga4926_thread_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -178,9 +188,13 @@ data ampere_community_lga4926_thread_authority: ExternalAuthority = ExternalAuth
 // That disagreement is the reason this is a candidate row and not a resolution: writing the pair
 // down in one order would make a coin-flip look like a citation, and the referent split is exactly
 // the question this module exists to leave open.
+// THE REFERENT ARMS INCLUDE A COMBINED ASSEMBLY, because the vendor sells one. Lotes lists the
+// loading mechanism and the backplate as a single orderable product, so a model offering only
+// "socket body" or "loading mechanism" would force a real catalogue entry into the wrong arm.
 type PartReferentClaim
   = ClaimedSocketBody
   | ClaimedLoadingMechanism
+  | ClaimedLoadingMechanismWithBackplate
   | ReferentAssignmentDisputed { because: NonEmptyStr }
 
 type PartNumberCandidate {
@@ -191,26 +205,37 @@ type PartNumberCandidate {
   authority: ExternalAuthority
 }
 
+// ONE PART, NOT TWO, AND THE VENDOR SAYS WHICH. An earlier revision of this module carried
+// "SKT 4926 ILM" and "AZIF0222-P002C56" as two candidates whose referents were disputed, because
+// the only source was a forum line joining them with an ampersand and two readings disagreed
+// about which named the socket and which the loading mechanism.
+//
+// The Lotes catalogue page settles it: ARM P/N AZIF0222 has Product Overview
+// "SKT 4926 ILM & BP, Top-mount, HF" and Component Type "CPU Socket ILM & BP". So SKT 4926 ILM is
+// the vendor's PRODUCT NAME for AZIF0222, not a second part number -- the forum was giving one
+// part's name and number, and the ampersand joined a name to a number rather than two parts.
+// Modelling it as two candidates was an over-reading of the forum line, corrected here.
+//
+// WHAT IT IS: the independent loading mechanism together with the backplate, sold as one
+// top-mount assembly. WHAT IT IS NOT: the socket body. That part is a different orderable item
+// which no consulted source names, and it is the one that carries the board land pattern -- so
+// this resolution advances the retention layers and leaves the land pattern exactly where it was.
 data lotes_part_attestations: List<PartNumberCandidate> = [
   PartNumberCandidate {
-    part_number: "SKT 4926 ILM",
+    part_number: "AZIF0222",
     vendor: lotes,
-    claimed_referent: ReferentAssignmentDisputed {
-      because: "the string carries both SKT and ILM, and two readings of the same thread assigned it to the socket body and to the loading mechanism respectively; no reading is preferred here",
-    },
-    standing: ThirdPartyUnofficial { claimant: "community forum member, no Ampere staff response in the thread" },
-    authority: ampere_community_lga4926_thread_authority,
-  },
-  PartNumberCandidate {
-    part_number: "AZIF0222-P002C56",
-    vendor: lotes,
-    claimed_referent: ReferentAssignmentDisputed {
-      because: "assigned to the loading mechanism by one reading and to the socket by the other; ZIF in the string suggests an insertion-force mechanism but reading a referent off a part number is inference, not citation",
-    },
-    standing: ThirdPartyUnofficial { claimant: "community forum member, no Ampere staff response in the thread" },
-    authority: ampere_community_lga4926_thread_authority,
+    claimed_referent: ClaimedLoadingMechanismWithBackplate,
+    standing: PublisherOfRecord,
+    authority: lotes_azif0222_product_authority,
   },
 ]
+
+data lotes_azif0222_catalogue_note: String = "Lotes catalogue page for ARM P/N AZIF0222. Product Overview: SKT 4926 ILM and BP, Top-mount, HF. Component Type: CPU Socket ILM and BP. RoHS/Halogen-Free: HF. Packaging: Tray. The page states no dimensions, contact count, pitch, land pattern or mating socket-body part number, so it establishes the retention assembly's identity and nothing about board geometry."
+
+// THE SOCKET BODY IS A SEPARATE, UNNAMED PART, and this row exists so that resolving the
+// retention assembly cannot be mistaken for resolving the attachment. It is the layer that
+// carries the board land pattern.
+data socket_body_part_is_unnamed_note: String = "No consulted source names an orderable socket-body part for LGA4926. Lotes AZIF0222 is the ILM and backplate assembly; the socket body that receives the processor and solders to the board is a different item. Resolving it is what would make the board land pattern obtainable."
 
 // THE MECHANICAL DRAWING THE SAME THREAD CARRIES, AND WHAT IT IS NOT. A dimensioned plan view of
 // the retention frame was posted alongside the part numbers: a bezel with a central opening, a cam
@@ -244,6 +269,7 @@ fn part_referent_is_assigned(c: PartNumberCandidate) -> Bool {
   match c.claimed_referent {
     ClaimedSocketBody => true
     ClaimedLoadingMechanism => true
+    ClaimedLoadingMechanismWithBackplate => true
     ReferentAssignmentDisputed { because: _ } => false
   }
 }
@@ -285,8 +311,8 @@ data ilm4926_resolution_obligations: DesignationResolutionObligations = Designat
     reason: "the board-side land pattern for the attachment named ILM4926 is stated in no public document consulted; the Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated rather than publicly fetchable — the search for a public land pattern is closed",
     next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
   },
-  loading_mechanism_identity: DesignationFactUnresolved {
-    reason: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",
-    next_authority_to_consult: none,
+  loading_mechanism_identity: DesignationFactEstablished {
+    value: "Lotes AZIF0222, product name SKT 4926 ILM & BP, Top-mount, HF -- the independent loading mechanism together with the backplate, sold as one top-mount assembly",
+    authority: lotes_azif0222_product_authority,
   },
 }
