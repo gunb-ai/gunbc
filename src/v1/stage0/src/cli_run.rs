@@ -40986,9 +40986,45 @@ fn floor_resource_sample() -> String {
     // envelope because a killed run keeps only what was already printed, and this is the field
     // the neighbour-pressure hypothesis is decided on.
     let ev_local_high = cg("memory.events.local", 1);
+    // HOST-WIDE SWAP-IN, because the fault storm has no local cause and this is what decides
+    // whether it has ANY cause belonging to this fold.
+    //
+    // Established: ~7,416 major faults/s sustained for 151 minutes while the leaf cgroup read
+    // high,0 max,0 oom_kill,0 — so the process was nowhere near its own limits and its own
+    // cgroup did no reclaiming. A major fault is a page read from disk, and there are two ways
+    // to take one without your own cgroup throttling you: the HOST reclaimed and swapped your
+    // anonymous pages, or you are faulting file-backed pages in and out of a mapping.
+    //
+    // `pswpin` counts pages swapped IN; `pgmajfault` counts major faults. Differenced across
+    // two beats they separate the cases exactly:
+    //
+    //   pswpin rises with pgmajfault   -> swap. The cause is host memory pressure, not the
+    //                                     fold, and no amount of retention work here fixes it.
+    //   pgmajfault rises, pswpin flat  -> file-backed mapping churn. That IS local to the fold
+    //                                     and is a defect this lane owns.
+    //
+    // Deliberately host-wide rather than cgroup-scoped: /proc/vmstat is not namespaced, and
+    // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
+    // why the leaf's PSI reading of 0.00% is not evidence of a quiet machine — it is this
+    // cgroup's stall time, not the host's.
+    let vm = |key: &str| -> String {
+        std::fs::read_to_string("/proc/vmstat")
+            .ok()
+            .and_then(|s| {
+                s.lines().find_map(|l| {
+                    l.strip_prefix(key)
+                        .and_then(|r| r.strip_prefix(' '))
+                        .map(|v| v.trim().to_string())
+                })
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let pswpin = vm("pswpin");
+    let pgmajfault = vm("pgmajfault");
     format!(
         "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} \
-         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high}"
+         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high} \
+         pswpin={pswpin} pgmajfault={pgmajfault}"
     )
 }
 
