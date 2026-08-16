@@ -252,7 +252,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "plan_artifact_hash",
-          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)" },
+          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match." },
           required: false,
           default: none,
           type: InputString,

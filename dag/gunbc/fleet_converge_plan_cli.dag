@@ -242,7 +242,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 claimed_hex: read_hash.content,
               ) {
                 exit_failure(
-                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — plan.txt + apply.sh bundle does not match plan_content.hex",
+                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — the plan.txt + apply.sh + spark_serving_typed_actions.wire bundle does not match plan_content.hex (a plan artifact minted before the typed-actions wire joined the bundle will not match)",
                 )
               } else {
                 run_shell_commands(
