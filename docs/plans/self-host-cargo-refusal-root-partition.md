@@ -396,9 +396,19 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 >
 > | `src/v2/compiler/06_translate.dag` | baseline | forced |
 > |---|---:|---:|
-> | diagnostics citing `CommutativeSemiring<Magnitude>` | 342 | **0** |
+> | algebra-carrier errors / **distinct sites** | 84 / **74** | **0 / 0** |
+> | `Measure<…>` errors / sites | 11 / 9 | 37 / 37 |
+> | `Rc<i64>` errors / sites | 0 / 0 | 125 / 125 |
+> | unresolved-name (E0425/E0433/E0422) sites | 19 | **110** |
 > | `expected bool found Bool` | 11 | **11** |
-> | total coded errors | 652 | **773** |
+> | total error blocks | 693 | **807** |
+>
+> **COUNT CORRECTION, mine (2026-08-16).** This table first read "342 diagnostics citing
+> `CommutativeSemiring<Magnitude>`". That was a `grep -c` over matching LINES — it counted
+> rustc's annotation and note lines as well as the error — and overstated by ~4x. Re-counted per
+> error block and at distinct `file:line:col` grain, to match §11's denomination, it is **84
+> errors / 74 sites → 0**. Conclusion and direction unchanged; the magnitude was wrong. Anyone
+> reconciling this against §11's 509 sites should use 74, not 342.
 >
 > The cause is confirmed (342 → 0 on a real module). The `Bool` half is untouched. **And the total
 > ROSE by 121** — working agreement 6 firing exactly as written. The increase is characterized:
