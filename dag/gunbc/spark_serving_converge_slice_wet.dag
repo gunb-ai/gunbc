@@ -15,7 +15,6 @@ import gunbc.fleet_known_hosts_anchor {
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   fleet_ssh_attempt_identity,
-  SshTarget,
 }
 import gunbc.fleet_multi_principal_probe {
   fleet_ssh_attempt_raw_from_env,
@@ -166,13 +165,6 @@ fn spark_serving_converge_slice_host_line(
       " verdict=", verdict,
       "\n",
     ], ""),
-  }
-}
-
-fn spark_serving_converge_slice_ssh_target(host: HostIdentity) -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-    principal: spark_serving_automation_principal_login(),
   }
 }
 

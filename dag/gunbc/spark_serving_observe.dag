@@ -464,6 +464,39 @@ fn spark_serving_observation_report_succeeded(report: SparkServingObservationRep
   }
 }
 
+// A read-only observation entry answers "did the probe reach every host", NOT "is the fleet
+// converged". SparkServingAbsent is a genuine observation of a host that is reachable and bare,
+// so reading it as a failed probe would conflate a working instrument with a broken one;
+// SparkServingObservationRefused is the probe failing to answer at all, and refuses. This axis is
+// deliberately weaker than spark_serving_observation_succeeded, which the converge entries use
+// because there absence means the desired state was not reached.
+fn spark_serving_observation_was_made(observation: SparkServingObservation) -> Bool {
+  match observation {
+    SparkServingObserved { host: _, loaded_release: _ } => true
+    SparkServingAbsent { host: _ } => true
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+fn spark_serving_all_observations_were_made(observations: List<SparkServingObservation>) -> Bool {
+  fold_list(
+    xs: observations,
+    empty: true,
+    cons: fn(acc, obs) {
+      acc && spark_serving_observation_was_made(observation: obs)
+    },
+  )
+}
+
+fn spark_serving_report_observations_were_made(report: SparkServingObservationReport) -> Bool {
+  match report {
+    SparkServingObservationsProduced { first: f, more: m } =>
+      spark_serving_observation_was_made(observation: f)
+        && spark_serving_all_observations_were_made(observations: m)
+    SparkServingObservationReportRefused { cause: _ } => false
+  }
+}
+
 
 func spark_serving_observe_wet() -> ProcessExit
   uses net: Network
@@ -558,6 +591,24 @@ func spark_serving_observe_ci_wet() -> ProcessExit {
     ),
     "",
   )
+  let report = match spark_serving_observation_report_from_observations(observations: observations) {
+    Absent =>
+      SparkServingObservationReportRefused {
+        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
+      }
+    Present { value: r } => r
+  }
   let w = Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
-  if w.success { ExitSuccess } else { exit_failure(reason: join(["receipt write failed: ", w.error], "")) }
+  if w.success == false {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else if spark_serving_report_observations_were_made(report: report) == false {
+    exit_failure(
+      reason: join(
+        ["spark_serving_observe_ci_wet: at least one host could not be observed\n", body],
+        "",
+      ),
+    )
+  } else {
+    ExitSuccess
+  }
 }
