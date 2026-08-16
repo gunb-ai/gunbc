@@ -984,11 +984,13 @@ falsifier:
    exercised" — it is "the v2-only path exists, runs, and is incomplete". Flipping the repr switch
    would not close K; it would disable the walk that is trying to fix it.
 
-*Falsified by:* forcing `HostNative` on a pure-v2 closure and finding B1's population unchanged
-(which would mean the algebra carrier is not the numeric alias), or finding that `std.nat Nat` is
-not the type behind `Rc<CommutativeSemiring<Magnitude>>` at these sites. **The second is cheap and
-I have only the declaration-level evidence for it** (`src/v2/std/nat.dag` `nat_max_two_nat_authorities_note`
-states `std.nat Nat` *is* `CommutativeSemiring<Magnitude>`); I have not executed the flip.
+*Falsifier, and it has since been EXECUTED by `eager-deer-389` — see §8:* forcing `HostNative` on a
+pure-v2 `06_translate` takes the algebra carrier from 74 distinct sites to **0**, which confirms B1
+is the numeric alias surfacing through `std.nat Nat = CommutativeSemiring<Magnitude>`. The same run
+refutes flag-flipping as a *fix*: unresolved names go 19 → **110**, because forcing the seed branch
+disables the use-line walk — the asymmetry predicted in point 2 below, measured. It also measures
+`Bool` at 11 → 11, so B2 is not repr-switched at all. Their numbers are one module executed; the
+1,874 here is the corpus denominator. **Do not average the two.**
 
 ### 11.7 The negative result, stated as a result
 
