@@ -1490,3 +1490,39 @@ change is one step from this, because reverting the visible output is the intuit
 one variant name *within* a module, so the ambiguous state is reachable only ACROSS modules —
 which is where every live case sits. The wall is drawn exactly at the boundary the defect crosses.
 Whether it should be corpus-wide is an open decision nobody owns.
+
+### 11.14 The seven-module bound in 11.8 is now measured: four more modules add NINE new sites
+
+11.8 listed "seven modules, not twenty" as an unmeasured limit, with the suggestion that the
+unprobed entries sit on the same floor. Probed: `emit_module`, `03_normalize`, `program_partition`,
+`05_eval`, same route, same head.
+
+```
+prior five-module floor                                       605
+emit_module        total 674   in-floor 605   own delta  69
+03_normalize       total 568   in-floor 556   own delta  12
+program_partition  total 675   in-floor 605   own delta  70
+05_eval            total 773   in-floor 605   own delta 168
+nine-module floor                                             556
+
+corpus distinct sites   7 modules  1,874
+corpus distinct sites  11 modules  1,883      <- FOUR more entries, NINE new sites
+sum over 11 modules                7,846      <- inflation 4.17x
+```
+
+**The distinct-defect corpus is saturating.** 2,690 further diagnostics produced **nine** sites not
+already seen, and they are shallow: four E0282, two E0392 and one E0308 in `v2_lens_application.rs`,
+one E0308 and one `unreachable_patterns` in `v2_compiler_program_partition.rs`. Every root's size in
+11.3 is unchanged to within one site (`T3` 110 → 111, `E` 42 → 43, residue 62 → 63).
+
+Three consequences:
+
+1. **The partition is not a sample of the wall; it is close to the wall.** Planning against these
+   root sizes does not need a twenty-module census first.
+2. **The inflation factor grows with the number of entries probed** — 2.75× at seven, 4.17× at
+   eleven — because each new entry re-counts the same floor. Any figure of the form "N diagnostics
+   across M modules" therefore says more about M than about the defect population, and two such
+   figures taken at different M are not comparable in either direction.
+3. `05_eval`'s 168-site delta is the largest of the four, which is consistent with §6's note that its
+   lane sits mostly behind defects that are not eval's — but 605 of its 773 are floor, so the
+   proportion holds.
