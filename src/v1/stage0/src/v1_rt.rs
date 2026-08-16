@@ -36,7 +36,7 @@ pub fn take_text_lookup_chars_walked() -> u64 {
 
 #[cfg(feature = "text_lookup_work_counter")]
 fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
-    let walked = if string_is_ascii_cached(s) {
+    let walked = if s.is_ascii() {
         take_len as u64
     } else {
         (start + take_len) as u64
@@ -274,87 +274,9 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
-fn ascii_fingerprint(bytes: &[u8]) -> (u64, bool) {
-    let mut is_ascii = true;
-    for &b in bytes {
-        if b > 0x7f {
-            is_ascii = false;
-        }
-    }
-    (fnv1a64(bytes), is_ascii)
-}
-
-#[derive(Clone, Copy)]
-struct StringAsciiCache {
-    live_ptr: usize,
-    live_len: usize,
-    content_hash: u64,
-    content_len: usize,
-    head_byte: u8,
-    tail_byte: u8,
-    is_ascii: bool,
-}
-
-impl StringAsciiCache {
-    const EMPTY: Self = Self {
-        live_ptr: 0,
-        live_len: 0,
-        content_hash: 0,
-        content_len: 0,
-        head_byte: 0,
-        tail_byte: 0,
-        is_ascii: false,
-    };
-}
-
-thread_local! {
-    static STRING_ASCII_CACHE: Cell<StringAsciiCache> = const { Cell::new(StringAsciiCache::EMPTY) };
-}
-
-fn string_is_ascii_cached(s: &str) -> bool {
-    let ptr = s.as_ptr() as usize;
-    let len = s.len();
-    let bytes = s.as_bytes();
-    STRING_ASCII_CACHE.with(|cache| {
-        let state = cache.get();
-        if state.live_ptr == ptr && state.live_len == len {
-            if len == 0 || (bytes[0] == state.head_byte && bytes[len - 1] == state.tail_byte) {
-                return state.is_ascii;
-            }
-        }
-        let (hash, is_ascii) = ascii_fingerprint(bytes);
-        if state.content_hash == hash && state.content_len == len {
-            let head_byte = bytes.first().copied().unwrap_or(0);
-            let tail_byte = bytes.last().copied().unwrap_or(0);
-            cache.set(StringAsciiCache {
-                live_ptr: ptr,
-                live_len: len,
-                content_hash: hash,
-                content_len: len,
-                head_byte,
-                tail_byte,
-                is_ascii,
-            });
-            return is_ascii;
-        }
-        let head_byte = bytes.first().copied().unwrap_or(0);
-        let tail_byte = bytes.last().copied().unwrap_or(0);
-        cache.set(StringAsciiCache {
-            live_ptr: ptr,
-            live_len: len,
-            content_hash: hash,
-            content_len: len,
-            head_byte,
-            tail_byte,
-            is_ascii,
-        });
-        is_ascii
-    })
-}
-
 pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let bytes = s.as_bytes();
         if pos >= bytes.len() {
             return String::new();
@@ -368,7 +290,7 @@ pub fn char_at(s: &str, pos: i64) -> String {
 }
 
 pub fn string_length(s: &str) -> i64 {
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         s.len() as i64
     } else {
         s.chars().count() as i64
@@ -381,7 +303,7 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
     if end <= start {
         return String::new();
     }
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let len = s.len();
         if start >= len {
             return String::new();
@@ -662,7 +584,7 @@ impl<T: Clone> V2Concat for Rc<Vec<T>> {
 
 pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     let start = start.max(0) as usize;
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
@@ -685,7 +607,7 @@ pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
 
 pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
@@ -708,7 +630,7 @@ pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
 
 pub fn scan_to_eol(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let bytes = s.as_bytes();
         let start = start.min(bytes.len());
         for i in start..bytes.len() {
@@ -732,7 +654,7 @@ pub fn scan_to_eol(s: &str, start: i64) -> i64 {
 
 pub fn scan_string_end(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if string_is_ascii_cached(s) {
+    if s.is_ascii() {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() {
