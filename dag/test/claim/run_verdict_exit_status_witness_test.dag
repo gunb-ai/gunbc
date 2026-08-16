@@ -20,7 +20,13 @@ import extdeps.gunbc
 
 data run_verdict_wet_subject_note: String = "Enrolled because the property was CORRECT AND UNWITNESSED and a reimplementation therefore dropped it in silence. The cli-run cut deleted handle_run_with_options and rebuilt the seam; the first version printed the returned ExitFailure and exited 0. A planted-drift control caught it — the generated-artifact gate returned ExitFailure with code 1 naming the exact drifted file, and the driver exited 0. Every consumer of `gunbc run` would have reported green regardless of content, across the drift gate, the floor and every witness invocation, while the located diagnostic scrolled past in stdout looking like information. Neither a clean run nor a malformed-argv refusal could have detected it: both are satisfiable by a seam that always exits 0 on anything that parses. These rows are the executing evidence that the arm stays real, and they do not retire when they green — per DESIGN section 4b they become the permanent regression control for the class."
 
-data run_verdict_wall_note: String = "The measured wall of the ORIGINAL planted-drift control was 143s, because it ran the whole generated-artifact gate over roughly seventy artifacts. These rows do not: they invoke a three-function fixture whose bodies are a constructor each, so the cost is subprocess startup plus the fixture's own resolve, not a corpus scan. That distinction is the point of the fixture existing — the discriminating mechanism is small even though the incident that produced it was large."
+data run_verdict_wall_note: String = "The measured wall of the ORIGINAL planted-drift control was 143s, because it ran the whole generated-artifact gate over roughly seventy artifacts. These rows do not: they invoke a three-function fixture whose bodies are a constructor each.
+
+CORRECTED BY MEASUREMENT 2026-08-16, and the correction is the point of this row. An earlier revision asserted 'the cost is subprocess startup plus the fixture's own resolve, not a corpus scan'. EXECUTED — claim_batch --wet, three rows, locally on this session host at a41c68c3231 plus the enrolment change, GUNBC pointed at target/release/gunbc — the walls are 48060ms, 50166ms and 56185ms. Subprocess startup plus a three-constructor resolve does not cost fifty seconds, so the claim was false as written and the fixture's smallness does not buy what it said it bought.
+
+WHAT THE COST ACTUALLY IS: each invocation is a separate `gunbc run` process, and each pays build_both_closure_edge_index — a CORPUS-wide edge index whose cost DESIGN records as size-independent (measured there at 51.24s on a 159-module closure against 50.98s on a 504-module one, 44.96-77.11s across runs). So the dominant term is fixed per process and is not a function of this fixture at all; shrinking the fixture further would move these numbers by nothing. Three rows, three processes, three edge indices.
+
+CONSEQUENCE FOR ENROLMENT, stated rather than left to be discovered: bin_witness_wet_per_row_wall_budget_seconds is 60. All three rows are UNDER it, which is the declared criterion for BinWitnessWet, so that is where they are enrolled. But 56185ms is a 6% margin, measured on one host under this session's load, and a CI runner under contention is the environment where a 6% margin is spent. The re-home precedent is explicit and cheap: excl_no_fake_anomalies_reason records rows moving to FalsifierRehomedBinWet at ~85-90s. If a measured CI run puts any of these three over 60s, the correct response is that flip — not shrinking the fixture, which cannot reach a corpus-wide fixed cost, and not raising the budget."
 
 data run_verdict_refusal_polarity_note: String = "THE CAUSE IS A TYPE, NOT AN ASSERTION. tools.host_prelude run_witness_bin, run_witness_bin_program and run_witness_bin_ready_program all return Bool, and its run_witness_bin_program body collapses WitnessBinRefused to false — the SAME VALUE a genuine nonzero exit produces. One bit cannot carry 'ran, exit nonzero' and 'could not run' as different states, so NO assertion over that helper can separate them and no care in the assertion fixes it. That is the state-space conflation DESIGN names, with the specific consequence that the refusal path and the failure path share a value.
 
@@ -68,15 +74,24 @@ test fn run_success_verdict_reaches_zero_exit() -> Bool {
 // A non-ProcessExit return must REFUSE rather than print-and-succeed. The host cannot
 // derive a status from a value that carries none, and guessing zero is a fabricated
 // plausible output.
+//
+// ON THE ROUTE: this row calls gunbc.WitnessBin.Run and reads result.success from a
+// RECORD, for the reason the polarity note above states. An earlier revision of THIS row
+// asserted run_witness_bin(...) == false — the exact construction that note forbids, three
+// functions below the note forbidding it. Its refusal path and its expected value are the
+// same bit, so a context that cannot execute a subprocess satisfies it without executing
+// one. Writing the rule is not applying it; the note was correct and the row was not.
 test fn run_non_process_exit_return_refuses() -> Bool {
-  run_witness_bin(
-    var_name: "GUNBC",
-    bin_name: "gunbc",
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [
       "run",
       "--source-root", "dag",
       "--entry", "dag/test/claim/run_verdict_exit_status_fixture.dag",
       "--function", "verdict_not_process_exit"
     ]
-  ) == false
+  )
+  result.success == false
 }

@@ -714,13 +714,10 @@ fn main() {
 
         // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
         //
-        // Their terminal Y is NOT YET MODELLED, and this branch deliberately no longer
-        // sketches it. An earlier revision cited a `gunbc.cli_intent` RunIntent model
-        // authored on this branch; it was deleted because it had ZERO consumers — 516
-        // lines that typechecked and were read by nothing, which is
-        // specification-without-execution at file scale. A CLI model authored before its
-        // consumer exists is shaped by the CLI we have, not the one we are building.
-        // so until that lands these verbs have a decoder and no dispatcher.
+        // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not
+        // sketch it: a CLI model authored before its consumer exists is shaped by the CLI
+        // we have, not the one we are building. So until that lands these verbs have a
+        // decoder and no dispatcher.
         //
         // This REFUSES rather than degrading. It prints a typed, located reason and exits
         // nonzero; it does not fall back to a partial run, does not guess a default verb,
