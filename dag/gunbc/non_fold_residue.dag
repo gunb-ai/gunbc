@@ -8,10 +8,6 @@ data non_fold_residue_authority_note: String = "Single authority for the non-fol
 
 data non_fold_residue_lens_precision_note: String = "Lens-precision bound (2026-07-14, receipt carried over from the Rust const): fleet_converge_cli.dag::converge_cli_applied_knob_count went wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to 15 on an independent base — green alone, red together; main went compile-red). The fn is one-special-variant dispatch (ConvergePlan knob count, else fallback). The nfr scan covers param-scrutinee matches only, so a field-scrutinee site (intent.effect) is scan-invisible and a roster row for it would be STALE — recorded here as a precision note, not a row."
 
-data nfr_reason_spark_serving_install_effect: String = "Un-migrated modeling, not a kernel: ServingInstallEffect has thirteen variants and the Spark serving lane realizes three (EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit). The wildcard IS the refusal arm — every unrealized effect returns SparkServingInstallRemoteCommandsRefused rather than actuating an unmodeled command, and a sequence containing one refuses whole. Landed unrostered by #8281 (the site was named realize_spark_serving_install_effect_argv there) and redded main at 6e7f454e17f on the next whole-corpus run; renamed to realize_spark_serving_install_effect_command by #8319. Attribution checked, not assumed: main was green at d61b4dc52 and failed non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale from 6e7f454e17f onward."
-
-data nfr_dissolve_spark_serving_install_effect: DissolutionCondition = unbound_dissolution(description: "Every ServingInstallEffect variant reachable by the Spark serving plan carries a realization, at which point the wildcard arm deletes, the match becomes total over the coproduct, and this row deletes with it. Remaining as of #8318: InstallOwnedRuntimeClosure, WriteUserUnitFile, PullModelArtifact.")
-
 data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
 
 data nfr_reason_local_tidy: String = "one-special-variant dispatch (LocalTidyCargoFmtCheck special, else the glob fallback), landed with the shell-to-dag bash de-fork (#6751); surfaced by the whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
@@ -963,11 +959,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/floor_discovery_transport.dag::floor_discovery_transport_observe" },
     reason: nfr_reason_floor_discovery_transport,
     dissolution: nfr_dissolve_floor_discovery_transport,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/spark_serving_converge_realize.dag::realize_spark_serving_install_effect_command" },
-    reason: nfr_reason_spark_serving_install_effect,
-    dissolution: nfr_dissolve_spark_serving_install_effect,
   },
 ]
 

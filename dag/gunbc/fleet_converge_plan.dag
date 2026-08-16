@@ -63,21 +63,7 @@ import gunbc.spark_serving_membership {
   SparkServingMember,
   spark_serving_member_key,
 }
-import gunbc.spark_serving_realization {
-  ServingInstallEffect,
-  WriteSystemUnitFile,
-  ReloadSystemManager,
-  EnableSystemUnit,
-  WriteUserUnitFile,
-  ReloadUserManager,
-  EnableUserUnit,
-  EnableLingerForOwnAccount,
-  InstallRuntimePackage,
-  InstallOwnedRuntimeClosure,
-  PullModelArtifact,
-  GrantContainerRuntimeAccess,
-  RunContainerAsOwnUser,
-}
+import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
@@ -334,24 +320,21 @@ type FleetConvergePlanArtifact {
   spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
 }
 
-// TOTAL OVER ServingInstallEffect, NO WILDCARD. This is the PLAN WIRE — the frozen typed rows
-// serialized into the plan body that apply reads back and the bundle hash covers — so a wildcard
-// here is not a census gap, it is a fabricated answer: the previous arm collapsed all twelve
-// unmodeled variants into the single token "UnmodeledServingInstallEffect", which made two
-// different frozen effects serialize identically and left the plan artifact unable to tell them
-// apart. Realization may legitimately wildcard (its arm is a refusal, and enumerating would clone
-// one arm twelve times); a wire may not, because each variant owes a DISTINCT key. With no
-// wildcard a thirteenth variant makes this match non-exhaustive, which is a hard diagnostic from
-// the compile-clean gate rather than a silently mis-serialized row.
+// NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
+// variant would have landed as "UnmodeledServingInstallEffect" and read as a legitimate wire label
+// that simply missed. Every variant now names itself, so the wire string says WHICH effect was
+// asked for, and adding a variant makes this match non-exhaustive rather than defaulting.
+// Behaviour for the implemented slice is unchanged: EnableLingerForOwnAccount is still the only
+// effect the linger vertical realizes.
 fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> String {
   match effect {
+    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
     WriteSystemUnitFile => "WriteSystemUnitFile"
     ReloadSystemManager => "ReloadSystemManager"
     EnableSystemUnit => "EnableSystemUnit"
     WriteUserUnitFile => "WriteUserUnitFile"
     ReloadUserManager => "ReloadUserManager"
     EnableUserUnit => "EnableUserUnit"
-    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
     InstallRuntimePackage => "InstallRuntimePackage"
     InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
     PullModelArtifact => "PullModelArtifact"

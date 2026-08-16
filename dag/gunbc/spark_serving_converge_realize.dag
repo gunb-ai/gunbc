@@ -63,6 +63,13 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
   )
 }
 
+// NO WILDCARD, and each unimplemented effect refuses under its OWN name (#8323's construction,
+// kept and extended). A wildcard refused correctly but said only that something other than the
+// realized set was asked for, so a thirteenth variant would have been absorbed into that sentence
+// rather than forcing a decision; enumerating makes a new variant non-exhaustive instead. That
+// also retires the non_fold_residue roster row this site briefly carried — there is no wildcard
+// left to roster, and a row for a site that no longer exists counts as STALE, which reds the same
+// two witnesses the row was added to green.
 fn realize_spark_serving_install_effect_command(
   effect: ServingInstallEffect,
   executor_login: NonEmptyStr,
@@ -72,9 +79,44 @@ fn realize_spark_serving_install_effect_command(
       spark_serving_enable_linger_remote_argv(login: executor_login)
     ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
     EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
-    _ =>
+    WriteSystemUnitFile =>
       SparkServingInstallRemoteCommandsRefused {
-        reason: "spark_serving_converge_realize: effect has no realization yet — realized arms are EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit; the rest refuse rather than actuate an unmodeled command",
+        reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the Spark serving slice",
+      }
+    ReloadSystemManager =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the Spark serving slice",
+      }
+    EnableSystemUnit =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the Spark serving slice",
+      }
+    WriteUserUnitFile =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: WriteUserUnitFile is not implemented in the Spark serving slice",
+      }
+    InstallRuntimePackage =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
+      }
+    InstallOwnedRuntimeClosure =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: InstallOwnedRuntimeClosure is not implemented in the Spark serving slice",
+      }
+    PullModelArtifact =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: PullModelArtifact is not implemented in the Spark serving slice",
+      }
+    GrantContainerRuntimeAccess =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",
+      }
+    RunContainerAsOwnUser =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the Spark serving slice",
+      }
+  }
+}
       }
   }
 }
