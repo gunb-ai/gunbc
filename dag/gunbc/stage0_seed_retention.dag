@@ -1,0 +1,256 @@
+module gunbc.stage0_seed_retention
+
+import std.types { NonEmptyStr, String, List, Bool }
+
+data stage0_seed_retention_authority_note: String = "THE FROZEN EMITTED-ARTIFACT POPULATION OF THE v1 CUT, and the silent escape hatch it exists to close. DESIGN section 7 requires that each module be either self-emitted green-by-execution or SEED-RETAINED, and that a seed-retained module be a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch. The v1 cut deleted the v1 .dag authority and the emitter with it, so 136 previously generated stage0 artifacts stopped being generated in one action. Undeclared, they are indistinguishable from the accidental orphan class: live code, absent from the generated-artifact roster that drift-checks it, compiling into the crate. Every individual file looks like the frozen seed working as designed, which is exactly the shape that survives review.
+
+HOW THE POPULATION WAS OBTAINED, because a roster whose membership is inferred is a roster that invented its own subject. It is RECOVERED, not derived: the pre-cut generated-artifact roster at merge-base 8a799b61c4d listed 143 emitted paths; the post-cut roster lists 7; the retention population is the exact set difference, 136. An earlier draft of this work used declared pub mod minus current roster and got 154, which silently included roughly 18 modules that were NEVER generated and are ordinary hand-maintained crate source. Declaring those would have invented an obligation for files that never carried one. The count here is a measurement against a prior tree, not a census of the present one.
+
+WHAT WAS LOST IS THE GENERATOR, NOT THE AUTHORITY, and conflating the two is the error this roster is shaped to prevent. Of the 136, only 62 lost their .dag authority; 74 did not. The split is an identity join, not a prefix guess: every .dag in the tree declares a module name, the emitted basename is that name with dots as underscores, and membership is decided by intersecting the 136 against the 3702 live module declarations. The two arms below are genuinely different conditions and a single frozen label would have hidden the worse one.
+
+THE FORK ARM IS THE SERIOUS ONE. For the 74 AuthorityLive rows the .dag authority is present and editable, the emitted artifact is what cargo compiles, and nothing connects them. EDITING THOSE .dag FILES NO LONGER CHANGES THE BUILT COMPILER. That is DESIGN section 3 dual representation, live, and it is the intended consequence of delete-then-work-forward-on-frozen-Rust rather than a defect introduced here - but a reader who edits dag/std/algebra.dag deserves to learn from this roster that the build cannot see it, instead of discovering it from a green run that proved nothing. An orphan is inert; a fork invites work that cannot land.
+
+MEMBERSHIP ASSERTS RETENTION AND NOTHING ELSE. A row does not say the module is good, needed, or correct - only that its artifact is frozen because its generator was deleted, and that the freeze is declared rather than silent. It is NOT a count: no witness asserts the roster size against a literal, because a number copied from the current tree is a snapshot rather than an oracle. Completeness is an identity join in both directions - a previously generated artifact outside every arm below REFUSES as unclassified, and a row naming a module the tree no longer carries REFUSES as stale, so the roster cannot rot into a permission slip."
+
+data stage0_seed_retention_trigger_note: String = "THE MIGRATION TRIGGER IS NOT RESTATED HERE, DELIBERATELY (operator ruling, 2026-08-16). Every AuthorityDeleted row dissolves on the same condition: v2 self-emits the module green-by-execution. That condition is already owned and already MEASURED by v2.compiler.self_host.frontier, whose rows are built by execution_measured_seed_retained_row precisely so that self-emission is established by execution rather than by assertion. Restating the condition here would create two carriers both answering is-this-module-self-emitted-yet, which is the dual authority DESIGN section 3 forbids arriving through the trigger instead of through the row. So this roster cites that frontier as the trigger authority and stores no self-emission state of its own.
+
+WHY THE TWO CARRIERS ARE NOT THEMSELVES A FORK, checked before authoring rather than assumed. The frontier's population is the v2 COMPILER-STAGE modules - 00_compile, 02_parse, 04_infer and their siblings - and it answers whether v2 has been PROVEN to self-emit them. This roster's population is the stage0 emitted twins of the whole .dag corpus, and it answers which artifacts are frozen because their generator was deleted. Different subject, different evidence basis: one established by execution, one by an operator ruling. That is the External-upstream-decomposition case - one shared shape over independently governed populations - not one concept named twice.
+
+WHAT THIS CITATION DOES NOT DO, stated so its strength is not overread: it is a symbolic reference, not a mechanical join. The frontier carries no per-stage0-basename disposition for the majority of these rows, because most of them are twins of std, gunbc and extdeps modules that its compiler-stage roster never contemplated. So no code here consults it today. NEXT TRIGGER for closing that gap: a frontier disposition keyed by emitted basename, at which point an AuthorityDeleted row can derive its own dissolution instead of naming the authority that would decide it."
+
+data stage0_seed_retention_shrink_log_note: String = "SHRINK LOG. This roster may only shrink, and this row records migrations OUT so the founding population stays legible as history rather than decaying into a false present-tense claim. Founding population 136, measured at merge-base 8a799b61c4d against branch integration/v1-cut, 2026-08-16. No migrations yet: the roster is introduced by this change and nothing has left it."
+
+data stage0_seed_retention_exclusion_note: String = "TWO MEMBERS OF THE 136 ARE NOT RETAINED, and the distinction is a required test on every row rather than a courtesy for these two (operator ruling, 2026-08-16). FROZEN means the authority stops changing while the BEHAVIOUR is still needed and nothing replaces it - that retains. SUPERSEDED means the thing itself is the defect a cut is removing and a named replacement is taking its boundary - that is deletion population and must not enter the roster. If a retention roster accepts superseded modules it becomes a mechanism for preserving exactly what cuts remove, carrying an operator ruling as cover, and every such row would later have to be argued out of a declared authority rather than out of inertia.
+
+BOTH WERE FOUND BY A SWEEP, NOT BY WAITING. Each concurrent cut was diffed against the shared fork base for the stage0 artifacts it DELETES, and the result intersected with this population. Two of the five sibling cuts contest a member. The disagreement is invisible to git: both branches delete the same .dag authority and disagree only about its emitted twin, which one side never touches, so delete-versus-untouched resolves as a clean silent delete and merge order would otherwise decide it.
+
+v1_compiler_ownership - SUPERSEDED, excluded by operator ruling. It is the emitted twin of the per-binding grain, its only purpose is to implement the defect that the ownership-grain cut removes, and per-site verdicts are taking its boundary with consumers rederived rather than reconnected. The frozen carve-out's precondition is that no replacement can hold the boundary, and here one explicitly does, so the carve-out does not reach it.
+
+v1_compiler_compiler_tests_rust - UNDECIDED, and therefore BLOCKING rather than retained. The interpreter cut deletes it; this cut retains it; nobody has stated which disposition is right. An undecided row is honest and blocks; a wrongly retained one silently preserves a defect behind a declared authority. It is recorded here rather than resolved because the deciding fact - whether a named replacement takes its boundary - belongs to the lane removing it, and guessing would be the fabricated-plausible-output failure applied to a disposition."
+
+type SeedRetainedModule {
+  basename: NonEmptyStr
+}
+
+type SeedRetentionExclusion {
+  basename: NonEmptyStr
+  disposition: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+data seed_retained_authority_deleted: List<SeedRetainedModule> = [
+  SeedRetainedModule { basename: "v1_compiler_annotation_bind" },
+  SeedRetainedModule { basename: "v1_compiler_artifact" },
+  SeedRetainedModule { basename: "v1_compiler_closure_stub_v2_std_integer_rust" },
+  SeedRetainedModule { basename: "v1_compiler_closure_stub_v2_std_text_rust" },
+  SeedRetainedModule { basename: "v1_compiler_coercion" },
+  SeedRetainedModule { basename: "v1_compiler_compile" },
+  SeedRetainedModule { basename: "v1_compiler_complexity" },
+  SeedRetainedModule { basename: "v1_compiler_dag_collect" },
+  SeedRetainedModule { basename: "v1_compiler_dag_collect_support" },
+  SeedRetainedModule { basename: "v1_compiler_effect_derivation" },
+  SeedRetainedModule { basename: "v1_compiler_emit" },
+  SeedRetainedModule { basename: "v1_compiler_emit_core_support" },
+  SeedRetainedModule { basename: "v1_compiler_emit_go" },
+  SeedRetainedModule { basename: "v1_compiler_emit_python" },
+  SeedRetainedModule { basename: "v1_compiler_emit_rust" },
+  SeedRetainedModule { basename: "v1_compiler_frontend_observation" },
+  SeedRetainedModule { basename: "v1_compiler_infer" },
+  SeedRetainedModule { basename: "v1_compiler_infer_access" },
+  SeedRetainedModule { basename: "v1_compiler_infer_cycle" },
+  SeedRetainedModule { basename: "v1_compiler_infer_emit_info" },
+  SeedRetainedModule { basename: "v1_compiler_infer_env" },
+  SeedRetainedModule { basename: "v1_compiler_infer_items" },
+  SeedRetainedModule { basename: "v1_compiler_infer_lookup" },
+  SeedRetainedModule { basename: "v1_compiler_infer_method" },
+  SeedRetainedModule { basename: "v1_compiler_infer_occurrence_binding" },
+  SeedRetainedModule { basename: "v1_compiler_infer_patterns" },
+  SeedRetainedModule { basename: "v1_compiler_infer_resolve" },
+  SeedRetainedModule { basename: "v1_compiler_infer_service" },
+  SeedRetainedModule { basename: "v1_compiler_infer_sigs" },
+  SeedRetainedModule { basename: "v1_compiler_infer_types" },
+  SeedRetainedModule { basename: "v1_compiler_languages" },
+  SeedRetainedModule { basename: "v1_compiler_normalize" },
+  SeedRetainedModule { basename: "v1_compiler_parse" },
+  SeedRetainedModule { basename: "v1_compiler_resolve" },
+  SeedRetainedModule { basename: "v1_compiler_runtime_go" },
+  SeedRetainedModule { basename: "v1_compiler_runtime_rust" },
+  SeedRetainedModule { basename: "v1_compiler_stage0_crates" },
+  SeedRetainedModule { basename: "v1_compiler_tokenize" },
+  SeedRetainedModule { basename: "v1_compiler_trace" },
+  SeedRetainedModule { basename: "v1_compiler_trait_derive_emit" },
+  SeedRetainedModule { basename: "v1_compiler_workspace_members" },
+  SeedRetainedModule { basename: "v1_gunbc_namespace_reference_derived_closure_production_observations" },
+  SeedRetainedModule { basename: "v1_gunbc_occurrence_binding_parser_walk" },
+  SeedRetainedModule { basename: "v1_probe_emit_interp" },
+  SeedRetainedModule { basename: "v1_std_core" },
+  SeedRetainedModule { basename: "v1_tests_claim_caret_parse_smoke_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_dag_parse_continuation_operator_witness_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_namespace_reference_derived_closure_production_admissions_witness_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_occurrence_binding_parser_walk_witness_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_occurrence_identity_debt_receipt_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_ordinary_frontend_observation_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_pattern_binder_declaration_node_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_required_expr_newline_continuation_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_annotation_binding_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_annotation_capture_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_annotation_erasure_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_annotation_round_trip_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_annotation_target_emission_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_complexity_eviction_hazard_test" },
+  SeedRetainedModule { basename: "v1_tests_claim_v1_match_pattern_identity_test" }
+]
+
+data seed_retained_authority_live: List<SeedRetainedModule> = [
+  SeedRetainedModule { basename: "extdeps_cargo" },
+  SeedRetainedModule { basename: "extdeps_cargo_version" },
+  SeedRetainedModule { basename: "extdeps_container_oci_digest" },
+  SeedRetainedModule { basename: "extdeps_external_authority" },
+  SeedRetainedModule { basename: "extdeps_languages_dag_emit" },
+  SeedRetainedModule { basename: "extdeps_languages_dag_syntax" },
+  SeedRetainedModule { basename: "extdeps_languages_dag_types" },
+  SeedRetainedModule { basename: "extdeps_languages_go_emit" },
+  SeedRetainedModule { basename: "extdeps_languages_go_syntax" },
+  SeedRetainedModule { basename: "extdeps_languages_go_types" },
+  SeedRetainedModule { basename: "extdeps_languages_python_emit" },
+  SeedRetainedModule { basename: "extdeps_languages_python_syntax" },
+  SeedRetainedModule { basename: "extdeps_languages_python_types" },
+  SeedRetainedModule { basename: "extdeps_languages_rust_emit" },
+  SeedRetainedModule { basename: "extdeps_languages_rust_syntax" },
+  SeedRetainedModule { basename: "extdeps_languages_rust_types" },
+  SeedRetainedModule { basename: "extdeps_units_dimensionless" },
+  SeedRetainedModule { basename: "extdeps_units_iec_80000_13" },
+  SeedRetainedModule { basename: "extdeps_units_iso_80000_3" },
+  SeedRetainedModule { basename: "extdeps_units_iso8601" },
+  SeedRetainedModule { basename: "extdeps_uri" },
+  SeedRetainedModule { basename: "extdeps_uri_path" },
+  SeedRetainedModule { basename: "extdeps_version" },
+  SeedRetainedModule { basename: "extdeps_version_semver" },
+  SeedRetainedModule { basename: "gunbc_namespace_reference_derived_closure_admission" },
+  SeedRetainedModule { basename: "gunbc_namespace_reference_derived_closure_contract" },
+  SeedRetainedModule { basename: "gunbc_rust_decl_type_overlay" },
+  SeedRetainedModule { basename: "gunbc_stage0_crate_layout_generated" },
+  SeedRetainedModule { basename: "gunbc_stage0_crate_partition_generated" },
+  SeedRetainedModule { basename: "std_algebra" },
+  SeedRetainedModule { basename: "std_checked_arithmetic" },
+  SeedRetainedModule { basename: "std_coercion" },
+  SeedRetainedModule { basename: "std_computation" },
+  SeedRetainedModule { basename: "std_constructors" },
+  SeedRetainedModule { basename: "std_content_hash" },
+  SeedRetainedModule { basename: "std_currency" },
+  SeedRetainedModule { basename: "std_decl_ref" },
+  SeedRetainedModule { basename: "std_disposition" },
+  SeedRetainedModule { basename: "std_dissolution" },
+  SeedRetainedModule { basename: "std_effects" },
+  SeedRetainedModule { basename: "std_emit_model" },
+  SeedRetainedModule { basename: "std_error_primitives" },
+  SeedRetainedModule { basename: "std_execution_mode" },
+  SeedRetainedModule { basename: "std_graph" },
+  SeedRetainedModule { basename: "std_http_path" },
+  SeedRetainedModule { basename: "std_induction" },
+  SeedRetainedModule { basename: "std_integer" },
+  SeedRetainedModule { basename: "std_interface_summary" },
+  SeedRetainedModule { basename: "std_iteration" },
+  SeedRetainedModule { basename: "std_keyed_roster" },
+  SeedRetainedModule { basename: "std_keyed_row" },
+  SeedRetainedModule { basename: "std_logic" },
+  SeedRetainedModule { basename: "std_machine_constraints" },
+  SeedRetainedModule { basename: "std_magnitude" },
+  SeedRetainedModule { basename: "std_measure" },
+  SeedRetainedModule { basename: "std_nat" },
+  SeedRetainedModule { basename: "std_node" },
+  SeedRetainedModule { basename: "std_occurrence_binding" },
+  SeedRetainedModule { basename: "std_occurrence_binding_candidates" },
+  SeedRetainedModule { basename: "std_occurrence_binding_resolve" },
+  SeedRetainedModule { basename: "std_occurrence_identity" },
+  SeedRetainedModule { basename: "std_pareto" },
+  SeedRetainedModule { basename: "std_process_termination" },
+  SeedRetainedModule { basename: "std_realization_schedule" },
+  SeedRetainedModule { basename: "std_reference_binding_observation" },
+  SeedRetainedModule { basename: "std_roster_frontier" },
+  SeedRetainedModule { basename: "std_serialization" },
+  SeedRetainedModule { basename: "std_source_annotation" },
+  SeedRetainedModule { basename: "std_syntax" },
+  SeedRetainedModule { basename: "std_termination" },
+  SeedRetainedModule { basename: "std_trait_derive_shape" },
+  SeedRetainedModule { basename: "std_types" },
+  SeedRetainedModule { basename: "std_unicode_types" },
+  SeedRetainedModule { basename: "std_witness_admission" }
+]
+
+data seed_retention_exclusions: List<SeedRetentionExclusion> = [
+  SeedRetentionExclusion {
+    basename: "v1_compiler_ownership",
+    disposition: "Superseded",
+    reason: "Emitted twin of the per-binding grain, which the ownership-grain cut removes; per-site verdicts take its boundary and its consumers are rederived rather than reconnected, so the frozen carve-out's no-replacement precondition is not met. Operator ruling 2026-08-16. Deleted on integration/ownership-grain-cut."
+  },
+  SeedRetentionExclusion {
+    basename: "v1_compiler_compiler_tests_rust",
+    disposition: "Undecided",
+    reason: "Deleted on integration/interpreter-cut and retained by this cut, with no stated disposition either way. Blocks rather than retains: the deciding fact is whether a named replacement takes its boundary, which belongs to the lane removing it. Guessing would fabricate a disposition."
+  }
+]
+
+fn seed_retained_basenames() -> List<String> {
+  concat(
+    seed_retained_authority_deleted |> map(r => r.basename as String),
+    seed_retained_authority_live |> map(r => r.basename as String)
+  )
+}
+
+fn seed_retention_excluded_basenames() -> List<String> {
+  seed_retention_exclusions |> map(r => r.basename as String)
+}
+
+fn seed_retention_classified_basenames() -> List<String> {
+  concat(seed_retained_basenames(), seed_retention_excluded_basenames())
+}
+
+fn seed_retention_arms_disjoint() -> Bool {
+  seed_retained_authority_deleted
+    |> all(d => !(seed_retained_authority_live |> any(l => l.basename == d.basename)))
+    && seed_retention_exclusions
+         |> all(e => !(seed_retained_basenames() |> any(b => b == (e.basename as String))))
+}
+
+fn seed_retention_undecided_blocks() -> Bool {
+  seed_retention_exclusions
+    |> all(e => (e.disposition as String) == "Superseded" || (e.disposition as String) == "Undecided")
+}
+
+data stage0_seed_retention_rung_drop_note: String = "WHY A RUNG DROP IS A SEPARATE ARM AND NOT A FIELD ON EVERY ROW (operator question, 2026-08-16). Freezing an artifact and LOWERING A GUARANTEE are different facts about it. Most retained rows lost no fixable-at-authority defect, so a regression field on all 134 would be empty in nearly every one, and an empty required field invites an author to fill it with something plausible - the fabricated-plausible-output failure aimed at a safety ledger. Worse, it would conflate frozen with regressed, when the authority note above is explicit that membership asserts retention AND NOTHING ELSE. So a rung drop is its own list keyed by basename, joined to the retention roster, leaving the retention row neutral.
+
+DESIGN section 4b (3) permits lowering a rung only by declaring previous rung, temporary rung, reason, bounded population and restoration trigger. The rows below are that declaration.
+
+THIS IS THE INTERIM HOME, NOT THE TERMINAL ONE, and the row must not read as fully modeled. No section 4b rung-drop carrier exists anywhere in the tree; that absence is an open escalation to the operator. Until one lands, these fields are prose in a typed row rather than a modeled guarantee ledger, and a reader should treat them as a debt marker for the real carrier. DISSOLVE-ON: the rung-drop carrier landing, at which point these rows migrate to it and this arm deletes."
+
+type SeedRetentionRungDrop {
+  basename: NonEmptyStr
+  previous_rung: NonEmptyStr
+  temporary_rung: NonEmptyStr
+  reason: NonEmptyStr
+  bounded_population: NonEmptyStr
+  magnitude: NonEmptyStr
+  restoration_trigger: NonEmptyStr
+}
+
+data seed_retention_rung_drops: List<SeedRetentionRungDrop> = [
+  SeedRetentionRungDrop {
+    basename: "v1_compiler_emit_rust",
+    previous_rung: "MechanicallyPreventable",
+    temporary_rung: "Mitigatable",
+    reason: "The clone-at-accumulator default. The emitter clones a value at its use site rather than moving it at its last use, so every fold threading a persistent container calls Rc::make_mut with another strong Rc live, taking the clone arm on EVERY element and copying the whole container per iteration. It was fixable at src/v1/05_emit_rust.dag, where the clone-versus-move decision is made; that authority is deleted by this cut and the artifact is frozen, so no file an author could edit reaches the built compiler. The per-binding ownership authority that fed the decision was deleted as the root of a grain error - clone-versus-move is a use-site property - and its replacement landed in std, where value_materialization folds over per-site UseSiteVerdicts; but the emitter that would CONSUME those verdicts is frozen, so the correction cannot reach the binary. Measurements authored by fierce-raven-463, which vouches for the numbers.",
+    bounded_population: "42 clone-at-accumulator sites in v1_compiler_emit_rust.rs; 1 more in v1_compiler_compile.rs; 359 across all 28 emitted files. Counted at faa1539954 by matching rc_map_insert / rc_map_merge / rc_set_insert / rc_list_push / rc_list_concat applied to an identifier's .clone() - the shape where the accumulator is cloned at the call site. NOT A BURN-DOWN: per the operator verdict of 2026-07-29 on dag/tools/e0599_emitter_decision_census.dag, the count records where the emitter INSERTED a clone and never that any site is removable.",
+    magnitude: "638x at m=4000, and the scope of that number is load-bearing: it measures the MECHANISM IN ISOLATION, not this emitter's runtime. A local benchmark replicating the emitted shape - an Rc map threaded through a fold, rc_map_insert(acc.clone(), ..) versus moving acc - measured clone slope 2.0 against move slope 1.0: m=1000 clone 28.5ms / move 186us; m=2000 clone 117ms / move 376us; m=4000 clone 498ms / move 780us. WHAT SHARE OF ANY REAL PHASE THIS ACCOUNTS FOR IS UNMEASURED. A phase-grain scaling sweep was run and came back inconclusive BY CONSTRUCTION, an 18.3s size-independent term swamping the grid. This row must not be read as a measured runtime cost.",
+    restoration_trigger: "v2 self-hosts the emit stage, at which point the decision is authored in v2, consumes the per-site verdicts directly, and this row dissolves with the artifact. Self-emission is measured by v2.compiler.self_host.frontier and is deliberately not restated here."
+  }
+]
+
+fn seed_retention_rung_drop_basenames() -> List<String> {
+  seed_retention_rung_drops |> map(r => r.basename as String)
+}
+
+fn seed_retention_rung_drops_are_retained() -> Bool {
+  seed_retention_rung_drop_basenames()
+    |> all(b => seed_retained_basenames() |> any(r => r == b))
+}

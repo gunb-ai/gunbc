@@ -1,0 +1,67 @@
+module test.claim.stage0_seed_retention_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import gunbc.stage0_seed_retention {
+  seed_retained_basenames,
+  seed_retention_excluded_basenames,
+  seed_retention_exclusions,
+  seed_retention_arms_disjoint,
+  seed_retention_undecided_blocks,
+  seed_retention_rung_drops,
+  seed_retention_rung_drop_basenames,
+  seed_retention_rung_drops_are_retained,
+}
+
+data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data stage0_seed_retention_oracle_note: String = "WHY THE ORACLE IS lib.rs AND NOT 136 FILE READS. The stale-row direction is the one that will actually fire: a concurrent cut deletes an emitted artifact this roster declares retained, and the row then names a module the tree no longer carries. Proving that by reading each artifact would be 136 reads of large emitted sources to answer a question about existence, which is the cost-shape defect DESIGN's witness-cost rule refuses - a witness is not entitled to arbitrary computation, and its size must be derived from what it proves. The crate's own lib.rs already declares every live module, so ONE 7KB read decides all 136.
+
+THE MATCH IS ANCHORED, deliberately. It tests for the exact declaration 'pub mod NAME;' rather than for the bare basename, because a bare substring match makes a deleted module read as PRESENT whenever a longer name contains it - std_type would be satisfied by std_types. That is a false positive in the unsafe direction: it would report a stale row as healthy, which is precisely the failure this witness exists to catch.
+
+THE RED CONTROL IS REQUIRED, not decorative. A membership check over a roster whose every member happens to be present is indistinguishable from a check that always answers true. w_declaration_probe_discriminates points the same predicate at a name the crate does not declare and requires false, so the oracle is known to be capable of failing at the moment the positive claim is made."
+
+fn stage0_lib_source() -> String {
+  filesystem_read(path: "src/v1/stage0/src/lib.rs").content
+}
+
+fn module_is_declared(src: String, basename: String) -> Bool {
+  string_contains(s: src, pattern: concat(concat("pub mod ", basename), ";"))
+}
+
+test fn w_retained_modules_are_still_declared() -> Bool {
+  let src = stage0_lib_source()
+  string_length(s: src) > 0
+    && seed_retained_basenames() |> all(b => module_is_declared(src: src, basename: b))
+}
+
+test fn w_declaration_probe_discriminates() -> Bool {
+  let src = stage0_lib_source()
+  !module_is_declared(src: src, basename: "zz_this_module_is_not_declared")
+    && module_is_declared(src: src, basename: "std_algebra")
+}
+
+test fn w_retention_arms_are_disjoint() -> Bool {
+  seed_retention_arms_disjoint()
+}
+
+test fn w_excluded_modules_are_not_retained() -> Bool {
+  seed_retention_excluded_basenames()
+    |> all(e => !(seed_retained_basenames() |> any(b => b == e)))
+}
+
+test fn w_exclusion_dispositions_are_closed() -> Bool {
+  seed_retention_undecided_blocks()
+    && length(seed_retention_exclusions) > 0
+}
+
+test fn w_rung_drops_name_retained_modules() -> Bool {
+  seed_retention_rung_drops_are_retained()
+    && length(seed_retention_rung_drops) > 0
+}
+
+test fn w_rung_drop_modules_are_still_declared() -> Bool {
+  let src = stage0_lib_source()
+  seed_retention_rung_drop_basenames() |> all(b => module_is_declared(src: src, basename: b))
+}
