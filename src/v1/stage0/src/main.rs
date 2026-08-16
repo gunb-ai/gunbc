@@ -9,7 +9,6 @@ use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
-use v1_compiler::v1_interpreter;
 use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
@@ -715,10 +714,12 @@ fn main() {
 
         // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
         //
-        // Their Y is `gunbc.cli_intent` — argv is decoded to a modeled `RunIntent` there,
-        // and `gunbc_cli_outcome` already returns `CliPlanned { plan }` or a typed
-        // `CliRefused`. What is not built yet is the seam that hands a `CliPlanned` to the
-        // retained engine (`load_sources_for_entry*` + `make_eval_context*`, both `pub`),
+        // Their terminal Y is NOT YET MODELLED, and this branch deliberately no longer
+        // sketches it. An earlier revision cited a `gunbc.cli_intent` RunIntent model
+        // authored on this branch; it was deleted because it had ZERO consumers — 516
+        // lines that typechecked and were read by nothing, which is
+        // specification-without-execution at file scale. A CLI model authored before its
+        // consumer exists is shaped by the CLI we have, not the one we are building.
         // so until that lands these verbs have a decoder and no dispatcher.
         //
         // This REFUSES rather than degrading. It prints a typed, located reason and exits
@@ -749,8 +750,7 @@ fn main() {
         // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
         // path would fork one route into two that must then be kept equal by hand.
         // The roots come from `cli_run::witness_layer_roots`, which reads the single
-        // `.dag` authority live — the same row `gunbc.cli_intent` imports — rather than
-        // a literal spelled here.
+        // `.dag` authority live rather than a literal spelled here.
         // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
         // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
         // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
@@ -765,24 +765,34 @@ fn main() {
             &[],
         )
         .apply(),
-        Commands::Converge { host } => converge_verb(&host).apply(),
+
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have
         // falsified — the code would keep naming a branch it no longer ran on, the §3
         // stale-citation decay that needs no edit to break. The PR reference stays: a PR
         // is historical after merge, not false.
-        Commands::Serve { .. } => Verdict {
+        // Converge is NOT wired here. The terminal route is the modeled convergence
+        // spine — gunbc.fleet_converge_timer -> fleet_converge_apply ->
+        // host_effect_realize host_effect_apply — consuming modeled desired state and
+        // native host-effect realizations. An earlier revision of this seam implemented
+        // it as resolve-a-.dag-entry + build-an-interpreter-context + run, which is the
+        // cheapest implementation available while the frozen engine stands and exactly
+        // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
+        // capability at the moment two lanes are deleting it, converting removable debt
+        // into an architectural dependency.
+        Commands::Converge { .. } | Commands::Serve { .. } => Verdict {
             status: 2,
             message: Some(
-                "error: `serve` is not wired to the retained engine.\n  \
-                 cause: its cli_run handler is deleted. `run`, `ci` and `converge` reach \
-                 the retained resolve/eval engine through run_verb; serve does not, \
-                 because it owns a long-running accept loop rather than a single \
-                 resolve-and-evaluate — it is not a parameterization of `run`, so the same \
-                 seam does not carry it.\n  \
-                 status: declared Y-incomplete for this verb, not a runtime failure — \
-                 hand-authoring the accept loop would be a net-new scaffold, which does \
-                 not land by author declaration. See PR #8286."
+                "error: `converge` and `serve` are not wired to the retained engine.\n  \
+                 cause: their cli_run handlers are deleted, and neither may be rebuilt \
+                 on the frozen v1 engine. Converge's terminal route is the modeled \
+                 convergence spine (fleet_converge_timer -> fleet_converge_apply -> \
+                 host_effect_realize); serve is a desired SERVICE OCCURRENCE that \
+                 convergence observes and reconciles, not a command. Implementing \
+                 either through resolve+interpret would pin the interpreter that is \
+                 being removed.\n  \
+                 status: declared Y-incomplete for both verbs, not a runtime failure. \
+                 See PR #8286."
                     .to_string(),
             ),
         }
@@ -953,7 +963,7 @@ mod tests {
 /// Decode `--arg name=value` into the interpreter's named-argument shape.
 ///
 /// This is DRIVER work and lives here rather than in the retained engine: argv is the
-/// driver's subject, and `gunbc.cli_intent` models the same decode on the `.dag` side.
+/// driver's subject.
 /// A missing `=` REFUSES with the offending spec rather than guessing a positional —
 /// the deleted handler's own rule, kept because it is right, not because it was there.
 fn decode_run_args(
@@ -1010,107 +1020,6 @@ impl Verdict {
     }
 }
 
-/// `gunbc converge --host <h>`: the SAME resolve/eval seam `run_verb` uses, with a
-/// DIFFERENT verdict projection.
-///
-/// It is deliberately not a parameterization of `run` the way `ci` is. `ci` is `run` with
-/// fixed arguments and its outcome is the entry's own `ProcessExit`; converge's outcome is
-/// a byte-locked receipt record whose `converged` field decides the status, so the
-/// projection IS the difference. Folding it into `exit_status_for` would put receipt
-/// grammar in the general verdict map, where every other verb would have to ignore it.
-fn converge_verb(host: &str) -> Verdict {
-    let roots = cli_run::witness_layer_roots();
-    let (graph, indices) =
-        match cli_run::resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
-            Ok(resolved) => resolved,
-            Err(cause) => {
-                return Verdict {
-                    status: 1,
-                    message: Some(format!("error: {cause}")),
-                }
-            }
-        };
-
-    let ctx = cli_run::make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let args = [(
-        Some("host".to_string()),
-        v1_interpreter::Value::Str(host.to_string()),
-    )];
-
-    let result =
-        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
-            Ok(value) => value,
-            Err(cause) => {
-                return Verdict {
-                    status: 1,
-                    message: Some(format!("runtime error: {cause}")),
-                }
-            }
-        };
-
-    // A non-record result REFUSES rather than being rendered some other way: the receipt
-    // grammar is byte-locked, so printing a plausible receipt line for a value that is not
-    // a receipt is the fabricated plausible output §5 forbids. The observed value is
-    // CARRIED — a typed refusal that cannot say what it saw is less located than the
-    // `{:?}` diagnostic it replaces, and a rewrite that becomes more principled while
-    // becoming less informative has regressed.
-    let v1_interpreter::Value::Record { fields, .. } = &result else {
-        return Verdict {
-            status: 1,
-            message: Some(format!(
-                "error: converge_cli_output did not return a receipt record.\n  \
-                 observed: {result:?}\n  \
-                 status: refused — the converge receipt grammar is byte-locked, so a value \
-                 that is not a record cannot be projected onto it."
-            )),
-        };
-    };
-
-    let Some(v1_interpreter::Value::Str(line)) = ctx.field(fields, "line") else {
-        return Verdict {
-            status: 1,
-            message: Some("error: converge_cli_output.line was not a String".to_string()),
-        };
-    };
-    let line = line.clone();
-
-    // Absent or non-Bool reads as NOT converged. The safe reading of a missing convergence
-    // verdict is not "converged".
-    let converged = matches!(
-        ctx.field(fields, "converged"),
-        Some(v1_interpreter::Value::Bool(true))
-    );
-
-    let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant {
-            variant_name,
-            fields: variant_fields,
-            ..
-        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(variant_fields, "value") {
-            Some(v1_interpreter::Value::Str(text)) => Some(text.clone()),
-            _ => None,
-        },
-        _ => None,
-    };
-
-    // The receipt line goes to stdout on BOTH paths — it is the receipt, not a success
-    // message, and withholding it on failure would lose the record of what was observed.
-    println!("{line}");
-
-    Verdict {
-        status: if converged { 0 } else { 1 },
-        message: reason,
-    }
-}
-
-/// `dry_run` selects the EXECUTION MODE and must be threaded, not defaulted.
-///
-/// An earlier revision of this seam omitted the parameter entirely and hardcoded `Wet`.
-/// `--dry-run` is a global flag documented as "mock all service calls", so it kept being
-/// ACCEPTED and silently did nothing: a caller asking for mocked service calls got real
-/// host effects. That is the fail-open §5 forbids, in the direction that costs the most —
-/// the flag exists precisely because the wet path is dangerous. Caught by running the
-/// binary, not by reading it; nothing in the tree refuses it.
 fn run_verb(
     source_roots: &[String],
     function: &str,

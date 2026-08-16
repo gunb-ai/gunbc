@@ -2356,8 +2356,7 @@ pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> b
 /// `ci` verb, which forks a live authority that is READ FROM `.dag` at runtime into a
 /// hand-written constant that cannot track it. Exposing the existing single authority is
 /// not new investment in the frozen engine — nothing here is re-homed, reshaped, or
-/// reimplemented, and the body is untouched. `gunbc.cli_intent` imports the same
-/// `witness_layer_roots` on the `.dag` side, so both halves of the seam cite one row.
+/// reimplemented, and the body is untouched.
 pub fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
