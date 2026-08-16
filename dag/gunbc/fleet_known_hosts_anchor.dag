@@ -106,6 +106,7 @@ fn known_hosts_anchor_seal(
 ) -> KnownHostsAnchor
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "known_hosts_anchor_hermetic_witness_fixture"),
   ]
   = KnownHostsAnchor {
     path: path,
@@ -324,6 +325,7 @@ type FleetOpenSshTrustPolicy sole_constructor {
 fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
   ]
   = FleetOpenSshTrustPolicy { anchor: anchor }
 
@@ -394,6 +396,7 @@ fn fleet_ssh_execution_context_seal(
 ) -> FleetSshExecutionContext
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_ssh_execution_context_hermetic_witness_fixture"),
   ]
   = FleetSshExecutionContext { attempt: attempt, trust: trust, credential: credential }
 

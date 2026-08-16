@@ -254,8 +254,8 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
 }
 
 test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bool {
-  (functional_obligation_text(r: ClockReferenceGeneration) as String)
-    != (functional_obligation_text(r: ClockReferenceDistribution) as String)
+  (functional_obligation_text(r: ClockReferenceGeneration) as String) !=
+    (functional_obligation_text(r: ClockReferenceDistribution) as String)
 }
 
 test fn w_board_functional_obligations_include_physical_population_gaps() -> Bool {
