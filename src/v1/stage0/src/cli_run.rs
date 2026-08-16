@@ -42602,6 +42602,13 @@ fn required_floor_claims_from_admission(
         // rather than the shared node, so a cheap-looking format over a few thousand rows is not
         // bounded by the row count. A run that refuses would otherwise spend that time inside a
         // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
+        // THE SEAM MOVES WITH EXECUTION, or the heartbeat lies about where the run is.
+        // `floor_seam` was last set to "admission-decode" by the caller, and the heartbeat prints
+        // whatever it holds — so a run stalled inside THIS arm reported `phase=admission-decode`
+        // for its entire life, which is indistinguishable in the log from a run stalled BEFORE the
+        // arm was entered. A reader then cannot tell "never reached the render" from "spent three
+        // hours inside it", and the natural conclusion is that no progress instrument exists.
+        floor_seam("refusal-render");
         let refusal_render_started = std::time::Instant::now();
         let refusal_count = match ctx.field(fields, "refusals") {
             Some(v1_interpreter::Value::List(items)) => items.len(),
@@ -42672,6 +42679,12 @@ fn required_floor_claims_from_admission(
     };
     // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
     // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
+    // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
+    // the loop rather than the phase that called it. Without this the decode's own ticks and the
+    // heartbeat disagree about the phase name, and a reader filtering the log on
+    // "admission-decode" — the name the heartbeat kept printing — silently excludes every
+    // `phase=claim-decode` progress line and concludes the loop has no counter at all.
+    floor_seam("claim-decode");
     let decode_loop_started = std::time::Instant::now();
     eprintln!(
         "[floor-phase] phase=claim-decode state=started total={}",
