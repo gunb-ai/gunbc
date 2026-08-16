@@ -165,6 +165,49 @@ fn gunbc_runner_slot_enforcement_expected_cap() -> ByteSize {
   gunbc_runner_slot_desired().memory_max
 }
 
+type RunnerSlotEffectiveCapObservation
+  = RunnerSlotEffectiveCapMeasured {
+      runner_unit: String,
+      memory_max: ByteSize,
+      memory_high: ByteSize,
+      probed_at: String,
+    }
+  | RunnerSlotEffectiveCapUnmeasured
+
+data gunbc_runner_slot_effective_readback_refusal_note: String = "EFFECTIVE KERNEL CAPS ARE NOT THIS MODULE'S INPUT. gunbc_runner_slot_desired is the single authority for the fleet per-slot row; per-axis targets are operator-set and never reconciled toward live readback — live is not automatically truth, and the 32-vs-0 swap fork existed precisely because apply was assumed rather than readback-proven.\n\nTHE 14GiB/13GiB ROW IS OBSERVATION-DERIVED FROM A DIFFERENT SUBJECT: the 2026-08-05 floor_peak_post calibration in gunbc_runner_slot_memory_max_ruling_note (186 cgroup peaks, p50 10.32GiB, max 10.96GiB). That derivation is complete; a per-slot systemctl show on an unconverged host is evidence of CONVERGENCE DEBT, not a second numeric source for the declaration.\n\nsrv2-03 (gunbc_srv2_03_effective_cap_observation) is the discriminating specimen: effective MemoryMax/MemoryHigh still read 16GiB/15GiB while the declared row is 14GiB/13GiB. runner_slot_effective_cap_drifts_from_declaration is true; gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is true — the repair is host_axis_caps deploy apply (author derived drop-ins, shadow revert), never editing gunbc_runner_slot_desired toward the observation. Until apply lands, memory_governor arms against the live cgroup on that slot (15GiB throttle), while placement and ci_budget_tree size against the declared 13GiB — the honest residual in gunbc_ci_runner_slot_memory_max_live_source."
+
+data gunbc_srv2_03_effective_cap_observation: RunnerSlotEffectiveCapObservation = RunnerSlotEffectiveCapMeasured {
+  runner_unit: "actions-runner@srv2-03.service",
+  memory_max: byte_size(17179869184),
+  memory_high: byte_size(16106127360),
+  probed_at: "2026-08-16",
+}
+
+fn runner_slot_effective_memory_max_drifts_from_declaration(effective: ByteSize) -> Bool {
+  byte_size_count(b: effective) != byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+fn runner_slot_effective_memory_high_drifts_from_declaration(effective: ByteSize) -> Bool {
+  byte_size_count(b: effective) != byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+}
+
+fn runner_slot_effective_cap_drifts_from_declaration(obs: RunnerSlotEffectiveCapObservation) -> Bool {
+  match obs {
+    RunnerSlotEffectiveCapMeasured { runner_unit: _, memory_max: max, memory_high: high, probed_at: _ } =>
+      runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        || runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+    RunnerSlotEffectiveCapUnmeasured => false
+  }
+}
+
+fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: RunnerSlotEffectiveCapObservation) -> Bool {
+  match obs {
+    RunnerSlotEffectiveCapMeasured { runner_unit: _, memory_max: _, memory_high: _, probed_at: _ } =>
+      runner_slot_effective_cap_drifts_from_declaration(obs: obs)
+    RunnerSlotEffectiveCapUnmeasured => false
+  }
+}
+
 data gunbc_runner_slot_allocation_wall_oracle_note: String = "WHAT THIS WALL USED TO ASSERT WAS ITS OWN INPUT. Three of its five conjuncts compared gunbc_runner_slot_desired's fields to byte literals retyped from that same declaration twenty lines above, in the same file — measure() == measure() with the equality maintained by hand, which the 2026-08-01 test-oracle ruling names exactly: automate the literal's update and the assertion collapses to nothing, so the manual update WAS the assertion's entire content. It could only ever fail when someone edited one copy and forgot the other, and it would have gone red on this change for that reason and no other.\n\nThe conjuncts that replace them are relations between INDEPENDENTLY derived quantities, so each can fail for a reason worth knowing. The max−1GiB relation is the authored MemoryHigh law from the 2026-07-11 ruling and it is checkable without naming either number. The MemoryHigh ≥ floor conjunct is the load-bearing one and it is NEW: gunbc_floor_minimum_viable_armed_budget is a MEASURED refusal threshold (12GiB, from the doomed-witness receipts below) that claim_executor enforces at arm time, and MemoryHigh is precisely the budget the run-time governor arms against — so shrinking the slot cap below it would ship a fleet on which every floor run refuses itself. Nothing connected those two rows before; the 14GiB ruling is what made the distance between them small enough to matter.\n\nGuaranteed mode is deliberately NOT asserted here any more. runner_slice_cap is derived as slots × MemoryMax, so Σ ≤ cap is true by construction and a check of it would be the vacuous restatement DESIGN 5 says to prefer construction over. gunbc_runner_slot_oversubscription_within_slice survives as the general relation for callers holding two independent numbers."
 
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
