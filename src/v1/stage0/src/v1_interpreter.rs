@@ -6227,10 +6227,12 @@ macro_rules! v1_algebra_method_arms {
             arm "method_call.char_at" { "char_at" } => {
                 let s = expect_string(&$receiver, "char_at")?;
                 let idx = expect_int($args.first(), "char_at")?;
-                Ok(s.chars()
-                    .nth(idx as usize)
-                    .map(|c| Value::Str(c.to_string()))
-                    .unwrap_or(Value::Null))
+                let len = v1_rt::string_length(&s);
+                if idx < 0 || idx >= len {
+                    Ok(Value::Null)
+                } else {
+                    Ok(Value::Str(v1_rt::char_at(&s, idx)))
+                }
             },
 
             arm "method_call.index_by" { "index_by" } => list_method_with_closure(
@@ -11394,7 +11396,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_str($positional.first().copied(), "string_length")?;
-                Ok(Some(Value::Int(s.chars().count() as i64)))
+                Ok(Some(Value::Int(v1_rt::string_length(&s))))
             },
 
             arm "free_call.substring" { "substring" } => {

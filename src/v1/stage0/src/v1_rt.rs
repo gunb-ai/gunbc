@@ -36,7 +36,7 @@ pub fn take_text_lookup_chars_walked() -> u64 {
 
 #[cfg(feature = "text_lookup_work_counter")]
 fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
-    let walked = if s.is_ascii() {
+    let walked = if string_is_ascii_cached(s) {
         take_len as u64
     } else {
         (start + take_len) as u64
@@ -274,9 +274,27 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
+thread_local! {
+    static STRING_ASCII_CACHE: Cell<(usize, usize, bool)> = Cell::new((0, 0, false));
+}
+
+fn string_is_ascii_cached(s: &str) -> bool {
+    let ptr = s.as_ptr() as usize;
+    let len = s.len();
+    STRING_ASCII_CACHE.with(|cache| {
+        let (cached_ptr, cached_len, cached_ascii) = cache.get();
+        if cached_ptr == ptr && cached_len == len {
+            return cached_ascii;
+        }
+        let is_ascii = s.is_ascii();
+        cache.set((ptr, len, is_ascii));
+        is_ascii
+    })
+}
+
 pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let bytes = s.as_bytes();
         if pos >= bytes.len() {
             return String::new();
@@ -290,7 +308,7 @@ pub fn char_at(s: &str, pos: i64) -> String {
 }
 
 pub fn string_length(s: &str) -> i64 {
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         s.len() as i64
     } else {
         s.chars().count() as i64
@@ -303,7 +321,7 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
     if end <= start {
         return String::new();
     }
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let len = s.len();
         if start >= len {
             return String::new();
@@ -584,7 +602,7 @@ impl<T: Clone> V2Concat for Rc<Vec<T>> {
 
 pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     let start = start.max(0) as usize;
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
@@ -607,7 +625,7 @@ pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
 
 pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
@@ -630,7 +648,7 @@ pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
 
 pub fn scan_to_eol(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let bytes = s.as_bytes();
         let start = start.min(bytes.len());
         for i in start..bytes.len() {
@@ -654,7 +672,7 @@ pub fn scan_to_eol(s: &str, start: i64) -> i64 {
 
 pub fn scan_string_end(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
-    if s.is_ascii() {
+    if string_is_ascii_cached(s) {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() {
@@ -977,4 +995,33 @@ pub fn contiguous_loop_elementwise_kernel(
         out.push(int_relu(tmp));
     }
     out
+}
+
+#[cfg(test)]
+mod char_at_tests {
+    use super::*;
+
+    #[test]
+    fn char_at_ascii_and_unicode_code_points() {
+        assert_eq!(char_at("abc", 1), "b");
+        assert_eq!(char_at("aéb", 0), "a");
+        assert_eq!(char_at("aéb", 1), "é");
+        assert_eq!(char_at("aéb", 2), "b");
+        assert_eq!(char_at("aéb", 3), "");
+    }
+
+    #[test]
+    fn char_at_repeated_index_is_linear_on_ascii() {
+        let s = "x".repeat(16_000);
+        let start = std::time::Instant::now();
+        for i in 0..16_000 {
+            assert_eq!(char_at(&s, i as i64), "x");
+        }
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 50,
+            "repeated char_at should be O(n), took {:?}",
+            elapsed
+        );
+    }
 }
