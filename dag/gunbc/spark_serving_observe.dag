@@ -24,6 +24,14 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark_serving_credential_locus {
+  SparkServingSliceCredentialLocus,
+  SparkServingSliceRunnerAgent,
+  spark_serving_slice_transport,
+  spark_serving_slice_locus_label,
+}
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark_serving_loaded_release {
   SparkServingReadback,
   SparkServingUnitProbeOutcome,
@@ -65,6 +73,12 @@ data spark_serving_observe_note: String = "Wet observation only; a green witness
 
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
 
+// A SEPARATE PATH FOR THE RUNNER-SIDE ENTRY, so a receipt on disk is unambiguous about which
+// entry produced it and therefore which credential locus and trust preconditions were in play.
+// Sharing one path would make an anchored-context observation and an ssh-agent observation
+// indistinguishable after the fact.
+data spark_serving_observe_ci_receipt_path: String = "target/spark-serving-observe-ci-receipt.txt"
+
 fn spark_serving_load_state_probe_words() -> List<String> {
   [
     "systemctl", "--user", "show", spark_serving_unit_name, "--property=LoadState", "--value",
@@ -95,6 +109,42 @@ type SparkServingObservationReport
       more: List<SparkServingObservation>,
     }
   | SparkServingObservationReportRefused { cause: NonEmptyStr }
+
+// LOCUS-PARAMETERIZED PROBE LEG. Same observation, either credential locus. The
+// context-taking leg below remains for the operator-workstation entry; this one is what the
+// runner entry uses, because a GHA self-hosted slot carries no gcloud and cannot build an
+// anchored context at all (spark_credential_access_token_frontier_note). Refusals stay typed
+// rather than collapsing to `none`, so an unreachable host and an unportable word list do not
+// arrive at the caller as the same value.
+fn spark_serving_probe_leg_via_locus(
+  locus: SparkServingSliceCredentialLocus,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> SshSessionExecResult? {
+  match run_typed_argv_transport(
+    argv: raw_words,
+    transport: spark_serving_slice_transport(locus: locus, host: host),
+  ) {
+    TypedArgvExecConverged { result: r } => Present { value: r }
+    TypedArgvExecRefused { reason: _ } => none
+  }
+}
+
+fn spark_serving_observe_host_via_locus(
+  locus: SparkServingSliceCredentialLocus,
+  host: HostIdentity,
+) -> SparkServingObservation {
+  let readback = spark_serving_readback_from_probe_results(
+    host: host,
+    load_state: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_load_state_probe_words()),
+    is_active: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_active_probe_words()),
+    version: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_version_probe_words),
+    tags: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_tags_probe_words),
+    nvidia_driver: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
+    runtime_receipt: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_runtime_receipt_probe_words()),
+  )
+  derive_spark_serving_observation(readback: readback)
+}
 
 fn spark_serving_probe_leg(
   context: FleetSshExecutionContext,
@@ -480,4 +530,34 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
       }
     },
   )
+}
+
+
+// RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
+// GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
+// carries no gcloud and that fetch fails at runtime rather than degrading. This entry observes
+// through the in-run ssh-agent the job already materialized, so the same probe legs run where
+// the fleet actually is. It is READ-ONLY: every word list here is a query.
+func spark_serving_observe_ci_wet() -> ProcessExit {
+  let now = clock_now_probed_at()
+  let observations = map(
+    spark_serving_desired_hosts,
+    h => spark_serving_observe_host_via_locus(locus: SparkServingSliceRunnerAgent, host: h),
+  )
+  let body = join(
+    concat(
+      [
+        join(["spark_serving_observe_ci_wet probed_at=", now as String, "\n"], ""),
+        join([
+          "credential_locus=",
+          spark_serving_slice_locus_label(locus: SparkServingSliceRunnerAgent),
+          " trust=in-run ssh-agent + job-materialized known_hosts anchor (established by the runner job, not by this entry)\n",
+        ], ""),
+      ],
+      map(observations, o => spark_serving_observation_line(observation: o)),
+    ),
+    "",
+  )
+  let w = Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
+  if w.success { ExitSuccess } else { exit_failure(reason: join(["receipt write failed: ", w.error], "")) }
 }

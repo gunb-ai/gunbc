@@ -30,6 +30,7 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
+  gunbc_ci_spark_serving_observe_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
 }
@@ -44,7 +45,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger"]
+data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -79,6 +80,8 @@ fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
 data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
+
+data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
 fn fleet_converge_plan_upload_step() -> Step {
   UsesStep {
@@ -175,6 +178,20 @@ fn fleet_converge_spark_linger_step() -> Step {
   }
 }
 
+fn fleet_converge_spark_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
+    id: Present { value: "spark_observe" },
+    run: gunbc_ci_spark_serving_observe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
 fn fleet_converge_consumer_prelude_steps() -> List<Step> {
@@ -202,6 +219,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
         fleet_converge_spark_linger_step(),
+        fleet_converge_spark_observe_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -238,7 +256,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

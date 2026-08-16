@@ -23,6 +23,11 @@ import gunbc.spark_serving_converge_plan {
 }
 import gunbc.spark_serving_converge_slice_wet {
   render_observed_linger,
+  spark_serving_slice_verdict_is_converged,
+  spark_serving_slice_verdict_noop_converged,
+  spark_serving_slice_verdict_applied_converged,
+  spark_serving_converge_slice_host_line,
+  SparkServingSliceHostReport,
   ObservedLingerState,
   LingerObserved,
   LingerUnobserved,
@@ -259,4 +264,52 @@ test fn observed_linger_renders_unobserved_distinctly_from_disabled() -> Bool {
     && render_observed_linger(state: LingerObserved { enabled: true }) == "yes"
     && render_observed_linger(state: LingerUnobserved)
          != render_observed_linger(state: LingerObserved { enabled: false })
+}
+
+// THE ACTUATION BOUNDARY FAILS CLOSED. Before review 52578, the wet entry returned
+// ExitSuccess as soon as the receipt file was written, whatever the per-host verdicts said —
+// so an execute-mode dispatch whose enable-linger FAILED went green with the refusal visible
+// only as text. These pin the classifier the exit status is derived from: exactly the two
+// converged verdicts count as converged, and every refusal and failure shape does not. RED
+// against any future arm that adds a verdict without deciding whether it means converged.
+test fn slice_verdict_classifier_admits_exactly_the_two_converged_verdicts() -> Bool {
+  spark_serving_slice_verdict_is_converged(verdict: spark_serving_slice_verdict_noop_converged)
+    && spark_serving_slice_verdict_is_converged(verdict: spark_serving_slice_verdict_applied_converged)
+}
+
+test fn slice_verdict_classifier_rejects_every_refusal_and_failure_shape() -> Bool {
+  !spark_serving_slice_verdict_is_converged(verdict: "observation-refused probe-did-not-run")
+    && !spark_serving_slice_verdict_is_converged(verdict: "plan-refused")
+    && !spark_serving_slice_verdict_is_converged(verdict: "plan-hash-refused")
+    && !spark_serving_slice_verdict_is_converged(verdict: "apply-refused bundle mismatch")
+    && !spark_serving_slice_verdict_is_converged(verdict: "wet-apply-exec-failed exit=1 stderr=denied")
+    && !spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-mismatch lingering-still-no")
+    && !spark_serving_slice_verdict_is_converged(verdict: "wet-applied-readback-refused probe-did-not-run")
+    && !spark_serving_slice_verdict_is_converged(verdict: "would-apply typed-argv membership_writes=1")
+}
+
+// A host report carries its verdict as DATA, not only as rendered text. This is what makes the
+// exit status derivable at all; if the report were a bare String the entry would be back to
+// classifying its own prose.
+test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bool {
+  let converged = spark_serving_converge_slice_host_line(
+    host: operator_host_srv5,
+    endpoint: "192.168.1.222",
+    observed_linger: LingerObserved { enabled: true },
+    typed_row_count: 0,
+    apply_effect_count: 0,
+    apply_argv_len: 0,
+    verdict: spark_serving_slice_verdict_noop_converged,
+  )
+  let failed = spark_serving_converge_slice_host_line(
+    host: operator_host_srv5,
+    endpoint: "192.168.1.222",
+    observed_linger: LingerUnobserved,
+    typed_row_count: 0,
+    apply_effect_count: 0,
+    apply_argv_len: 0,
+    verdict: "wet-apply-exec-failed exit=1 stderr=denied",
+  )
+  converged.converged && !failed.converged
+    && string_contains(s: failed.line, pattern: "observed_linger=unobserved")
 }
