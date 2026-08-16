@@ -117,9 +117,6 @@ fn realize_spark_serving_install_effect_command(
       }
   }
 }
-      }
-  }
-}
 
 // The concat here appends COMMANDS, not words. That is the whole difference from the prior
 // shape: each effect contributes one or more complete argvs, and the list preserves the order
