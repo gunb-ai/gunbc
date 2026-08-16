@@ -42435,6 +42435,18 @@ fn required_floor_claims_from_admission(
         );
     };
     if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
+        // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
+        // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
+        // a refusal carries records that share substructure: Debug re-renders each occurrence
+        // rather than the shared node, so a cheap-looking format over a few thousand rows is not
+        // bounded by the row count. A run that refuses would otherwise spend that time inside a
+        // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
+        let refusal_render_started = std::time::Instant::now();
+        let refusal_count = match ctx.field(fields, "refusals") {
+            Some(v1_interpreter::Value::List(items)) => items.len(),
+            _ => 0,
+        };
+        eprintln!("floor: [T5a] refusal render starting ({refusal_count} refusal(s))");
         let rendered = match ctx.field(fields, "refusals") {
             Some(v1_interpreter::Value::List(items)) => items
                 .iter()
@@ -42443,6 +42455,12 @@ fn required_floor_claims_from_admission(
                 .join("\n  "),
             _ => "<refusal list unreadable>".to_string(),
         };
+        eprintln!(
+            "floor: [T5a] refusal render {}ms ({} refusal(s), {} rendered byte(s))",
+            refusal_render_started.elapsed().as_millis(),
+            refusal_count,
+            rendered.len()
+        );
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
              refusals, so the floor does not run its clean subset and report on the rest:\n  \
@@ -42459,6 +42477,10 @@ fn required_floor_claims_from_admission(
     let Some(v1_interpreter::Value::List(rows)) = ctx.field(af, "claims") else {
         return Err("the attempt carries no claim list".to_string());
     };
+    // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
+    // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
+    let decode_loop_started = std::time::Instant::now();
+    eprintln!("floor: [T5b] claim decode starting ({} row(s))", rows.len());
     let mut out = Vec::with_capacity(rows.len());
     for row in rows.iter() {
         let v1_interpreter::Value::Record { fields: cf, .. } = row else {
@@ -42517,5 +42539,10 @@ fn required_floor_claims_from_admission(
             budget_ms,
         });
     }
+    eprintln!(
+        "floor: [T5b] claim decode {}ms ({} claim(s))",
+        decode_loop_started.elapsed().as_millis(),
+        out.len()
+    );
     Ok(out)
 }
