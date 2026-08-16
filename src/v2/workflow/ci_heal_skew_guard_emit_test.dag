@@ -62,15 +62,17 @@ test fn ci_heal_skew_guard_excludes_every_registered_artifact_holds() -> Bool {
   })
 }
 
-test fn ci_heal_skew_guard_excludes_stage0_emitted_rust_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)src/v1/stage0/src/std_algebra.rs"))
-    && ci_heal_skew_excluded_paths() |> any(p => p == "src/v1/stage0/src/std_algebra.rs")
-}
+data ci_heal_skew_stage0_exclusion_retirement_note: String = "RETIRED (v1 cut 2026-08-15, tree integration/v1-cut): ci_heal_skew_guard_excludes_stage0_emitted_rust_holds asserted that src/v1/stage0/src/std_algebra.rs appears in the skew guard's exclusion pathspec. THE SUBJECT IS GONE, not merely unreferenced: the guard excludes GENERATED PROJECTIONS because the discarded side of such a conflict can be regenerated, and stage0 .rs stopped being a projection of anything when the v1 .dag authority and the regen loop were deleted. Taking --ours there would now discard authored bytes with no way to recover them, so its exclusion would be actively WRONG rather than merely stale -- the assertion is retired because the behavior it pinned must no longer happen. Its sibling nonempty row is KEPT and strengthened; see the note beside it. NOTHING REPLACED IT: the repair first added an excludes_every_REGISTRY_artifact row, which was a SECOND NAME for the excludes_every_REGISTERED_artifact row two lines above -- a nicknaming fork minted while fixing a cut, and removed on sight. That existing row checks excluded_paths is a subset of the emitted script, and the strengthened identity join proves registry equals excluded_paths, so the subset claim over the registry is implied rather than needing its own witness."
+
+
+data ci_heal_skew_exclusion_identity_note: String = "WHY THIS IS AN IDENTITY JOIN AND NOT A COUNT (v1 cut 2026-08-15). This row previously asserted length(excluded) > length(registry), which encoded an assumption rather than an invariant: that the exclusion set is the registry PLUS the stage0 emitted rust. When stage0 .rs stopped being generated projections the two sets became EQUAL and the strict comparison went red -- correctly, and it is the reason this was caught rather than sailing through. THE ROSTER DID NOT GO EMPTY: ci_heal_skew_excluded_paths() returns committed_generated_artifact_paths() exactly, which is nonempty, so the guard still excludes real paths and was never a shape executing over nothing. The repair is deliberately NOT a relaxation of > to >=, which would have been the weaker survivor: it asserts SET IDENTITY in both directions plus nonemptiness, per DESIGN section 5 -- completeness is an identity join, not a count equality. A count cannot distinguish the registry from a same-sized wrong set; this can."
 
 test fn ci_heal_skew_guard_exclusion_roster_is_nonempty_holds() -> Bool {
   length(committed_generated_artifact_paths()) > 0
-    && length(ci_heal_skew_excluded_paths()) > length(committed_generated_artifact_paths())
+    && ci_heal_skew_excluded_paths()
+         |> all(p => committed_generated_artifact_paths() |> any(q => q == p))
+    && committed_generated_artifact_paths()
+         |> all(q => ci_heal_skew_excluded_paths() |> any(p => p == q))
     && length(ci_heal_skew_excluded_pathspec_words()) == length(ci_heal_skew_excluded_paths())
 }
 
