@@ -15124,7 +15124,14 @@ pub fn precompute_whole_tree_published_mock_keys(
     if dag_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2a = std::time::Instant::now();
     let index = build_module_index(&dag_roots);
+    eprintln!(
+        "floor: [T2a] module index {}ms ({} module(s))",
+        t2a.elapsed().as_millis(),
+        index.len()
+    );
+    let t2b = std::time::Instant::now();
     // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
     // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
@@ -15172,16 +15179,39 @@ pub fn precompute_whole_tree_published_mock_keys(
             declarers.push(sf.clone());
         }
     }
+    eprintln!(
+        "floor: [T2b] declarer discovery {}ms ({} declarer(s))",
+        t2b.elapsed().as_millis(),
+        declarers.len()
+    );
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2c = std::time::Instant::now();
     let facts = build_module_graph_facts_live(&dag_roots);
+    eprintln!(
+        "floor: [T2c] whole-tree module graph facts {}ms",
+        t2c.elapsed().as_millis()
+    );
+    let t2d = std::time::Instant::now();
     let all_sources = resolve_transitively(declarers, &index, &facts)?;
+    eprintln!(
+        "floor: [T2d] declarer closure {}ms ({} source(s))",
+        t2d.elapsed().as_millis(),
+        all_sources.len()
+    );
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2e = std::time::Instant::now();
+    let source_count = all_sources.len();
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    eprintln!(
+        "floor: [T2e] closure strict resolve {}ms ({} source(s))",
+        t2e.elapsed().as_millis(),
+        source_count
+    );
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
         source_indices,
@@ -42152,11 +42182,53 @@ const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
 /// repository. The prepared value is a local, so a second acquisition would have to be written
 /// as a second call to `prepare_repository_once` — visible in one screen rather than hidden
 /// behind a cache hit.
+// THE FLOOR'S CURRENT SEAM, read by the heartbeat below. A plain global because the heartbeat is
+// an observation channel and nothing branches on it; making it a threaded parameter would put a
+// diagnostic in the signature of every function it passes through.
+static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn floor_seam(name: &str) {
+    if let Ok(mut g) = FLOOR_SEAM.lock() {
+        g.clear();
+        g.push_str(name);
+    }
+}
+
+// A HEARTBEAT, BECAUSE A BLANK INTERVAL AND A FOUR-HOUR INTERVAL LOOK IDENTICAL FROM OUTSIDE.
+//
+// GitHub does not serve a job's log until the job reaches a terminal state, so a run that does not
+// terminate is not merely slow to read -- it is unreadable for as long as it runs, and the one read
+// you get arrives at the end. That makes the question "what is the maximum a single terminal read
+// can carry", and a tick every sixty seconds costs nothing while converting a silent span into a
+// span with a name and a duration.
+//
+// It ticks on a WATCHDOG rather than inside any one phase deliberately. This lane predicted the
+// wall in T4 and measured it in T5; a heartbeat placed inside the phase under suspicion is silent
+// in exactly the phase nobody suspected. A thread reading a seam label is blind to which phase is
+// slow, which is the property that makes it useful.
+fn spawn_floor_heartbeat() {
+    let started = std::time::Instant::now();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        let seam = FLOOR_SEAM
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        eprintln!(
+            "floor: [hb] {}s elapsed, in {}",
+            started.elapsed().as_secs(),
+            if seam.is_empty() { "<unset>" } else { &seam }
+        );
+    });
+}
+
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    spawn_floor_heartbeat();
+    floor_seam("T1 strict preparation");
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
@@ -42183,6 +42255,7 @@ pub fn run_required_floor(
     // report the second compile's phases and exclude index construction, declarer discovery,
     // closure selection and extraction — so quoting them as this helper's cost is a derived
     // number wearing a raw one's label. It read as ~73ms and was never measured.
+    floor_seam("T2 published-mock projection");
     let published_started = std::time::Instant::now();
     let published = match precompute_whole_tree_published_mock_keys(source_roots) {
         Ok(keys) if keys.is_empty() => None,
@@ -42214,6 +42287,7 @@ pub fn run_required_floor(
     // the .dag manifest evaluation and admission decoding. Four superlinear shapes are known
     // to live in the manifest, which is a ranked hypothesis list and not an attribution: the
     // seams below are what turn the gap into one located term.
+    floor_seam("T3 site+binding projection");
     let projection_started = std::time::Instant::now();
     let files = inventory_witness_files(&prepared);
     let bindings: Vec<v1_interpreter::Value> = prepared
@@ -42277,6 +42351,7 @@ pub fn run_required_floor(
     );
     let empty_sites =
         v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    floor_seam("T4 .dag manifest evaluation");
     let manifest_eval_started = std::time::Instant::now();
     let admission = v1_interpreter::run_in_context_with_args(
         &hermetic,
@@ -42300,6 +42375,7 @@ pub fn run_required_floor(
         "floor: [T4] .dag manifest evaluation {}ms",
         manifest_eval_started.elapsed().as_millis()
     );
+    floor_seam("T5 admission decode");
     let admission_decode_started = std::time::Instant::now();
     let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
@@ -42328,6 +42404,7 @@ pub fn run_required_floor(
     // about execution history instead of about the manifest, and the acceptance census asks for
     // distinct scopes constructed to EQUAL the manifest's distinct scope identities — which is
     // only checkable if the table is built before anything runs.
+    floor_seam("T6 claim scope projection");
     let scope_start = std::time::Instant::now();
     let mut scopes: std::collections::HashMap<String, PreparedClaimScope> =
         std::collections::HashMap::new();
@@ -42345,6 +42422,7 @@ pub fn run_required_floor(
         scope_start.elapsed().as_millis()
     );
 
+    floor_seam("T7 claim evaluation fold");
     let eval_started = std::time::Instant::now();
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
