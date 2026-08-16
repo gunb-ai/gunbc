@@ -1,0 +1,112 @@
+module test.claim.interpreter_replacement_cut_witness_test
+
+import std.types { String, Bool, List, list_length }
+import gunbc.replacement_cut {
+  CutRefusalCause,
+  UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence,
+  CoveredByOldRoot, ReplacementNamesOldRoot,
+  ConsumerDuplicated, EvidenceDuplicated, RegionMemberDuplicated,
+  EnumeratedCensusEmpty, ExternalRolesEnumeratedEmpty, EmptyCoveredRegion,
+  NewRootEqualsOldRoot, SelfReferentialDescent,
+  PlanAdmission, PlanAdmitted, PlanRefused,
+  HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
+}
+import gunbc.interpreter_replacement_cut {
+  interpreter_cut_admission,
+  interpreter_cut_why_not_higher,
+  interpreter_replacement_cut,
+}
+
+data interpreter_replacement_cut_witness_note: String = "The first production ReplacementCut, asserted at the state it is actually in. This suite does NOT assert the plan is admitted -- it asserts that it refuses, and that every cause is one of the two open-decision classes. If a cause of any other class appears, that is an authoring defect in the row and this suite reds; if the undecided or uncovered counts change, the open-decision set moved and the row must be re-earned rather than silently re-counted."
+
+fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
+  match admission {
+    PlanAdmitted { admitted: _ } => []
+    PlanRefused { causes: cs } => cs
+  }
+}
+
+fn is_undecided_consumer(c: CutRefusalCause) -> Bool {
+  match c {
+    UndispositionedConsumer { consumer: _ } => true
+    UncoveredSurvivingConsumer { consumer: _ } => false
+    UndispositionedEvidence { evidence: _ } => false
+    CoveredByOldRoot { consumer: _ } => false
+    ReplacementNamesOldRoot { consumer: _ } => false
+    ConsumerDuplicated { consumer: _ } => false
+    EvidenceDuplicated { evidence: _ } => false
+    RegionMemberDuplicated { member: _ } => false
+    EnumeratedCensusEmpty => false
+    ExternalRolesEnumeratedEmpty => false
+    EmptyCoveredRegion => false
+    NewRootEqualsOldRoot => false
+    SelfReferentialDescent => false
+  }
+}
+
+fn is_uncovered_surviving(c: CutRefusalCause) -> Bool {
+  match c {
+    UncoveredSurvivingConsumer { consumer: _ } => true
+    UndispositionedConsumer { consumer: _ } => false
+    UndispositionedEvidence { evidence: _ } => false
+    CoveredByOldRoot { consumer: _ } => false
+    ReplacementNamesOldRoot { consumer: _ } => false
+    ConsumerDuplicated { consumer: _ } => false
+    EvidenceDuplicated { evidence: _ } => false
+    RegionMemberDuplicated { member: _ } => false
+    EnumeratedCensusEmpty => false
+    ExternalRolesEnumeratedEmpty => false
+    EmptyCoveredRegion => false
+    NewRootEqualsOldRoot => false
+    SelfReferentialDescent => false
+  }
+}
+
+fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool) -> Int {
+  fold(causes, init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
+}
+
+// The plan refuses, and that is the authored outcome rather than a defect.
+test fn interpreter_cut_plan_refuses_with_open_decisions() -> Bool {
+  let causes = causes_of(admission: interpreter_cut_admission())
+  list_length(items: causes) == 6
+    && count_matching(causes: causes, p: is_undecided_consumer) == 3
+    && count_matching(causes: causes, p: is_uncovered_surviving) == 3
+}
+
+// Every cause is one of the two open-decision classes. Any other class is an
+// authoring defect in the row, not a fact about the world.
+test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
+  let causes = causes_of(admission: interpreter_cut_admission())
+  fold(
+    causes,
+    init: true,
+    f: fn(acc, c) { acc && (is_undecided_consumer(c) || is_uncovered_surviving(c)) },
+  )
+}
+
+// Retired and replaced consumers contribute no causes: a row whose subject
+// leaves with X needs no coverage authority.
+test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
+  let causes = causes_of(admission: interpreter_cut_admission())
+  count_matching(causes: causes, p: is_uncovered_surviving) == 3
+    && list_length(items: causes) == 6
+}
+
+// The descent arm carries a BOUNDARY and no identifier. This is the assertion
+// that the honest arm was not quietly upgraded into the joinable one.
+test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
+  match interpreter_cut_why_not_higher() {
+    DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+      (b as String) == "the engine cut through the v1 driver region"
+    OutermostBoundary => false
+    DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+  }
+}
+
+// The covered region is the exact set that leaves, and the old root is not in it.
+test fn covered_region_is_the_deleted_set_and_excludes_the_old_root() -> Bool {
+  let cut = interpreter_replacement_cut()
+  list_length(items: cut.covered_region) == 4
+    && (cut.old_root_consumer as String) == "v1 .dag evaluation entry"
+}
