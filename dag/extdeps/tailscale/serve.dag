@@ -175,7 +175,7 @@ fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr
 
 // PER-DEVICE SERVE CONFIGURATION (tailscale.com/kb/1242): route identity is unique within one tailnet device's `serve` surface, not universe-wide. `node` is grounded on product.network_topology NetworkEndpoint with role TailscaleEndpoint — the fleet tailnet device rows in gunbc.fleet_intent_network (srv1_tailscale_endpoint, srv2_tailscale_endpoint, …), not a minted parallel identity. `service` names the upstream Serve CLI surface on that device.
 type TailscaleServeService
-  = TailscaleServe
+  = ServeCli
 
 type TailscaleServeScope {
   node: NetworkEndpoint
@@ -188,7 +188,7 @@ type TailscaleServeRouteSubject {
 }
 
 fn tailscale_serve_service() -> TailscaleServeService {
-  TailscaleServe
+  ServeCli
 }
 
 fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
@@ -209,9 +209,9 @@ fn tailscale_network_endpoint_label_eq(a: NetworkEndpoint, b: NetworkEndpoint) -
 fn tailscale_serve_scope_eq(a: TailscaleServeScope, b: TailscaleServeScope) -> Bool {
   tailscale_network_endpoint_label_eq(a: a.node, b: b.node)
     && match a.service {
-      TailscaleServe =>
+      ServeCli =>
         match b.service {
-          TailscaleServe => true
+          ServeCli => true
         }
     }
 }
