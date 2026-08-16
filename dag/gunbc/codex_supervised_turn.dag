@@ -105,6 +105,8 @@ data codex_supervised_turn_generation_file_name: String = "/codex_supervised_tur
 
 data codex_supervised_thread_id_slot: NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as NonEmptyStr
 
+data codex_supervised_thread_id_sed_substitution_note: String = "INTERIM ASSUMPTION (not a provider guarantee). turn/start line assembly substitutes the runtime thread.id into a serialize_json-built template via in-shell sed s///. That is safe only when thread.id contains no sed delimiter characters (/ newline &). extdeps.llm.codex_app_server does not yet bind thread/start result.thread.id to a cited charset or Uuid type — only JsonString at decode. Hermetic fixtures use hyphenated alphanumeric ids (thread-uuid-1, t1); no live wire census pins the charset. If the provider emits / or other sed-significant bytes, turn/start JSON may corrupt without typed refusal — same class as the user_input escaping bug fixed on 5be306112d. Typed host_effect_apply transport (codex_supervised_turn_script_dissolve_note) removes sed substitution entirely."
+
 data codex_supervised_turn_script_dissolve_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.codex_supervised_turn",
   decl_name: "codex_supervised_turn_script_dissolve_note",
