@@ -89,6 +89,49 @@ It should be re-asserted directly against the new assembly path.
 
 ---
 
+## The catch-up cost is a rate, and the import surface was never frozen
+
+Measured once, on request, to convert "unbounded" into something actionable.
+Fork point `64ebefa7416` (2026-08-15 08:31 -0400) to main head `6ada4a59fbf`
+(2026-08-16 19:22 -0400), a 34.8-hour window:
+
+```
+new .dag files on main since fork:        42
+of those carrying authored import lines:  42     <- 100%
+authored import lines in them:           249
+
+modified .dag files on main (same window): 76
+authored import lines in them:            767
+
+RATE: 29.0 new .dag files/day, 171.7 authored import lines/day
+```
+
+**The 42/42 is the finding, not the rate.** Not "most" — every new `.dag` file
+authored on main since this cut began carries imports. No partial adoption, no
+drift toward the post-cut form, not one file authored in the shape the cut
+produces. Independently corroborated on a different window (tidy-pike, since
+2026-08-13): 133 new files, 133 import-bearing. Two denominators, same 100%, so
+neither measurement is sampling a quiet patch. Standing total on main: 19,608
+authored import lines across 3,017 files.
+
+The **modified** count is reported alongside the additions because additions are
+not the obligation: modified files produce merge *conflicts* rather than clean
+adds, which makes them the more expensive half of the catch-up. A request for
+"files added" has a narrower subject than the cost being argued about — the same
+class this note records three other instances of.
+
+**What this means, in DESIGN's own terms.** §3 rules that a freeze covers X's
+growth surfaces: *a compatibility table inside a frozen X accepts no new rows,
+because each row is a deferred modeling obligation the surface's existence
+recruited — and a freeze that still accepts rows is not a freeze.* The import era
+is X for this cut. At 42/42 and ~29 files/day the surface is accepting rows with
+zero exceptions, so **X is not frozen**, and this branch's catch-up cost is not
+inattention — it is interest on an obligation main creates at a measured rate.
+
+That is a repository-level decision (freeze the surface, or land the cut early),
+not a lane-level one, and it is escalated rather than absorbed. The branch will
+not carry tooling to keep winning the race.
+
 ## "Imports deleted, tree green" is a weaker claim than it looks
 
 Measured on the sibling v1 lane (neat-bee), partitioning all 62 deleted v1 `.dag`
