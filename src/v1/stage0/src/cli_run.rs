@@ -42414,6 +42414,50 @@ pub fn run_required_floor(
     // So preparation is not diffusely large and does not need new instrumentation; it needs
     // `reconcile_with_census_extra` over 3,668 modules to get smaller. Anyone adding a probe
     // here should read the existing trace marks first.
+    //
+    // RECONCILE'S INTERIOR, at 5s resolution — four regions, NONE of them attributed:
+    //
+    //      45- 95s     50s   flat at 3.42 GB
+    //      95-225s    130s   3.42 -> 6.13 GB   +2.71 GB
+    //     225-505s    280s   flat at 6.15 GB   +0.01 GB     54% of the wall
+    //     505-565s     60s   6.23 -> 9.28 GB   +3.05 GB     53% of the growth, 12% of the wall
+    //
+    // Wall cost and memory growth are largely SEPARATE: over half the wall allocates nothing,
+    // and the largest growth arrives in the final eighth. Which of reconcile's six operations
+    // owns which region is UNKNOWN — six operations against four regions, and a 20s grid cannot
+    // see a sub-20s operation at all. Marks would have to be authored in `src/v1/04_infer.dag`
+    // and regenerated, since the operations live in generated code.
+    //
+    // TWO ATTRIBUTIONS WERE PROPOSED FOR THESE REGIONS AND BOTH DIED. Recorded because the
+    // reasoning that killed them is reusable and the regions are still open, so the same two
+    // candidates will look attractive again:
+    //
+    //   - Function-parent double-flattening as the +5.75 GiB owner. Killed by a population
+    //     bound: at most 3,668 x 3,667 Rc slots, ~102.6 MiB raw, ~205 MiB for two generations.
+    //     Not gigabytes.
+    //   - `corpus_has_v1_seed_source_indices` as the 280s plateau owner. Its qualitative
+    //     signature fits perfectly — long plateau, allocation churn, flat RSS, and a result of
+    //     one `Bool` — and it is still wrong. Measured below.
+    //
+    // `corpus_has_v1_seed_source_indices`, PRICED, so it is neither cited as the root cause nor
+    // dismissed for not being it. On the floor's own source configuration it clones the same
+    // ~3,670-key source-index set once per module — `map_keys` materialises the whole key vector
+    // BEFORE the `any` can short-circuit — for 13.46M key clones. Of the 3,670 files under
+    // `--source-root dag --source-root src/v2`, exactly ZERO contain `/v1/` or `src/v1`, so no
+    // early break ever fires and the function deterministically returns false. A synthetic on
+    // the faithful carriers (`im::HashMap` -> `im::Vector`; `v1_rt.rs` aliases `Vec` to
+    // `im::Vector`, and a first attempt on std containers understated it by 1.5x) measures
+    // 4.095s, 0.304us per key. Explaining the 280s plateau would need 20.8us per key — 68x the
+    // measured cost. So: a real duplicate derivation worth deleting, priced at ~4s, and NOT the
+    // plateau. The terminal shape derives the fact once from the source-set authority rather
+    // than per typed module, which removes the module x source product instead of tuning it.
+    //
+    // THE METHOD RULE BOTH DEATHS PRODUCED, because each failed a different gate: a qualitative
+    // shape match does not constrain a constant, so price the mechanism independently before
+    // naming an owner — never solve the unit cost backward from the interval being explained.
+    // And a benchmark licenses nothing until its carriers, control flow, scale and short-circuit
+    // behaviour match the real thing; assuming fidelity is how the first synthetic above came to
+    // be 1.5x wrong while reading as decisive.
 
     // ── 2. the evaluation frames ──────────────────────────────────────────────────────────
     //
