@@ -255,3 +255,50 @@ zero self-qualifications. That last check took two attempts — the first used *
 dots**, so `extdeps.github.app.` matched the diff's own `+++ b/dag/extdeps/github/app.dag`
 header and reported three false positives. The check was a model of the thing it checked,
 and it was wrong before the code was.
+
+## Deletion hygiene: what a narrowed search universe hid
+
+Recorded because the method error is more transferable than the specific repair.
+
+The cut deleted 12 files. Checking whether any was still owed, the first search used
+`--include=*.dag` over `dag` and `src/v2` — excluding `.md`, `docs/`, all of `src/v1`,
+and every `.rs`. It returned clean. **Re-run unfiltered over all 4568 tracked files,
+every one of the 12 subjects is referenced in 1–7 files.**
+
+A positive control (`claim_batch` → 200 files) passed in both runs, which is the point:
+**a positive control validates the predicate, not the scope.** "Zero consumers" always
+means "zero consumers in the files I searched", and a zero from a narrowed universe is
+the empty-observation narrow — ⊥-as-answer conflated with ⊥-as-ignorance — failing
+silently in the direction of deletion.
+
+What it hid: `class_b_trim_specimen_test.rs` was deleted while three live carriers named
+it — the retirement model declared it `RetainedLegacyRustTestModule`, a disposition
+carrier named its test function as `legacy_discovery_known_positive`, and a fixture cited
+it as an executing receipt. The retirement model's contract is *executed identities must
+equal declared identities*, so a roster naming an absent file is a latent red.
+
+**Restoration was attempted and rejected on evidence**: the file re-enrols, but four of
+the five `cli_run` symbols it imports are gone, and its purpose row says its whole
+subject is explicit-import binding in a narrow pool — semantics this cut makes a parse
+error. The deletion was correct; the **receipt** was the omission. The model needed no
+retirement row either, being a *retention* roster by design ("the complement needs no
+rows at all", explicitly rejecting "a cemetery of authored classifications"), so the fix
+was removing the row. `declared == enrolled` now holds, verified by **set diff, not
+count** — two counts can agree while their members differ.
+
+Restoration also surfaced unrelated debris: the original deletion left **three orphaned
+`#[cfg(test)]` attributes** stacked on one `mod` and stripped another's, so
+`decl_facts_dimensionless_projection_test` was building unconditionally.
+
+**The one genuine vanishing guard**, and the generalisable part: the known-positive
+control's own comment says it names an identity that "exists independently of this
+migration". Its author guarded it against the *test* migration; it was not independent of
+the *import cut*. Had it gone false, a discovery scanner failing its known-positive reads
+as *the scanner is broken* — not as *an unrelated lane deleted the control's subject* —
+so the failure would have pointed at the wrong mechanism entirely. Repointed to an
+algebraic subject with the reasoning recorded at the site.
+
+The residual defect is not repaired and is worth naming: **"independent of this
+migration" is a property relative to one adversary, and no carrier records which.** A
+control chosen to survive migration A is not thereby robust to migration B, so the next
+lane inherits the same trap unless independence claims name what they are independent of.
