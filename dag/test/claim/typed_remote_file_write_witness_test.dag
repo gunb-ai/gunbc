@@ -1,256 +1,232 @@
 module test.claim.typed_remote_file_write_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
-import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
-import gunbc.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
-import test.claim.typed_remote_file_write_fleet_ssh_fixture {
-  fleet_ssh_execution_context_hermetic_witness_fixture,
-}
-import gunbc.typed_remote_file_write {
-  TypedRemoteFileWriteAdmitted,
-  TypedRemoteFileWriteAdmissionRefused,
-  TypedRemoteFileWriteRemoteExecAccepted,
-  TypedRemoteFileWriteOutcomeRefused,
-  typed_remote_file_write_seal,
-  typed_remote_file_write_stdin_payload,
-  typed_remote_file_write_remote_argv,
-  typed_remote_file_write_content_digest_hex,
-  typed_remote_file_write_tee_command,
-  typed_remote_file_write_execute_preflight_outcome,
-  typed_remote_file_write_outcome_after_ssh_exec,
-  typed_remote_file_write_over_fleet_ssh,
-}
-import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data witness_hermetic_execution_split_note: std.types.String = "Filesystem write/read round-trip is not witnessed here: Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/filesystem/filesystem_io.dag). Byte preservation at the substrate seam is witnessed via stdin_payload equality and typed_remote_file_write_over_fleet_ssh hermetic SSH mock routing below; wet remote byte landing belongs on fleet converge apply."
 
-data witness_hermetic_execution_split_note: String = "Filesystem write/read round-trip is not witnessed here: Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/filesystem/filesystem_io.dag). Byte preservation at the substrate seam is witnessed via stdin_payload equality and typed_remote_file_write_over_fleet_ssh hermetic SSH mock routing below; wet remote byte landing belongs on fleet converge apply."
-
-data witness_tmp_scope: FileTreeScope = FileTreeScope {
-  root_path: "/tmp" as NonEmptyStr,
+data witness_tmp_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.FileTreeScope {
+  root_path: "/tmp" as std.types.NonEmptyStr,
 }
 
-data witness_executor_home_scope: FileTreeScope = FileTreeScope {
-  root_path: spark_serving_executor_home as NonEmptyStr,
+data witness_executor_home_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.FileTreeScope {
+  root_path: gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr,
 }
 
-data witness_metachar_payload: String = "alpha beta\ttab $dollar \"dq\"\n; rm -rf /"
+data witness_metachar_payload: std.types.String = "alpha beta\ttab $dollar \"dq\"\n; rm -rf /"
 
-data witness_path_outside_prefix: String = "/etc/passwd"
+data witness_path_outside_prefix: std.types.String = "/etc/passwd"
 
-data witness_non_portable_path: String = "/tmp/path with spaces/unit"
+data witness_non_portable_path: std.types.String = "/tmp/path with spaces/unit"
 
-data witness_dotdot_escape_path: String = "/tmp/../etc/passwd"
+data witness_dotdot_escape_path: std.types.String = "/tmp/../etc/passwd"
 
-data witness_executor_home_substring_trap_path: String = "/home/gunbc-automation-evil/.config/systemd/user/gunbc-spark-serving.service"
+data witness_executor_home_substring_trap_path: std.types.String = "/home/gunbc-automation-evil/.config/systemd/user/gunbc-spark-serving.service"
 
-data witness_preflight_ssh_target: SshTarget = SshTarget {
-  endpoint: "srv-test.example" as NonEmptyStr,
-  principal: "gunbc-automation" as NonEmptyStr,
+data witness_preflight_ssh_target: gunbc.fleet_known_hosts_anchor.SshTarget = gunbc.fleet_known_hosts_anchor.SshTarget {
+  endpoint: "srv-test.example" as std.types.NonEmptyStr,
+  principal: "gunbc-automation" as std.types.NonEmptyStr,
 }
 
-test fn w_path_outside_prefix_refused() -> Bool {
-  match typed_remote_file_write_seal(
-    path: witness_path_outside_prefix as FilePath,
-    content: "payload" as String,
+test fn w_path_outside_prefix_refused() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: witness_path_outside_prefix as std.types.FilePath,
+    content: "payload" as std.types.String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
-    TypedRemoteFileWriteAdmitted { write: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
   }
 }
 
-test fn w_dotdot_escape_refused() -> Bool {
-  !path_within_file_tree_scope(
+test fn w_dotdot_escape_refused() -> std.types.Bool {
+  !gunbc.file_access.path_within_file_tree_scope(
     scope: witness_tmp_scope,
-    path: witness_dotdot_escape_path as NonEmptyStr,
+    path: witness_dotdot_escape_path as std.types.NonEmptyStr,
   )
-    && match typed_remote_file_write_seal(
-      path: witness_dotdot_escape_path as FilePath,
-      content: "payload" as String,
+    && match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+      path: witness_dotdot_escape_path as std.types.FilePath,
+      content: "payload" as std.types.String,
       allowed_scope: witness_tmp_scope,
     ) {
-      TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
-      TypedRemoteFileWriteAdmitted { write: _ } => false
+      gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+      gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
     }
 }
 
-test fn w_executor_home_substring_trap_refused() -> Bool {
-  !path_within_file_tree_scope(
+test fn w_executor_home_substring_trap_refused() -> std.types.Bool {
+  !gunbc.file_access.path_within_file_tree_scope(
     scope: witness_executor_home_scope,
-    path: witness_executor_home_substring_trap_path as NonEmptyStr,
+    path: witness_executor_home_substring_trap_path as std.types.NonEmptyStr,
   )
-    && match typed_remote_file_write_seal(
-      path: witness_executor_home_substring_trap_path as FilePath,
-      content: "payload" as String,
+    && match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+      path: witness_executor_home_substring_trap_path as std.types.FilePath,
+      content: "payload" as std.types.String,
       allowed_scope: witness_executor_home_scope,
     ) {
-      TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
-      TypedRemoteFileWriteAdmitted { write: _ } => false
+      gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+      gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
     }
 }
 
-test fn w_non_portable_path_refused() -> Bool {
-  match typed_remote_file_write_seal(
-    path: witness_non_portable_path as FilePath,
-    content: "payload" as String,
+test fn w_non_portable_path_refused() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: witness_non_portable_path as std.types.FilePath,
+    content: "payload" as std.types.String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
-    TypedRemoteFileWriteAdmitted { write: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
   }
 }
 
-test fn w_metachar_payload_seals_without_interpretation() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-metachar" as FilePath,
+test fn w_metachar_payload_seals_without_interpretation() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-metachar" as std.types.FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } => w.content == witness_metachar_payload
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } => w.content == witness_metachar_payload
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_remote_argv_is_tee_and_path_only() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-argv" as FilePath,
-    content: "x" as String,
+test fn w_remote_argv_is_tee_and_path_only() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-argv" as std.types.FilePath,
+    content: "x" as std.types.String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      typed_remote_file_write_remote_argv(write: w)
-        == [typed_remote_file_write_tee_command, "/tmp/gunbc-trfw-argv"]
-        && match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: w)) {
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      gunbc.typed_remote_file_write.typed_remote_file_write_remote_argv(write: w)
+        == [gunbc.typed_remote_file_write.typed_remote_file_write_tee_command, "/tmp/gunbc-trfw-argv"]
+        && match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: gunbc.typed_remote_file_write.typed_remote_file_write_remote_argv(write: w)) {
           Present { value: _ } => true
           Absent => false
         }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_non_portable_remote_argv_fails_execute_portable_gate() -> Bool {
-  match portable_remote_words(
-    raws: [typed_remote_file_write_tee_command, witness_non_portable_path],
+test fn w_non_portable_remote_argv_fails_execute_portable_gate() -> std.types.Bool {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(
+    raws: [gunbc.typed_remote_file_write.typed_remote_file_write_tee_command, witness_non_portable_path],
   ) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn w_admitted_write_passes_execute_preflight() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-preflight" as FilePath,
+test fn w_admitted_write_passes_execute_preflight() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-preflight" as std.types.FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      match typed_remote_file_write_execute_preflight_outcome(
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      match gunbc.typed_remote_file_write.typed_remote_file_write_execute_preflight_outcome(
         target: witness_preflight_ssh_target,
         write: w,
       ) {
         Absent => true
         Present { value: _ } => false
       }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_stdin_payload_is_exact_content_not_transformed() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-stdin" as FilePath,
+test fn w_stdin_payload_is_exact_content_not_transformed() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-stdin" as std.types.FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      gunbc.typed_remote_file_write.typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_content_digest_stable_for_same_bytes() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-digest-a" as FilePath,
+test fn w_content_digest_stable_for_same_bytes() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-digest-a" as std.types.FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: a } =>
-      match typed_remote_file_write_seal(
-        path: "/tmp/gunbc-trfw-digest-b" as FilePath,
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: a } =>
+      match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+        path: "/tmp/gunbc-trfw-digest-b" as std.types.FilePath,
         content: witness_metachar_payload,
         allowed_scope: witness_tmp_scope,
       ) {
-        TypedRemoteFileWriteAdmitted { write: b } =>
-          typed_remote_file_write_content_digest_hex(write: a)
-            == typed_remote_file_write_content_digest_hex(write: b)
-        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: b } =>
+          gunbc.typed_remote_file_write.typed_remote_file_write_content_digest_hex(write: a)
+            == gunbc.typed_remote_file_write.typed_remote_file_write_content_digest_hex(write: b)
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
-  match typed_remote_file_write_seal(
+test fn w_executor_home_unit_path_seals_for_spark_layout() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: concat(
-      spark_serving_executor_home as String,
+      gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.String,
       "/.config/systemd/user/gunbc-spark-serving.service",
-    ) as FilePath,
-    content: "[Unit]\nDescription=test\n" as String,
+    ) as std.types.FilePath,
+    content: "[Unit]\nDescription=test\n" as std.types.String,
     allowed_scope: witness_executor_home_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: _ } => true
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => true
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-over-fleet-ssh" as FilePath,
+test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-over-fleet-ssh" as std.types.FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      match test.claim.typed_remote_file_write_fleet_ssh_fixture.fleet_ssh_execution_context_hermetic_witness_fixture() {
         Present { value: context } =>
-          match typed_remote_file_write_over_fleet_ssh(
+          match gunbc.typed_remote_file_write.typed_remote_file_write_over_fleet_ssh(
             target: witness_preflight_ssh_target,
             context: context,
-            admission: TypedRemoteFileWriteAdmitted { write: w },
+            admission: gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w },
           ) {
-            TypedRemoteFileWriteRemoteExecAccepted { result: r } =>
+            gunbc.typed_remote_file_write.TypedRemoteFileWriteRemoteExecAccepted { result: r } =>
               r.success
                 && r.stdout == "mock-ssh-portable-words-stdin"
-                && typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
-            TypedRemoteFileWriteOutcomeRefused { reason: _ } => false
+                && gunbc.typed_remote_file_write.typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
+            gunbc.typed_remote_file_write.TypedRemoteFileWriteOutcomeRefused { reason: _ } => false
           }
         Absent => false
       }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_ssh_exec_failure_routes_to_outcome_refused() -> Bool {
-  match typed_remote_file_write_seal(
-    path: "/tmp/gunbc-trfw-ssh-failure" as FilePath,
-    content: "payload" as String,
+test fn w_ssh_exec_failure_routes_to_outcome_refused() -> std.types.Bool {
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-ssh-failure" as std.types.FilePath,
+    content: "payload" as std.types.String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      match typed_remote_file_write_outcome_after_ssh_exec(
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      match gunbc.typed_remote_file_write.typed_remote_file_write_outcome_after_ssh_exec(
         write: w,
-        result: SshSessionExecResult {
+        result: extdeps.ssh.session.SshSessionExecResult {
           exit_code: 1,
           success: false,
           stdout: "",
           stderr: "mock tee failed",
         },
       ) {
-        TypedRemoteFileWriteOutcomeRefused { reason: r } =>
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteOutcomeRefused { reason: r } =>
           string_contains(s: r, pattern: "/tmp/gunbc-trfw-ssh-failure")
-        TypedRemoteFileWriteRemoteExecAccepted { result: _ } => false
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteRemoteExecAccepted { result: _ } => false
       }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
