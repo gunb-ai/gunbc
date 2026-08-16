@@ -683,7 +683,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "v2.compiler.use_site_verdict", decl_name: "UseSiteVerdict", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "std.materialization_ladder", decl_name: "value_materialization", field: WholeDeclaration },
-      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_var_ref", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/ownership-grain-cut cutover merges to main: the per-binding ownership authority is deleted, value_materialization folds over per-site verdicts rather than deriving from usage directly, and the emitter's default-clone arm is a typed refusal; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
