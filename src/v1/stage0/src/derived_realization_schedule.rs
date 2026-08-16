@@ -142,37 +142,33 @@ pub fn realize_pack_width_from_scalars(
     }
 }
 
-/// Derive the discovery batch width from the max per-witness derived space bound.
+/// Discovery corpus pool width stays serial until the shared-index crossover lands.
+/// Width>1 spawns per-worker whole-tree indices (cli_run `FixedWidth` pool dissolve-on).
+pub const DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX: usize = 1;
+
+/// Derive the discovery batch width after roster assembly.
+///
+/// Per-entry derived-space scans are intentionally NOT run here: resolving every roster
+/// entry to read `function_space_bytes` is O(entries) whole-tree work (tens of minutes on
+/// the floor corpus). Opt-in per-row advisory logging uses `GUNBC_REALIZE_ADVISORY`.
 pub fn derive_discovery_schedule_width(
     source_roots: &[String],
-    entry_function_pairs: &[(String, String)],
+    _entry_function_pairs: &[(String, String)],
 ) -> Result<DerivedScheduleWidth, String> {
     let (budget_bytes, _source) = read_host_budget_bytes();
     let budget_i64 = budget_bytes.map(|b| b as i64);
     let independence = std::thread::available_parallelism()
         .map(|n| n.get() as i64)
         .unwrap_or(1);
-    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for (entry, function) in entry_function_pairs {
-        by_entry
-            .entry(entry.clone())
-            .or_default()
-            .push(function.clone());
-    }
-    let mut max_derived: Option<i64> = None;
-    for (entry, functions) in &by_entry {
-        let (graph, source_indices) = crate::cli_run::resolve_entry_graph(source_roots, entry)
-            .map_err(|e| format!("derive_discovery_schedule_width resolve {entry}: {e}"))?;
-        let report =
-            crate::v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices);
-        for function in functions {
-            if let Some(bytes) = report.function_space_bytes.get(function).copied() {
-                max_derived = Some(max_derived.map_or(bytes, |m| m.max(bytes)));
-            }
+    let mut derived =
+        realize_pack_width_from_scalars(source_roots, None, budget_i64, independence)?;
+    if derived.width > DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX {
+        derived.width = DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX;
+        if derived.verdict != "BudgetRefused" {
+            derived.verdict = "DiscoverySerialUntilSharedIndex".to_string();
         }
     }
-    realize_pack_width_from_scalars(source_roots, max_derived, budget_i64, independence)
+    Ok(derived)
 }
 
 /// Fixed-width concurrency plan for a whole floor walk.
