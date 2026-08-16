@@ -17470,6 +17470,7 @@ pub fn build_type_env(
                 )
             },
         );
+        let __tk = std::time::Instant::now();
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -20211,14 +20212,20 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
+        eprintln!("[tc] resolved_by_name ms={}", __tk.elapsed().as_millis());
+        let __tk = std::time::Instant::now();
         let symbol_index = symbol_index_with_qualified_fill(
             build_symbol_index_census(graph.modules.clone(), census_si.clone()),
             build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
         );
+        eprintln!("[tc] symbol_index ms={}", __tk.elapsed().as_millis());
+        let __tk = std::time::Instant::now();
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
         );
+        eprintln!("[tc] global_variant_base ms={}", __tk.elapsed().as_millis());
+        let __tk = std::time::Instant::now();
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -20238,6 +20245,14 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
+        eprintln!(
+            "[tc] realize_fold ms={} parent_ms={} tcmod_ms={} calls={}",
+            __tk.elapsed().as_millis(),
+            RM_PARENT_US.load(std::sync::atomic::Ordering::Relaxed) / 1000,
+            RM_TCMOD_US.load(std::sync::atomic::Ordering::Relaxed) / 1000,
+            RM_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+        );
+        let __tk = std::time::Instant::now();
         let modules = Rc::new({
             let mut __result = Vec::new();
             for rm in graph.modules.clone().iter().cloned() {
@@ -20315,11 +20330,18 @@ pub fn realize_module(
                             )
                         },
                     );
+                    RM_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let __tp = std::time::Instant::now();
                     let parent_result = collect_parent_envs(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
+                    RM_PARENT_US.fetch_add(
+                        __tp.elapsed().as_micros() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                    let __tm = std::time::Instant::now();
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
@@ -20328,6 +20350,10 @@ pub fn realize_module(
                         intern_table.clone(),
                         symbol_index.clone(),
                         global_variant_base.clone(),
+                    );
+                    RM_TCMOD_US.fetch_add(
+                        __tm.elapsed().as_micros() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -20561,6 +20587,10 @@ pub fn direct_import_exporter_count_of(
 thread_local! {
     pub static RX_SKIP_NOOP: bool = std::env::var("GUNBC_RX_NOOP_SKIP").map(|v| v == "1").unwrap_or(false);
 }
+
+pub static RM_PARENT_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static RM_TCMOD_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static RM_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub static RXC_SCANNED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static RXC_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
