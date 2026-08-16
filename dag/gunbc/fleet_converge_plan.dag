@@ -361,6 +361,22 @@ fn fleet_converge_spark_serving_typed_actions_wire(
   join(map(rows, r => fleet_converge_spark_serving_action_line(row: r)), ";")
 }
 
+data fleet_converge_spark_typed_actions_wire_empty_canonical: NonEmptyStr = "spark-serving-typed-actions-wire-empty"
+
+fn fleet_converge_spark_typed_actions_wire_structural_hash(wire: String) -> Fnv1a64Structural? {
+  if wire == "" {
+    match content_hash_of_value(value: fleet_converge_spark_typed_actions_wire_empty_canonical) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  } else {
+    match content_hash_of_value(value: wire as NonEmptyStr) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  }
+}
+
 fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Bool {
   string_contains(s: plan_body, pattern: "# spark-serving-typed-actions:")
 }
@@ -414,12 +430,12 @@ fn fleet_converge_plan_bundle_structural_hash(
 ) -> Fnv1a64Structural? {
   match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
     Present { value: bundle_v1 } =>
-      match content_hash_of_value(value: spark_typed_actions_wire as NonEmptyStr) {
-        Fnv1a64(spark_struct) =>
+      match fleet_converge_spark_typed_actions_wire_structural_hash(wire: spark_typed_actions_wire) {
+        Present { value: spark_struct } =>
           Present {
             value: content_hash_combine_structural(left: bundle_v1, right: spark_struct),
           }
-        _ => Absent
+        Absent => Absent
       }
     Absent => Absent
   }

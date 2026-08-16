@@ -99,24 +99,43 @@ fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
 
 type ExecutorLingerEnabled {}
 
-type SparkServingExecutorLingerState = ExecutorLingerEnabled
+type ExecutorLingerDisabled {}
+
+type SparkServingExecutorLingerState
+  = ExecutorLingerEnabled {}
+  | ExecutorLingerDisabled {}
 
 fn spark_serving_executor_linger_state_label(state: SparkServingExecutorLingerState) -> NonEmptyStr {
   match state {
     ExecutorLingerEnabled {} => "enabled" as NonEmptyStr
+    ExecutorLingerDisabled {} => "disabled" as NonEmptyStr
   }
+}
+
+fn spark_serving_executor_linger_state_digest_for(state: SparkServingExecutorLingerState) -> NonEmptyStr {
+  content_hash_atom(
+    value: spark_serving_executor_linger_state_label(state: state),
+  ).digest as NonEmptyStr
 }
 
 fn spark_serving_desired_executor_linger_state() -> SparkServingExecutorLingerState {
   ExecutorLingerEnabled {}
 }
 
+fn spark_serving_observed_executor_linger_disabled_state() -> SparkServingExecutorLingerState {
+  ExecutorLingerDisabled {}
+}
+
 fn spark_serving_executor_linger_state_digest() -> NonEmptyStr {
-  content_hash_atom(
-    value: spark_serving_executor_linger_state_label(
-      state: spark_serving_desired_executor_linger_state(),
-    ),
-  ).digest as NonEmptyStr
+  spark_serving_executor_linger_state_digest_for(
+    state: spark_serving_desired_executor_linger_state(),
+  )
+}
+
+fn spark_serving_executor_linger_disabled_state_digest() -> NonEmptyStr {
+  spark_serving_executor_linger_state_digest_for(
+    state: spark_serving_observed_executor_linger_disabled_state(),
+  )
 }
 
 fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {

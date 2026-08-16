@@ -11,6 +11,7 @@ import gunbc.spark_serving_membership {
   spark_serving_member,
   spark_serving_serving_principal,
   spark_serving_executor_linger_state_digest,
+  spark_serving_executor_linger_disabled_state_digest,
   spark_serving_membership_reconcile,
   spark_serving_membership_noop,
 }
@@ -66,7 +67,7 @@ fn spark_serving_linger_observed_members(
         host: host,
         principal: spark_serving_serving_principal(),
         address: SparkServingLingerAddress,
-        state_digest: "linger=disabled" as NonEmptyStr,
+        state_digest: spark_serving_executor_linger_disabled_state_digest(),
         ownership: Ensured,
       ),
     ]
