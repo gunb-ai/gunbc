@@ -162,6 +162,7 @@ pub mod ci_control_plane;
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
+pub mod derived_realization_schedule;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
