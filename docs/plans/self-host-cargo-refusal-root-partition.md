@@ -1272,3 +1272,103 @@ signature; if a well-formedness fix leaves them standing, the root-cause is refu
 **Do not reconcile the July emitter-decision split (369/168/63, summing 600) against the 133.**
 That census counted diagnostics summed over modules; these are distinct sites. The two are
 different denominators, and 600 vs 722 is the comparison that would mean something.
+
+## 13. ROOT A, DIAGNOSED — one map answering two questions (`smart-ram-730`, 2026-08-16)
+
+Supersedes 12.5, which withdrew A pending live signatures. They landed. **A is 133 sites, one
+root, bound-shaped.**
+
+### 13.1 What A actually is (`smart-ibex-716`, live, seven modules, distinct-site grain)
+
+142 distinct sites; codes E0599 94 / E0277 48 and nothing else. The apparent code split is a
+reporting artifact, not two mechanisms:
+
+| | count | shape |
+|---|---|---|
+| E0599 `<m> exists for <T-parametrized type>, but its trait bounds were not satisfied` | 64 | generic receiver |
+| E0277 `the trait bound T: Clone is not satisfied` | 48 | coercion position |
+| E0599 `no method named clone found for type parameter T` | 21 | bare parameter |
+| E0599 `as_ref exists for &v2_std_nat::Nat, ...` | 9 | **concrete receiver — not A** |
+
+rustc reports an unsatisfied bound as E0277 at a coercion site and as E0599 at a call site, and
+says "no method" for a bare parameter because an unbounded `T` genuinely has none. Deduct the 9
+concrete-receiver sites (they belong with the `Nat` repr family) and **A = 133 sharing one
+mechanism**. 69 of 142 land in one generated file, `src/v2_std_algebra.rs`.
+
+*Cited so it is not re-derived wrong: the earlier split (CloneSharedRequirement 369 /
+TargetApiRequirement 168 / OwnedDeconstructionRequirement 63, summing 600) came from the July TSV
+and does not reconcile against 133. A's summed count is 722 against 142 distinct — 5.09x, above
+the corpus-wide 2.75x, so A is more concentrated in the shared floor than average and per-module
+counts overstate it worse than most.*
+
+### 13.2 The mechanism
+
+`v1_clone_bounded_type_params` (`src/v1/trait_derive_emit.dag`) is ONE
+`Map<String, Set<String>>`, and two different consumers read it:
+
+1. **Declaration emission** — `v1_item_clone_bounded_param_names`, reached from
+   `emit_item_type_params_with_clone_bounds`: does this item's own declaration print `<T: Clone>`?
+2. **Well-formedness propagation** — `v1_type_expr_wf_needs_clone_param`: does NAMING someone
+   else's `G<T>` oblige the naming item to bound its own parameter?
+
+Those are different questions, and the map is seeded as if they were one.
+`v1_clone_bound_seed_for_item` opens `if is_coproduct_type(n: item) { round }`.
+
+**For question 1 that skip is correct**, and the carrier
+(`trait_derive_emit_item_clone_bound_wf_propagation_note`) is right to defend it: `derive(Clone)`
+on an enum emits `impl<T: Clone> Clone for E<T>`, so the declaration needs no item-level bound.
+
+**For question 2 that per-impl bound is exactly the fact a consumer must be told about.** Cloning
+`Outcome<T>` *does* require `T: Clone`, and the map is where propagation looks for it. Since no
+coproduct is ever seeded, a generic coproduct contributes nothing and every consumer that names
+and clones one earns no bound.
+
+`v1_item_field_type_exprs` already flat-maps variants, so the **fixpoint** handles enums fine — it
+has nothing seeded to propagate from. Likewise `v1_item_type_param_needs_clone_bound_struct` is
+struct-scoped in name only; its body takes a `List<Node>` of field type exprs and is shape-agnostic.
+
+**Specimens, read in tree:**
+
+- `Outcome<T> = Accepted { value: T, diagnostics } | Rejected { diagnostics }` — bare `T` in a
+  variant payload, the shape the struct seed would have caught.
+- `CacheLookupResult<T> = Hit { receipt: CachedArtifactReceipt<T> } | Miss | RejectedHit` — the
+  whole chain is starved: `CachedArtifactReceipt<T>` is a struct with no bare `T`,
+  `ArtifactIdentity<T>` never uses `T` at all (phantom), and `ProducerReceipt<T>` is another
+  coproduct. Nothing in the chain can seed.
+
+**This is the program's recurring shape, third instance today.** One answer serving two questions —
+the same defect as the checkpoint arm answering "arity 0" and "I have a row", and the variant
+sentinel answering "no owner" and "empty name".
+
+### 13.3 Correction to my own earlier claim
+
+I published A's root cause as "the struct-only derive trigger", pointing at the same line. **Right
+location, wrong reason, and the difference changes the fix.** Deleting the coproduct skip would
+print a spurious item-level bound on enum declarations that `derive` already supplies — and the
+enum decl site (`05_emit_rust.dag`, the `emit_enum_from_children` caller) already routes through
+`emit_item_type_params_with_clone_bounds`, so seeding coproducts without splitting the read would
+change emitted enum declarations corpus-wide.
+
+### 13.4 The construction, and why this shape
+
+**Give well-formedness its own seeded record; leave the declaration-bounds map untouched.**
+Strictly additive: no existing emitted byte changes except where a consumer newly earns a bound it
+already needed. The alternative — one map plus a kind filter at the read — would work but keeps
+the fusion and re-invites the same confusion at the next reader.
+
+Declaration emission keeps its current map and behaviour. The WF record is seeded from structs
+*and* coproducts through the same shape-agnostic predicate, and `EmitGraphInfo` carries both.
+
+**Discriminating control, and it must go both ways:** a generic coproduct with a bare-`T` payload
+whose consumer clones it (currently E0599, must go green), *and* a generic enum declaration whose
+emitted `<T>` must stay bare — because the failure mode of this fix is over-bounding enum
+declarations, which no "the errors went away" measurement would catch.
+
+**Falsifier put to `smart-ibex-716`, unanswered at time of writing:** the diagnosis predicts A's
+64 generic receivers are dominated by coproducts, *not* generic structs, since structs are already
+seeded. A broad struct share refutes it and A returns to unpartitioned. `im::Vector<T>` (a
+container with no declaration bound — a derive-trigger fact only, per the carrier) is not a
+counterexample.
+
+**Not started.** Diagnosis is by reading; there is no executed before/after, and verification needs
+a remote regen plus rebuild. Nothing here is a receipt.
