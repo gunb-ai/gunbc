@@ -12,6 +12,7 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
+  KnownHostsMaterializationOutcome,
   fleet_ssh_execution_context_of,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
@@ -22,8 +23,12 @@ import gunbc.fleet_known_hosts_anchor {
 }
 import gunbc.fleet_multi_principal_probe {
   fleet_ssh_attempt_raw_from_env,
-  spark_converge_target_host_from_env,
   spark_converge_execute_apply_from_env,
+  spark_converge_target_selection,
+  SparkConvergeTargetSelection,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
@@ -342,10 +347,47 @@ func spark_serving_converge_slice_wet() -> ProcessExit
                   )
                 Present { value: context } => {
                   let execute_apply = spark_converge_execute_apply_from_env()
-                  let hosts = match spark_converge_target_host_from_env() {
-                    Present { value: only } => [only]
-                    Absent => spark_serving_converge_slice_wet_hosts
+                  match spark_converge_target_selection(execute_apply: execute_apply) {
+                    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+                    SparkConvergeTargetSingle { host: only } =>
+                      spark_serving_converge_slice_emit_receipt(
+                        context: context,
+                        now: now,
+                        attempt_raw: attempt_raw,
+                        materialization: materialization,
+                        hosts: [only],
+                        execute_apply: execute_apply,
+                      )
+                    SparkConvergeTargetAllObserveOnly =>
+                      spark_serving_converge_slice_emit_receipt(
+                        context: context,
+                        now: now,
+                        attempt_raw: attempt_raw,
+                        materialization: materialization,
+                        hosts: spark_serving_converge_slice_wet_hosts,
+                        execute_apply: execute_apply,
+                      )
                   }
+                }
+              }
+            }
+          }
+        },
+      )
+  }
+}
+
+// Receipt emission for an ALREADY-SELECTED host population. Selection refuses upstream, so
+// this fold never has to decide what "no target" means — the only way to reach it with the
+// full host list is the observe-only arm.
+fn spark_serving_converge_slice_emit_receipt(
+  context: FleetSshExecutionContext,
+  now: NonEmptyStr,
+  attempt_raw: String,
+  materialization: KnownHostsMaterializationOutcome,
+  hosts: List<HostIdentity>,
+  execute_apply: Bool,
+) -> ProcessExit {
                   let body = join(
                     concat(
                       [
@@ -376,11 +418,4 @@ func spark_serving_converge_slice_wet() -> ProcessExit
                   } else {
                     exit_failure(reason: join(["receipt write failed: ", w.error], ""))
                   }
-                }
-              }
-            }
-          }
-        },
-      )
-  }
 }
