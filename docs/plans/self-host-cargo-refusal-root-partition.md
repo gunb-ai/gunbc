@@ -506,63 +506,18 @@ closure,"** and two independent places change behaviour silently when it is.
 If that holds, several roots are downstream projections of one fact, and the per-root sizes are
 measuring symptoms of it.
 
-**THIRD INSTANCE (gentle-dove-833, measured; verified in tree by smart-ram-730), and it is the
-strongest, because nobody wrote an `if` about closures — it is emergent from a fold.**
+**THIRD INSTANCE — confirmed, and it has its own full entry below** (`### §10 — the third
+branch`, written by `gentle-dove-833`, who measured it). Not restated here: two accounts of one
+finding in one document is the dual authority this surface exists to prevent, and we produced
+one by both writing it up. Theirs is the authority.
 
-`v1.compiler.emit_info` `derive_variant_to_enum` folds the CLOSURE's type summaries into
-variant-name → owning-enum, and on a collision inserts the **empty string as an ambiguity
-sentinel**:
-
-```
-match map_get(inner, vn) {
-  Present { value: _ } => map_insert(inner, vn, "")        // ambiguous
-  Absent               => map_insert(inner, vn, summary.name)
-}
-```
-
-`v1.compiler.emit_rust` `is_value_variant_type_arg` then reads it with
-`map_contains_key(variant_to_enum, name)` — **which ignores the value.** So an ambiguous name
-tests positive as a value-variant and `rust_type_arg_renders_as_unit` collapses the type
-argument to `()`.
-
-That is DESIGN's **state-space conflation** verbatim: the map's value carries three states —
-absent (not a variant), a name (variant of that enum), and `""` (ambiguous) — and the consumer
-collapses all present cases into one. And *whether a name is ambiguous is a function of which
-modules are in the closure*, so this is a closure-shape branch that no one authored as one.
-
-Measured on `05_emit`, live tree `3473e57962` — the two dominant names are exactly the two
-carrying the sentinel:
-
-```
-Absent            owner ""                  91 positives
-Optional          owner ""                  68
-AlgebraPrimitive  owner CanonicalOperation  28      <- real owner
-Time              owner Quantity            24      <- real owner
-```
-
-Confirmed declarers: `Optional` is a variant of `v2.std.grammar` `GrammarExpr` AND of
-`dag/std/constructors` `Cardinality`; `Absent` of `v2.std.optional` AND of
-`dag/std/upsert_decision`. Ordinary §3 nickname collisions, invisible until the emitter reads them.
-
-Effect, both ways on one entry: **666 coded errors → 527**, E0308 **286 → 128**, with E0425
-appearing at 25. One predicate.
-
-**The 25 new E0425 are the honest residue, not a regression.** With the collapse gone, a type
-argument genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not exist.
-The mis-spelling was always there and unit-collapse was **fabricating plausible output over it**
-(§5). So a second defect is now typed and located instead of masked.
-
-**A retraction that came with it (gentle-dove-833's own):** their earlier explanation — that the
-emitter receives the body's constructed variant type rather than the declared `Optional` — is
-NOT the cause of the collapse. Site D proves a correctly spelled `Optional` collapses too, for
-the ambiguity reason. The arity evidence was real and remains unexplained as a *separate* defect;
-fixing inference alone would have moved 91 events between buckets and fixed nothing.
-
-**Fix shape, construction-first, and it is two things:** rename the colliding variants so the
-ambiguous population is empty (single authority — deletes the class), AND land the emitter guard
-as a **typed refusal** rather than the non-empty-owner test the measurement used, because today
-an ambiguous name silently produces `()` instead of a located diagnostic. The guard is required
-regardless of the renames.
+What this section adds, and only this: the mechanism was **independently verified in tree** by
+`smart-ram-730` (the sentinel insert in `derive_variant_to_enum`, the value-ignoring
+`map_contains_key` read in `is_value_variant_type_arg`), and it is DESIGN's **state-space
+conflation** by name — the map's value carries three states (absent / a real owner / ambiguous)
+and the consumer collapses every present case into one. That framing is what makes it a
+closure-shape branch nobody authored as one, and it is why the meta-root is promoted from
+hypothesis to three confirmed instances.
 
 **Not claimed:** that the seed closure lacks these collisions. That is the next measurement and
 it would make this instance structurally identical to Root B rather than merely analogous.
