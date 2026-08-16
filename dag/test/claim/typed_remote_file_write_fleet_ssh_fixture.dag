@@ -41,7 +41,9 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> gunbc.fleet_known_h
             identity_file: "/tmp/gunbc-trfw-witness-key" as std.types.NonEmptyStr,
             public_material: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHERMETIC-WITNESS-FIXTURE" as std.types.NonEmptyStr,
           ),
-        ),
+        }
+        FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+        FleetSshCredentialDerivationRefused { cause: _ } => none
       }
     }
   }

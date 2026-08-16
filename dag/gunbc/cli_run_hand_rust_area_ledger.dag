@@ -3,6 +3,10 @@ module gunbc.cli_run_hand_rust_area_ledger
 
 data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust (Lane swift-lynx-164). Supersedes cli_run_hollowing_plan §0 stale prose (26,773 LOC / 976 fns dated 2026-07-23). Live scale is measured at execution by scripts/rust_item_census.py — this note does NOT pin numeric literals (DESIGN §3 stale-citation class). Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan §2.1–2.16. NOT a per-function ledger (#7074 closed). NOT a deletion plan — instrument only."
 
+data cli_run_area_2_2_anchor_retirement_receipt: String = "Area 2.2 lost ONE anchor symbol, not the row. handle_run_with_options was the argv-dispatch DRIVER; the cli-run cut (PR 8286) deleted it and rebuilt that seam in main.rs, so its occurrence count in cli_run.rs went 3 to 0 and the symbol no longer names anything. It is removed from anchor_symbols. The ROW SURVIVES because its other two anchors do: claim_batch and claim_executor are both live in the retained engine (19 and 21 occurrences at the time of writing, deliberately not pinned here per the module note's stale-citation rule). The disposition stays RetainedKernel and is unchanged by this edit.
+
+WHY THE GRAIN IS THE ANCHOR SYMBOL AND NOT THE ROW: this ledger was DELETED WHOLE by that same cut and then restored, because deleting it unmarked 22 live areas to retire one symbol. Restoring it unedited would have been the mirror error — an anchor pointing at a symbol that no longer exists is an obligation nobody can discharge, which never retires and reads as live debt forever. Neither whole-file answer was available; both halves are answerable per symbol. That is the same grain rule the cut itself was corrected by, applied one level down."
+
 data cli_run_live_scale_receipt: String = "cli_run.rs LIVE SCALE is measured at execution by scripts/rust_item_census.py (item identity primary, LOC secondary). cli_run_hollowing_plan §0 prose (26,773 LOC dated 2026-07-23) is stale. seed-shrink-census Chunk F (~4,165 LOC) remains the dissolution sign-off unit for CI orchestration only."
 
 type CliRunHandRustAreaDisposition
@@ -35,7 +39,7 @@ fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
       area_title: "CLI argv & bin dispatch",
       disposition: RetainedKernel,
       hollowing_plan_disposition: "seed-kernel-retained",
-      anchor_symbols: ["claim_batch", "claim_executor", "handle_run_with_options"]
+      anchor_symbols: ["claim_batch", "claim_executor"]
     },
     CliRunHandRustAreaRow {
       area_id: "2.3",
