@@ -295,3 +295,63 @@ firing" cannot turn it green.
 `gentle-dove-833`'s independent sentinel set contains it too. Two of my three miss names are in
 their six-name sentinel set (32 of my 34 firings), so those populations are entangled and neither
 is downstream of the checkpoint keying. The identity fix must not be sized as if it covers them.
+
+## 9. A third specimen at the same seam — and the ceiling on the whole mechanism
+
+### 9.1 `Hash`: a declared RHS silently replaced
+
+Found by `smart-ibex-716`. `src/v2/std/node.dag` declares `type Hash = Fnv1a64Structural`. The
+emitted crate contains `pub type Hash = v1_rt::Hash;`, and `v1_rt.rs` has `pub type Hash = String`.
+One emitted signature carries both spellings of the same type:
+
+```rust
+pub fn bag_hash_digest(empty: Hash, xs: Rc<Vec<v1_rt::Hash>>) -> Hash
+```
+
+It was raised as a possible *prelude* substitution — a collision with a seed runtime type that need
+not be in the compiled corpus, and therefore possibly out of reach of declaration-identity keying.
+**Traced, it is neither.** `dag/extdeps/languages/rust/types.dag` carries a checkpoint row
+`{ dag_name: "Hash", target_type: "v1_rt::Hash", … }`, and the alias-declaration arm of
+`05_emit_rust` is:
+
+```
+match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: …) {
+  Present { value: host } => "pub type <item_text> = <host>;"        // declared RHS DISCARDED
+  Absent                  => "pub type <item_text> = <rendered RHS>;"
+}
+```
+
+`item_text` is the alias's **own authored name**, and `rust_scalar_checkpoint_render_base` is
+`lookup_checkpoint` keyed on that bare string. So the RHS is discarded for exactly one reason: the
+alias's name matches a row in the realization table. Same seam as `Bool`, same key, same fix —
+keying the relation on resolved declaration identity makes the row name the kernel `Hash`
+declaration, so `v2.std.node.Hash` no longer matches and renders its real RHS.
+
+The "not in the corpus" worry is answerable too: kernel declarations are not nameless. `00_core`
+`kernel_span` mints the file `<kernel:Hash>` and `hash_type` carries it as its `ident_span`; `04_env`
+`source_tree_of` already treats `<kernel:` as its own tree. The kernel side has a stable identity
+to key a row to.
+
+This is **stronger evidence than `Bool`**: `bool` is at least a plausible realization of a type
+spelled `Bool`, whereas here a declared algebraic RHS is replaced by `String` with nothing about
+the declaration inviting it.
+
+### 9.2 The ceiling — stated as part of the claim, not left for a reviewer
+
+`smart-ibex-716` partitioned the whole corpus against this mechanism:
+
+| | sites |
+|---|---:|
+| directly attributable to name-keying | 253 |
+| exposed-but-not-caused | 110 |
+| **not** attributable (shape, ownership, required traits) | ~1,500 |
+
+**Name-keying is ~13.5% of the wall. It is not the wall.** Three independent structural
+confirmations (`Bool`, `Nat`/algebra carrier, `Hash`) do not change that denominator, and this
+receipt does not claim otherwise.
+
+Two consequences I hold myself to. The 110 exposed-but-not-caused sites are **not** mine to annex:
+§6.3 measured them appearing when the mask came off, which makes them evidence of ordering defects
+underneath the carrier, not members of this population. And the corpus denominator is
+`smart-ibex-716`'s seven-module census, not my 74 — which came from `06_translate` because that is
+where I probed. The two numbers answer different questions and must not be averaged.
