@@ -1,0 +1,37 @@
+module test.claim.spark_serving_effect_wire_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY VARIANT REACHES ITS OWN ARM. Removing the wildcard is only half the fix; the other half is
+// that the twelve bare names really are variant PATTERNS. A bare lowercase-or-not name in pattern
+// position could bind instead of match, and a binder in the first arm would swallow every later
+// effect -- reinstating the wildcard invisibly and making the exhaustiveness look real while one
+// arm answered for all of them. This distinguishes those two worlds by execution: under a binder
+// every call below returns the first non-linger arm's string.
+test fn w_each_serving_effect_wires_to_its_own_name() -> Bool {
+  fleet_converge_spark_serving_effect_wire(effect: EnableLingerForOwnAccount) == "EnableLingerForOwnAccount"
+    && fleet_converge_spark_serving_effect_wire(effect: WriteSystemUnitFile) == "WriteSystemUnitFile"
+    && fleet_converge_spark_serving_effect_wire(effect: ReloadSystemManager) == "ReloadSystemManager"
+    && fleet_converge_spark_serving_effect_wire(effect: EnableSystemUnit) == "EnableSystemUnit"
+    && fleet_converge_spark_serving_effect_wire(effect: WriteUserUnitFile) == "WriteUserUnitFile"
+    && fleet_converge_spark_serving_effect_wire(effect: ReloadUserManager) == "ReloadUserManager"
+    && fleet_converge_spark_serving_effect_wire(effect: EnableUserUnit) == "EnableUserUnit"
+    && fleet_converge_spark_serving_effect_wire(effect: InstallRuntimePackage) == "InstallRuntimePackage"
+    && fleet_converge_spark_serving_effect_wire(effect: InstallOwnedRuntimeClosure) == "InstallOwnedRuntimeClosure"
+    && fleet_converge_spark_serving_effect_wire(effect: PullModelArtifact) == "PullModelArtifact"
+    && fleet_converge_spark_serving_effect_wire(effect: GrantContainerRuntimeAccess) == "GrantContainerRuntimeAccess"
+    && fleet_converge_spark_serving_effect_wire(effect: RunContainerAsOwnUser) == "RunContainerAsOwnUser"
+}
+
+// AND THE NAMES ARE DISTINCT, so the assertion above cannot be satisfied by a fold that returns one
+// constant. Twelve equalities against twelve different literals is the discriminating shape; this
+// pins that no two arms collapsed onto the same wire label.
+test fn w_no_two_effects_share_a_wire_label() -> Bool {
+  fleet_converge_spark_serving_effect_wire(effect: WriteSystemUnitFile)
+    != fleet_converge_spark_serving_effect_wire(effect: WriteUserUnitFile)
+    && fleet_converge_spark_serving_effect_wire(effect: ReloadSystemManager)
+      != fleet_converge_spark_serving_effect_wire(effect: ReloadUserManager)
+    && fleet_converge_spark_serving_effect_wire(effect: EnableSystemUnit)
+      != fleet_converge_spark_serving_effect_wire(effect: EnableUserUnit)
+}

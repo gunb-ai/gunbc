@@ -38,7 +38,12 @@ fn altra_pin_summary_total() -> Int {
 // named: a pin-map module with no import edge to the CPU catalog it claims to bound, joining
 // its completeness check against a denominator that could drift away from the socket fact
 // independently.
-data altra_fclga_socket: CpuSocket = altra_max_m12830_catalog.socket
+// DE-FORKED 2026-08-15. This read altra_max_m12830_catalog.socket — the ALTRA MAX M128-30 row —
+// inside a module named for the Altra package, so a family mechanical fact was sourced from one
+// specific product of the other family. The value was correct, which is exactly why it survived:
+// both families are LGA4926, so every witness passed and nothing could have caught it by
+// execution. It now reads the family authority, which is what it always meant.
+data altra_fclga_socket: CpuSocket = ampere_lga4926_socket
 
 fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count

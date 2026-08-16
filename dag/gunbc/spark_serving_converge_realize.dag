@@ -25,6 +25,10 @@ fn spark_serving_enable_linger_remote_argv(login: std.types.NonEmptyStr) -> Spar
   )
 }
 
+// NO WILDCARD, and the refusal now NAMES the effect. The wildcard refused correctly but said only
+// that something other than linger was asked for, so a thirteenth variant would have been absorbed
+// into that same sentence rather than forcing a decision. Each unimplemented effect refuses under
+// its own name; adding a variant makes this non-exhaustive instead of silently refusing.
 fn realize_spark_serving_install_effect_argv(
   effect: gunbc.spark_serving_realization.ServingInstallEffect,
   executor_login: std.types.NonEmptyStr,
@@ -32,9 +36,49 @@ fn realize_spark_serving_install_effect_argv(
   match effect {
     gunbc.spark_serving_realization.EnableLingerForOwnAccount =>
       spark_serving_enable_linger_remote_argv(login: executor_login)
-    _ =>
+    WriteSystemUnitFile =>
       SparkServingInstallRemoteArgvRefused {
-        reason: "spark_serving_converge_realize: only EnableLingerForOwnAccount is implemented in the linger vertical slice",
+        reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the linger vertical slice",
+      }
+    ReloadSystemManager =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the linger vertical slice",
+      }
+    EnableSystemUnit =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the linger vertical slice",
+      }
+    WriteUserUnitFile =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: WriteUserUnitFile is not implemented in the linger vertical slice",
+      }
+    ReloadUserManager =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: ReloadUserManager is not implemented in the linger vertical slice",
+      }
+    EnableUserUnit =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: EnableUserUnit is not implemented in the linger vertical slice",
+      }
+    InstallRuntimePackage =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the linger vertical slice",
+      }
+    InstallOwnedRuntimeClosure =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: InstallOwnedRuntimeClosure is not implemented in the linger vertical slice",
+      }
+    PullModelArtifact =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: PullModelArtifact is not implemented in the linger vertical slice",
+      }
+    GrantContainerRuntimeAccess =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the linger vertical slice",
+      }
+    RunContainerAsOwnUser =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the linger vertical slice",
       }
   }
 }

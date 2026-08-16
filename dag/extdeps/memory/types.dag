@@ -60,6 +60,38 @@ type JedecDdrGenerationCatalogRow {
 
 type DimmBuffering = Unbuffered | Registered | LoadReduced
 
+// DIE STACKING IS ORTHOGONAL TO BUFFERING, and this axis exists because a real controller
+// authority stated a class the buffering axis alone cannot name. The Ampere Altra Rev A1
+// datasheet Issue 1.50 admits "RDIMMs, LRDIMMs, and Stacked (3DS) RDIMMs" — three classes over
+// two axes, not three points on one. A 3DS RDIMM is registered AND stacked; folding it into
+// DimmBuffering as a fourth variant would make "registered, monolithic" and "registered, 3DS"
+// indistinguishable in the buffering field while claiming to be a buffering fact.
+//
+// 3DS is through-silicon-via die stacking presenting multiple logical ranks behind one physical
+// package load, which is precisely why a controller can admit it separately from ordinary
+// registered modules: the electrical load and the rank arithmetic differ.
+type DramDieStacking = MonolithicDie | ThreeDimensionalStacked
+
+// The module class a controller admits, as the product of the two independent axes. Carried as a
+// record rather than an enum of named combinations so that a newly admitted pairing is a value,
+// never a new variant every consumer must re-match.
+type DramModuleClass {
+  buffering: DimmBuffering
+  stacking: DramDieStacking
+}
+
+fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
+  (match a.buffering {
+    Unbuffered => match b.buffering { Unbuffered => true  Registered => false  LoadReduced => false }
+    Registered => match b.buffering { Registered => true  Unbuffered => false  LoadReduced => false }
+    LoadReduced => match b.buffering { LoadReduced => true  Unbuffered => false  Registered => false }
+  })
+    && (match a.stacking {
+      MonolithicDie => match b.stacking { MonolithicDie => true  ThreeDimensionalStacked => false }
+      ThreeDimensionalStacked => match b.stacking { ThreeDimensionalStacked => true  MonolithicDie => false }
+    })
+}
+
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: Vendor<Hardware>

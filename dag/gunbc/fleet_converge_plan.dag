@@ -256,10 +256,26 @@ type FleetConvergePlanArtifact {
   spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
 }
 
+// NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
+// variant would have landed as "UnmodeledServingInstallEffect" and read as a legitimate wire label
+// that simply missed. Every variant now names itself, so the wire string says WHICH effect was
+// asked for, and adding a variant makes this match non-exhaustive rather than defaulting.
+// Behaviour for the implemented slice is unchanged: EnableLingerForOwnAccount is still the only
+// effect the linger vertical realizes.
 fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> String {
   match effect {
     EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
-    _ => "UnmodeledServingInstallEffect"
+    WriteSystemUnitFile => "WriteSystemUnitFile"
+    ReloadSystemManager => "ReloadSystemManager"
+    EnableSystemUnit => "EnableSystemUnit"
+    WriteUserUnitFile => "WriteUserUnitFile"
+    ReloadUserManager => "ReloadUserManager"
+    EnableUserUnit => "EnableUserUnit"
+    InstallRuntimePackage => "InstallRuntimePackage"
+    InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
+    PullModelArtifact => "PullModelArtifact"
+    GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
+    RunContainerAsOwnUser => "RunContainerAsOwnUser"
   }
 }
 

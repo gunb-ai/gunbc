@@ -111,6 +111,19 @@ data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
   },
 ]
 
+// THE SOCKET IS A FAMILY FACT AND NOW HAS ONE HOME. Every Altra and Altra Max part is LGA4926,
+// and the package mechanicals are stated family-wide by the platform specification and the
+// datasheet's mechanical section rather than per SKU. Until now each catalog row minted its own
+// CpuSocket literal and extdeps.cpu.ampere_altra_package reached through the M128-30 row — an
+// ALTRA MAX part — to obtain the socket for a module named for Altra.
+//
+// That is the §3 fork in its quiet form: nothing was wrong with the VALUE, since both parts really
+// do share the socket, so no witness could fail. What was wrong is that a family fact had no
+// authority, and one product's row was silently standing in as one. The cost lands the first time
+// a Max-specific fact rides that reference, or the first time someone edits the Max row believing
+// it governs only Max.
+data ampere_lga4926_socket: CpuSocket = CpuSocket { package: LandGridArray, contact_count: 4926 }
+
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
@@ -119,7 +132,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 128,
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
-  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  socket: ampere_lga4926_socket,
   tdp_watts: watt(183),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -137,7 +150,7 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 64,
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
-  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  socket: ampere_lga4926_socket,
   tdp_watts: watt(124),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,

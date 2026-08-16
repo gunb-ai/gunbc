@@ -1,5 +1,8 @@
 module product.altra_motherboard.minimal_design
 
+// The admitted channel populations and the production/bring-up qualifier are CITED VENDOR FACTS,
+// consumed from the datasheet authority rather than re-modelled here. They were authored in this
+// module first; re-homing them upstream is what keeps one contract from having two homes.
 
 // THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the
 // distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active
@@ -10,27 +13,6 @@ module product.altra_motherboard.minimal_design
 // why the channel count is selected against a declared INTENT here rather than chosen as a scalar
 // — the same count is admissible for one purpose and refused for another, which a bare Int cannot
 // express.
-// THE ADMITTED SET IS THE VENDOR'S, NOT AN ARITHMETIC RANGE. Three, five and seven active
-// channels are not slow configurations, they are unsupported ones — the controller populations
-// the part admits are enumerated, so this is a closed coproduct rather than an Int with a bound.
-// A range check would admit 3 and a comment would have to explain why nobody may use it.
-type ActiveDdrChannelCount
-  = OneChannel
-  | TwoChannels
-  | FourChannels
-  | SixChannels
-  | EightChannels
-
-fn active_channel_count(c: ActiveDdrChannelCount) -> Int {
-  match c {
-    OneChannel => 1
-    TwoChannels => 2
-    FourChannels => 4
-    SixChannels => 6
-    EightChannels => 8
-  }
-}
-
 // WHAT THE BOARD IS FOR, and it is a modelled fact because the vendor's admissibility depends on
 // it. An engineering bring-up board is a legitimate thing to build and the one- and two-channel
 // configurations exist precisely to serve it; what is not legitimate is building one and calling
@@ -39,18 +21,6 @@ type DesignIntent
   = EngineeringBringUp
   | Production
 
-// The vendor documents one- and two-channel operation as debug and bring-up. That is a property
-// of the CONFIGURATION, carried here so the refusal below reads off a fact rather than repeating
-// a threshold.
-fn channel_count_is_production_qualified(c: ActiveDdrChannelCount) -> Bool {
-  match c {
-    OneChannel => false
-    TwoChannels => false
-    FourChannels => true
-    SixChannels => true
-    EightChannels => true
-  }
-}
 
 type DesignRefusal
   = DebugOnlyChannelCountUnderProductionIntent { selected: Int }
