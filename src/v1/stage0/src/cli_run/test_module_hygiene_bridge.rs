@@ -1,6 +1,6 @@
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
-use crate::v1_interpreter::{self, sorted_fields, ExecutionMode, InterpContext, Value};
+use crate::v1_interpreter::{self, sorted_fields, str_value, ExecutionMode, InterpContext, Value};
 use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, ExprData, Node};
 use im::HashMap;
 use std::collections::{BTreeSet, HashSet};
@@ -28,7 +28,7 @@ pub(crate) fn is_file_grain_function(function: &str) -> bool {
 fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
     let roots = super::default_source_roots();
     let ctx = resolve_hygiene_ctx(&roots)?;
-    let args = [(Some("content".to_string()), Value::Str(content.to_string()))];
+    let args = [(Some("content".to_string()), str_value(content.to_string()))];
     let result =
         v1_interpreter::run_in_context_with_args(&ctx, "enumerate_entry_test_names", &args, false)
             .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
@@ -41,7 +41,7 @@ fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
     items
         .iter()
         .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
+            Value::Str(s) => Ok(s.to_string()),
             other => Err(format!(
                 "enumerate_entry_test_names element `{}` is not String",
                 ctx.format_value(other)
@@ -87,7 +87,7 @@ pub(crate) fn failure_receipt_companion_from_authority(
     };
     let args = [(
         Some("function".to_string()),
-        v1_interpreter::Value::Str(function.to_string()),
+        str_value(function.to_string()),
     )];
     let result = match v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -110,8 +110,8 @@ pub(crate) fn failure_receipt_companion_from_authority(
             ..
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
             match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(companion)) => {
-                    FailureReceiptCompanionLookup::Declared(companion.clone())
+                Some(Value::Str(companion)) => {
+                    FailureReceiptCompanionLookup::Declared(companion.to_string())
                 }
                 other => FailureReceiptCompanionLookup::AuthorityRefused {
                     cause: format!(
@@ -151,7 +151,7 @@ pub(crate) fn witness_verdict_diagnostic_companion_from_authority(
     };
     let args = [(
         Some("function".to_string()),
-        v1_interpreter::Value::Str(function.to_string()),
+        str_value(function.to_string()),
     )];
     let result = match v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -174,8 +174,8 @@ pub(crate) fn witness_verdict_diagnostic_companion_from_authority(
             ..
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
             match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(companion)) => {
-                    FailureReceiptCompanionLookup::Declared(companion.clone())
+                Some(Value::Str(companion)) => {
+                    FailureReceiptCompanionLookup::Declared(companion.to_string())
                 }
                 other => FailureReceiptCompanionLookup::AuthorityRefused {
                     cause: format!(
@@ -231,9 +231,9 @@ pub(crate) fn expand_explicit_entries(
         inputs.push(Value::Record {
             type_name: ctx.sym("ExplicitExpandInput"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("entry"), Value::Str(entry.clone())),
-                (ctx.sym("function"), Value::Str(function.clone())),
-                (ctx.sym("content"), Value::Str(content)),
+                (ctx.sym("entry"), str_value(entry.clone())),
+                (ctx.sym("function"), str_value(function.clone())),
+                (ctx.sym("content"), str_value(content)),
             ])),
         });
     }
@@ -258,7 +258,7 @@ pub(crate) fn expand_explicit_entries(
             && ctx.sym_eq(*variant_name, "Refused") =>
         {
             match ctx.field(fields, "reason") {
-                Some(Value::Str(reason)) => Err(reason.clone()),
+                Some(Value::Str(reason)) => Err(reason.to_string()),
                 _ => Err("ExpandExplicitPairsOutcome.Refused missing reason".to_string()),
             }
         }
@@ -285,11 +285,11 @@ pub(crate) fn expand_explicit_entries(
                     );
                 };
                 let entry = match ctx.field(fields, "entry") {
-                    Some(Value::Str(s)) => s.clone(),
+                    Some(Value::Str(s)) => s.to_string(),
                     _ => return Err("ExplicitEntryPair missing entry".to_string()),
                 };
                 let function = match ctx.field(fields, "function") {
-                    Some(Value::Str(s)) => s.clone(),
+                    Some(Value::Str(s)) => s.to_string(),
                     _ => return Err("ExplicitEntryPair missing function".to_string()),
                 };
                 out.push((entry, function));
