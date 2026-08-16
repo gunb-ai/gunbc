@@ -164,9 +164,77 @@ currently blocked behind defects that are not eval's and cannot be fixed from in
 Consequence: **neither session fixes this per-module.** Root ownership is assigned here once the
 partition is confirmed, so the two lanes work disjoint roots rather than the same wall twice.
 
-| root | owner | status |
-|---|---|---|
-| (partition pending H1/H2 confirmation) | — | not yet assigned |
+| root | share | owner | status |
+|---|---:|---|---|
+| **A — generic trait bounds not emitted** | ~590 | smart-ram-730 | taking now |
+| **B — primitive representation fork** | ~196 | unassigned | |
+| **C — Optional collapses to `()` in nested type-arg position** | ~169 | gentle-dove-833 | emitter already instrumented |
+| **D — generic argument count** | ~76 | unassigned | |
+| **E — unreachable patterns** | 126 | unassigned | lint-class, lowest value |
+| **F — E0282 type annotations needed** | 55 | unassigned | may dissolve with A |
+
+## 8. The partition, from cause signatures (this supersedes the by-error-code view)
+
+**`docs/probes/canonical_seven_cause_signature_attribution_2026-07-28.tsv`** already exists in
+tree and answers the question §4 was still hypothesizing about. It groups by CAUSE SIGNATURE
+rather than error code — E0308 by concrete expected/found pair, E0599 by receiver + missing
+method, E0277 by unsatisfied trait + self type — over one clean build of the same assembled
+crate. **233 signatures across 2,898 diagnostics.**
+
+Found via the side channel; verified in tree before use. Its existence means **H2 is refuted**:
+there is no single global top-three root. But grouping the signatures shows far fewer roots than
+233, and the top one is not what the by-code view suggested.
+
+**Root A — the emitter does not emit trait bounds on generic parameters (~590, the largest).**
+One root wearing five signatures:
+
+```
+206  E0599: no method `clone` found for type parameter `T`
+181  E0277: bound `T: Clone` not satisfied
+ 84  E0599: `is_empty` exists for Rc<im::Vector<T>> but trait bounds not satisfied
+ 63  E0599: `clone` exists for Outcome<T> but trait bounds not satisfied
+ 56  E0599: `iter` exists for im::Vector<T> but trait bounds not satisfied
+   + E0277 bounds for U/A/B: Clone, Node: Hash, Node: Eq, EnvironmentBindingKey: Hash
+```
+
+Emit `fn f<T>(…)` where the body clones a `T`, or hand a `T` to a container that requires
+`Clone`, and rustc refuses at every use site. "exists but its trait bounds were not satisfied"
+is rustc naming this directly. Mechanically uniform and closure-wide, so it is floor.
+
+**Root B — primitive representation fork (~196).** DESIGN's open thread, now with counts:
+
+```
+60  expected `bool`  found `Bool`                              modeled Bool vs native bool
+50  expected `Rc<Nat>` found `{integer}`                       modeled Nat vs native int
+40  expected `Rc<CommutativeSemiring<Magnitude>>` found `{integer}`
+33  expected `Rc<Rc<CommutativeSemiring<Magnitude>>>` found `{integer}`
+10  expected `Rc<v2_std_nat::Nat>` found `{integer}`
+ 3  expected `bool` found `True`
+```
+
+**Root C — Optional collapses to `()` (~169).** 134 `expected () found Option<_>` plus 35
+`expected Rc<Correction> found Option<_>`. Mechanism established by gentle-dove-833 by
+instrumenting the emitter (91 hits on `Absent`); see §4. Open question owned with the root:
+the node is ALREADY named `Absent` at the emitter, so the mis-resolution is upstream and
+patching `rust_type_arg_renders_as_unit` would be validation, not construction.
+
+**Root D — generic argument count (~76).** `E0107: type alias takes 0 generic arguments but 1
+was supplied` (48) and `missing generics for enum Witness` (28).
+
+**Root E — unreachable patterns (126, 54 files).** A lint, not a type error. Lowest value.
+
+**Root F — E0282 type annotations needed (55, 37 files).** May dissolve with A, since an
+unbounded generic often also fails to infer. Do not work it before A lands.
+
+A+B+C+D is ~1,031 of 2,898 — **36% in four roots**, and A alone is ~20%. Whatever remains after
+those four is the tail worth re-censusing, not worth planning against now.
+
+**Prior art not to re-derive.** `docs/probes/` already holds `e0599_diagnosis_2026-07-26.md`,
+`e0599_phase_a_body_evidence_2026-07-28.md`, `e0599_phase_b0_emitter_decision_2026-07-29.md`,
+`e0277_trait_bound_census_2026-07-26.md`, `e0369_census_2026-07-26.md`,
+`gate1_repr_mismatch_e0308_diagnosis_2026-07-24.md`, and
+`root4_measure_missing_generics_closure_2026-07-26.md`. Read the one for your root before
+starting.
 
 ## 7. Open, and who is asked
 
