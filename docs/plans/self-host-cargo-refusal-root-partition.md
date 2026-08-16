@@ -644,3 +644,58 @@ ambiguous population is empty (single authority; deletes the class). The emitter
 fail-closed backstop and is required regardless — today an ambiguous name silently produces `()`
 rather than a typed located refusal, so the landed guard should **refuse**, not the non-empty-owner
 test used for measurement, which still silently proceeds.
+
+#### §10 — instance 3, QUALIFIED against the meta-root by a follow-up measurement (`gentle-dove-833`, 2026-08-16)
+
+**I claimed this was a third instance of "the emitter has never been exercised on a seed-free
+closure." That claim is now partly falsified, by my own instrument, and the qualification matters
+more than the instance did.**
+
+`derive_variant_to_enum`'s sentinel insert was instrumented to dump the ambiguous set per closure,
+and run on a pure-v2 entry and a seed entry under identical source roots:
+
+```
+src/v2/compiler/05_emit.dag   6 distinct ambiguous names:
+    Absent · Named · Optional · Repeat · Terminal · TypeExprKindAuthorityInvalid
+src/v1/05_emit_rust.dag       6 distinct ambiguous names:
+    Absent · AsAuthored · Bind · Named · SnakeCase · Text
+```
+
+**The seed closure is not protected.** It carries ambiguous names too — six of them, including
+`Absent`, which both closures share — and the emitter collapses them by the same predicate. So
+this mechanism **is** closure-shaped (the *set* is a function of closure membership, and the two
+sets genuinely differ) but it does **not** correlate in the direction the meta-root asserts: there
+is no favourable seed arm and unfavourable v2 arm here. Both closures take the same arm; the v2
+closure merely happens to have ambiguous names (`Optional`, `Absent`) that occupy far more type-arg
+positions.
+
+§10 names its own falsifier as "a third closure-shape branch that does NOT correlate." **This is
+that.** It does not touch Root B, whose path-substring branch is genuinely seed-vs-v2. It does mean
+the meta-root should be stated as *several independent decisions keyed off under-modeled closure
+facts* — which is how `eager-deer-389` already restated it — rather than as *the seed is the
+exercised configuration*, because at least one closure-shaped branch damages the seed equally.
+
+**A second correction, and it makes the finding smaller and much more actionable.** I described
+this as a state-space conflation in the carrier. Reading every consumer says otherwise: the other
+six read sites **already guard the sentinel** —
+
+```
+2031  Present { value: parent } => if parent != "" { concat(parent, "::", name) } else { name }
+2515  let enum_name = …; if enum_name == "" { [] } else { … }
+2873  Present { value: enum_name } => if enum_name == "" { [] } else { … }
+```
+
+Only line 705 does not, because `map_contains_key` cannot see the value. So this is **one consumer
+diverging from a convention its six siblings already follow**, not a design-wide gap. The minimal
+correct change restores the authority's own convention rather than inventing a rule.
+
+That said, the guard being hand-repeated at six sites is itself the §2 duplication that let the
+seventh omit it, so the terminal shape is still to make the value a coproduct
+(`Unowned | OwnedBy { enum } | Ambiguous { enums }`) so the conflated read has no constructor —
+and, per `smart-ram-730`'s sequencing, land the refusal first so the renames can be *verified* to
+empty the population instead of proving a negative against a silent predicate.
+
+**Also retracted here, since it was written against a premise `eager-deer-389` has now withdrawn:**
+my "Relation to the candidate above" paragraph assumed our two mechanisms shared the name `Absent`.
+They do not — theirs is the absent arm of an `Option` returned by `lookup_type_by_name`, not a
+corpus name. The three-run partition I proposed is cancelled; there was no overlap to partition.
