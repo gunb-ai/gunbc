@@ -237,6 +237,18 @@ already encode with cited authorities. The fix is the wire-through, not a better
 
 ## 9. Working agreements for this surface
 
+**A ROOT SIZE MEASURED IN DIAGNOSTICS IS NOT A COUNT OF DEFECTS** (`gentle-dove-833`, 2026-08-16).
+One emitter decision can produce several downstream rustc diagnostics, and the ratio is not 1 and
+not constant. Measured in this lane: 159 collapse **events** removed 158 E0308 and 139 total errors
+while **adding** 25 of a new class — the same events map to three different numbers depending on
+which side you count from, and none of them is the number of things wrong. So: report the **event**
+count with the instrument that produced it, and treat any diagnostic-denominated root size as an
+upper bound on defects with an unmeasured fan-out. The corollary: **a fix can reduce the total while
+revealing a class it had been masking**, so a shrinking total is not by itself evidence the root was
+correctly identified.
+
+
+
 Read before starting. These are all paid-for lessons from 2026-08-16.
 
 1. **Nothing in this document is current unless it names today's measurement.** The July TSVs
@@ -536,3 +548,76 @@ population. Cutting against a tidy version of it: the *same* flip introduced ~87
 through a **second, oppositely-directed** `corpus_repr` branch. So the meta-root is better stated as
 *several independent decisions are keyed off one under-modeled closure fact and disagree about which
 arm a pure-v2 closure wants* — not as one switch in the wrong position.
+
+### §10 — the third branch, CONFIRMED by execution (`gentle-dove-833`, 2026-08-16)
+
+**Instance 3, and it is not an `if` statement anyone wrote about closures — it is emergent from a
+fold, which is why reading did not find it.**
+
+`v1.compiler.emit_info` `derive_variant_to_enum` folds the **closure's** `type_summaries` into a
+`variant name → owning enum` map. When two enums in that closure claim the same variant name it
+inserts the empty string as an **ambiguity sentinel**:
+
+```
+Present { value: _ } => map_insert(inner, vn, "")          // claimed by 2+ enums → ambiguous
+Absent               => map_insert(inner, vn, summary.name)
+```
+
+`v1.compiler.emit_rust` `is_value_variant_type_arg` then reads that map with `map_contains_key`,
+**which ignores the value**. So an *ambiguously owned* name tests positive as a value-variant, and
+`rust_type_arg_renders_as_unit` collapses the type argument to `()`.
+
+Whether a name is ambiguous is a function of **which modules are in the closure**. Different
+closure, different ambiguity set, different collapse decisions, silently. That is the branch.
+
+**Measured, one entry (`src/v2/compiler/05_emit.dag`), live tree at `3473e57962`.** Instrumented at
+the predicate's positive arm, reporting the owner it ignored:
+
+```
+name Absent           owner ""                    91 positives
+name Optional         owner ""                    68 positives
+name AlgebraPrimitive owner "CanonicalOperation"   28
+name Time             owner "Quantity"             24
+… every other row carries a REAL owner
+```
+
+The two dominant names are the **only** two carrying the sentinel. Confirmed declarers:
+`Optional` is a variant of `v2.std.grammar` `GrammarExpr` **and** of `dag/std/constructors`
+`Cardinality`; `Absent` is a variant of `v2.std.optional` **and** of `dag/std/upsert_decision`.
+Ordinary §3 nickname collisions, invisible until the emitter reads them.
+
+**Effect, both arms measured on the same entry:**
+
+| | coded errors | E0308 | E0425 |
+|---|---|---|---|
+| baseline | 666 | 286 | 0 |
+| sentinel honored | **527** | **128** | 25 |
+
+−158 E0308 against 159 collapse events; −139 total. One predicate.
+
+**A retraction in the same measurement.** This lane previously reported the emitter was receiving
+the body's *constructed variant* type rather than the declared `Optional`, on arity evidence
+(`optional_absent()` fieldless → kids 0; `optional_present(value)` → kids 1). The arity evidence is
+real and still unexplained, but it is **not** the cause of the collapse: a *correctly spelled*
+`Optional` collapses too, for the ambiguity reason. Fixing inference alone would have moved 91
+events between buckets and fixed nothing.
+
+**The 25 new E0425 are honest residue, not a regression.** With the collapse gone, a type argument
+genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not exist. The
+mis-spelling was always there; unit-collapse was **fabricating plausible output** over it (§5). The
+arity finding survives as a real second defect, now typed and located instead of masked.
+
+**Relation to the candidate above.** eager-deer-389's `type_leaf_is_unbound_in_closure_scope`
+candidate also fires on `Absent`. These are *different* mechanisms on one name and neither
+subsumes the other; they should not be merged without a measurement showing one arm gates the other.
+
+**Not claimed:** that the seed closure lacks these collisions (the obvious next measurement, and it
+would make this structurally identical to Root B rather than analogous); any attribution of the
+remaining 527. The fix above was applied to the **generated** Rust as a probe and reverted — the
+authority is `src/v1/05_emit_rust.dag` `is_value_variant_type_arg` and nothing is landed.
+
+**The proper fix is construction-first and it is two things.** Rename the colliding variants so the
+ambiguous population is empty (single authority; deletes the class). The emitter guard is the
+fail-closed backstop and is required regardless — today an ambiguous name silently produces `()`
+rather than a typed located refusal, so the landed guard should **refuse**, not the non-empty-owner
+test used for measurement, which still silently proceeds.
