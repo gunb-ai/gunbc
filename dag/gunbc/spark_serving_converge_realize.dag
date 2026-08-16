@@ -2,10 +2,16 @@ module gunbc.spark_serving_converge_realize
 
 import std.types { String, List, NonEmptyStr, Bool }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
-import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark_serving_realization {
+  ServingInstallEffect,
+  EnableLingerForOwnAccount,
+  ReloadUserManager,
+  EnableUserUnit,
+}
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
-data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to admitted portable remote argv — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Linger slice: [sudo, -n, loginctl, enable-linger, login] with no interpolation."
+data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to admitted portable remote argv — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Realized arms: EnableLingerForOwnAccount [sudo, -n, loginctl, enable-linger, login]; ReloadUserManager [systemctl, --user, daemon-reload]; EnableUserUnit [systemctl, --user, enable, --now, unit] — no interpolation, unit basename from gunbc.spark_serving_unit_identity. Every other effect refuses; a sequence containing one refuses whole."
 
 // A SEQUENCE OF COMMANDS, NOT ONE ARGV. This carrier previously held a single List<String> and
 // the effects fold appended with concat, which concatenated argv WORDS across effects. That is
@@ -39,16 +45,36 @@ fn spark_serving_enable_linger_remote_argv(login: NonEmptyStr) -> SparkServingIn
   )
 }
 
-fn realize_spark_serving_install_effect_argv(
+// USER SCOPE, NO SUDO. These two act on the invoking account's own systemd manager, which is why
+// they carry no sudo and no login argument: the account is established by the ssh session, not
+// named in the argv. Interpolating a login here would be a second, forgeable statement of who is
+// acting. The unit basename comes from gunbc.spark_serving_unit_identity, the same authority the
+// observe probe reads, so the unit enabled and the unit observed cannot drift apart.
+fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(raws: ["systemctl", "--user", "daemon-reload"])
+}
+
+// enable --now, matching the fleet_converge_timer precedent: the frozen effect order places
+// PullModelArtifact AFTER EnableUserUnit, and pulling a model targets the RUNNING server, so the
+// unit must be started here rather than left enabled-but-inactive for a later effect to start.
+fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    raws: ["systemctl", "--user", "enable", "--now", spark_serving_unit_name],
+  )
+}
+
+fn realize_spark_serving_install_effect_command(
   effect: ServingInstallEffect,
   executor_login: NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match effect {
     EnableLingerForOwnAccount =>
       spark_serving_enable_linger_remote_argv(login: executor_login)
+    ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
+    EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
     _ =>
       SparkServingInstallRemoteCommandsRefused {
-        reason: "spark_serving_converge_realize: only EnableLingerForOwnAccount is implemented in the linger vertical slice",
+        reason: "spark_serving_converge_realize: effect has no realization yet — realized arms are EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit; the rest refuse rather than actuate an unmodeled command",
       }
   }
 }
@@ -56,7 +82,7 @@ fn realize_spark_serving_install_effect_argv(
 // The concat here appends COMMANDS, not words. That is the whole difference from the prior
 // shape: each effect contributes one or more complete argvs, and the list preserves the order
 // the effects were frozen in.
-fn realize_spark_serving_install_effects_argv(
+fn realize_spark_serving_install_effect_commands(
   effects: List<ServingInstallEffect>,
   executor_login: NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
@@ -67,7 +93,7 @@ fn realize_spark_serving_install_effects_argv(
       match acc {
         SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
         SparkServingInstallRemoteCommandsPresent { commands: prior } =>
-          match realize_spark_serving_install_effect_argv(
+          match realize_spark_serving_install_effect_command(
             effect: effect,
             executor_login: executor_login,
           ) {
@@ -83,7 +109,7 @@ fn realize_spark_serving_install_effects_argv(
   )
 }
 
-fn spark_serving_install_remote_argv_refused(v: SparkServingInstallRemoteCommandsVerdict) -> Bool {
+fn spark_serving_install_remote_commands_refused(v: SparkServingInstallRemoteCommandsVerdict) -> Bool {
   match v {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
     SparkServingInstallRemoteCommandsPresent { commands: _ } => false

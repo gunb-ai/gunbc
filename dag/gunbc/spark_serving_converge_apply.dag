@@ -7,8 +7,8 @@ import gunbc.fleet_converge_plan {
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_converge_realize {
-  realize_spark_serving_install_effects_argv,
-  spark_serving_install_remote_argv_refused,
+  realize_spark_serving_install_effect_commands,
+  spark_serving_install_remote_commands_refused,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
@@ -20,7 +20,7 @@ import gunbc.typed_argv_exec {
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 
-data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv; actuation routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits an ORDERED SEQUENCE of portable remote argvs (never one fused argv); actuation runs them in order, halting at the first failure, and routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
 
 type SparkServingFrozenApplyResult =
     SparkServingFrozenApplied { remote_commands: List<List<String>>, effect_count: Int }
@@ -40,23 +40,23 @@ fn spark_serving_apply_reads_frozen_typed_rows(
     }
   } else {
     let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
-    let argv_verdict = realize_spark_serving_install_effects_argv(
+    let commands_verdict = realize_spark_serving_install_effect_commands(
       effects: frozen_effects,
       executor_login: spark_serving_automation_principal_login(),
     )
-    if spark_serving_install_remote_argv_refused(v: argv_verdict) {
-      match argv_verdict {
+    if spark_serving_install_remote_commands_refused(v: commands_verdict) {
+      match commands_verdict {
         SparkServingInstallRemoteCommandsRefused { reason: why } =>
           SparkServingFrozenApplyRefused {
             reason: concat("spark_serving_converge_apply: ", why),
           }
         SparkServingInstallRemoteCommandsPresent { commands: _ } =>
           SparkServingFrozenApplyRefused {
-            reason: "spark_serving_converge_apply: remote argv refused verdict disagreed with shape",
+            reason: "spark_serving_converge_apply: remote commands refused verdict disagreed with shape",
           }
       }
     } else {
-      match argv_verdict {
+      match commands_verdict {
         SparkServingInstallRemoteCommandsPresent { commands: remote_commands } =>
           SparkServingFrozenApplied {
             remote_commands: remote_commands,
