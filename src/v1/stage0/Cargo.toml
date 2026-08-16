@@ -105,14 +105,6 @@ path = "src/bin/realization_sweep_survey.rs"
 name = "v2_whole_tree_parse_scan"
 path = "src/bin/v2_whole_tree_parse_scan.rs"
 
-# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
-# which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
-# SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
-# and the floor covers it via the standard dag_compile_clean_gate.
-[[bin]]
-name = "v1_src_dag_parse"
-path = "src/bin/v1_src_dag_parse.rs"
-
 # Whole-tree wiring-liveness scan (gunbc#5364 widening): runs
 # wiring_liveness_corpus_dead_wires over a context built across the WHOLE
 # source-root corpus in one pass, so a dead wire ANYWHERE (not just inside a

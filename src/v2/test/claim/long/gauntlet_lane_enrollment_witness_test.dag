@@ -47,6 +47,20 @@ fn synthetic_pr_row() -> CommitCheckEnrollment {
   }
 }
 
+// THE NEGATIVE CONTROL'S SURFACE LIST IS ITS ENTIRE SUBJECT, and it was inverted by the v1
+// cut before being restored here. The row must ride surfaces that execute NOTHING for a
+// witness while still LOOKING enrolled — that is the exact ~54-dark-file shape
+// bare_deenrollment_wall_note describes. It carried [GitPrePushHook, GithubActionsCiRegenJob],
+// both non-counting for a witness. The cut retired the regen surface and substituted
+// GithubActionsCiJob at every site mechanically; here that turned the row into one that IS
+// enrolled, so roster_has_no_bare_deenrolled_witness answered true CORRECTLY and the negation
+// went false. The predicate never broke — the specimen stopped being a specimen. Nothing about
+// the row's SHAPE changed (two surfaces, one of them a hook), which is why the substitution
+// type-checked and read as a rename: the failure resembled the success. GitPrePushHook is now
+// the only surface counting for neither kind (gate_enrollment_surface_asymmetry_note), so the
+// row rides it alone — matching synthetic_bare_deenrolled_gate_row, whose identical list was
+// left untouched by the cut and which is exactly why the gate half kept discriminating while
+// this half did not.
 fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -55,7 +69,7 @@ fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
-    surfaces: [GitPrePushHook, GithubActionsCiJob]
+    surfaces: [GitPrePushHook]
   }
 }
 

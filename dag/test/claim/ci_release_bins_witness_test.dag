@@ -75,6 +75,23 @@ test fn witness_unenrolled_ensure_built_refuses_not_enrolled() -> Bool {
   }
 }
 
+// FLOOR MOVED 19 -> 18 BY A DECLARED REMOVAL, not by a re-measure. The v1 cut retired the
+// v1_src_dag_parse bin: its corpus src/v1/*.dag is now empty, so the bin took its own
+// fail-closed empty-corpus arm and its witness and transport are gone with it. Receipt and
+// full reasoning: gunbc.proactive_verification_ledger v1_src_dag_parse_retirement_receipt.
+//
+// WHAT THIS LITERAL IS, STATED HONESTLY because DESIGN section 5 governs it. It is a one-sided
+// count ratchet over a HAND-AUTHORED list, not an identity join and not an external authority,
+// so it is the weaker of the two shapes that section admits and it is kept here only because
+// its DIRECTION is protective: it cannot say which bin left, only that the pack shrank, which
+// is exactly enough to force a human disposition on any shrink. It is decremented rather than
+// re-derived, since automating the update would collapse it to measure() == measure(). The
+// completeness direction — that nothing enrolled is silently omitted from the pack — is carried
+// by witness_pack_includes_every_floor_invoked and witness_pack_includes_every_witness_declared,
+// which ARE identity joins; this row is not their substitute and does not duplicate them.
+// Dissolve-on: the host census named in ci_release_bins_authority_note derives
+// witness_declared_release_bins from production WitnessBin.bin_name literals, at which point
+// the roster is a closed discovered universe and this count retires in favour of that join.
 test fn witness_pack_count_floor() -> Bool {
-  ci_floor_required_artifact_names().length() >= 19
+  ci_floor_required_artifact_names().length() >= 18
 }
