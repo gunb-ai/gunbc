@@ -82,18 +82,26 @@ run_probe_bounded() {
   local label="$1"
   local bin="$2"
   local outfile="$3"
-  echo "=== Running $label (large mode, ulimit -v $MEM_LIMIT_KB, timeout ${TIMEOUT_SEC}s) ==="
+  local eval_memo="${4:-0}"
+  local targets="${5:-}"
+  echo "=== Running $label (large mode, GUNBC_EVAL_MEMO=$eval_memo, ulimit -v $MEM_LIMIT_KB, timeout ${TIMEOUT_SEC}s) ==="
   {
     echo "# label=$label"
+    echo "# GUNBC_EVAL_MEMO=$eval_memo"
     echo "# host=$(uname -a)"
     echo "# date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# mem_limit_kb=$MEM_LIMIT_KB timeout_sec=$TIMEOUT_SEC"
-    echo "# command: JSON_PARSE_PROBE_MODE=large $bin"
+    echo "# command: GUNBC_EVAL_MEMO=$eval_memo JSON_PARSE_PROBE_MODE=large $bin"
     echo "#"
     set +e
     (
       ulimit -v "$MEM_LIMIT_KB"
-      JSON_PARSE_PROBE_MODE=large timeout "$TIMEOUT_SEC" "$bin" &
+      if [ -n "$targets" ]; then
+        export JSON_PARSE_PROBE_TARGETS="$targets"
+      else
+        unset JSON_PARSE_PROBE_TARGETS || true
+      fi
+      GUNBC_EVAL_MEMO="$eval_memo" JSON_PARSE_PROBE_MODE=large timeout "$TIMEOUT_SEC" "$bin" &
       pid=$!
       peak_kb=0
       while kill -0 "$pid" 2>/dev/null; do
@@ -119,23 +127,26 @@ run_probe_bounded() {
       124) echo "# outcome=timeout" ;;
       *) echo "# outcome=failed" ;;
     esac
+    return 0
   } | tee "$outfile"
 }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-run_probe_bounded "pre-string" "$PRE_BIN" "$RESULTS_DIR/large-pre-string-${TS}.txt"
-run_probe_bounded "post-rc-str" "$POST_BIN" "$RESULTS_DIR/large-post-rc-str-${TS}.txt"
+# Primary receipt: memo OFF (true first-call parse cost).
+run_probe_bounded "pre-string-memo0" "$PRE_BIN" "$RESULTS_DIR/large-pre-string-memo0-${TS}.txt" 0
+run_probe_bounded "post-rc-str-memo0" "$POST_BIN" "$RESULTS_DIR/large-post-rc-str-memo0-${TS}.txt" 0
+run_probe_bounded "post-rc-str-memo-on" "$POST_BIN" "$RESULTS_DIR/large-post-rc-str-memo-on-${TS}.txt" 1 "100000,200000"
 
-# Summary TSV for PR body / receipts.
 SUMMARY="$RESULTS_DIR/large-regime-summary-${TS}.tsv"
 {
-  echo -e "label\ttarget_bytes\tactual_bytes\toutcome\telapsed_ms\texit_code\tpeak_rss_kb"
-  for f in "$RESULTS_DIR/large-pre-string-${TS}.txt" "$RESULTS_DIR/large-post-rc-str-${TS}.txt"; do
+  echo -e "label\tGUNBC_EVAL_MEMO\ttarget_bytes\tactual_bytes\toutcome\tmembers_found\tfirst_call_ms\texit_code\tpeak_rss_kb"
+  for f in "$RESULTS_DIR"/large-*-"${TS}".txt; do
     label="$(grep '^# label=' "$f" | cut -d= -f2)"
+    eval_memo="$(grep '^# GUNBC_EVAL_MEMO=' "$f" | cut -d= -f2)"
     exit_code="$(grep '^# exit_code=' "$f" | cut -d= -f2)"
     peak="$(grep '^# peak_rss_kb=' "$f" | cut -d= -f2)"
-    grep -E '^[0-9]+\t' "$f" | while IFS=$'\t' read -r target members actual outcome elapsed; do
-      echo -e "${label}\t${target}\t${actual}\t${outcome}\t${elapsed}\t${exit_code}\t${peak}"
+    grep -E '^[0-9]+\t' "$f" | while IFS=$'\t' read -r target members actual outcome members_found first_ms; do
+      echo -e "${label}\t${eval_memo}\t${target}\t${actual}\t${outcome}\t${members_found}\t${first_ms}\t${exit_code}\t${peak}"
     done
   done
 } >"$SUMMARY"

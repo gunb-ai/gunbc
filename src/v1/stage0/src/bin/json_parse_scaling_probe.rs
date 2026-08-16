@@ -65,11 +65,49 @@ fn json_object_at_least_bytes(target_bytes: usize) -> (usize, String) {
 
 #[derive(Debug)]
 enum ParseOutcome {
-    Ok { elapsed_ms: f64 },
+    Parsed {
+        elapsed_ms: f64,
+        members_found: usize,
+    },
+    MemberMismatch {
+        members_found: usize,
+        expected: usize,
+    },
     Refused,
 }
 
-fn parse_json_once(ctx: &v1_interpreter::InterpContext, json: &str) -> ParseOutcome {
+fn field_by_name<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &'a [(v1_interpreter::Symbol, Value)],
+    name: &str,
+) -> Option<&'a Value> {
+    let key = ctx.sym(name);
+    fields.iter().find(|(sym, _)| *sym == key).map(|(_, v)| v)
+}
+
+fn json_object_member_count(ctx: &v1_interpreter::InterpContext, val: &Value) -> Option<usize> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = val
+    else {
+        return None;
+    };
+    if ctx.resolve(*variant_name) != "JsonObject" {
+        return None;
+    }
+    match field_by_name(ctx, fields.as_ref(), "members") {
+        Some(Value::List(items)) => Some(items.len()),
+        _ => None,
+    }
+}
+
+fn parse_json_once(
+    ctx: &v1_interpreter::InterpContext,
+    json: &str,
+    expected_members: usize,
+) -> ParseOutcome {
     let args = [(Some("s".to_string()), str_value(json))];
     let start = Instant::now();
     let result = v1_interpreter::run_in_context_with_args(ctx, "parse_json", &args, false);
@@ -81,10 +119,22 @@ fn parse_json_once(ctx: &v1_interpreter::InterpContext, json: &str) -> ParseOutc
             ..
         }) => {
             let variant = ctx.resolve(variant_name);
-            if variant == "Present" && fields.iter().any(|(sym, _)| ctx.resolve(*sym) == "value") {
-                ParseOutcome::Ok { elapsed_ms }
-            } else {
-                ParseOutcome::Refused
+            if variant != "Present" {
+                return ParseOutcome::Refused;
+            }
+            let Some(value) = field_by_name(ctx, fields.as_ref(), "value") else {
+                return ParseOutcome::Refused;
+            };
+            match json_object_member_count(ctx, value) {
+                Some(found) if found == expected_members => ParseOutcome::Parsed {
+                    elapsed_ms,
+                    members_found: found,
+                },
+                Some(found) => ParseOutcome::MemberMismatch {
+                    members_found: found,
+                    expected: expected_members,
+                },
+                None => ParseOutcome::Refused,
             }
         }
         _ => ParseOutcome::Refused,
@@ -104,71 +154,105 @@ fn resolve_ctx() -> Result<v1_interpreter::InterpContext, String> {
     Ok(make_eval_context(&graph, indices, ExecutionMode::Hermetic))
 }
 
+fn eval_memo_label() -> String {
+    std::env::var("GUNBC_EVAL_MEMO").unwrap_or_else(|_| "default".to_string())
+}
+
+fn outcome_label(outcome: &ParseOutcome) -> &'static str {
+    match outcome {
+        ParseOutcome::Parsed { .. } => "parsed",
+        ParseOutcome::MemberMismatch { .. } => "member_mismatch",
+        ParseOutcome::Refused => "refused",
+    }
+}
+
 fn run_scaling(ctx: &v1_interpreter::InterpContext) {
     const ITERS_PER_SIZE: usize = 500;
     let member_counts = [50usize, 100, 200, 400, 800, 1600, 3200];
-    println!("mode\tscaling");
-    println!("member_count\tbytes\telapsed_ms_per_call\tok");
+    let memo = eval_memo_label();
+    println!("mode\tscaling\teval_memo={memo}");
+    println!("member_count\tbytes\tfirst_call_ms\tavg_ms_per_call\toutcome\tmembers_found");
 
     for &n in &member_counts {
         let json = make_json_object(n);
-        let args = [(Some("s".to_string()), str_value(&json))];
-        let _ = v1_interpreter::run_in_context_with_args(ctx, "parse_json", &args, false);
+
+        let first = parse_json_once(ctx, &json, n);
+        let (first_ms, members_found, _ok) = match &first {
+            ParseOutcome::Parsed {
+                elapsed_ms,
+                members_found,
+            } => (*elapsed_ms, *members_found, true),
+            ParseOutcome::MemberMismatch { members_found, .. } => (0.0, *members_found, false),
+            ParseOutcome::Refused => (0.0, 0, false),
+        };
 
         let start = Instant::now();
-        let mut ok = true;
-        for _ in 0..ITERS_PER_SIZE {
-            if !matches!(parse_json_once(ctx, &json), ParseOutcome::Ok { .. }) {
-                ok = false;
+        for _ in 1..ITERS_PER_SIZE {
+            if !matches!(parse_json_once(ctx, &json, n), ParseOutcome::Parsed { .. }) {
                 break;
             }
         }
-        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0 / ITERS_PER_SIZE as f64;
-        println!("{n}\t{}\t{elapsed_ms:.4}\t{ok}", json.len());
+        let avg_ms = if ITERS_PER_SIZE > 1 {
+            start.elapsed().as_secs_f64() * 1000.0 / (ITERS_PER_SIZE - 1) as f64
+        } else {
+            first_ms
+        };
+
+        println!(
+            "{n}\t{}\t{first_ms:.4}\t{avg_ms:.4}\t{}\t{members_found}",
+            json.len(),
+            outcome_label(&first)
+        );
     }
 }
 
 fn run_large(ctx: &v1_interpreter::InterpContext) {
-    const TARGETS: [usize; 3] = [100_000, 200_000, 507_000];
-    const ITERS: usize = 3;
-    println!("mode\tlarge");
-    println!("target_bytes\tmember_count\tactual_bytes\toutcome\telapsed_ms");
+    const DEFAULT_TARGETS: [usize; 3] = [100_000, 200_000, 507_000];
+    let targets: Vec<usize> = std::env::var("JSON_PARSE_PROBE_TARGETS")
+        .ok()
+        .map(|s| s.split(',').filter_map(|t| t.trim().parse().ok()).collect())
+        .filter(|v: &Vec<usize>| !v.is_empty())
+        .unwrap_or_else(|| DEFAULT_TARGETS.to_vec());
 
-    for &target in &TARGETS {
+    let memo = eval_memo_label();
+    println!("mode\tlarge\teval_memo={memo}");
+    println!("target_bytes\tmember_count\tactual_bytes\toutcome\tmembers_found\tfirst_call_ms");
+
+    for &target in &targets {
         let (member_count, json) = json_object_at_least_bytes(target);
         eprintln!(
             "json_parse_scaling_probe: large target={target} members={member_count} bytes={}",
             json.len()
         );
 
-        // Warmup once.
-        let _ = parse_json_once(ctx, &json);
-
-        let mut last_ok_ms = None;
-        let mut refused = false;
-        for _ in 0..ITERS {
-            match parse_json_once(ctx, &json) {
-                ParseOutcome::Ok { elapsed_ms } => last_ok_ms = Some(elapsed_ms),
-                ParseOutcome::Refused => {
-                    refused = true;
-                    break;
-                }
-            }
+        match parse_json_once(ctx, &json, member_count) {
+            ParseOutcome::Parsed {
+                elapsed_ms,
+                members_found,
+            } => println!(
+                "{target}\t{member_count}\t{}\tparsed\t{members_found}\t{elapsed_ms:.2}",
+                json.len()
+            ),
+            ParseOutcome::MemberMismatch {
+                members_found,
+                expected,
+            } => println!(
+                "{target}\t{member_count}\t{}\tmember_mismatch\t{members_found}/expected={expected}\t0.00",
+                json.len()
+            ),
+            ParseOutcome::Refused => println!(
+                "{target}\t{member_count}\t{}\trefused\t0\t0.00",
+                json.len()
+            ),
         }
-
-        let (outcome, elapsed_ms) = if refused {
-            ("refused", 0.0)
-        } else {
-            ("ok", last_ok_ms.unwrap_or(0.0))
-        };
-        println!(
-            "{target}\t{member_count}\t{}\t{outcome}\t{elapsed_ms:.2}",
-            json.len()
-        );
     }
 }
 
 fn run() -> Result<(), String> {
+    eprintln!(
+        "json_parse_scaling_probe: GUNBC_EVAL_MEMO={}",
+        eval_memo_label()
+    );
     let ctx = resolve_ctx()?;
     match std::env::var("JSON_PARSE_PROBE_MODE")
         .unwrap_or_else(|_| "scaling".to_string())
