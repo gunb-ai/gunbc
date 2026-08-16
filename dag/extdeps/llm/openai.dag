@@ -188,9 +188,9 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<Co
   {
     facts: [
       Subject { path: "OpenAiChatMessagePart" },
-      extdeps.coverage.Missing { item: "audio_input_part" },
-      extdeps.coverage.Missing { item: "refusal_part" },
-      extdeps.coverage.Missing { item: "file_or_custom_parts" }
+      Missing { item: "audio_input_part" },
+      Missing { item: "refusal_part" },
+      Missing { item: "file_or_custom_parts" }
     ],
     trigger: "OpenAI Chat Completions request content-part spec extension"
   }
@@ -200,7 +200,7 @@ data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<Cover
   {
     facts: [
       Subject { path: "ToolCall" },
-      extdeps.coverage.Missing { item: "custom_tool_call" }
+      Missing { item: "custom_tool_call" }
     ],
     trigger: "OpenAI Chat Completions custom tool-call payload carrier"
   }
