@@ -544,7 +544,11 @@ probe, which costs tens of minutes.
 Root B **is** instance 1: its whole mechanism is a closure-content branch.
 
 **A third candidate, same shape, NOT executed:** `05_emit_rust`
-`type_leaf_is_unbound_in_closure_scope` returns `true` on `Absent` — a name missing from the
+`type_leaf_is_unbound_in_closure_scope` returns `true` on the `Absent` **match arm of
+`lookup_type_by_name`** (which returns `Node?`) — i.e. on a lookup MISS, nothing whatsoever to do
+with a type or variant *named* `Absent`. **My original wording here read "returns `true` on
+`Absent`" and that was ambiguous enough to be misread as the name; corrected 2026-08-16 after it
+did exactly that.** A name missing from the
 closure's type env is treated as unbound, which then drives spurious-generic suppression in fold
 rendering. Narrower closure, silent defaulting arm. I have not shown it takes the *wrong* arm in a
 pure-v2 closure, so it is a candidate and must not be counted as a confirmed instance. What would
@@ -621,9 +625,14 @@ genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not
 mis-spelling was always there; unit-collapse was **fabricating plausible output** over it (§5). The
 arity finding survives as a real second defect, now typed and located instead of masked.
 
-**Relation to the candidate above.** eager-deer-389's `type_leaf_is_unbound_in_closure_scope`
-candidate also fires on `Absent`. These are *different* mechanisms on one name and neither
-subsumes the other; they should not be merged without a measurement showing one arm gates the other.
+**Relation to the candidate above — RETRACTED 2026-08-16 by `eager-deer-389`, whose wording caused
+it.** The two mechanisms do **not** share the name `Absent` and the apparent coincidence was an
+artifact of this document. `is_value_variant_type_arg` fires on the *variant name* `Absent`
+declared by `v2.std.optional` and `dag/std/upsert_decision`. `type_leaf_is_unbound_in_closure_scope`
+fires on the `Absent` **arm of an `Option`** returned by `lookup_type_by_name` — a lookup miss. One
+is a name in the corpus; the other is a coproduct arm in the emitter's own control flow. They are
+still both closure-membership facts, so an interaction is not excluded — but the specific
+same-name premise is false and no experiment should be designed around it.
 
 **Not claimed:** that the seed closure lacks these collisions (the obvious next measurement, and it
 would make this structurally identical to Root B rather than analogous); any attribution of the
