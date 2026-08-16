@@ -1,11 +1,5 @@
 module test.claim.srv3_subsumption
 
-import gunbc.membership_reconcile {
-  membership_reconcile,
-  membership_plan_admitting_outcome,
-  membership_tally,
-}
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -114,14 +108,9 @@ fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
 
 test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
   let honest = membership_tally(plan: srv3_plan())
-  let lying = membership_tally(plan: membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: fleet_authorized_keys,
-      observed: srv3_observed_authorized_keys,
-      relation: host_authorized_keys_membership_key_relation,
-      value_eq: authorized_key_value_eq,
-      ownership_of: ownership_lies_owned,
-    )
+  let lying = membership_tally(plan: host_authorized_keys_reconcile_with_ownership(
+    observed: srv3_observed_authorized_keys,
+    ownership_of: ownership_lies_owned,
   ))
   honest.refusals == 2
     && honest.removals == 0

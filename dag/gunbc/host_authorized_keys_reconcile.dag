@@ -59,13 +59,23 @@ data host_authorized_keys_membership_key_relation: KeyRelation<HostAuthorizedKey
 )
 
 fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey> {
+  host_authorized_keys_reconcile_with_ownership(
+    observed: observed,
+    ownership_of: authorized_key_ownership,
+  )
+}
+
+fn host_authorized_keys_reconcile_with_ownership(
+  observed: List<SshPublicKey>,
+  ownership_of: fn(SshPublicKey) -> Ownership?,
+) -> MembershipPlan<SshPublicKey> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(
       desired: fleet_authorized_keys,
       observed: observed,
       relation: host_authorized_keys_membership_key_relation,
       value_eq: authorized_key_value_eq,
-      ownership_of: authorized_key_ownership,
+      ownership_of: ownership_of,
     )
   )
 }
