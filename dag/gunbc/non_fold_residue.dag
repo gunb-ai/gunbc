@@ -48,6 +48,10 @@ data nfr_reason_floor_discovery_transport: String = "typed transport-state proje
 
 data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
 
+data nfr_reason_spark_serving_install_effect_slice: String = "ServingInstallEffect vertical-slice dispatch (match on ServingInstallEffect with off-variant wildcard arm refusing or wiring as UnmodeledServingInstallEffect): only EnableLingerForOwnAccount is implemented in the linger convergence slice; enumerating the remaining install-effect variants now would clone identical refusal/wire arms per variant until each effect's realization lands. Landed with spark-serving fleet converge merge; surfaced by whole-corpus nfr receipt on first CI run; declared so the ratchet re-arms."
+
+data nfr_dissolve_spark_serving_install_effect_slice: DissolutionCondition = unbound_dissolution(description: "each ServingInstallEffect variant's realization lands in gunbc.spark_serving_converge_realize / fleet_converge_plan and the match becomes total — rows delete with that fold")
+
 data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
 
 data nfr_dissolve_gate_membership: DissolutionCondition = unbound_dissolution(description: "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them")
@@ -959,6 +963,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/floor_discovery_transport.dag::floor_discovery_transport_observe" },
     reason: nfr_reason_floor_discovery_transport,
     dissolution: nfr_dissolve_floor_discovery_transport,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_converge_plan.dag::fleet_converge_spark_serving_effect_wire" },
+    reason: nfr_reason_spark_serving_install_effect_slice,
+    dissolution: nfr_dissolve_spark_serving_install_effect_slice,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/spark_serving_converge_realize.dag::realize_spark_serving_install_effect_argv" },
+    reason: nfr_reason_spark_serving_install_effect_slice,
+    dissolution: nfr_dissolve_spark_serving_install_effect_slice,
   },
 ]
 
