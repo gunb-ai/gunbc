@@ -40,10 +40,12 @@ import gunbc.spark_serving_converge_apply {
 import gunbc.spark_serving_converge_realize {
   spark_serving_enable_linger_remote_argv,
   spark_serving_enable_linger_argv_matches_expected,
-  SparkServingInstallRemoteArgvPresent,
+  realize_spark_serving_install_effects_argv,
+  SparkServingInstallRemoteCommandsPresent,
+  SparkServingInstallRemoteCommandsRefused,
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
-import gunbc.spark_serving_realization { EnableLingerForOwnAccount }
+import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -69,9 +71,51 @@ test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteArgvPresent { argv: remote_argv } =>
-      spark_serving_enable_linger_argv_matches_expected(argv: remote_argv)
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: cmds.first())
     _ => false
+  }
+}
+
+// THE FUSION CONTROL. Before the command-sequence repair, realize_spark_serving_install_effects_argv
+// appended argv WORDS across effects, so two effects produced ONE argv with the second command's
+// words as trailing operands of the first. Nothing refused it, because every word is individually
+// portable. Two of the same effect is the smallest input that exhibits it with the single arm that
+// exists today: it must yield TWO commands of five words each, never one command of ten. If this
+// ever reads one command, the words have fused again.
+test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool {
+  match realize_spark_serving_install_effects_argv(
+    effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
+    executor_login: spark_serving_automation_principal_login(),
+  ) {
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 2
+        && cmds.first().length() == 5
+        && spark_serving_enable_linger_argv_matches_expected(argv: cmds.first())
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
+  match realize_spark_serving_install_effects_argv(
+    effects: [EnableLingerForOwnAccount],
+    executor_login: spark_serving_automation_principal_login(),
+  ) {
+    SparkServingInstallRemoteCommandsPresent { commands: cmds } =>
+      cmds.length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: cmds.first())
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
+  match realize_spark_serving_install_effects_argv(
+    effects: [EnableLingerForOwnAccount, ReloadUserManager],
+    executor_login: spark_serving_automation_principal_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { commands: _ } => false
   }
 }
 
@@ -155,8 +199,10 @@ test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool 
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
-              n == 1 && spark_serving_enable_linger_argv_matches_expected(argv: argv)
+            SparkServingFrozenApplied { remote_commands: commands, effect_count: n } =>
+              n == 1
+                && commands.length() == 1
+                && spark_serving_enable_linger_argv_matches_expected(argv: commands.first())
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
@@ -180,8 +226,8 @@ test fn linger_slice_apply_noop_when_converged() -> Bool {
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
-              n == 0 && length(argv) == 0
+            SparkServingFrozenApplied { remote_commands: commands, effect_count: n } =>
+              n == 0 && length(commands) == 0
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
@@ -298,7 +344,7 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
     observed_linger: LingerObserved { enabled: true },
     typed_row_count: 0,
     apply_effect_count: 0,
-    apply_argv_len: 0,
+    apply_command_count: 0,
     verdict: spark_serving_slice_verdict_noop_converged,
   )
   let failed = spark_serving_converge_slice_host_line(
@@ -307,7 +353,7 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
     observed_linger: LingerUnobserved,
     typed_row_count: 0,
     apply_effect_count: 0,
-    apply_argv_len: 0,
+    apply_command_count: 0,
     verdict: "wet-apply-exec-failed exit=1 stderr=denied",
   )
   converged.converged && !failed.converged
