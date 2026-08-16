@@ -1,0 +1,200 @@
+module test.claim.pcb_stackup_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stackup_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.pcb_stackup_witness",
+  decl_name: "four_layer",
+  field: WholeDeclaration,
+}
+
+data single_layer_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.pcb_stackup_witness",
+  decl_name: "single_layer",
+  field: WholeDeclaration,
+}
+
+data half_ounce: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
+data half_ounce_ground: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
+data half_ounce_power: CopperLayer = CopperLayer { function: PowerPlane, thickness: micrometer(count: 17) }
+data one_ounce: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 35) }
+
+data core_100um: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+
+// A four-copper-layer board: signal / ground / power / signal, the ordinary controlled-impedance
+// arrangement. Authored as top plus three plies, which is the only shape the type admits.
+data four_layer: Stackup = Stackup {
+  top: half_ounce,
+  plies: [
+    StackupPly { dielectric: core_100um, copper: half_ounce_ground },
+    StackupPly { dielectric: core_100um, copper: half_ounce_power },
+    StackupPly { dielectric: core_100um, copper: half_ounce },
+  ],
+}
+
+test fn w_layer_counts_derive_from_the_ply_sequence() -> Bool {
+  stackup_copper_layer_count(s: four_layer) == 4
+    && stackup_dielectric_layer_count(s: four_layer) == 3
+}
+
+// THE COUNTS DIFFER BY EXACTLY ONE, ALWAYS, and that is the arithmetic consequence of the shape:
+// N plies means N dielectrics and N+1 coppers. A flat-list model could produce any pair of counts,
+// so this pins that the copper-terminated alternating structure is what is being counted.
+test fn w_copper_always_exceeds_dielectric_by_one() -> Bool {
+  stackup_copper_layer_count(s: four_layer) == stackup_dielectric_layer_count(s: four_layer) + 1
+    && stackup_copper_layer_count(s: single_layer) == stackup_dielectric_layer_count(s: single_layer) + 1
+}
+
+// The degenerate board: one copper layer, no dielectric, no plies. Legal by construction and worth
+// pinning, because a model that required a ply would have made a single-sided board unwritable.
+data single_layer: Stackup = Stackup { top: one_ounce, plies: [] }
+
+test fn w_a_single_sided_board_is_representable() -> Bool {
+  stackup_copper_layer_count(s: single_layer) == 1
+    && stackup_dielectric_layer_count(s: single_layer) == 0
+    && micrometer_count(m: stackup_total_thickness(s: single_layer)) == 35
+}
+
+test fn w_total_thickness_sums_copper_and_dielectric() -> Bool {
+  micrometer_count(m: stackup_total_thickness(s: four_layer)) == 17 + (100 + 17) + (100 + 17) + (100 + 17)
+}
+
+test fn w_symmetric_profile_is_recognised() -> Bool {
+  stackup_is_copper_balanced(s: four_layer)
+}
+
+// RED control: symmetry is a real measurement, not a predicate that always agrees. Thickening one
+// outer layer alone unbalances the board about its neutral axis, which is the warp condition
+// fabricators refuse, and the predicate must see it.
+data asymmetric: Stackup = Stackup {
+  top: one_ounce,
+  plies: [
+    StackupPly { dielectric: core_100um, copper: half_ounce_ground },
+    StackupPly { dielectric: core_100um, copper: half_ounce_power },
+    StackupPly { dielectric: core_100um, copper: half_ounce },
+  ],
+}
+
+test fn w_red_an_unbalanced_profile_is_refused() -> Bool {
+  !stackup_is_copper_balanced(s: asymmetric)
+}
+
+// A signal layer needs a reference plane for its return current. Counting planes is not counting
+// layers, so an all-signal board must report zero planes even though it has four of them.
+data all_signal: Stackup = Stackup {
+  top: half_ounce,
+  plies: [
+    StackupPly { dielectric: core_100um, copper: half_ounce },
+    StackupPly { dielectric: core_100um, copper: half_ounce },
+    StackupPly { dielectric: core_100um, copper: half_ounce },
+  ],
+}
+
+test fn w_plane_count_is_not_layer_count() -> Bool {
+  stackup_plane_layer_count(s: four_layer) == 2
+    && stackup_has_a_reference_plane(s: four_layer)
+    && stackup_plane_layer_count(s: all_signal) == 0
+    && !stackup_has_a_reference_plane(s: all_signal)
+    && stackup_copper_layer_count(s: all_signal) == 4
+}
+
+// A mixed layer counts as a plane, because it carries reference copper even though it also routes.
+test fn w_a_mixed_layer_counts_as_reference_copper() -> Bool {
+  stackup_plane_layer_count(s: Stackup {
+    top: CopperLayer { function: MixedSignalAndPlane, thickness: micrometer(count: 17) },
+    plies: [],
+  }) == 1
+}
+
+// A well-formed board admits, and the admitted value carries the stackup it judged rather than a
+// fresh one — a verdict detached from its subject would be a name, not evidence.
+test fn w_a_wellformed_stackup_admits_and_carries_its_subject() -> Bool {
+  match admit_stackup(s: four_layer, authority: stackup_authority) {
+    StackupAdmitted { admitted: a } =>
+      stackup_copper_layer_count(s: admitted_stackup_body(a: a)) == 4
+        && stackup_plane_layer_count(s: admitted_stackup_body(a: a)) == 2
+    StackupRefused { causes: _ } => false
+  }
+}
+
+// RED control: an all-signal multilayer board routes with no return path and must be refused.
+test fn w_red_a_multilayer_board_without_a_reference_plane_is_refused() -> Bool {
+  match admit_stackup(s: all_signal, authority: stackup_authority) {
+    StackupAdmitted { admitted: _ } => false
+    StackupRefused { causes: c } =>
+      count(c) == 1 && c.first() == RoutedBoardHasNoReferencePlane
+  }
+}
+
+// The single-copper board is NOT caught by that rule. It routes against no reference because it has
+// no interior, which is the degenerate case rather than a defect — proving the refusal keys on the
+// routing relation and not merely on the absence of a plane.
+test fn w_a_single_layer_board_is_not_refused_for_lacking_a_plane() -> Bool {
+  match admit_stackup(s: single_layer, authority: stackup_authority) {
+    StackupAdmitted { admitted: _ } => true
+    StackupRefused { causes: _ } => false
+  }
+}
+
+data zero_copper: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 0) }
+data zero_dielectric: DielectricLayer = DielectricLayer { thickness: micrometer(count: 0), material: "FR-4" }
+
+// RED control: every cause is reported, not the first. A board that is unphysical in three ways at
+// once must come back with three causes, or an author fixes one and returns for the next.
+test fn w_red_all_refusal_causes_are_counted_not_just_the_first() -> Bool {
+  let broken = Stackup {
+    top: zero_copper,
+    plies: [StackupPly { dielectric: zero_dielectric, copper: zero_copper }],
+  }
+  match admit_stackup(s: broken, authority: stackup_authority) {
+    StackupAdmitted { admitted: _ } => false
+    StackupRefused { causes: c } => count(c) == 3
+  }
+}
+
+// A zero-thickness dielectric alone is caught, so the multi-cause result above is a real conjunction
+// rather than one rule firing three times.
+test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
+  let shorted = Stackup {
+    top: half_ounce,
+    plies: [StackupPly { dielectric: zero_dielectric, copper: half_ounce_ground }],
+  }
+  match admit_stackup(s: shorted, authority: stackup_authority) {
+    StackupAdmitted { admitted: _ } => false
+    StackupRefused { causes: c } => count(c) == 1 && c.first() == DielectricLayerHasNoThickness
+  }
+}
+
+// THE CAPABILITY ARM IS REACHABLE ONLY THROUGH AN ADMITTED STACKUP. This witness can establish the
+// capability because it went through admission; it cannot construct an AdmittedStackup to shortcut
+// that, because the type is sole_constructor and this module is not its home — that refusal is a
+// compile-time fact, so the discriminating evidence for it is that no such construction exists
+// anywhere in the tree rather than an arm this witness can execute.
+test fn w_an_established_capability_requires_an_admitted_stackup() -> Bool {
+  match admit_stackup(s: four_layer, authority: stackup_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      match establish_stackup_capability(a: a) {
+        CapabilityEstablished { authority: r } => r.decl_name == "four_layer"
+        CapabilityPending { owed: _ } => false
+        CapabilityRefused { cause: _ } => false
+      }
+  }
+}
+
+// The established capability names the declaration ADMISSION judged, not one supplied beside it.
+// Admitting a different stackup under a different authority produces a different established
+// reference, so the arm is a function of what was checked rather than of what was asserted.
+test fn w_the_established_authority_comes_from_admission() -> Bool {
+  match admit_stackup(s: single_layer, authority: single_layer_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      admitted_stackup_authority(a: a).decl_name == "single_layer"
+        && match establish_stackup_capability(a: a) {
+          CapabilityEstablished { authority: r } => r.decl_name == "single_layer"
+          CapabilityPending { owed: _ } => false
+          CapabilityRefused { cause: _ } => false
+        }
+  }
+}

@@ -80,15 +80,18 @@ fn cooler_supports_baseboard(
   }
 }
 
-// Socket equality is decided on the grounded CpuSocket record — package family AND contact
-// count — never on a label. Two sockets whose names print alike but whose contact counts
-// differ are different sockets, and this comparison sees that.
+// SOCKET EQUALITY IS NOT DECIDED HERE. It is decided once, by cpu_socket_eq on the authority that
+// owns CpuSocket, and this function delegates. Re-deriving the comparison from fields would be a
+// second definition of one concept, and it drifted the moment the identity model gained an axis:
+// this path compared package and contact count only, so an AMD LGA socket at Ampere's contact
+// count qualified a cooler against an Ampere processor. Equal contact count is a coincidence of
+// scale, not a mounting fact -- a real supplier already sells LGA4926 cold plates labelled for
+// Intel, and the count alone is what let that label look plausible.
 fn cooler_socket_matches_processor_socket(
   cooler_socket: CpuSocket,
   processor_socket: CpuSocket,
 ) -> Bool {
-  cooler_socket.package == processor_socket.package
-    && cooler_socket.contact_count == processor_socket.contact_count
+  cpu_socket_eq(a: cooler_socket, b: processor_socket)
 }
 
 // measure_le admits only operands of the SAME quantity and scale, so "design power covers TDP"

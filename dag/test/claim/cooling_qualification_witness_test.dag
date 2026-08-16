@@ -29,7 +29,7 @@ test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
   let wrong_socket_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
-    socket: CpuSocket { package: LandGridArray, contact_count: 4189 },
+    socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4189 },
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
     max_design_power: dynatron_w1_catalog.max_design_power,
@@ -267,4 +267,52 @@ test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
     verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: installed_cooling_realizations))
     && !cooling_catalog_verdict_admits_qualification(
          verdict: installed_cooling_verdict_for_host(host: host_srv1, realizations: installed_cooling_realizations))
+}
+
+// THE CROSS-PLATFORM COLLISION, REFUSED. This cooler agrees with the Ampere processor on BOTH
+// axes the matcher used to read -- same package family, same 4926 contact count -- and differs
+// only in the platform its socket belongs to. Before socket identity carried the platform owner
+// this qualified, which is a cooler certified against one vendor's mounting geometry passing for
+// another's on a coincidence of scale.
+//
+// It is not hypothetical that the industry makes this mistake: Dynatron sells LGA4926 cold plates
+// listed as Intel parts, and the contact count is the whole of what makes that label look right.
+test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
+  let foreign_platform_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 4926 },
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: dynatron_w1_catalog.max_design_power,
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  match cooling_catalog_verdict(
+    realization: InstalledCoolingRealization {
+      host: srv3_installed_cooling.host,
+      cooler_asset: srv3_installed_cooling.cooler_asset,
+      cooler: foreign_platform_cooler,
+      processor: srv3_installed_cooling.processor,
+      baseboard_model: srv3_installed_cooling.baseboard_model,
+    },
+  ) {
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        CoolerSocketDoesNotMatchProcessorSocket {
+          cooler_socket: cs,
+          processor_socket: ps,
+        } =>
+          cs.package == ps.package
+            && cs.contact_count == ps.contact_count
+            && cs.platform_owner != ps.platform_owner
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => false
+      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+  }
 }

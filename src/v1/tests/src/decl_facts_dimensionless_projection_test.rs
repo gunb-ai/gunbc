@@ -78,7 +78,7 @@ fn projection_kind_lexeme(ctx: &InterpContext, projection: &Value) -> Option<Str
                             .iter()
                             .find(|(k, _)| *k == identity_key)
                             .and_then(|(_, v)| match v {
-                                Value::Str(s) => Some(s.clone()),
+                                Value::Str(s) => Some(s.to_string()),
                                 _ => None,
                             }),
                         _ => None,
@@ -114,7 +114,7 @@ fn edge_target_named(ctx: &InterpContext, projection: &Value, label: &str) -> Op
                                     continue;
                                 }
                                 match ctx.field(label_fields, "name") {
-                                    Some(Value::Str(s)) => s.as_str(),
+                                    Some(Value::Str(s)) => s.as_ref(),
                                     _ => continue,
                                 }
                             }

@@ -395,7 +395,7 @@ data ilm4926_attachment_standing: AttachmentStanding = AttachmentStanding {
       next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
     },
     board_land_pattern: DesignationFactUnresolved {
-      reason: "the board-side land pattern is stated in no public document consulted. The Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated. A SECOND and independent route exists and is carried separately in lga4926_land_pattern_public_route, because one next-authority field cannot hold two routes whose carriage consequences differ.",
+      reason: "the board-side land pattern is stated in no public document consulted. The Altra Platform Hardware Design Specification does name a document titled Altra PCB Layout Guidelines on Ampere Customer Connect, at sections 4.2.2 and 4.3.2 — but both of those sections are titled Reference Layout and sit under 4.2 VRD Implementation using Texas Instruments Devices and 4.3 VRD Implementation using Infineon Devices, so what they route to is voltage-regulator layout. That the named document ALSO carries the processor socket land pattern is unverified: its title is general enough to permit it, its contents are access-gated, and a pointer read out of a voltage-regulator section establishes what a document is named, never what it holds. A SECOND and independent route exists and is carried separately in lga4926_land_pattern_public_route, because one next-authority field cannot hold two routes whose carriage consequences differ.",
       next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
     },
   },

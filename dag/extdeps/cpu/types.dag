@@ -10,9 +10,35 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type SocketPackage = LandGridArray | PinGridArray | BallGridArray
 
+// A SOCKET IS NOT IDENTIFIED BY ITS TERMINATION AND CONTACT COUNT. Those are attributes two
+// unrelated platforms can share: a hypothetical 4926-contact AMD socket would have been
+// structurally identical to Ampere's, and the corpus already carried a live collision -- AMD
+// Socket AM5 and the Zen 4 rows both read PinGridArray at 1718 while naming different sockets,
+// which is exactly the reading that let an AM4 termination survive on AM5 parts.
+//
+// THE IDENTIFYING AXIS IS THE PLATFORM OWNER, NOT THE MANUFACTURER. The company that stamps the
+// connector does not identify the socket: Lotes manufactures Socket AM5 for AMD and the LGA4926
+// retention hardware for Ampere, so a manufacturer axis would make those two the same socket
+// while making one socket from two suppliers into two. What fixes a socket is the platform whose
+// processors it accepts, so this is the CPU vendor that defines the platform -- and the connector
+// maker stays where it belongs, on the part rows in extdeps.cpu_attachment.
+//
+// Contact count and package remain as attributes because a board still needs them; they are just
+// no longer permitted to answer the identity question on their own.
 type CpuSocket {
+  platform_owner: Vendor<Hardware>
+
   package: SocketPackage
   contact_count: Int
+}
+
+// SAME SOCKET means same platform owner AND same termination AND same count. Equal counts across
+// platforms are a coincidence of scale, not a compatibility fact, and a cooler or a footprint that
+// decided on the count alone would fit a part it was never made for.
+fn cpu_socket_eq(a: CpuSocket, b: CpuSocket) -> Bool {
+  a.platform_owner == b.platform_owner
+    && a.package == b.package
+    && a.contact_count == b.contact_count
 }
 
 type CpuL1CacheGeometry {
@@ -29,6 +55,14 @@ type CpuL2CacheGeometry {
 type CpuL3CacheGeometry {
   capacity: ByteSize
   line_size: ByteSize
+}
+
+// A SOCKET FACT CITES ITS SOURCE THE SAME WAY A CACHE FACT DOES. The termination is the axis this
+// corpus already got wrong once -- AM5 carried PGA because 1718 looked right beside it -- and the
+// defect survived precisely because nothing tied the claim to a document anyone could check.
+type SocketFactCitation {
+  field: NonEmptyStr
+  authority: ExternalAuthority
 }
 
 type CacheGeometryCitation {
@@ -52,6 +86,7 @@ type CpuModelCatalogRow {
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
+  socket_citations: List<SocketFactCitation>
   tdp_watts: Watt
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<CacheGeometryCitation>

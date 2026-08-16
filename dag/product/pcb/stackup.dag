@@ -1,0 +1,212 @@
+module product.pcb.stackup
+
+
+// A STACKUP IS COPPER-TERMINATED AND STRICTLY ALTERNATING, AND THAT IS CARRIED BY THE SHAPE.
+// A board is copper on the outside — that is where parts solder — and every interior copper layer
+// is separated from its neighbours by dielectric. Modelled as a flat list of layers, both facts
+// become checks: a list can begin with dielectric, end with dielectric, or put two coppers
+// adjacent, and something downstream has to notice.
+//
+// Here the top layer is its own field and everything below is a sequence of PLIES, each of which
+// is one dielectric followed by one copper. Copper-terminated at both ends, strictly alternating,
+// and at least one copper layer, all without a predicate: the invalid arrangements have no
+// representation (DESIGN section 4b, construction over validation).
+type CopperLayerFunction
+  = SignalLayer
+  | GroundPlane
+  | PowerPlane
+  | MixedSignalAndPlane
+
+// Copper thickness is authored in micrometres rather than the ounces fabricators quote. An ounce
+// is a mass per unit area that only becomes a thickness once you assume it was rolled flat, so it
+// is a spelling of a length, not a length. The conversion belongs in the fabricator projection
+// where the quoting convention lives, not in the physical model.
+type CopperLayer {
+  function: CopperLayerFunction
+  thickness: Micrometer
+}
+
+type DielectricLayer {
+  thickness: Micrometer
+  material: NonEmptyStr
+}
+
+type StackupPly {
+  dielectric: DielectricLayer
+  copper: CopperLayer
+}
+
+type Stackup {
+  top: CopperLayer
+  plies: List<StackupPly>
+}
+
+fn stackup_copper_layer_count(s: Stackup) -> Int {
+  1 + count(s.plies)
+}
+
+fn stackup_dielectric_layer_count(s: Stackup) -> Int {
+  count(s.plies)
+}
+
+fn stackup_copper_layers(s: Stackup) -> List<CopperLayer> {
+  [s.top] + map(s.plies, p => p.copper)
+}
+
+fn stackup_ply_thickness(p: StackupPly) -> Int {
+  micrometer_count(m: p.dielectric.thickness) + micrometer_count(m: p.copper.thickness)
+}
+
+fn stackup_total_thickness(s: Stackup) -> Micrometer {
+  let top = micrometer_count(m: s.top.thickness)
+  let below = fold_list(
+    xs: s.plies,
+    empty: 0,
+    cons: fn(acc, p) { acc + stackup_ply_thickness(p: p) },
+  )
+  micrometer(count: top + below)
+}
+
+// BALANCE IS CHECKED, NOT CONSTRUCTED, AND THAT IS THE HONEST RUNG. An unbalanced stackup warps on
+// reflow because the copper contracts unevenly about the neutral axis, so fabricators require
+// balance. But it is a numeric property of a sequence rather than a shape, and forcing it
+// structurally would refuse the deliberately asymmetric builds that exist. So this is a predicate
+// with a real answer, not a wall (DESIGN section 5: the unstructurable residue is where a check
+// legitimately lives). WHAT IT MEASURES, precisely: the copper thickness sequence, which is the
+// dominant warp term and the one fabricators quote. Dielectric symmetry is a second axis this
+// predicate does not read, and a board balanced in copper over asymmetric cores is not proven flat
+// by it.
+fn stackup_copper_thickness_profile(s: Stackup) -> List<Int> {
+  map(stackup_copper_layers(s: s), c => micrometer_count(m: c.thickness))
+}
+
+fn stackup_is_copper_balanced(s: Stackup) -> Bool {
+  let profile = stackup_copper_thickness_profile(s: s)
+  profile == reverse(profile)
+}
+
+// A PLANE PAIR IS WHAT MAKES A SIGNAL LAYER ROUTABLE AT CONTROLLED IMPEDANCE. Counting planes is
+// not the same as counting layers, and a stackup that is all signal has nowhere to return current.
+fn stackup_plane_layer_count(s: Stackup) -> Int {
+  count(filter(stackup_copper_layers(s: s), c =>
+    match c.function {
+      GroundPlane => true
+      PowerPlane => true
+      MixedSignalAndPlane => true
+      SignalLayer => false
+    }))
+}
+
+fn stackup_has_a_reference_plane(s: Stackup) -> Bool {
+  stackup_plane_layer_count(s: s) > 0
+}
+
+// ADMISSION: WHAT MAKES A STACKUP FIT TO ESTABLISH A CAPABILITY. The shape above already makes the
+// arrangement errors unwritable, so admission judges only what a shape cannot: the numbers, and the
+// one relation between function and routability.
+//
+// WHY THIS EXISTS RATHER THAN A BARE DECLARATION REFERENCE. PcbWorld's CapabilityEstablished carries
+// a DeclarationRef, and a DeclarationRef is a name — it does not establish that the thing named
+// resolves, is a stackup, or is fit for fabrication. Anyone could mark the stackup capability
+// established by pointing at any declaration in the tree. So this module does not hand out that
+// arm: the only route to an established stackup capability is establish_stackup_capability, whose
+// argument is an AdmittedStackup, which is a sealed record no other module can construct or cast
+// into, minted at exactly one call site that the checks dominate.
+type StackupRefusalCause
+  = CopperLayerHasNoThickness
+  | DielectricLayerHasNoThickness
+  | RoutedBoardHasNoReferencePlane
+
+// The refusal carries every cause it found, not the first: a stackup with zero-thickness copper AND
+// no reference plane has two problems, and reporting one of them sends the author back for a second
+// round (DESIGN section 5, counted diagnostics).
+type StackupAdmission
+  = StackupAdmitted { admitted: AdmittedStackup }
+  | StackupRefused { causes: List<StackupRefusalCause> }
+
+// THE ADMITTED VALUE CARRIES THE DECLARATION IT JUDGED, not just the stackup. Admission binds the
+// two together, so an established capability names the stackup that was actually checked. Taking
+// the authority separately at the capability call would have left it arbitrary: an admitted stackup
+// in one hand and a pointer to any declaration in the other is a gate that passes a value it never
+// reads (DESIGN section 5 - a field carried but never joined establishes nothing).
+type AdmittedStackup sole_constructor {
+  stackup: Stackup
+  authority: DeclarationRef
+}
+
+fn stackup_has_zero_thickness_copper(s: Stackup) -> Bool {
+  count(filter(stackup_copper_layers(s: s), c => micrometer_count(m: c.thickness) <= 0)) > 0
+}
+
+fn stackup_has_zero_thickness_dielectric(s: Stackup) -> Bool {
+  count(filter(s.plies, p => micrometer_count(m: p.dielectric.thickness) <= 0)) > 0
+}
+
+// A SIGNAL LAYER WITHOUT A PLANE HAS NOWHERE TO RETURN ITS CURRENT. Return current follows the
+// signal as closely as the geometry allows; with no reference copper it spreads across whatever
+// conductor it can find, which is how a board radiates and how its impedance stops being a
+// controlled quantity. A single-copper-layer board is exempt because it is not routing against a
+// reference in the first place — it is the degenerate case, not a defective multilayer one.
+fn stackup_routes_without_a_reference(s: Stackup) -> Bool {
+  stackup_copper_layer_count(s: s) > 1 && !stackup_has_a_reference_plane(s: s)
+}
+
+fn stackup_refusal_causes(s: Stackup) -> List<StackupRefusalCause> {
+  let zero_copper = if stackup_has_zero_thickness_copper(s: s) { [CopperLayerHasNoThickness] } else { [] }
+  let zero_dielectric = if stackup_has_zero_thickness_dielectric(s: s) { [DielectricLayerHasNoThickness] } else { [] }
+  let no_reference = if stackup_routes_without_a_reference(s: s) { [RoutedBoardHasNoReferencePlane] } else { [] }
+  zero_copper + zero_dielectric + no_reference
+}
+
+fn mint_admitted_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission
+  admit_callers: [
+    decl_ref(module_path: "product.pcb.stackup", decl_name: "admit_stackup"),
+  ]
+  = StackupAdmitted { admitted: AdmittedStackup { stackup: s, authority: authority } }
+
+fn admit_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission {
+  let causes = stackup_refusal_causes(s: s)
+  if count(causes) > 0 {
+    StackupRefused { causes: causes }
+  } else {
+    mint_admitted_stackup(s: s, authority: authority)
+  }
+}
+
+fn admitted_stackup_authority(a: AdmittedStackup) -> DeclarationRef {
+  a.authority
+}
+
+fn admitted_stackup_body(a: AdmittedStackup) -> Stackup {
+  a.stackup
+}
+
+// RUNG HONESTY (DESIGN section 4b), declared rather than left to be rediscovered. WHAT IS CLOSED:
+// an AdmittedStackup cannot be forged. It is sole_constructor, so a cross-module record literal or
+// cast refuses at compile time, and its single in-module mint is admit_callers-sealed to the
+// admission fold, so no caller reaches one except through the checks. MEASURED, not read: a probe
+// constructing AdmittedStackup inside the witness module returned "sole_constructor type
+// 'AdmittedStackup' cannot be constructed outside its defining module", and a probe calling
+// mint_admitted_stackup from a witness function returned "constructor call admission refused ...
+// permitted callers: [product.pcb.stackup.admit_stackup]" (zesty-heron-736, 2026-08-16, base
+// 87513a53e8). Both probes were removed after measurement; what keeps the walls honest in the
+// enrolled suite is that every route to an established capability there runs through admit_stackup.
+//
+// WHAT IS NOT CLOSED: PcbWorld's capability_established remains callable directly by any module, so
+// the wall covers the stackup route rather than the arm. Sealing the arm itself would mean the
+// generic world module naming its specific consumers in admit_callers, which is the layer inversion
+// DESIGN section 3 forbids — the fix is for capability_established to take a value only an admission
+// can produce, which requires the footprint, net and route admissions to exist so there is a family
+// to abstract over rather than one member. NEXT-RUNG TRIGGER: the second admitted capability lands,
+// at which point the shared admitted-evidence carrier is derivable from two members instead of
+// guessed from one, and this note closes.
+//
+// ALSO NOT CLOSED, and separate: admission judges the stackup against physics and routability, not
+// against a fabricator's process. Minimum trace width, dielectric constant, aspect ratio and
+// available core thicknesses are a fabricator profile this module does not consult, so an admitted
+// stackup is fit to reason about and not yet proven orderable.
+//
+// THE ONLY ROUTE FROM A STACKUP TO AN ESTABLISHED CAPABILITY.
+fn establish_stackup_capability(a: AdmittedStackup) -> PcbCapabilityStanding {
+  capability_established(authority: a.authority)
+}
