@@ -1372,3 +1372,36 @@ counterexample.
 
 **Not started.** Diagnosis is by reading; there is no executed before/after, and verification needs
 a remote regen plus rebuild. Nothing here is a receipt.
+
+### 11.13 Root A's generic receivers, split enum vs struct — the seeding diagnosis survives
+
+Run against the 64 generic-receiver sites from 11.12, at `smart-ram-730`'s request, to test the
+prediction that A's failing receivers are generic **coproducts** and not generic structs.
+
+```
+34  enum     Outcome<T> 10 · AudienceSet<P> 5 · Option<T> 5 · CacheLookupResult<T> 4 ·
+             Outcome<U> 4 · Grounding<E> 2 · ShowEffectiveRead<R> 1 · Reconciliation<A, E> 1
+30  struct   im::Vector<T> 23 · im::Vector<U>/<A>/<B> 7
+```
+
+**Corpus-declared generic structs in the failing population: zero.** All 30 struct-shaped receivers
+are the upstream `im` container, which `trait_derive_emit`'s own note already classifies as carrying
+no declaration bound to propagate. So the population is exactly the two predicted shapes — generic
+coproducts that were never seeded, plus an external container with nothing to seed from — and the
+prediction survives. `AudienceSet<P>`, previously unclassified, is an enum.
+
+**But the two halves take different fixes, and the raw 34/30 hides that.** The 34 enum sites are the
+seeding gap. The 30 `im::Vector` sites cannot be closed by seeding from a declaration at all — the
+declaration is upstream and carries no bound — so they need the requirement to come from the target
+API's cited impl requirements, i.e. the v2 per-derive-impl contracts named in
+`trait_derive_emit_item_clone_bound_contract_fork_note`'s dissolution clause. A fix reported against
+64 will land ~34.
+
+**Method note, kept because this nearly inverted:** "struct" in a rustc message names the
+*receiver's declaration kind*, not *whose corpus declared it*. Read at face value, 30 structs refutes
+the diagnosis; the discriminating question is which module the receiver comes from, and only that
+separates the hypotheses. This is the same shape as the E0599/E0277 reading in 11.12 — the code, or
+the noun, answers a neighbouring question to the one being asked.
+
+**Not settled by this run:** whether `Outcome` is seeded by some path other than
+`v1_clone_bound_seed_for_item`. These measurements see receivers, never the seeding map.
