@@ -6,7 +6,7 @@ module test.claim.replacement_cut_witness
 // pool-membership coincidence this lane removes: the closure is now derived
 // from the references themselves, so a reference IS the dependency edge.
 
-fn nes(s: std.types.String) -> std.types.NonEmptyStr { s as std.types.NonEmptyStr }
+fn nes(s: String) -> std.types.NonEmptyStr { s as std.types.NonEmptyStr }
 
 fn covered_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
@@ -81,7 +81,7 @@ fn cut_full(
   consumers: std.types.List<gunbc.replacement_cut.BoundaryConsumer>,
   region: std.types.List<std.types.NonEmptyStr>,
   evidence: std.types.List<gunbc.replacement_cut.EvidenceDisposition>,
-  new_root: std.types.String,
+  new_root: String,
   oracle: gunbc.replacement_cut.ExternalXAnswer,
 ) -> gunbc.replacement_cut.ReplacementCut {
   gunbc.replacement_cut.ReplacementCut {
@@ -113,16 +113,16 @@ fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> std.types.List<g
   }
 }
 
-fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: std.types.String, subject: std.types.String) -> std.types.Bool {
+fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject: String) -> std.types.Bool {
   match c {
-    gunbc.replacement_cut.UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as std.types.String) == subject
-    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as std.types.String) == subject
-    gunbc.replacement_cut.UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as std.types.String) == subject
-    gunbc.replacement_cut.CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as std.types.String) == subject
-    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as std.types.String) == subject
-    gunbc.replacement_cut.ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as std.types.String) == subject
-    gunbc.replacement_cut.EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as std.types.String) == subject
-    gunbc.replacement_cut.RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as std.types.String) == subject
+    gunbc.replacement_cut.UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
+    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
+    gunbc.replacement_cut.UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
+    gunbc.replacement_cut.CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
+    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
+    gunbc.replacement_cut.ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
+    gunbc.replacement_cut.EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
+    gunbc.replacement_cut.RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
     gunbc.replacement_cut.EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
     gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
     gunbc.replacement_cut.EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
@@ -131,7 +131,7 @@ fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: std.types.String
   }
 }
 
-fn causes_include(causes: std.types.List<gunbc.replacement_cut.CutRefusalCause>, tag: std.types.String, subject: std.types.String) -> std.types.Bool {
+fn causes_include(causes: std.types.List<gunbc.replacement_cut.CutRefusalCause>, tag: String, subject: String) -> std.types.Bool {
   fold(causes, init: false, f: fn(acc, c) { acc || cause_matches(c: c, tag: tag, subject: subject) })
 }
 
@@ -397,7 +397,7 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> std.types.Bool {
   }
   match cut.why_not_higher {
     gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
-      (p as std.types.String) == "cut-a0" && (r as std.types.String) == "escaping consumer q0 uncovered"
+      (p as String) == "cut-a0" && (r as String) == "escaping consumer q0 uncovered"
     gunbc.replacement_cut.OutermostBoundary => false
     gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
   }
@@ -410,7 +410,7 @@ fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> std.types.Bool {
   }
 }
 
-fn cut_answering(identity: std.types.String, answer: gunbc.replacement_cut.HigherBoundaryAnswer) -> gunbc.replacement_cut.ReplacementCut {
+fn cut_answering(identity: String, answer: gunbc.replacement_cut.HigherBoundaryAnswer) -> gunbc.replacement_cut.ReplacementCut {
   gunbc.replacement_cut.ReplacementCut {
     identity: identity as gunbc.replacement_cut.ReplacementCutId,
     old_root_consumer: nes(s: "b0 boundary"),
@@ -439,7 +439,7 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> std.types.Bo
   is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut))
     && match cut.why_not_higher {
       gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
-        (b as std.types.String) == "the engine cut through the v1 driver region"
+        (b as String) == "the engine cut through the v1 driver region"
       gunbc.replacement_cut.OutermostBoundary => false
       gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
     }

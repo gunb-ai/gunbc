@@ -1,46 +1,46 @@
 module gunbc.spark_serving_install_paths
 
-data spark_serving_install_paths_note: std.types.String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
 
-data spark_serving_runtime_root_rel: std.types.String = ".local/share/gunbc/spark-serving/ollama"
+data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
 
-data spark_serving_models_root_rel: std.types.String = ".local/share/gunbc/spark-serving/models"
+data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
 
-data spark_serving_user_unit_dir_rel: std.types.String = ".config/systemd/user"
+data spark_serving_user_unit_dir_rel: String = ".config/systemd/user"
 
 type SparkServingUserUnitSpec {
   description: std.types.NonEmptyStr
   after: std.types.NonEmptyStr
   service_type: std.types.NonEmptyStr
   bind_host_port: std.types.NonEmptyStr
-  models_root_rel: std.types.String
-  runtime_root_rel: std.types.String
+  models_root_rel: String
+  runtime_root_rel: String
   exec_subcommand: std.types.NonEmptyStr
   restart: std.types.NonEmptyStr
   wanted_by: std.types.NonEmptyStr
 }
 
-fn spark_serving_user_unit_rel() -> std.types.String {
+fn spark_serving_user_unit_rel() -> String {
   join([spark_serving_user_unit_dir_rel, gunbc.spark_serving_unit_identity.spark_serving_unit_name], "/")
 }
 
 fn spark_serving_runtime_root() -> std.types.FilePath {
   concat(
-    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.String,
+    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_root_rel),
   ) as std.types.FilePath
 }
 
 fn spark_serving_models_root() -> std.types.FilePath {
   concat(
-    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.String,
+    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_models_root_rel),
   ) as std.types.FilePath
 }
 
 fn spark_serving_user_unit_path() -> std.types.FilePath {
   concat(
-    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.String,
+    gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_rel()),
   ) as std.types.FilePath
 }

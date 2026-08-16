@@ -333,7 +333,7 @@ type OpenAiResponses200Annotation
   = FileCitation { file_id: String, filename: String, index: Int }
   | ResponsesUrlCitation { start_index: Int, end_index: Int, title: String, url: String }
   | ContainerFileCitation { container_id: String, file_id: String, filename: String, start_index: Int, end_index: Int }
-  | FilePath { file_id: String, index: Int }
+  | std.types.FilePath { file_id: String, index: Int }
 
 type OpenAiResponses200OutputItem {
   id: String?

@@ -1,12 +1,12 @@
 module gunbc.typed_remote_file_write
 
-data typed_remote_file_write_authority_note: std.types.String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back land before that arm is writable."
+data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back land before that arm is writable."
 
-data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: std.types.String = "Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and first production consumer follow on #8281 integration branch — not a Scaffold row and no DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
+data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and first production consumer follow on #8281 integration branch — not a Scaffold row and no DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
 
 type TypedRemoteFileWrite sole_constructor {
   path: std.types.FilePath
-  content: std.types.String
+  content: String
 }
 
 type TypedRemoteFileWriteAdmission
@@ -15,13 +15,13 @@ type TypedRemoteFileWriteAdmission
 
 type TypedRemoteFileWriteOutcome
   = TypedRemoteFileWriteRemoteExecAccepted { result: extdeps.ssh.session.SshSessionExecResult }
-  | TypedRemoteFileWriteOutcomeRefused { reason: std.types.String }
+  | TypedRemoteFileWriteOutcomeRefused { reason: String }
 
-data typed_remote_file_write_tee_command: std.types.String = "tee"
+data typed_remote_file_write_tee_command: String = "tee"
 
 fn typed_remote_file_write_seal(
   path: std.types.FilePath,
-  content: std.types.String,
+  content: String,
   allowed_scope: gunbc.file_access.FileTreeScope,
 ) -> TypedRemoteFileWriteAdmission {
   if !gunbc.file_access.path_within_file_tree_scope(scope: allowed_scope, path: path as std.types.NonEmptyStr) {
@@ -29,21 +29,21 @@ fn typed_remote_file_write_seal(
       cause: join(
         [
           "typed_remote_file_write: path ",
-          path as std.types.String,
+          path as String,
           " outside file tree scope rooted at ",
-          allowed_scope.root_path as std.types.String,
+          allowed_scope.root_path as String,
         ],
         "",
       ) as std.types.NonEmptyStr,
     }
   } else {
-    match gunbc.fleet_known_hosts_anchor.portable_remote_word(raw: path as std.types.String) {
+    match gunbc.fleet_known_hosts_anchor.portable_remote_word(raw: path as String) {
       Absent =>
         TypedRemoteFileWriteAdmissionRefused {
           cause: join(
             [
               "typed_remote_file_write: path ",
-              path as std.types.String,
+              path as String,
               " is not portable under the far-side shell re-parse allowlist",
             ],
             "",
@@ -57,17 +57,17 @@ fn typed_remote_file_write_seal(
   }
 }
 
-fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> std.types.String {
+fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> String {
   write.content
 }
 
 // Remote argv is ONLY [tee, path] — no sh/bash/-c arm exists; bytes ride stdin, not argv.
-fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> std.types.List<std.types.String> {
-  [typed_remote_file_write_tee_command, write.path as std.types.String]
+fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> std.types.List<String> {
+  [typed_remote_file_write_tee_command, write.path as String]
 }
 
-fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> std.types.String {
-  std.content_hash.content_hash_atom(value: write.content as std.types.NonEmptyStr).digest as std.types.String
+fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> String {
+  std.content_hash.content_hash_atom(value: write.content as std.types.NonEmptyStr).digest as String
 }
 
 fn typed_remote_file_write_execute_preflight_outcome(
@@ -80,7 +80,7 @@ fn typed_remote_file_write_execute_preflight_outcome(
         value: TypedRemoteFileWriteOutcomeRefused {
           reason: concat(
             "typed_remote_file_write: remote argv refused as non-portable for ",
-            target.endpoint as std.types.String,
+            target.endpoint as String,
           ),
         },
       }
@@ -98,7 +98,7 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
     TypedRemoteFileWriteOutcomeRefused {
       reason: concat(
         "typed_remote_file_write: tee remote write failed for ",
-        write.path as std.types.String,
+        write.path as String,
       ),
     }
   }
@@ -111,14 +111,14 @@ fn typed_remote_file_write_over_fleet_ssh(
 ) -> TypedRemoteFileWriteOutcome {
   match admission {
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
-      TypedRemoteFileWriteOutcomeRefused { reason: cause as std.types.String }
+      TypedRemoteFileWriteOutcomeRefused { reason: cause as String }
     TypedRemoteFileWriteAdmitted { write: write } =>
       match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
         Absent =>
           TypedRemoteFileWriteOutcomeRefused {
             reason: concat(
               "typed_remote_file_write: remote argv refused as non-portable for ",
-              target.endpoint as std.types.String,
+              target.endpoint as String,
             ),
           }
         Present { value: words } =>

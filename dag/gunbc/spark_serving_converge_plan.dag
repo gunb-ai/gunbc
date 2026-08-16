@@ -1,6 +1,6 @@
 module gunbc.spark_serving_converge_plan
 
-data spark_serving_converge_plan_authority_note: std.types.String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
+data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
 
 fn spark_serving_converge_host_is_spark(host: std.types.NonEmptyStr) -> std.types.Bool {
   host == (gunbc.fleet_intent_network.operator_host_srv5 as std.types.NonEmptyStr) || host == (gunbc.fleet_intent_network.operator_host_srv6 as std.types.NonEmptyStr)
@@ -73,13 +73,13 @@ fn fleet_converge_spark_serving_typed_actions(
 
 fn spark_serving_fleet_converge_apply_shell(
   timer_plan: gunbc.membership_reconcile.MembershipPlan<gunbc.fleet_converge_plan.TimerRetirementMember>,
-) -> std.types.String {
+) -> String {
   gunbc.fleet_converge_plan.fleet_converge_apply_shell(timer_plan: timer_plan)
 }
 
 fn spark_serving_fleet_converge_plan_artifact(
   host: std.types.NonEmptyStr,
-  prior_generation: std.types.Int,
+  prior_generation: Int,
   observed_timers: std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.fleet_converge_plan.CapMember>,
   linger_enabled: std.types.Bool,
@@ -115,13 +115,13 @@ fn spark_serving_fleet_converge_plan_artifact(
       concat(
         [
           "# fleet-converge plan",
-          concat("subject_host:", subject.host as std.types.String),
+          concat("subject_host:", subject.host as String),
           concat(
             "subject_member_set:",
-            std.content_hash.serialize_content_hash(hash: subject.member_set_fingerprint) as std.types.String,
+            std.content_hash.serialize_content_hash(hash: subject.member_set_fingerprint) as String,
           ),
           concat("plan_generation:", to_string(planned_generation)),
-          concat("lease_key:", gunbc.fleet_converge_plan.fleet_converge_plan_lease_key(host: subject.host) as std.types.String),
+          concat("lease_key:", gunbc.fleet_converge_plan.fleet_converge_plan_lease_key(host: subject.host) as String),
           "observed_baseline:",
           baseline,
           "# timer-retirement",
