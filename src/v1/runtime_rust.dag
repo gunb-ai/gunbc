@@ -95,17 +95,12 @@ fn rt_concat_trait() -> String {
 
 fn rt_string_ascii_cache() -> String {
   concat(
-    "const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;\n",
-    "const FNV1A64_PRIME: u64 = 0x100000001b3;\n\n",
     "fn ascii_fingerprint(bytes: &[u8]) -> (u64, bool) {\n",
-    "    let mut hash = FNV1A64_OFFSET;\n",
     "    let mut is_ascii = true;\n",
     "    for &b in bytes {\n",
     "        if b > 0x7f { is_ascii = false; }\n",
-    "        hash ^= u64::from(b);\n",
-    "        hash = hash.wrapping_mul(FNV1A64_PRIME);\n",
     "    }\n",
-    "    (hash, is_ascii)\n",
+    "    (fnv1a64(bytes), is_ascii)\n",
     "}\n\n",
     "#[derive(Clone, Copy)]\n",
     "struct StringAsciiCache {\n",

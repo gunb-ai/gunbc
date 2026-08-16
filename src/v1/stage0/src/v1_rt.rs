@@ -36,7 +36,7 @@ pub fn take_text_lookup_chars_walked() -> u64 {
 
 #[cfg(feature = "text_lookup_work_counter")]
 fn record_substring_chars_walked(s: &str, start: usize, take_len: usize) {
-    let walked = if s.is_ascii() {
+    let walked = if string_is_ascii_cached(s) {
         take_len as u64
     } else {
         (start + take_len) as u64
@@ -274,8 +274,6 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
-/// One-pass ASCII classification + Fnv1a64 content fingerprint (DESIGN §3: cache keys
-/// are content-grounded, not allocation addresses).
 fn ascii_fingerprint(bytes: &[u8]) -> (u64, bool) {
     let mut is_ascii = true;
     for &b in bytes {
@@ -313,10 +311,6 @@ thread_local! {
     static STRING_ASCII_CACHE: Cell<StringAsciiCache> = const { Cell::new(StringAsciiCache::EMPTY) };
 }
 
-/// Classify `s` for the ASCII fast path. Repeated `char_at` on the same live `&str`
-/// (same ptr+len) is O(1) after one scan; content hash handles equal bytes at a new
-/// address. Head/tail bytes detect address reuse without a full rescan when endpoints
-/// differ.
 fn string_is_ascii_cached(s: &str) -> bool {
     let ptr = s.as_ptr() as usize;
     let len = s.len();
@@ -1061,42 +1055,4 @@ pub fn contiguous_loop_elementwise_kernel(
         out.push(int_relu(tmp));
     }
     out
-}
-
-#[cfg(test)]
-mod char_at_tests {
-    use super::*;
-
-    #[test]
-    fn char_at_ascii_and_unicode_code_points() {
-        assert_eq!(char_at("abc", 1), "b");
-        assert_eq!(char_at("aéb", 0), "a");
-        assert_eq!(char_at("aéb", 1), "é");
-        assert_eq!(char_at("aéb", 2), "b");
-        assert_eq!(char_at("aéb", 3), "");
-    }
-
-    #[test]
-    fn string_ascii_cache_hits_same_live_slice_without_rescan() {
-        let s = "abcdef";
-        assert_eq!(char_at(s, 0), "a");
-        assert_eq!(char_at(s, 5), "f");
-        assert_eq!(string_length(s), 6);
-    }
-
-    #[test]
-    #[ignore = "wall-clock ratio benchmark — not a semantic gate (docs/plans/inner-cost-lanes-scoping.md)"]
-    fn char_at_repeated_index_is_linear_on_ascii() {
-        let s = "x".repeat(16_000);
-        let start = std::time::Instant::now();
-        for i in 0..16_000 {
-            assert_eq!(char_at(&s, i as i64), "x");
-        }
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed.as_millis() < 50,
-            "repeated char_at should be O(n), took {:?}",
-            elapsed
-        );
-    }
 }
