@@ -1,5 +1,13 @@
 module v2.lens.live_read_classification
 
+// THE IMPORT THIS MODULE'S BARE REFERENCES WERE RELYING ON THE POOL TO SUPPLY. Every call to
+// witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
+// closure had already pulled v2.lens.witness_cost_locality in — the pool-membership coincidence
+// DESIGN records as the import-strip Class B failure. Under a whole-tree compile no such module
+// does, and the three call sites refuse. Named from the definer, as v2.lens.effect_reach already
+// does for the same function.
+import v2.lens.witness_cost_locality { witness_import_closure }
+
 
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
