@@ -20,8 +20,8 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 const RECEIPTS_SOURCE: &str = r#"
 module test.field_of_fractions_construction
 
-fn one_half() -> FieldOfFractions<Int> { FieldOfFractions { num: 1, denom: 2 } }
-fn three_quarters() -> FieldOfFractions<Int> { FieldOfFractions { num: 3, denom: 4 } }
+fn one_half() -> std.algebra.FieldOfFractions<Int> { std.algebra.FieldOfFractions { num: 1, denom: 2 } }
+fn three_quarters() -> std.algebra.FieldOfFractions<Int> { std.algebra.FieldOfFractions { num: 3, denom: 4 } }
 "#;
 
 fn assert_resolved(resolved: &ResolvedPipelineResult) {

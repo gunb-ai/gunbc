@@ -15,25 +15,25 @@ data whole_declaration_anchor: String = "anchor"
 
 data named_field_anchor: String = "named-anchor"
 
-data disposition_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data disposition_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "whole_declaration_anchor",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data scaffold_named_field_bind: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data scaffold_named_field_bind: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "named_field_anchor",
-    field: NamedField { field_name: "dissolves_to" },
+    field: std.decl_ref.NamedField { field_name: "dissolves_to" },
   },
 }
 
-data terminal_specimen: Disposition = Terminal { reason: "witness-terminal" }
+data terminal_specimen: std.disposition.Disposition = std.disposition.Terminal { reason: "witness-terminal" }
 
 data local_a_scaffold: LocalCarrierA = TaggedA { tag: "carrier-a" }
 
@@ -43,49 +43,49 @@ data local_a_shared_nullary: LocalCarrierA = SharedNullaryA
 
 data local_b_shared_nullary: LocalCarrierB = SharedNullaryB
 
-data mechanism_single_authority: ConstructionMechanism = SingleAuthority
+data mechanism_single_authority: std.disposition.ConstructionMechanism = std.disposition.SingleAuthority
 
-data mechanism_realization_dispatch: ConstructionMechanism = RealizationDispatch
+data mechanism_realization_dispatch: std.disposition.ConstructionMechanism = std.disposition.RealizationDispatch
 
-data mechanism_data_ref: ConstructionMechanism = Terminal { reason: "witness-data-ref-not-variant-value" }
+data mechanism_data_ref: std.disposition.ConstructionMechanism = std.disposition.Terminal { reason: "witness-data-ref-not-variant-value" }
 
-data scaffold_with_data_ref: Disposition = Scaffold {
+data scaffold_with_data_ref: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: mechanism_data_ref,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "whole_declaration_anchor",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data missing_variant_specimen: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data missing_variant_specimen: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "whole_declaration_anchor",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data planted_scaffold_specimen: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data planted_scaffold_specimen: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "planted_scaffold_specimen",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data planted_terminal_specimen: Disposition = Terminal {
+data planted_terminal_specimen: std.disposition.Disposition = std.disposition.Terminal {
   reason: "fixture terminal arm"
 }
 
-data planted_nullary_disposition_specimen: Disposition = SingleAuthority
+data planted_nullary_disposition_specimen: std.disposition.Disposition = std.disposition.SingleAuthority
 
-data planted_named_field_ref_specimen: DeclarationRef = DeclarationRef {
+data planted_named_field_ref_specimen: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "test.fixture.decl_facts_reflection.specimens",
   decl_name: "planted_scaffold_specimen",
-  field: NamedField { field_name: "dissolves_to" }
+  field: std.decl_ref.NamedField { field_name: "dissolves_to" }
 }
 
 data planted_plain_int_specimen: Int = 42

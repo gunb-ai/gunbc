@@ -405,10 +405,24 @@ fn closure_inner(
         own_modules.insert(tree.name.clone());
 
         for name in referenced_names(&tree) {
-            let Some(declaring) = index.modules_declaring(&name) else {
-                continue;
-            };
-            for module_path in declaring {
+            // A QUALIFIED reference names its declaring module directly: the
+            // prefix IS the module path. The index is keyed on simple
+            // declaration names, so `std.algebra.FieldOfFractions` never
+            // matches `by_name` -- without this arm the dependency is silently
+            // dropped and the closure comes back short. Qualification is what
+            // replaces `import`, so this is the closure's only remaining way to
+            // follow a cross-module edge.
+            let qualified_owner = name
+                .rfind('.')
+                .map(|i| &name[..i])
+                .filter(|prefix| index.source_for_module(prefix).is_some());
+            let declaring: BTreeSet<String> =
+                match (qualified_owner, index.modules_declaring(&name)) {
+                    (Some(owner), _) => std::iter::once(owner.to_string()).collect(),
+                    (None, Some(found)) => found.clone(),
+                    (None, None) => continue,
+                };
+            for module_path in &declaring {
                 if own_modules.contains(module_path) || in_closure.contains_key(module_path) {
                     continue;
                 }
