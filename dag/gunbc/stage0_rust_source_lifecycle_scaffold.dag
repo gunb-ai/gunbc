@@ -14,7 +14,8 @@ import gunbc.stage0_rust_host_observation {
   current_stage0_rust_source_observation
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
-import gunbc.stage0_emit_model { committed_generated_stage0_artifact_files, is_committed_generated_stage0_artifact }
+import gunbc.stage0_emit_model { is_generated_stage0_file }
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
@@ -287,8 +288,8 @@ data rust_source_discovery_prefix_hints: List<String> = [
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_model",
-  decl_name: "committed_generated_stage0_artifact_files",
+  module_path: "gunbc.stage0_emit_plan_generated",
+  decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }
 
@@ -337,7 +338,7 @@ fn stage0_src_repo_path(filename: String) -> String {
 }
 
 fn derived_generated_stage0_repo_paths() -> List<String> {
-  list_map(xs: committed_generated_stage0_artifact_files(), f: fn(basename) { stage0_src_repo_path(filename: basename) })
+  list_map(xs: generated_stage0_files, f: fn(basename) { stage0_src_repo_path(filename: basename) })
 }
 
 fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
@@ -481,15 +482,15 @@ fn path_matches_discovery_prefix_hint(path: String) -> Bool {
 
 data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
 
-data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to committed_generated_stage0_artifact_files membership or a typed emit producer row deletes the hand file")
+data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
 
 data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
 
 data residue_module_path_index_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
 
-data residue_frontier_module_gap_reason: String = "frontier module with behavioral receipt roster row but not yet on hand_maintained_stage0_filenames / committed_generated_stage0_artifact_files join"
+data residue_frontier_module_gap_reason: String = "frontier module with behavioral receipt roster row but not yet on hand_maintained_stage0_filenames / generated_stage0_files join"
 
-data residue_frontier_module_gap_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or committed_generated_stage0_artifact_files and this residue row deletes")
+data residue_frontier_module_gap_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes")
 
 data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
 
@@ -698,7 +699,7 @@ fn duplicate_exact_paths_zero_holds() -> Bool {
 
 fn generated_repo_paths_cover_authority_holds() -> Bool {
   fold_list(
-    xs: committed_generated_stage0_artifact_files(),
+    xs: generated_stage0_files,
     empty: true,
     cons: fn(ok, basename) {
       ok && any(
@@ -715,7 +716,7 @@ fn generated_authority_subset_of_derived_holds() -> Bool {
     empty: true,
     cons: fn(ok, path) {
       let basename = replace(path, stage0_src_repo_prefix, "")
-      ok && is_committed_generated_stage0_artifact(basename: basename)
+      ok && is_generated_stage0_file(basename: basename)
     }
   )
 }
@@ -724,11 +725,9 @@ fn partition_crate_paths_complete_holds() -> Bool {
   length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
 }
 
-data derived_generated_hand_disjoint_basis_note: String = "WHICH HAND POPULATION THIS COMPARES, and why the other one was wrong (v1 cut, 2026-08-15). This check formerly ranged over derived_hand_maintained_stage0_repo_paths, which answers LAYOUT MEMBERSHIP — which paths must be pub-mod-declared for the crate to link. A committed generated artifact MUST be a layout member or the crate stops linking, so overlap with the registry is EXPECTED there and disjointness against it was never a true property. It only read as true while the generated side answered a narrower question; when that side was re-homed onto the committed-artifact registry the check went red, correctly, against a set it was never disjoint from. It now ranges over derived_hand_maintained_disposition_repo_paths — LAYOUT MEMBERSHIP MINUS THE REGISTRY OVERLAP — which is the maintenance-disposition population this module had already published, with v1_interpreter_dispatch_generated.rs named in generated_artifact_disposition_derivation_note as the discriminating case that exposed the conflation. NOT RETIRED AS A TAUTOLOGY, deliberately: the disposition population subtracts generated_artifact_stage0_src_repo_paths while this check compares against derived_generated_stage0_repo_paths, and those are TWO PROJECTIONS OF ONE REGISTRY BY DIFFERENT ROUTES. Disjointness is guaranteed only while the two routes agree, so the check is precisely the guard on that agreement rather than a restatement of it. It retires when one projection is derived from the other."
-
 fn derived_generated_hand_disjoint_holds() -> Bool {
   !any(
-    xs: derived_hand_maintained_disposition_repo_paths(),
+    xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) {
       any(xs: derived_generated_stage0_repo_paths(), predicate: fn(gen_path) { gen_path == path })
     }

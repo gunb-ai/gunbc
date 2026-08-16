@@ -63,7 +63,7 @@ import gunbc.stage0_rust_host_observation {
   stage0_cargo_manifest_projection_seed_scaffold,
   stage0_rust_observation_seed_growth_justification
 }
-import gunbc.stage0_emit_model { committed_generated_stage0_artifact_count }
+import gunbc.stage0_emit_model { generated_stage0_file_count }
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
 import v2.std.algebra { any, length }
@@ -137,7 +137,7 @@ test fn scaffold_join_mechanical_checks_holds() -> Bool {
 
 
 test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {
-  length(xs: derived_generated_stage0_repo_paths()) == committed_generated_stage0_artifact_count()
+  length(xs: derived_generated_stage0_repo_paths()) == generated_stage0_file_count()
 }
 
 test fn w_scaffold_generated_hand_disjoint_holds() -> Bool {

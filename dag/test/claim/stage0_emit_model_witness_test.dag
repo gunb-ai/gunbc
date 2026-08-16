@@ -1,11 +1,13 @@
 module test.claim.stage0_emit_model_witness
 
 import gunbc.stage0_emit_model {
-  is_committed_generated_stage0_artifact,
+  is_generated_stage0_file,
   stage0_module_emit_basename,
   stage0_module_emit_filename
 }
 import gunbc.stage0_emit_plan {
+  GeneratedStage0FilesAvailable,
+  GeneratedStage0FilesRefused,
   HandMaintainedCandidate,
   ParsedFromRegenSourceClosure,
   SourceIdentityUnavailable,
@@ -18,9 +20,15 @@ import gunbc.stage0_emit_plan {
   Stage0SourceIdentitySupplyUnavailable,
   V1SourceTree,
   generated_stage0_files_from_plan_rows,
+  generated_stage0_files_from_emission_plan,
   stage0_emission_plan_from_source,
   stage0_emission_plan_from_supply,
   stage0_generated_output_sets_agree
+}
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
+import gunbc.stage0_emit_plan_emit {
+  Stage0EmitPlanGenerationRefused,
+  stage0_emit_plan_generation_from_outcome
 }
 import std.types { List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -29,25 +37,29 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
 
-test fn w_three_named_hand_files_are_not_committed_generated_artifacts() -> Bool {
-  !is_committed_generated_stage0_artifact(basename: "cli_run.rs") &&
-  !is_committed_generated_stage0_artifact(basename: "v1_interpreter.rs") &&
-  !is_committed_generated_stage0_artifact(basename: "main.rs")
+test fn w_hand_maintained_not_classified_generated() -> Bool {
+  !is_generated_stage0_file(basename: "cli_run.rs") &&
+  !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
+  !is_generated_stage0_file(basename: "main.rs")
 }
 
 
+data emit_model_pinned_basename_disposition_note: String = "TWO ROWS DISPOSITIONED AGAINST THE REGENERATED EMISSION PLAN (v1 cut, tree integration/v1-cut, 2026-08-16). The plan derives from cli_run.regen_input_sources; with the v1 .dag authority deleted it regenerates to SEVEN files -- compiler_tests, lib, v1_rt, v1_test_non_ascii_perf_fixture, wt_a, wt_b, wt_common.\n\nNARROWED, NOT RETIRED: w_generated_files_classified_generated pinned ten basenames, of which only lib.rs is still emitted. Its CLAIM is that the classifier answers yes for a generated file, and that claim has live subjects, so it now names four that are actually in the plan and keeps a NEGATIVE control (cli_run.rs, a hand-maintained file, must classify false) so the row cannot pass by the predicate answering yes to everything -- which is exactly how a narrowed positive-only row would rot.\n\nRETIRED: w_occurrence_binding_identity_emit_enrolled_generated asserted that std_occurrence_identity.rs specifically is enrolled as generated. That file is no longer emitted; its subject is a particular module's enrollment, not the classifier, so there is nothing to narrow it to. Its loss is a real one and is stated: no row now witnesses that module's emission enrollment, because the emission no longer happens.\n\nWHY THESE APPEARED ONLY NOW: this module and its witness were reverted to fork base in this same change, because their re-home onto the committed-artifact registry rested on the premise that the emission-plan roster had no producer -- a premise the restore-the-generation-path ruling reversed. Reverting restored the base rows, and the base rows pin a population the cut legitimately shrank."
 
-data enrolled_manifest_claim_retirement_note: String = "RETIRED WITH ITS SUBJECT, AND REPLACED BY THE OPPOSITE CLAIM. This position formerly asserted enrolled == derived: that gunbc.stage0_emit_plan_generated.committed_generated_stage0_artifact_files equalled the typed emission plan's derivation. That was the drift gate over regen_stage0's output roster; the v1 cut deleted the regen loop and the roster, so the equality has no left-hand side. It is not dropped silently -- the two claims below assert the replacement grounding instead, so the retirement keeps an executing consumer and a restored roster would red rather than pass unnoticed."
-
-test fn w_generated_membership_is_registry_derived() -> Bool {
-  is_committed_generated_stage0_artifact(basename: "bootstrap_stage0_crate_layout_generated.rs")
-    && is_committed_generated_stage0_artifact(basename: "v1_interpreter_dispatch_generated.rs")
+test fn w_generated_files_classified_generated() -> Bool {
+  is_generated_stage0_file(basename: "lib.rs") &&
+  is_generated_stage0_file(basename: "v1_rt.rs") &&
+  is_generated_stage0_file(basename: "compiler_tests.rs") &&
+  is_generated_stage0_file(basename: "wt_common.rs") &&
+  !is_generated_stage0_file(basename: "cli_run.rs")
 }
 
-test fn w_frozen_seed_rust_is_not_generated() -> Bool {
-  !is_committed_generated_stage0_artifact(basename: "std_algebra.rs")
-    && !is_committed_generated_stage0_artifact(basename: "cli_run.rs")
-    && !is_committed_generated_stage0_artifact(basename: "lib.rs")
+test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
+  match generated_stage0_files_from_emission_plan() {
+    GeneratedStage0FilesRefused { cause: _ } => false
+    GeneratedStage0FilesAvailable { files } =>
+      (files |> sort_by(file => file)) == (generated_stage0_files |> sort_by(file => file))
+  }
 }
 test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
@@ -141,7 +153,11 @@ test fn w_absent_host_supply_cannot_generate_artifact_bytes() -> Bool {
     Stage0EmissionPlanRefused { cause: SourceIdentitySupplyUnavailableRefusal { cause } } => length(cause) > 0
     _ => false
   }
-  plan_refuses
+  let generation_refuses = match stage0_emit_plan_generation_from_outcome(outcome: outcome) {
+    Stage0EmitPlanGenerationRefused => true
+    _ => false
+  }
+  plan_refuses && generation_refuses
 }
 
 test fn w_frontier_classifies_seed_retained_candidate() -> Bool {
