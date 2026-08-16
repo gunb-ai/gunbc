@@ -3,7 +3,8 @@ module extdeps.cpu.ampere_altra_memory_controller
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { BitWidth, ByteSize, bit_width, bit_width_count, byte_size }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.memory.types {
   DramGeneration,
   dram_generation_ddr4,
@@ -26,6 +27,24 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+
+// THE MODEL SCOPE, naming what this module is the authority FOR. The subject is the admitted
+// module classes rather than any single scalar, because that is the fact the rest of the module
+// exists to qualify: the withdrawal, the board-down standing and the density ceiling are all
+// statements about which memory this controller accepts.
+data ampere_altra_memory_controller_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_memory_controller",
+      decl_name: "altra_admitted_module_classes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ampere_altra_classic_rev_a1_datasheet_authority,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = ampere_altra_memory_controller_model_scope
 
 // READ FROM THE PDF, NOT RECALLED. Every row below is transcribed from section 2.10 "Eight
 // DDR4-3200 SDRAM Memory Controllers" of the Ampere Altra Rev A1 Processor Datasheet, Issue 1.50
