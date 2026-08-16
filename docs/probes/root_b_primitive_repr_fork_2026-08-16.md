@@ -166,9 +166,21 @@ number below would be void rather than negative.
 
 | | baseline | `HostNative` forced |
 |---|---:|---:|
-| diagnostics citing `CommutativeSemiring<Magnitude>` | 342 | **0** |
+| algebra-carrier errors / **distinct sites** | 84 / **74** | **0 / 0** |
+| `Measure<…>` carrier errors / distinct sites | 11 / 9 | 37 / 37 |
+| `Rc<i64>` errors / distinct sites | 0 / 0 | 125 / 125 |
+| unresolved-name (E0425/E0433/E0422) sites | 19 | **110** |
 | `expected bool found Bool` | 11 | **11** |
-| total coded errors | 652 | **773** |
+| total error blocks | 693 | **807** |
+
+> **CORRECTION (2026-08-16, same day).** An earlier revision of this table reported "342
+> diagnostics citing `CommutativeSemiring<Magnitude>`". That figure was a raw `grep -c` over
+> matching *lines*, which counts rustc's annotation and note lines as well as the error itself —
+> it overstated the population by roughly 4x. Re-counted per error block, and at distinct
+> `file:line:col` site grain to match how the corpus census is denominated, the same run gives
+> **84 errors / 74 sites → 0**. The direction and the conclusion are unchanged and the elimination
+> is still total; the magnitude was wrong and is corrected here rather than left to be found by
+> whoever tried to reconcile it against a site-grain census.
 
 Three things follow, and only the first is comfortable.
 
