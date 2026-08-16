@@ -1033,6 +1033,12 @@ Asked by `smart-ram-730` (2026-08-16): *would identity-keyed realization have pr
 or is the root orthogonal to it?* Answered per root, with the strongest specimen executed rather
 than argued.
 
+**NAME RETIRED FIRST, so nobody reconciles against it:** the root I published in 11.3/11.4 as
+**"T7 — ContentHash carrier fork"** is **withdrawn as a name**. The population is unchanged (105
+sites, same signatures, same classifier rule) but the cause is not a carrier fork; it is a
+**seed-prelude name collision**, established below. Read every earlier "T7 — ContentHash carrier
+fork" in this section as "T7 — seed-prelude `Hash` collision".
+
 **YES — and here is the cleanest specimen in the corpus, which is my root T7 (105 sites, 5.6%).**
 `src/v2/std/node.dag:14` declares `type Hash = Fnv1a64Structural`. The emitted crate contains
 
