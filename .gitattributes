@@ -186,7 +186,6 @@ src/v1/stage0/src/v1_compiler_infer_sigs.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_infer_types.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_languages.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_normalize.rs merge=generated-artifact
-src/v1/stage0/src/v1_compiler_ownership.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_parse.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_resolve.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_runtime_go.rs merge=generated-artifact
