@@ -42534,6 +42534,16 @@ fn required_floor_claims_from_admission(
     ctx: &v1_interpreter::InterpContext,
     admission: &v1_interpreter::Value,
 ) -> Result<Vec<RequiredFloorClaim>, String> {
+    // EVERY STEP MARKED, BECAUSE THE ONE UNMARKED REGION IS WHERE THE TIME WAS.
+    //
+    // Run 31942605651 completed manifest-evaluation at 11:14:12 and was cancelled at 13:48:13
+    // having printed neither arm's entry marker -- so 2h34m elapsed inside this function before
+    // reaching either. That region was left unmarked on my reasoning that it is a sym_eq and two
+    // binary searches and "cannot cost hours on its face". That was an assumption about cost
+    // stated as a bound, and it was wrong. Each step now emits, so no step can absorb time
+    // silently.
+    let entered = std::time::Instant::now();
+    eprintln!("[floor-phase] phase=admission-decode state=started");
     let v1_interpreter::Value::Variant {
         variant_name,
         fields,
@@ -42544,7 +42554,19 @@ fn required_floor_claims_from_admission(
             "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
         );
     };
-    if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=destructured wall_ms={} {}",
+        entered.elapsed().as_millis(),
+        floor_resource_sample()
+    );
+    let refused = ctx.sym_eq(*variant_name, "RequiredFloorRefused");
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=arm-resolved refused={} wall_ms={} {}",
+        refused,
+        entered.elapsed().as_millis(),
+        floor_resource_sample()
+    );
+    if refused {
         // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
         // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
         // a refusal carries records that share substructure: Debug re-renders each occurrence
@@ -42597,11 +42619,26 @@ fn required_floor_claims_from_admission(
     if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
         return Err("required_floor_attempt answered an unknown admission arm".to_string());
     }
-    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ctx.field(fields, "attempt")
-    else {
+    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ({
+        let r = ctx.field(fields, "attempt");
+        eprintln!(
+            "[floor-phase-progress] phase=admission-decode step=attempt-field wall_ms={} {}",
+            entered.elapsed().as_millis(),
+            floor_resource_sample()
+        );
+        r
+    }) else {
         return Err("RequiredFloorRunnable carries no attempt record".to_string());
     };
-    let Some(v1_interpreter::Value::List(rows)) = ctx.field(af, "claims") else {
+    let Some(v1_interpreter::Value::List(rows)) = ({
+        let r = ctx.field(af, "claims");
+        eprintln!(
+            "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} {}",
+            entered.elapsed().as_millis(),
+            floor_resource_sample()
+        );
+        r
+    }) else {
         return Err("the attempt carries no claim list".to_string());
     };
     // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
