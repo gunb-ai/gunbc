@@ -47,11 +47,11 @@ type DhcpLeaseObservation
       status: DhcpLeaseStatus
     }
 
-fn dhcp_lease_remaining_from_cited_minutes(minutes: Nat) -> Second {
+fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> Second {
   second(minutes * 60)
 }
 
-fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> Nat {
+fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> std.nat.Nat {
   second_count(remaining) / 60
 }
 

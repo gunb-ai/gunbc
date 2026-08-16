@@ -11,12 +11,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type BudgetingMethod = ZeroBased | Incremental | ActivityBased
 
 type Appropriation<Q, S> {
-  ceiling: Measure<Q, S, Nat>
+  ceiling: Measure<Q, S, std.nat.Nat>
 }
 
 type LineItem<Q, S> {
   purpose: String
-  amount: Measure<Q, S, Nat>
+  amount: Measure<Q, S, std.nat.Nat>
 }
 
 type BudgetBalance = Surplus | Balanced | Deficit
@@ -42,7 +42,7 @@ fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem
 type AdmissionState<Q, S> {
   appropriation: Appropriation<Q, S>
   committed: List<LineItem<Q, S>>
-  used: Measure<Q, S, Nat>
+  used: Measure<Q, S, std.nat.Nat>
   refused: List<LineItem<Q, S>>
 }
 

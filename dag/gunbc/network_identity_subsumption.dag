@@ -29,7 +29,7 @@ data srv3_fleet_slot_host_name: HostName = HostName {
 }
 
 fn network_identity_subsumes_fleet_slot(
-  fleet_slot: HostIdentity,
+  fleet_slot: product.placement_supply.HostIdentity,
   lease: DhcpLeaseObservation,
 ) -> Bool {
   match lease {
@@ -48,7 +48,7 @@ fn network_identity_subsumes_fleet_slot(
 
 fn lease_table_has_os_up_subsumption(
   table: Cr1000aDhcpLeaseTable,
-  fleet_slot: HostIdentity,
+  fleet_slot: product.placement_supply.HostIdentity,
 ) -> Bool {
   fold(
     table.rows,

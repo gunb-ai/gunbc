@@ -6,7 +6,7 @@ type HostIdentityHostnameField
   | HostnameFieldReserved
 
 type HostIdentityKnobKey {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   field: HostIdentityHostnameField
 }
 

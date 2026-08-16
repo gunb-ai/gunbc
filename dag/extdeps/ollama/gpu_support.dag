@@ -35,7 +35,7 @@ data ollama_gb10_gpu_support_row: OllamaGpuSupportRow = OllamaGpuSupportRow {
 }
 
 type OllamaNvidiaDriverVersion {
-  major: Nat
+  major: std.nat.Nat
 }
 
 data ollama_gb10_minimum_nvidia_driver: OllamaNvidiaDriverVersion = OllamaNvidiaDriverVersion {

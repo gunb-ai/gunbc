@@ -5,4 +5,4 @@ type MachineWidth<bits>
 
 type PointerWidth
 
-type Compose<Algebra, MachineConstraint> = Phantom
+type Compose<Algebra, MachineConstraint> = std.constructors.Phantom

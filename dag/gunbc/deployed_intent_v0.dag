@@ -2,7 +2,7 @@ module gunbc.deployed_intent_v0
 
 
 type DeployedIntentV0 {
-  fleet_slot: HostIdentity
+  fleet_slot: product.placement_supply.HostIdentity
   target_host: ComputeHost
   observation: HostIdentityObservation
 }

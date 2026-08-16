@@ -863,12 +863,12 @@ fn realization_sudoers_grant_lines(
 // concluding the fleet key absent while it was present on both hosts.
 type ObservedGrantPopulation
   = GrantPopulationObserved {
-      host: HostIdentity
+      host: product.placement_supply.HostIdentity
       principal: NonEmptyStr
       credential_identity: ContentHash
       commands: List<NonEmptyStr>
     }
-  | GrantPopulationUnobserved { host: HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
+  | GrantPopulationUnobserved { host: product.placement_supply.HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
 
 type EscalationShortfall
   = NoNewPrivilegeRequired

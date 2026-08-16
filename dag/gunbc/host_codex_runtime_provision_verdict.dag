@@ -18,7 +18,7 @@ type CodexRuntimeProvisionRefusal
   | RefusalHostUnsupported
 
 type CodexRuntimeProvisionVerdict
-  = ProvisionConverged { executable: FilePath, version_line: String }
+  = ProvisionConverged { executable: std.types.FilePath, version_line: String }
   | ProvisionRefused { cause: CodexRuntimeProvisionRefusal, reason: NonEmptyStr }
 
 fn provision_codex_runtime_verdict(

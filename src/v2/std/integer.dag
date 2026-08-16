@@ -23,8 +23,8 @@ type UInt32 = Compose<UInt, MachineWidth<Word32>>
 type UInt64 = Compose<UInt, MachineWidth<Word64>>
 type UInt128 = Compose<UInt, MachineWidth<Word128>>
 
-type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
-type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
+type IntPlatform = Compose<Int, MachineWidth<v2.std.machine.PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<v2.std.machine.PointerWidth>>
 
 type IntegerBoundSign
   = IntegerBoundNegative
@@ -387,7 +387,7 @@ data integer_standard_integer_type_roster: List<StandardIntegerType> = [
 fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
   fold_list(
     xs: integer_standard_integer_type_roster,
-    empty: Rejected {
+    empty: v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
@@ -397,7 +397,7 @@ fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntege
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
-            Accepted { value: candidate, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
           } else {
             acc
           }

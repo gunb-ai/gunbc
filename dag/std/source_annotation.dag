@@ -18,7 +18,7 @@ type AnnotationPlacement
 // TWO ADJACENCY BITS, BOTH OBSERVED AT CAPTURE, BECAUSE NEITHER IS RECOVERABLE LATER. `preceded_by_blank_line` says the previous line is whitespace only — it decides where one authored block ENDS. `preceded_by_annotation_line` says the previous line is itself a standalone annotation line — it decides that this capture CONTINUES the block that line opened, which is what makes a block's subject a fact about its first line rather than something re-derived per line. The pair is not redundant: a capture with both false sits directly under a code line, and that is the only shape eligible to open a module-header block.
 type UnboundAnnotationCapture {
   lexeme: String
-  origin: SourceSpan
+  origin: std.types.SourceSpan
   placement: AnnotationPlacement
   preceded_by_blank_line: Bool
   preceded_by_annotation_line: Bool
@@ -31,7 +31,7 @@ type UnboundAnnotationCapture {
 type SourceAnnotationDebt {
   subject: OccurrenceId
   text: String
-  origin: SourceSpan
+  origin: std.types.SourceSpan
 }
 
 
@@ -60,9 +60,9 @@ fn source_annotation_graph_concat(
 
 // Refusals are typed and located rather than dropped, because a dropped annotation is indistinguishable from a source that never carried one — the empty-observation narrow DESIGN names. UnattachedAtScopeEnd is the pending-block-at-EOF case: prose that names no subject. TrailingNotModeled and BodyGrainNotModeled are the two deliberate first-cut narrowings; each names what would have to be modeled to admit it, so neither reads as an oversight.
 type AnnotationAttachmentRefusal
-  = UnattachedAtScopeEnd { origin: SourceSpan }
-  | TrailingNotModeled { origin: SourceSpan }
-  | BodyGrainNotModeled { origin: SourceSpan }
+  = UnattachedAtScopeEnd { origin: std.types.SourceSpan }
+  | TrailingNotModeled { origin: std.types.SourceSpan }
+  | BodyGrainNotModeled { origin: std.types.SourceSpan }
 
 
 // Every refusal carries where it happened, so a diagnostic reporting one does not need to carry a second copy of the span beside it. A consumer asks this rather than storing the origin again — a duplicated span is a second representation that can disagree with the first.
@@ -171,7 +171,7 @@ fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
 // `module_root` says this subject IS the module declaration itself, stated by the realization because only the realization knows — the fold sees identities and spans, and guessing the module structurally (say, as the earliest subject by start) would misread any roster whose earliest subject is an ordinary member. The module-header rule below fires only for a roster that declares one.
 type AnnotationSubject {
   occurrence: OccurrenceId
-  span: SourceSpan
+  span: std.types.SourceSpan
   module_root: Bool
 }
 
@@ -179,7 +179,7 @@ type AnnotationSubject {
 // The capture after the realization has stripped its delimiter and before a subject is known. It exists as a distinct type from UnboundAnnotationCapture precisely because the `lexeme` versus `text` distinction is load-bearing: normalization is language-specific and happens exactly once, at the boundary between the realization's capture and this shared fold, so the fold can never be handed raw syntax by accident. A realization that forgot to strip would have to construct this type to call at all, and the field name is what tells it.
 type NormalizedAnnotationCapture {
   text: String
-  origin: SourceSpan
+  origin: std.types.SourceSpan
   placement: AnnotationPlacement
   preceded_by_blank_line: Bool
   preceded_by_annotation_line: Bool

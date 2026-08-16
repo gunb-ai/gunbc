@@ -164,7 +164,7 @@ data shell_typed_invocation_contract_note: String = "THE FIRST BOUND NODE, and i
 
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
+    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as std.types.FilePath,
     function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
   )
 }
@@ -173,7 +173,7 @@ data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATIN
 
 fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as std.types.FilePath,
     function: "observation_emit_frontier_is_zero" as NonEmptyStr,
   )
 }
@@ -182,7 +182,7 @@ data v1_rust_source_observation_execution_contract_note: String = "The node clos
 
 fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as std.types.FilePath,
     function: "live_rust_observation_matches_actions_subject" as NonEmptyStr,
   )
 }
@@ -193,7 +193,7 @@ data namespace_reference_derived_closure_execution_contract_note: String = "THE 
 
 fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as std.types.FilePath,
     function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
   )
 }
@@ -202,7 +202,7 @@ data v1_interpreter_primitive_roster_execution_contract_note: String = "THE CLOS
 
 fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as std.types.FilePath,
     function: "v1_interpreter_primitive_roster_acceptance_contract_holds" as NonEmptyStr,
   )
 }
@@ -211,7 +211,7 @@ data v1_interpreter_primitive_dispatch_authority_execution_contract_note: String
 
 fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as std.types.FilePath,
     function: "v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds" as NonEmptyStr,
   )
 }
@@ -220,7 +220,7 @@ data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINAT
 
 fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as std.types.FilePath,
     function: "witness_p1_proof_kernel_acceptance_contract_holds" as NonEmptyStr,
   )
 }
@@ -231,7 +231,7 @@ data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT 
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag" as FilePath,
+    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag" as std.types.FilePath,
     function: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds" as NonEmptyStr,
   )
 }
@@ -242,14 +242,14 @@ data v2_emitter_direct_rust_door_execution_contract_note: String = "THE CANONICA
 
 fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag" as FilePath,
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag" as std.types.FilePath,
     function: "direct_rust_door_production_group_closing_expectation_holds" as NonEmptyStr,
   )
 }
 
 fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/seed_honesty_discharge_unavailable_test.dag" as FilePath,
+    entry: "dag/test/claim/seed_honesty_discharge_unavailable_test.dag" as std.types.FilePath,
     function: "v1_seed_honesty_decision_closing_contract_holds" as NonEmptyStr,
   )
 }
@@ -260,7 +260,7 @@ data v1_test_migration_binding_history_note: String = "v1-test-migration WAS DEL
 
 fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as FilePath,
+    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as std.types.FilePath,
     function: "retained_rust_kernel_wall_holds_against_live_tree" as NonEmptyStr,
   )
 }
@@ -269,7 +269,7 @@ data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING C
 
 fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as std.types.FilePath,
     function: "roadmap_receipt_continuity_acceptance_contract_holds" as NonEmptyStr,
   )
 }

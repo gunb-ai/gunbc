@@ -13,8 +13,8 @@ type UInt32 = Compose<UInt, MachineWidth<32>>
 type UInt64 = Compose<UInt, MachineWidth<64>>
 type UInt128 = Compose<UInt, MachineWidth<128>>
 
-type Int = AbelianGroup<GroupCompletion<Nat>>
-type UInt = Nat
+type Int = AbelianGroup<GroupCompletion<std.nat.Nat>>
+type UInt = std.nat.Nat
 
 type Signedness
   = Signed
@@ -36,8 +36,8 @@ data std_integer_std_nat_fork_note: String = "PR1 Signedness lift imports std.na
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
-type NonNegativeInt = Nat
-type PositiveInt    = Nat where gt_zero
+type NonNegativeInt = std.nat.Nat
+type PositiveInt    = std.nat.Nat where gt_zero
 
 fn uint8_channel_bit_width_int() -> Int {
   bit_width_count(b: bit_width(count: bits_per_byte()))

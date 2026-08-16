@@ -44,7 +44,7 @@ type NetworkSegment {
 
 type NetworkEndpoint {
   label: NonEmptyStr
-  host: HostIdentity?
+  host: product.placement_supply.HostIdentity?
   address: NonEmptyStr
   role: NetworkAttachmentRole
   locality: NetworkLocality

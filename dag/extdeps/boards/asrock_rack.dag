@@ -436,4 +436,4 @@ data asrock_altrad8ud_documented_dimm_populations: List<DimmPopulation> = [
 // Board integration facts only: HOW the Ampere consoles are routed. The board
 // does not own the meanings of Ampere SCP tokens, and its ordinary AMI POST
 // code table is a different namespace that does not decode P012/E588/P029.
-data asrock_altrad8ud_scp_console_tcp_port: Nat = 2202
+data asrock_altrad8ud_scp_console_tcp_port: std.nat.Nat = 2202

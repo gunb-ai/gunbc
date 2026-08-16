@@ -9,14 +9,14 @@ type BmcFanTachReceipt {
 
 type BmcFanConvergenceReceipt {
   evidence_scope: BmcEvidenceTemporalScope
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   policy: BmcFanPolicyObservation
   persistence: BmcConfigPersistenceObservation
   active_config_digest: Digest
   previous_config_digest: Digest
   zone_control_path: NonEmptyStr
   zone_failsafe_active: Bool
-  monitoring_sample_count: Nat
+  monitoring_sample_count: std.nat.Nat
   monitoring_duration: Second
   temp_soc_minimum: Celsius
   temp_soc_maximum: Celsius
@@ -28,7 +28,7 @@ type BmcFanConvergenceReceipt {
 
 type BmcFanRebootPersistenceReceipt {
   evidence_scope: BmcEvidenceTemporalScope
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
   perturbation_capability: BmcFanPolicyProjectionCapability

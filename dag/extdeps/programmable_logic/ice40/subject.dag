@@ -28,9 +28,9 @@ type Ice40Family
 type Ice40Device {
   ordering_part_number: NonEmptyStr
   family: Ice40Family
-  logic_cells: Nat
-  ram4k_blocks: Nat
-  phase_locked_loops: Nat
+  logic_cells: std.nat.Nat
+  ram4k_blocks: std.nat.Nat
+  phase_locked_loops: std.nat.Nat
 }
 
 // A package is a physical carrier with a footprint a board must reproduce. Dimensions are
@@ -45,7 +45,7 @@ type Ice40Package {
   body_width: Micrometer
   body_height: Micrometer
   contact_pitch: Micrometer
-  contact_count: Nat
+  contact_count: std.nat.Nat
 }
 
 // I/O POPULATION IS PER BANK, and per (device, package) rather than per device. The four banks
@@ -56,11 +56,11 @@ type Ice40Package {
 type Ice40BankPopulation {
   device: NonEmptyStr
   package_designator: NonEmptyStr
-  bank_0: Nat
-  bank_1: Nat
-  bank_2: Nat
-  bank_3: Nat
-  configuration: Nat
+  bank_0: std.nat.Nat
+  bank_1: std.nat.Nat
+  bank_2: std.nat.Nat
+  bank_3: std.nat.Nat
+  configuration: std.nat.Nat
 }
 
 fn bank_population_general_purpose(p: Ice40BankPopulation) -> Nat {
@@ -128,18 +128,18 @@ data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
 type Ice40PackageContactItemization {
   device: NonEmptyStr
   package_designator: NonEmptyStr
-  general_purpose_single_ended: Nat
-  differential_inputs_subset: Nat
-  dedicated_inputs: Nat
-  vccio: Nat
-  vcc: Nat
-  vcc_spi: Nat
-  vpp_2v5: Nat
-  vpp_fast: Nat
-  vccpll: Nat
-  ground: Nat
-  no_connect: Nat
-  declared_bonded_pins: Nat
+  general_purpose_single_ended: std.nat.Nat
+  differential_inputs_subset: std.nat.Nat
+  dedicated_inputs: std.nat.Nat
+  vccio: std.nat.Nat
+  vcc: std.nat.Nat
+  vcc_spi: std.nat.Nat
+  vpp_2v5: std.nat.Nat
+  vpp_fast: std.nat.Nat
+  vccpll: std.nat.Nat
+  ground: std.nat.Nat
+  no_connect: std.nat.Nat
+  declared_bonded_pins: std.nat.Nat
 }
 
 // The rows that partition the package: every contact is counted exactly once. The differential

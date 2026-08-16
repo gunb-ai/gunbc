@@ -450,7 +450,7 @@ fn apply_advisory_lens(
             bind_outcome(
               o: reports_to_non_empty_diagnostics(reports: reports, at: subject),
               f: fn(diagnostics) {
-                Rejected { diagnostics: diagnostics }
+                v2.std.diagnostic.Rejected { diagnostics: diagnostics }
               }
             )
           }

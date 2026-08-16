@@ -183,7 +183,7 @@ data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop
 
 data host_axis_caps_author_before_revert_enforced: Bool = true
 
-fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
+fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
   if slot > limit {
     []
   } else {
@@ -194,7 +194,7 @@ fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) ->
   }
 }
 
-fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+fn runner_slot_service_units_for_host(host: product.placement_supply.HostIdentity) -> List<NonEmptyStr> {
   runner_slot_service_units_range(
     host: host,
     slot: 1,
@@ -229,7 +229,7 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
-fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
+fn deploy_memory_cap_apply_script_for_host(host: product.placement_supply.HostIdentity) -> String {
   deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
 }
 

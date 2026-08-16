@@ -500,7 +500,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ]
     AttemptStateRoot => [
       deploy_raw(command: install_d_managed_command(
-        dir: attempt_state_directory_at(path: art.path as String as FilePath),
+        dir: attempt_state_directory_at(path: art.path as String as std.types.FilePath),
       )),
     ]
     SystemdUnit => [

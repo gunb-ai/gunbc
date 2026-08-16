@@ -644,7 +644,7 @@ fn provision_codex_runtime_reconcile(
   }
 }
 
-fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> HostIdentity? {
+fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> product.placement_supply.HostIdentity? {
   match effect_intent.target {
     HostOs { node: n } => Present { value: n.identity }
     BmcController { node: _ } => none

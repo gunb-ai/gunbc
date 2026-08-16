@@ -36,17 +36,17 @@ module product.spatial_world
 // opinion about because it has no identities.
 type WorldRefusal
   = WorldGeometryRefused { cause: OrthogonalRefusal }
-  | DuplicateRoomIdentity { identity: RoomIdentity }
-  | VariantTargetMissing { identity: RoomIdentity }
-  | VariantTargetAlreadyPresent { identity: RoomIdentity }
-  | VariantBaseChanged { identity: RoomIdentity }
+  | DuplicateRoomIdentity { identity: product.placement_supply.RoomIdentity }
+  | VariantTargetMissing { identity: product.placement_supply.RoomIdentity }
+  | VariantTargetAlreadyPresent { identity: product.placement_supply.RoomIdentity }
+  | VariantBaseChanged { identity: product.placement_supply.RoomIdentity }
 
 type WorldConstruction<T>
   = WorldReady { value: T }
   | WorldRefused { cause: WorldRefusal }
 
 type PlacedSpace {
-  identity: RoomIdentity
+  identity: product.placement_supply.RoomIdentity
   space: EnclosedSpace
 }
 
@@ -76,8 +76,8 @@ fn find_room(rooms: List<PlacedSpace>, identity: RoomIdentity) -> PlacedSpace? {
 }
 
 type DuplicateScan {
-  seen: List<RoomIdentity>
-  duplicate: RoomIdentity?
+  seen: List<product.placement_supply.RoomIdentity>
+  duplicate: product.placement_supply.RoomIdentity?
 }
 
 fn first_duplicate_identity(rooms: List<PlacedSpace>) -> RoomIdentity? {
@@ -138,7 +138,7 @@ fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruc
 // unable to express one.
 type WorldVariant sole_constructor {
   base: World
-  delta: KeyedPatch<RoomIdentity, EnclosedSpace>
+  delta: KeyedPatch<product.placement_supply.RoomIdentity, EnclosedSpace>
 }
 
 fn world_variant(base: World, delta: KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {

@@ -22,4 +22,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 
-data samsung: Vendor<Hardware> = Vendor { legal_name: "Samsung Electronics Co., Ltd." }
+data samsung: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Samsung Electronics Co., Ltd." }

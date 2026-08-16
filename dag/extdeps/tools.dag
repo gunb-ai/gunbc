@@ -30,7 +30,7 @@ type CliTool {
 
 type ResolvedTool {
   tool: CliTool
-  path: FilePath
+  path: std.types.FilePath
 }
 
 type ResolveResult

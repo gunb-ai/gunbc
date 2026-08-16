@@ -1355,11 +1355,11 @@ fn canonical_dag_source_emission_law_from_parts(
           )
           match serializer_law {
             Violates { diagnostic: d } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
+              v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
             Holds { value: serializer_law_value } =>
               match parse_print_law {
                 Violates { diagnostic: d } =>
-                  Rejected { diagnostics: diagnostics_singleton(d: d) }
+                  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
                 Holds { value: parse_print_law_value } =>
                   outcome_accepted(
                     value: Holds {
@@ -1459,7 +1459,7 @@ fn source_authority_round_trip_with_model(
                             f: fn(canonical_source_law_witness) {
                               match canonical_source_law_witness {
                                 Violates { diagnostic: d } =>
-                                  Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
                                 Holds { value: canonical_source_law } =>
                                   source_authority_law_from_parts(
                                     original_ast: original_ast,

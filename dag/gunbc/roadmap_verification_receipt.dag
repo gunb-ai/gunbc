@@ -980,7 +980,7 @@ fn verification_validation_operation_decode(
               VerificationReceiptMemberRead { value: function } =>
                 Present {
                   value: GunbcClaimValidation {
-                    entry: entry as FilePath,
+                    entry: entry as std.types.FilePath,
                     function: function as NonEmptyStr,
                   },
                 }
@@ -1017,7 +1017,7 @@ fn verification_modeled_command_decode(
               Present {
                 value: ModeledValidationCommand {
                   label: label as NonEmptyStr,
-                  program: program as FilePath,
+                  program: program as std.types.FilePath,
                   args: args,
                 },
               }
@@ -1092,7 +1092,7 @@ fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? 
                       validation: CargoFmtValidation,
                       command: ModeledValidationCommand {
                         label: "decode-placeholder" as NonEmptyStr,
-                        program: "/dev/null" as FilePath,
+                        program: "/dev/null" as std.types.FilePath,
                         args: [],
                       },
                       exit_code: 0,
@@ -1267,7 +1267,7 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
                                                       validation: CargoFmtValidation,
                                                       command: ModeledValidationCommand {
                                                         label: "decode-placeholder" as NonEmptyStr,
-                                                        program: "/dev/null" as FilePath,
+                                                        program: "/dev/null" as std.types.FilePath,
                                                         args: [],
                                                       },
                                                       exit_code: 0,

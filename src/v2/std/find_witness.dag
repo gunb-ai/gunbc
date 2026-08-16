@@ -295,7 +295,7 @@ fn find_witness_derives(
             ),
 	            multiplicity_policy: multiplicity_policy
 	          ) {
-	            Accepted { value: fw, diagnostics: d } => Accepted { value: fw, diagnostics: d }
+	            Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
 	            Rejected { diagnostics: r } =>
 	              find_witness_derivation_rejection_better(
 	                current: acc,

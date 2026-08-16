@@ -37,7 +37,7 @@ fn runner_memory_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
   )
 }
 
-fn runner_memory_host_converge(host: HostIdentity) -> HostConverge? {
+fn runner_memory_host_converge(host: product.placement_supply.HostIdentity) -> HostConverge? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
     Present { value: full } =>
       let memory_knobs = runner_memory_knobs_from(host: full)
@@ -89,14 +89,14 @@ fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {
   }
 }
 
-fn runner_memory_converge_effect(host: HostIdentity) -> HostEffect? {
+fn runner_memory_converge_effect(host: product.placement_supply.HostIdentity) -> HostEffect? {
   match runner_memory_host_converge(host: host) {
     Present { value: host_converge } => Present { value: ConvergePlan { policy: host_converge } }
     Absent => none
   }
 }
 
-func provision_runner_memory_caps(host: HostIdentity) -> ProcessExit
+func provision_runner_memory_caps(host: product.placement_supply.HostIdentity) -> ProcessExit
   uses net: Network
 {
   match host_toolchain_direct_access(host: host) {

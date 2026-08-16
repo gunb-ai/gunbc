@@ -43,33 +43,33 @@ data iso_80000_3_version_note: String = "ISO 80000-3 (Quantities and units - Par
 
 data iso_80000_3_plane_angle_note: String = "Plane angle is dimensionless in the SI sense - it is a ratio of two lengths - but it is NOT interchangeable with an ordinary dimensionless count, and the substrate keeps it a distinct Quantity so that adding an angle to a length, or reading an angle as a bare ratio, has no operation. ISO 80000-3 defines the radian as the coherent unit. The degree, arcminute and arcsecond are non-SI units accepted for use with the SI - a status stated by the BIPM SI Brochure, which is a SEPARATE independently governed subject and therefore neither a citation of this scope nor modeled here (the extdeps.languages.bash.subject / POSIX distinction: multiple citations may ground one subject, but a second governing body's document is never a citation of the first). Nothing below depends on that status; the subdivisions are carried as exact rational fractions of the turn."
 
-fn degrees_per_turn() -> Nat {
+fn degrees_per_turn() -> std.nat.Nat {
   360
 }
 
-fn arcminutes_per_degree() -> Nat {
+fn arcminutes_per_degree() -> std.nat.Nat {
   60
 }
 
-fn arcseconds_per_arcminute() -> Nat {
+fn arcseconds_per_arcminute() -> std.nat.Nat {
   60
 }
 
-fn arcseconds_per_degree_derived() -> Nat {
+fn arcseconds_per_degree_derived() -> std.nat.Nat {
   arcminutes_per_degree() * arcseconds_per_arcminute()
 }
 
-fn arcseconds_per_turn() -> Nat {
+fn arcseconds_per_turn() -> std.nat.Nat {
   degrees_per_turn() * arcminutes_per_degree() * arcseconds_per_arcminute()
 }
 
 // Area and volume scale as the SQUARE and CUBE of the linear ratio. Carried explicitly because a
 // generic linear scale conversion is wrong for both: reusing the length factor 1000 for area would
 // understate a square metre by a factor of 1000.
-fn square_millimetres_per_square_metre() -> Nat {
+fn square_millimetres_per_square_metre() -> std.nat.Nat {
   1000000
 }
 
-fn cubic_millimetres_per_cubic_metre() -> Nat {
+fn cubic_millimetres_per_cubic_metre() -> std.nat.Nat {
   1000000000
 }

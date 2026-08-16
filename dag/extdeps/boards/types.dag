@@ -14,7 +14,7 @@ type BaseboardModel = | AsrockRackAltrad8ud1l2t
 type BaseboardCatalogRow {
   model: BaseboardModel
   model_label: NonEmptyStr
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   bmc_firmware: BmcFirmwareFamily
 }
 

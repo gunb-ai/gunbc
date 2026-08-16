@@ -96,7 +96,7 @@ data text_position_selector_cross_field_note: String = "W3C Web Annotation TextP
 
 // W3C FragmentSelector conformsTo names the specification defining the SELECTOR VALUE syntax — for PDF open parameters that is RFC 8118 (extdeps.standards.rfc_8118), never Web Annotation itself. A missing governing fragment specification must refuse; there is no default_fragment_selector.
 type SelectorRefusalCause
-  = TextPositionEndBeforeStart { start: NonNegativeInt, end: NonNegativeInt }
+  = TextPositionEndBeforeStart { start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt }
 
 type CitationAccessRefusalCause
   = HttpAccessRefused { status: HttpStatus }
@@ -110,8 +110,8 @@ type CitationUnreachableCause
   | TransportUnreachable
 
 type TextPositionSelector {
-  start: NonNegativeInt
-  end: NonNegativeInt
+  start: std.integer.NonNegativeInt
+  end: std.integer.NonNegativeInt
 }
 
 type CitationSelector

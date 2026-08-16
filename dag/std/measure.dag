@@ -429,7 +429,7 @@ type Celsius = Measure<Temperature, One, Int>
 type CelsiusDelta = Measure<TemperatureDifference, One, Int>
 
 type PositiveMeasureCount
-  = PositiveMeasureSuccessor { predecessor: Nat }
+  = PositiveMeasureSuccessor { predecessor: std.nat.Nat }
 
 type PositiveMeasureCountBuild
   = PositiveMeasureCountBuilt { count: PositiveMeasureCount }

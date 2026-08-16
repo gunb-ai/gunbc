@@ -14,7 +14,7 @@ type OsInstallActuatorReachFacts {
 }
 
 type OsInstallActuatorTieBreakPolicy
-  = OperatorHostPreference { order: List<HostIdentity> }
+  = OperatorHostPreference { order: List<product.placement_supply.HostIdentity> }
   | LeastLoadedHost
 
 type OsInstallActuatorSelection
@@ -33,7 +33,7 @@ data srv3_os_install_actuator_candidate_hosts: List<ComputeHost> = [srv1_host, s
 data srv3_install_target_bmc_address: NonEmptyStr = asrock_srv3_live_bmc_host
 
 type ActuatorToolchainHostObservation {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   satisfied: Bool
 }
 

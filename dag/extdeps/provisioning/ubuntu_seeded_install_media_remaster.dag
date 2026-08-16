@@ -94,10 +94,10 @@ fn install_media_remaster_probe_verdict(artifact: UbuntuSeededInstallMediaArtifa
       final_path: final_path,
       expected_hash: artifact.content_hash as NonEmptyStr,
     )
-    let grub_present = shell.Test.IsFile(path: grub_probe as FilePath)
+    let grub_present = shell.Test.IsFile(path: grub_probe as std.types.FilePath)
     let grub_has_cmdline = grub_present.is_file
       && grep.Grep.MatchesFixedString(pattern: artifact.grub_kernel_cmdline, path: grub_probe).matches
-    let user_nonempty = shell.Test.IsNonEmpty(path: user_probe as FilePath).nonempty
+    let user_nonempty = shell.Test.IsNonEmpty(path: user_probe as std.types.FilePath).nonempty
     let cleaned = shell.Remove.RecursiveForce(path: probe.path)
     if sidecar_matches && grub_has_cmdline && user_nonempty {
       InstallMediaRemasterProbeValid
@@ -109,7 +109,7 @@ fn install_media_remaster_probe_verdict(artifact: UbuntuSeededInstallMediaArtifa
 
 fn observe_install_media_remaster(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterObservation {
   let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
-  let present = shell.Test.IsFile(path: final_path as FilePath)
+  let present = shell.Test.IsFile(path: final_path as std.types.FilePath)
   if present.is_file == false {
     InstallMediaRemasterAbsent
   } else {
@@ -150,7 +150,7 @@ fn install_media_remaster_write_nocloud_seed(
   user_data_body: NonEmptyStr,
 ) -> Bool {
   let nocloud_dir = concat(work_dir as String, concat("/", nocloud_dir_on_iso as String)) as NonEmptyStr
-  let mkdir_nocloud = shell.Mkdir.Parents(path: nocloud_dir as FilePath)
+  let mkdir_nocloud = shell.Mkdir.Parents(path: nocloud_dir as std.types.FilePath)
   if mkdir_nocloud.success == false {
     false
   } else {
@@ -189,7 +189,7 @@ fn install_media_remaster_build_iso(
   if built.success == false {
     InstallMediaRemasterRefused { reason: "xorriso -boot_image any replay build failed" as NonEmptyStr }
   } else {
-    let moved = shell.Move.File(source: part_path as FilePath, destination: final_path as FilePath)
+    let moved = shell.Move.File(source: part_path as std.types.FilePath, destination: final_path as std.types.FilePath)
     if moved.success == false {
       InstallMediaRemasterRefused { reason: "mv failed after replay build" as NonEmptyStr }
     } else {
@@ -217,7 +217,7 @@ fn install_media_remaster_build(
   if extracted.success == false {
     InstallMediaRemasterRefused { reason: "xorriso -osirrox extract failed" as NonEmptyStr }
   } else {
-    let chmod = shell.Chmod.RecursiveWritable(path: work_dir as FilePath)
+    let chmod = shell.Chmod.RecursiveWritable(path: work_dir as std.types.FilePath)
     if chmod.success == false {
       InstallMediaRemasterRefused { reason: "chmod -R u+w failed" as NonEmptyStr }
     } else if install_media_remaster_write_nocloud_seed(
@@ -228,7 +228,7 @@ fn install_media_remaster_build(
       InstallMediaRemasterRefused { reason: "writing NoCloud seed files failed" as NonEmptyStr }
     } else {
       let grub_cfg = concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr
-      let grub_present = shell.Test.IsFile(path: grub_cfg as FilePath)
+      let grub_present = shell.Test.IsFile(path: grub_cfg as std.types.FilePath)
       if grub_present.is_file == false {
         InstallMediaRemasterRefused {
           reason: concat("InstallMediaRemasterRefusal: missing grub.cfg at ", grub_cfg as String) as NonEmptyStr
@@ -253,13 +253,13 @@ fn install_media_remaster_apply(artifact: UbuntuSeededInstallMediaArtifactRow) -
   let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
   let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
   let part_path = ubuntu_seeded_install_media_part_path(install_path: final_path)
-  let stock_present = shell.Test.IsFile(path: stock_path as FilePath)
+  let stock_present = shell.Test.IsFile(path: stock_path as std.types.FilePath)
   if stock_present.is_file == false {
     InstallMediaRemasterRefused {
       reason: concat("InstallMediaRemasterRefusal: stock ISO missing at ", stock_path as String) as NonEmptyStr
     }
   } else {
-    let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as FilePath)
+    let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as std.types.FilePath)
     if mkdir.success == false {
       InstallMediaRemasterRefused { reason: "mkdir -p failed" as NonEmptyStr }
     } else {

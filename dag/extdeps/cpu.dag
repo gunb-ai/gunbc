@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn cpu_vendor(cpu: CpuFacts) -> Vendor<Hardware> {
+fn cpu_vendor(cpu: CpuFacts) -> Vendor<extdeps.hardware.Hardware> {
   cpu.catalog.vendor
 }
 

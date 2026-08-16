@@ -139,7 +139,7 @@ type BmcRedfishSurfaceRow {
 type BmcRedfishSurfaceDerivation
   = SurfaceShapeKnown { shape: BmcRedfishSurfaceShape }
   | SurfaceShapeUncatalogued { firmware: BmcFirmwareVersion }
-  | SurfaceShapeAmbiguous { firmware: BmcFirmwareVersion, matches: Nat }
+  | SurfaceShapeAmbiguous { firmware: BmcFirmwareVersion, matches: std.nat.Nat }
 
 fn bmc_redfish_surface_matches(
   catalog: List<BmcRedfishSurfaceRow>,
@@ -179,8 +179,8 @@ type BmcUpdateServiceObservation {
   multipart_http_push_uri: NonEmptyStr
   active_bmc_image_id: NonEmptyStr
   active_bmc_image_updateable: Bool
-  firmware_inventory_member_count: Nat
-  bmc_image_member_count: Nat
+  firmware_inventory_member_count: std.nat.Nat
+  bmc_image_member_count: std.nat.Nat
   backup_bmc_image_observed: Bool
   observed_at: EpochMs
 }

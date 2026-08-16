@@ -22,7 +22,7 @@ type ObservedToolIdentity {
 type ObservedToolIdentityLookup
   = ObservedToolIdentityFound { row: ObservedToolIdentity }
   | ObservedToolIdentityMissing { tool_name: NonEmptyStr }
-  | ObservedToolIdentityDuplicate { tool_name: NonEmptyStr, count: NonNegativeInt }
+  | ObservedToolIdentityDuplicate { tool_name: NonEmptyStr, count: std.integer.NonNegativeInt }
 
 type ResolvedBuildContext {
   observed_tool_identities: List<ObservedToolIdentity>

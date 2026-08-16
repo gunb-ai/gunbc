@@ -219,7 +219,7 @@ fn norm3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<ExactLengt
   }
 }
 
-fn axis_count(value: Int) -> Nat {
+fn axis_count(value: Int) -> std.nat.Nat {
   if value == 0 { 0 } else { 1 }
 }
 

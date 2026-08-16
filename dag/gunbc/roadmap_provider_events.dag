@@ -84,7 +84,7 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
-fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
+fn codex_provider_event_projection_args(path: std.types.FilePath) -> List<String> {
   [
     "--raw-input",
     "--compact-output",

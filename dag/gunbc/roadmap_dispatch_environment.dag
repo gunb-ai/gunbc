@@ -162,7 +162,7 @@ fn capability_ensure_observe(
     )
   } else {
     let result = gunbc.WitnessBin.Run(
-      workdir: "/" as FilePath,
+      workdir: "/" as std.types.FilePath,
       bin_path: realization.executable,
       args: realization.identity_args,
       expect: OutcomeIsData,

@@ -113,7 +113,7 @@ type OccurrenceRole
 type OccurrenceProjection {
   occurrence: OccurrenceId
   authored_name: String
-  diagnostic_span: SourceSpan
+  diagnostic_span: std.types.SourceSpan
 }
 
 type OccurrenceIndexEntry {
@@ -129,14 +129,14 @@ type DeclarationOccurrence {
   occurrence: OccurrenceId
   containment: OccurrenceContainmentPath
   category: OccurrenceCategory
-  diagnostic_span: SourceSpan
+  diagnostic_span: std.types.SourceSpan
 }
 
 type ReferenceOccurrence {
   occurrence: OccurrenceId
   containment: OccurrenceContainmentPath
   category: OccurrenceCategory
-  diagnostic_span: SourceSpan
+  diagnostic_span: std.types.SourceSpan
 }
 
 type OccurrenceTransport {
@@ -184,18 +184,18 @@ data occurrence_identity_acceptance_laws: List<OccurrenceIdentityAcceptanceLaw> 
 ]
 
 type OccurrenceTransportRefusal
-  = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
-  | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
-  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  = MissingAuthoredOccurrenceIdentity { diagnostic_span: std.types.SourceSpan }
+  | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: std.types.SourceSpan }
+  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: std.types.SourceSpan }
   | InconsistentOccurrenceContainment {
       occurrence: OccurrenceId,
-      diagnostic_span: SourceSpan,
+      diagnostic_span: std.types.SourceSpan,
     }
   | WrongOccurrenceRole {
       occurrence: OccurrenceId,
       expected: OccurrenceRole,
       observed: OccurrenceRole,
-      diagnostic_span: SourceSpan,
+      diagnostic_span: std.types.SourceSpan,
     }
   | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 

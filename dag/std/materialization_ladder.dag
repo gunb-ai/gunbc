@@ -90,7 +90,7 @@ type ProviderAliasing
   | ReplicatePerConsumer
 
 type ProviderAxes {
-  placement: Placement
+  placement: std.realization.Placement
   addressing: ProviderAddressing
   aliasing: ProviderAliasing
 }

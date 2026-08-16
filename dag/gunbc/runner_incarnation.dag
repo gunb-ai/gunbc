@@ -20,8 +20,8 @@ type RunnerSlotInstallationState
 
 type RunnerSlotInstallationObservation
   = SlotInstallationObserved { state: RunnerSlotInstallationState }
-  | SlotInstallationUnobserved { host: HostIdentity, reason: String }
-  | SlotInstallationReachRefused { host: HostIdentity, reason: String }
+  | SlotInstallationUnobserved { host: product.placement_supply.HostIdentity, reason: String }
+  | SlotInstallationReachRefused { host: product.placement_supply.HostIdentity, reason: String }
 
 data vivid_eagle_srv3_installation_probe_note: String = "vivid-eagle-131 read-only in-band observation 2026-08-07 via srv2->ubuntu@192.168.1.221 (no units started). srv3-01..08 dirs present; 01..05 active/running+enabled; 06/07/08 complete installs identical to 01; 06/07 .runner present (398B, Ephemeral, AgentIds 111911/111894, mtime 2026-07-21); units @06/@07 disabled+inactive; 08 same shape."
 

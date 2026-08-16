@@ -21,7 +21,7 @@ fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool 
 }
 
 type HostEnrollmentIntent {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   participation: List<FleetParticipation>
 }
 

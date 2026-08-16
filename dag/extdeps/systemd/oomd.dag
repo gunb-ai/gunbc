@@ -12,8 +12,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 
 data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
-data oomd_conf_path: FilePath = "/etc/systemd/oomd.conf"
-data oomd_conf_dropin_dir: FilePath = "/etc/systemd/oomd.conf.d"
+data oomd_conf_path: std.types.FilePath = "/etc/systemd/oomd.conf"
+data oomd_conf_dropin_dir: std.types.FilePath = "/etc/systemd/oomd.conf.d"
 
 type ManagedOomAction
   = ManagedOomAuto

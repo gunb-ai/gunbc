@@ -42,7 +42,7 @@ type KvmObservedScreen
   | ErrorScreen { summary: NonEmptyStr }
 
 type KvmOperatorAttestation {
-  target: HostIdentity
+  target: product.placement_supply.HostIdentity
   observed_screen: KvmObservedScreen
   observed_at: Timestamp
   attested_by: NonEmptyStr

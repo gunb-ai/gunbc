@@ -390,14 +390,14 @@ fn lookup_inferred_facts_in_entries(
 }
 
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
-  match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
+  match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, entry) {
     match acc {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
-          Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
+          v2.std.diagnostic.Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
         } else {
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: diagnostics_singleton(
               d: infer_canonical_grounding_incoherent_diagnostic(node: entry.node)
             )
@@ -689,7 +689,7 @@ fn infer_match_bool_arm_rows_accept(
                         descent: Holds { value: descent_proof }
                       ),
                       f: fn(facts) {
-                        Accepted {
+                        v2.std.diagnostic.Accepted {
                           value: facts,
                           diagnostics: diagnostics_merge(
                             outer: diagnostics_merge(outer: cd, inner: fd),
@@ -787,7 +787,7 @@ fn infer_branch_bool_if_else(
                                               descent: Holds { value: descent_proof }
                                             ),
                                             f: fn(facts) {
-                                              Accepted {
+                                              v2.std.diagnostic.Accepted {
                                                 value: facts,
                                                 diagnostics: diagnostics_merge(outer: cd, inner: ud)
                                               }
@@ -1016,12 +1016,12 @@ fn infer_loop_fixpoint_carrier(
       bind_outcome(
         o: infer_loop_body_type_at(target: first_body, entries: entries),
         f: fn(carrier) {
-          fold(body_targets, init: Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
+          fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: v2.std.diagnostic.None }, f: fn(acc, target) {
             match acc {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               Accepted { value: c, diagnostics: _ } =>
                 match infer_loop_body_type_at(target: target, entries: entries) {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                   Accepted { value: t, diagnostics: _ } =>
                     if infer_branch_type_atoms_equal(a: c, b: t) {
                       acc
@@ -1062,7 +1062,7 @@ fn infer_loop_iteration(
                   descent: Holds { value: descent_proof }
                 ),
                 f: fn(facts) {
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: facts,
                     diagnostics: diagnostics_merge(outer: cd, inner: ud)
                   }

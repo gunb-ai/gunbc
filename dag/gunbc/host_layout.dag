@@ -31,10 +31,10 @@ data gunbc_host_layout_note: String = "THE HOST FACTS AN INSTANCE CANNOT DERIVE 
 
 type GunbcHostLayout {
   host_identity: NonEmptyStr
-  gunbc_serve_binary: FilePath
-  roadmap_codex_home: FilePath
-  controller_repo: FilePath
-  codex_bundled_executable: FilePath?
+  gunbc_serve_binary: std.types.FilePath
+  roadmap_codex_home: std.types.FilePath
+  controller_repo: std.types.FilePath
+  codex_bundled_executable: std.types.FilePath?
 }
 
 data srv1_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
@@ -102,9 +102,9 @@ data fleet_converge_receipt_atomic_publish_note: String = "Receipt publication i
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 
 type ProviderRuntimePlacement {
-  runtime_release_root: FilePath
-  runtime_mutable_state_root: FilePath
-  wire_evidence_root: FilePath
+  runtime_release_root: std.types.FilePath
+  runtime_mutable_state_root: std.types.FilePath
+  wire_evidence_root: std.types.FilePath
 }
 
 data srv1_codex_runtime_mutable_state_root: FilePath = "/opt/gunbc/provider-runtime/codex-state" as FilePath

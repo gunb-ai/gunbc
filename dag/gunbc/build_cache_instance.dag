@@ -10,7 +10,7 @@ type BuildCacheConsumerClass
   | InteractiveSessionCompiles
 
 type BuildCacheInstanceId {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   consumer_class: BuildCacheConsumerClass
   instance_name: NonEmptyStr
 }
@@ -30,15 +30,15 @@ data process_identity_note: String = "A BARE PID IS NOT AN IDENTITY: the kernel 
 
 type ProcessIdentity {
   boot_id: NonEmptyStr
-  pid: Nat
+  pid: std.nat.Nat
   start_time: NonEmptyStr
 }
 
 data runner_slot_lifecycle_note: String = "A RETIRED SLOT IS A CURRENT-INTENT FACT, NOT AN ARCHAEOLOGICAL ONE. Whether srv1-10 is retired is decided by asking whether it appears in the fleet's desired runner slots today — not by explaining how the fleet once had ten. The lifecycle distinction is kept in the receipt because it names WHICH construction wall failed: an ACTIVE runner owning the endpoint means birth ordering failed (a runner ran before a managed cache existed); a RETIRED runner owning it means birth ordering AND retirement both failed (the slot's unit was disabled while its cgroup stayed computationally alive, still owning an endpoint and still parenting new compiler children under its ceiling). Both refuse."
 
 type RunnerSlotIdentity {
-  host: HostIdentity
-  slot_index: Nat
+  host: product.placement_supply.HostIdentity
+  slot_index: std.nat.Nat
 }
 
 type RunnerSlotLifecycle
@@ -52,11 +52,11 @@ type CgroupMemoryLimits {
 }
 
 type CgroupMemoryEvents {
-  low: Nat
-  high: Nat
-  max: Nat
-  oom: Nat
-  oom_kill: Nat
+  low: std.nat.Nat
+  high: std.nat.Nat
+  max: std.nat.Nat
+  oom: std.nat.Nat
+  oom_kill: std.nat.Nat
 }
 
 data endpoint_ownership_note: String = "ENDPOINT OWNERSHIP IS THE PRIMARY OBSERVATION; PROCESS NAME PLUS CGROUP IS NOT ENOUGH. The sccache binary is both client and server, so under RUSTC_WRAPPER every in-flight compile also runs a process named 'sccache' inside the cgroup of the runner that issued it. Those clients are HEALTHY and expected — srv1 carried three of them (ages 296s, 112s, 86s, under live slots 01/04/05) at the moment the receipt was taken — so a probe that selects sccache processes by name and reads a cgroup samples a client and reports the WRONG placement, and a probe that refuses on 'multiple sccache processes' produces a FALSE refusal in the ordinary case. The server is identified positively and uniquely as the process HOLDING THE LISTEN on the instance's configured endpoint. For the UDS shape the whole chain is non-mutating and needs no sccache invocation: the exact endpoint path in /proc/net/unix yields the listening socket inode, /proc/*/fd resolves that inode to one owning pid, and /proc/pid/\{exe,environ,cgroup,stat\} yields executable, principal, unit and cgroup. It depends on no pgrep, head -1, ss or lsof, and it refuses naturally when the path, the inode, or the owner is not exactly one."
@@ -88,7 +88,7 @@ type BuildCacheEndpointObservation
       memory_limits: CgroupMemoryLimits?
       memory_events: CgroupMemoryEvents?
     }
-  | EndpointOwnershipAmbiguous { instance: BuildCacheInstance, candidate_count: Nat }
+  | EndpointOwnershipAmbiguous { instance: BuildCacheInstance, candidate_count: std.nat.Nat }
   | EndpointObservationUnavailable {
       instance: BuildCacheInstance
       reason: EndpointObservationUnavailableReason

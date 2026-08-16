@@ -116,7 +116,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
         },
       }
     } else {
-    match fleet_compute_host_for_identity(identity: host as HostIdentity) {
+    match fleet_compute_host_for_identity(identity: host as product.placement_supply.HostIdentity) {
       Present { value: compute_host } =>
         Present {
           value: match host_effect_apply(
@@ -164,7 +164,7 @@ fn converge_cli_receipt_join_steps(primary: ConvergeCliReceipt, adjunct: Converg
   }
 }
 
-fn converge_cli_codex_runtime_knob_registered_for_host(host: HostIdentity) -> Bool {
+fn converge_cli_codex_runtime_knob_registered_for_host(host: product.placement_supply.HostIdentity) -> Bool {
   match fleet_converge_policy() {
     ConvergePolicyDerived { hosts: hosts } =>
       match host_converge_for_identity(hosts: hosts, identity: host) {
@@ -180,7 +180,7 @@ fn converge_cli_codex_runtime_knob_registered_for_host(host: HostIdentity) -> Bo
   }
 }
 
-fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
+fn host_converge_for_identity(hosts: List<HostConverge>, identity: product.placement_supply.HostIdentity) -> HostConverge? {
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
@@ -445,7 +445,7 @@ fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemor
 }
 
 fn converge_cli_routes_to_memory_cap_verify(host: String) -> Bool {
-  match runner_memory_host_converge(host: host as HostIdentity) {
+  match runner_memory_host_converge(host: host as product.placement_supply.HostIdentity) {
     Present { value: _ } => true
     Absent => false
   }
@@ -455,7 +455,7 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
   if converge_cli_routes_to_memory_cap_verify(host: host) {
     converge_cli_receipt_from_memory_cap_verify(
       host: host,
-      result: runner_memory_cap_verify_run(host: host as HostIdentity)
+      result: runner_memory_cap_verify_run(host: host as product.placement_supply.HostIdentity)
     )
   } else {
     ConvergeCliReceipt {
@@ -503,7 +503,7 @@ fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
   if !w.success {
     Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
   } else {
-    let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
+    let moved = shell.Move.File(source: staging as std.types.FilePath, destination: final_path as std.types.FilePath)
     if moved.success {
       none
     } else {
@@ -773,7 +773,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
             reason: Present { value: SparkPreEnrollment { host: host } },
           }
         ConvergeSparkRoute { access: SparkManagedAccessGrounded } =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+          match host_converge_for_identity(hosts: hosts, identity: host as product.placement_supply.HostIdentity) {
             Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
             Absent =>
               ConvergeCliReceipt {
@@ -785,7 +785,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
               }
           }
         _ =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+          match host_converge_for_identity(hosts: hosts, identity: host as product.placement_supply.HostIdentity) {
           Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
           Absent =>
             ConvergeCliReceipt {

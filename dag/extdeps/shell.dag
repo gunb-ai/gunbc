@@ -13,8 +13,8 @@ data find_files_and_symlinks_positional_note: String = "The script body is a FIX
 
 service shell.Find {
   operation ListDirs {
-    input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
-    output { dirs: List<FilePath> from "stdout_lines" }
+    input { path: std.types.FilePath, max_depth: Int = 1, min_depth: Int = 1 }
+    output { dirs: List<std.types.FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
     exit {
@@ -24,7 +24,7 @@ service shell.Find {
   }
 
   operation FilesAndSymlinksWithMode {
-    input { root: FilePath }
+    input { root: std.types.FilePath }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -45,7 +45,7 @@ service shell.Find {
   }
 
   operation Files {
-    input { workdir: FilePath, root: FilePath, name_glob: String }
+    input { workdir: std.types.FilePath, root: std.types.FilePath, name_glob: String }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -77,7 +77,7 @@ service shell.Env {
 service shell.Which {
   operation Check {
     input { command: NonEmptyStr }
-    output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
+    output { exists: Bool from "exit_success", path: std.types.FilePath? from "stdout" }
     readonly
     transport shell { argv: ["which", "{command}"] }
     exit {
@@ -89,7 +89,7 @@ service shell.Which {
 
 service shell.Test {
   operation IsExecutable {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { executable: Bool from "exit_success" }
     readonly
     transport shell { argv: ["test", "-x", "{path}"] }
@@ -100,7 +100,7 @@ service shell.Test {
   }
 
   operation IsNonEmpty {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { nonempty: Bool from "exit_success" }
     readonly
     transport shell { argv: ["test", "-s", "{path}"] }
@@ -111,7 +111,7 @@ service shell.Test {
   }
 
   operation IsFile {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { is_file: Bool from "exit_success" }
     readonly
     transport shell { argv: ["test", "-f", "{path}"] }
@@ -122,7 +122,7 @@ service shell.Test {
   }
 
   operation IsDirectory {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { is_directory: Bool from "exit_success" }
     readonly
     transport shell { argv: ["test", "-d", "{path}"] }
@@ -133,7 +133,7 @@ service shell.Test {
   }
 
   operation IsWritable {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { writable: Bool from "exit_success" }
     readonly
     transport shell { argv: ["test", "-w", "{path}"] }
@@ -168,8 +168,8 @@ service shell.Uname {
 
 service shell.Mktemp {
   operation FileInDirectory {
-    input { dir: FilePath }
-    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    input { dir: std.types.FilePath }
+    output { path: std.types.FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-p", "{dir}"] }
     exit {
       0 => Unit
@@ -179,7 +179,7 @@ service shell.Mktemp {
 
   operation Dir {
     input {}
-    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    output { path: std.types.FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d"] }
     exit {
       0 => Unit
@@ -188,8 +188,8 @@ service shell.Mktemp {
   }
 
   operation DirWithTemplate {
-    input { template: FilePath }
-    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    input { template: std.types.FilePath }
+    output { path: std.types.FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d", "{template}"] }
     exit {
       0 => Unit
@@ -200,7 +200,7 @@ service shell.Mktemp {
 
 service shell.Mkdir {
   operation Parents {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mkdir", "-p", "{path}"] }
     exit {
@@ -212,7 +212,7 @@ service shell.Mkdir {
 
 service shell.Link {
   operation Hard {
-    input { source: FilePath, destination: FilePath }
+    input { source: std.types.FilePath, destination: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["ln", "{source}", "{destination}"] }
     exit {
@@ -224,7 +224,7 @@ service shell.Link {
 
 service shell.Symlink {
   operation AtomicReplace {
-    input { target: FilePath, link: FilePath }
+    input { target: std.types.FilePath, link: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["ln", "-sfnT", "{target}", "{link}"] }
     exit {
@@ -236,7 +236,7 @@ service shell.Symlink {
 
 service shell.Remove {
   operation FileForce {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-f", "{path}"] }
     exit {
@@ -246,7 +246,7 @@ service shell.Remove {
   }
 
   operation RecursiveForce {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-rf", "{path}"] }
     exit {
@@ -258,7 +258,7 @@ service shell.Remove {
 
 service shell.Move {
   operation File {
-    input { source: FilePath, destination: FilePath }
+    input { source: std.types.FilePath, destination: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "{source}", "{destination}"] }
     exit {
@@ -270,7 +270,7 @@ service shell.Move {
 
 service shell.Chmod {
   operation OwnerOnlyDirectory {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0700", "{path}"] }
     exit {
@@ -280,7 +280,7 @@ service shell.Chmod {
   }
 
   operation OwnerReadWriteFile {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0600", "{path}"] }
     exit {
@@ -290,7 +290,7 @@ service shell.Chmod {
   }
 
   operation RecursiveWritable {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
     exit {
@@ -300,7 +300,7 @@ service shell.Chmod {
   }
 
   operation RecursiveReadOnly {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
     exit {
@@ -312,7 +312,7 @@ service shell.Chmod {
 
 service shell.Copy {
   operation File {
-    input { source: FilePath, destination: FilePath }
+    input { source: std.types.FilePath, destination: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "{source}", "{destination}"] }
     exit {
@@ -322,7 +322,7 @@ service shell.Copy {
   }
 
   operation Recursive {
-    input { source: FilePath, destination: FilePath }
+    input { source: std.types.FilePath, destination: std.types.FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }
     exit {

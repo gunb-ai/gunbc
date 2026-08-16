@@ -94,7 +94,7 @@ fn stall_failure_reason(stall: StallBudgetVerdict) -> NonEmptyStr? {
 
 fn deduce_os_install_actuation_verdict(
   obs: DhcpLeaseTableObservation,
-  fleet_slot: HostIdentity,
+  fleet_slot: product.placement_supply.HostIdentity,
   stall: StallBudgetVerdict,
 ) -> ObservationVerdict {
   match obs {
@@ -154,7 +154,7 @@ fn decision_for_os_install_actuation_verdict(
 
 fn classify_os_install_actuation_upsert(
   obs: DhcpLeaseTableObservation,
-  fleet_slot: HostIdentity,
+  fleet_slot: product.placement_supply.HostIdentity,
   stall: StallBudgetVerdict,
 ) -> std.upsert_decision.UpsertClassification<OsInstallActuationAssertPlan> {
   let verdict = deduce_os_install_actuation_verdict(

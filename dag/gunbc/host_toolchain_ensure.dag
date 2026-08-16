@@ -39,7 +39,7 @@ fn host_toolchain_direct_access(host: HostIdentity) -> DeployAccess? {
 type HostToolchainReachOutcome
   = ReachResolved { reach: HostToolchainReach }
   | ReachTargetAbsent
-  | ReachAccessAbsent { target_identity: HostIdentity }
+  | ReachAccessAbsent { target_identity: product.placement_supply.HostIdentity }
 
 fn host_toolchain_ensure_reach(
   kind: HostToolchainKind,

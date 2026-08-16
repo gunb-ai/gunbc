@@ -41,7 +41,7 @@ data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 // tasks but would starve every new clone(), the compute_envelope_model failure class —
 // typed and retryable, never applied past it.
 type HostConvergeSlice1TasksMaxReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   unit: NonEmptyStr
   knob: ConvergeKnob
   limit: SystemdCgroupTaskLimit
@@ -53,7 +53,7 @@ type HostConvergeSlice1TasksMaxReceipt {
 }
 
 type HostConvergeSlice1MemoryCapReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   unit: NonEmptyStr
   knob: ConvergeKnob
   live_read: RunnerUnitMemoryLiveRead
@@ -201,7 +201,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
 }
 
 type HostConvergeSlice1EnumerationMismatch {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   declared_count: Int
   observed_units: List<NonEmptyStr>
 }
@@ -245,7 +245,7 @@ type HostConvergeSlice1UnitOutcome
   | HostConvergeSlice1UnitRefused { unit: NonEmptyStr, reason: String }
 
 type HostConvergeSlice1HostResult
-  = HostConvergeSlice1HostEnumerated { host: HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
+  = HostConvergeSlice1HostEnumerated { host: product.placement_supply.HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
   | HostConvergeSlice1HostRefused { reason: String }
   | HostConvergeSlice1HostEnumerationMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
 

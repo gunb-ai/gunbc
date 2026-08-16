@@ -339,7 +339,7 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
     ModeledLexRules { root: set } =>
       fold_list(
         xs: set.rules,
-        empty: Rejected {
+        empty: v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
           )
@@ -397,24 +397,24 @@ fn bound_tokens_source_text(
 ) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: target_text_empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, token) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
           match token {
             FixedToken { token_class: tc } =>
               bind_outcome(
                 o: lex_rules_literal_for_class(rules: lex, token_class: tc),
                 f: fn(spelling) {
-                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                  v2.std.diagnostic.Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
                 }
               )
             BoundToken { token_class: _, binding: b } =>
               bind_outcome(
                 o: bound_spelling_from_map(binding_spellings: binding_spellings, binding: b),
                 f: fn(spelling) {
-                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                  v2.std.diagnostic.Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
                 }
               )
           }
@@ -465,7 +465,7 @@ fn fixed_token_spelling_from_model(
           )
         Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -487,7 +487,7 @@ fn bound_token_spelling_from_model(
           )
         Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -2037,7 +2037,7 @@ fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEff
 fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
   match fold(
     bundle.children,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -2869,7 +2869,7 @@ fn bodied_arrow_scaffold_from_grammar_relation_row(
       bind_outcome(
         o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
         f: fn(scaffold) {
-          Accepted { value: scaffold, diagnostics: d }
+          v2.std.diagnostic.Accepted { value: scaffold, diagnostics: d }
         }
       )
     Rejected { diagnostics: r } =>
@@ -2923,10 +2923,10 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
     f: fn(token_nodes) {
       fold_list(
         xs: token_nodes,
-        empty: Accepted { value: Empty, diagnostics: None },
+        empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
         cons: fn(acc, token_node) {
           match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: partial, diagnostics: ad } =>
               bind_outcome(
                 o: concrete_syntax_token_from_wire_node(token: token_node),
@@ -3650,7 +3650,7 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
     f: fn(_) {
       match fold(
         wire.children,
-        init: Accepted { value: Empty, diagnostics: None },
+        init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => acc
@@ -3682,8 +3682,8 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
         }
       ) {
         Accepted { value: bindings, diagnostics: d } =>
-          Accepted { value: bindings, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: bindings, diagnostics: d }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -3820,7 +3820,7 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
     f: fn(_) {
       match fold(
         wire.children,
-        init: Accepted { value: Empty, diagnostics: None },
+        init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => acc
@@ -3852,8 +3852,8 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
         }
       ) {
         Accepted { value: bindings, diagnostics: d } =>
-          Accepted { value: bindings, diagnostics: d }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: bindings, diagnostics: d }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -5239,7 +5239,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
 ) -> Outcome<List<TargetValueExprFieldInitSlot>> {
   match fold(
     wire.children,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -5297,7 +5297,7 @@ fn target_value_expr_record_construct_field_tokens(
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     slots,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, slot) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -5941,7 +5941,7 @@ fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
       } else {
         match fold(
           wire.children,
-          init: Accepted { value: true, diagnostics: None },
+          init: v2.std.diagnostic.Accepted { value: true, diagnostics: v2.std.diagnostic.None },
           f: fn(acc, edge) {
             match acc {
               Rejected { diagnostics: r } => acc
@@ -6031,7 +6031,7 @@ fn target_value_expr_match_arms_from_wire(
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
     wire.children,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -6078,7 +6078,7 @@ fn target_value_expr_match_arm_tokens(
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -6352,7 +6352,7 @@ fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -9327,7 +9327,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
         o: target_type_expr_arrow_labeled_codomain(node: node),
         f: fn(_codomain) {
           if is_empty(xs: node_positional_child_targets(node: node)) {
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: fold(
                 xs: node_labeled_child_edges(node: node),
                 init: Empty,
@@ -9517,7 +9517,7 @@ fn target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic
   }
 }
 
-fn target_uri_scheme_discriminant(scheme: UriScheme) -> Symbol {
+fn target_uri_scheme_discriminant(scheme: v2.std.network.UriScheme) -> Symbol {
   discriminant(v: scheme)
 }
 
@@ -9807,7 +9807,7 @@ fn target_representation_parameter_slots_from_node(
         ),
         cons: fn(acc, parameter) {
           match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: slots, diagnostics: _ } =>
               match slots.lookup(parameter) {
                 Present { value: _ } =>
@@ -11901,7 +11901,7 @@ fn type_expr_projection_row_witness_gate_with_rule(
       ) {
         Accepted { value: fw, diagnostics: d } =>
           outcome_accepted(fw.candidate)
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -12295,7 +12295,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
           bind_outcome(
             o: fold_list(
               xs: arg_children,
-              empty: Accepted { value: Empty, diagnostics: None },
+              empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
               cons: fn(acc, arg) {
                 match acc {
                   Rejected { diagnostics: _ } => acc
@@ -12576,7 +12576,7 @@ fn target_value_expr_record_construct_field_slots_from_edges(
 ) -> Outcome<List<TargetValueExprFieldInitSlot>> {
   match fold(
     edges,
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -12829,7 +12829,7 @@ fn target_value_expr_match_project_arms(
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
     target_value_expr_match_arm_edges_after_scrutinee(children: children),
-    init: Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm_edge) {
       match acc {
         Rejected { diagnostics: r } => acc
@@ -13233,7 +13233,7 @@ fn target_project_closure_in_arrow_scope(
               )
             }
           )
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )

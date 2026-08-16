@@ -22,4 +22,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 
-data verizon: Vendor<Hardware> = Vendor { legal_name: "Verizon Communications Inc." }
+data verizon: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Verizon Communications Inc." }

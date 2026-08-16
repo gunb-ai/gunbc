@@ -155,7 +155,7 @@ fn scales_agree(a: Scale, b: Scale) -> Bool {
 // projected into the static type that names its unit. The projections below are where it lands.
 type FrameLength {
   scale: Scale
-  count: Nat
+  count: std.nat.Nat
 }
 
 fn frame_length(scale: Scale, count: Nat) -> FrameLength {

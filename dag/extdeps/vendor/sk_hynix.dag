@@ -22,4 +22,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 
-data sk_hynix: Vendor<Hardware> = Vendor { legal_name: "SK hynix Inc." }
+data sk_hynix: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "SK hynix Inc." }

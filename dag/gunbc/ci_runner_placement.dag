@@ -27,7 +27,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // TaskCount, the HardwareThreadCount shape), which also retires the to_string() re-serialization
 // at the host_converge knob seam.
 type RunnerHostDeployment {
-  identity: HostIdentity
+  identity: product.placement_supply.HostIdentity
   runner_count: Int
   runner_slice_cap: ByteSize
   per_runner_memory_cap: ByteSize
@@ -349,7 +349,7 @@ fn effective_runners_per_host() -> RunnersPerHostResolution {
 }
 
 type SessionHostReservation {
-  identity: HostIdentity
+  identity: product.placement_supply.HostIdentity
   session_count: Int
   per_session_reservation: ByteSize
   workload_class: WorkloadClass

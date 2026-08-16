@@ -61,7 +61,7 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
 
 type BmcFirmwareTrack {
   family: BmcFirmwareFamily
-  major_version: Nat
+  major_version: std.nat.Nat
 }
 
 type BmcFirmwareIntent

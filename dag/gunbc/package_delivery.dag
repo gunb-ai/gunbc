@@ -155,7 +155,7 @@ data admitted_package_path_note: String = "Staging archive paths are NOT durable
 
 type StagedAdmittedPackageArtifact {
   receipt: AdmittedPackageArtifactReceipt
-  local_artifact_path: FilePath
+  local_artifact_path: std.types.FilePath
 }
 
 type RegistryArtifactAcquisition
@@ -849,7 +849,7 @@ type CodexRuntimeBundleReceipt {
 }
 
 type CodexRuntimeBundle {
-  root: FilePath
+  root: std.types.FilePath
   native_executable_rel: NonEmptyStr
   wrapper_executable_rel: NonEmptyStr
   platform_package_rel: NonEmptyStr
@@ -1505,13 +1505,13 @@ fn read_codex_runtime_receipt_sidecar(release_root: FilePath) -> String? {
 
 type CodexRuntimeReleaseOutcome
   = CodexRuntimeReleaseReady {
-      root: FilePath
+      root: std.types.FilePath
     }
   | CodexRuntimeReleaseFailed {
       cause: NonEmptyStr
     }
   | CodexRuntimeReleaseReuseMismatch {
-      existing_root: FilePath
+      existing_root: std.types.FilePath
       cause: NonEmptyStr
     }
 
@@ -1818,17 +1818,17 @@ type CodexRuntimeMaterialization
       cause: NonEmptyStr
     }
   | CodexRuntimeCacheSeedRefused {
-      path: FilePath
+      path: std.types.FilePath
       stderr: String
     }
   | CodexRuntimeNpmCiOfflineRefused {
       stderr: String
     }
   | CodexRuntimeExecutableAbsent {
-      path: FilePath
+      path: std.types.FilePath
     }
   | CodexRuntimePlatformPackageAbsent {
-      path: FilePath
+      path: std.types.FilePath
     }
   | CodexRuntimeIdentityObservationRefused
   | CodexRuntimeReceiptObservationRefused {
@@ -1838,7 +1838,7 @@ type CodexRuntimeMaterialization
       cause: NonEmptyStr
     }
   | CodexRuntimeMaterializationReuseMismatch {
-      existing_root: FilePath
+      existing_root: std.types.FilePath
       cause: NonEmptyStr
     }
   | CodexRuntimeHostDependencyRefused {
@@ -2303,7 +2303,7 @@ data spark_serving_ollama_runtime_materialization_note: String = "Archive admiss
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {
-      local_path: FilePath
+      local_path: std.types.FilePath
       digest_hex: NonEmptyStr
     }
   | SparkServingOllamaArchiveDownloadRefused {

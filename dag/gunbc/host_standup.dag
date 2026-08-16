@@ -386,7 +386,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   },
 ]
 
-data srv3_host_standup_target: HostIdentity = operator_host_srv3
+data srv3_host_standup_target: product.placement_supply.HostIdentity = operator_host_srv3
 
 fn host_standup_spine_length() -> Int {
   host_standup_spine.length()

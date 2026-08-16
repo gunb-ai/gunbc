@@ -14,7 +14,7 @@ type HostDiskObservation
   | DiskObservationRefused { detail: NonEmptyStr }
   | DiskUnobserved { reason: String }
 
-fn host_disk_observed_producer(host: HostIdentity) -> HostDiskObservation {
+fn host_disk_observed_producer(host: product.placement_supply.HostIdentity) -> HostDiskObservation {
   match fleet_shell_transport_observation(host: host) {
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       DiskUnobserved {
@@ -29,11 +29,11 @@ fn host_disk_observed_producer(host: HostIdentity) -> HostDiskObservation {
   }
 }
 
-fn host_disk_observation(host: HostIdentity) -> HostDiskObservation {
+fn host_disk_observation(host: product.placement_supply.HostIdentity) -> HostDiskObservation {
   host_disk_observed_producer(host: host)
 }
 
-fn host_disk_unobserved_count(hosts: List<HostIdentity>) -> Int {
+fn host_disk_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h =>

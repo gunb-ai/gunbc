@@ -46,7 +46,7 @@ fn gcloud_access_ensure_classification(
       Absent =>
         UpsertClassification {
           verdict: UnknownRefused,
-          decision: Refuse {
+          decision: std.upsert_decision.Refuse {
             reason: gcloud_access_ensure_refusal_reason(stderr: stderr),
           },
         }

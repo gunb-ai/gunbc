@@ -87,7 +87,7 @@ fn spark_serving_configuration_identity(
 // authority, so neither can be written. Memory is not a bare number: it carries its quantity, and
 // reusing the measure carrier is what lets this budget be compared against the host RAM figures
 // the fleet already models rather than against a same-shaped Int that happens to mean bytes.
-type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: ByteSize }
+type InferenceCapacityPolicy { max_model_len: std.nat.Nat  shared_memory_budget_bytes: ByteSize }
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
@@ -149,7 +149,7 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 // It is desired state compared separately from the loaded runtime+model fingerprint — configuration
 // and capacity are not imported into observations.
 type SparkServingOccurrence {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   release_identity: SparkServingReleaseIdentity
   serving_policy: SparkServingServingPolicy
 }
@@ -158,9 +158,9 @@ type SparkServingOccurrence {
 // is missing rather than answering false, because "no managed principal exists" and "the host key
 // has no independent anchor" have different remedies and a shared `false` erases that.
 type SparkServingPrerequisite
-  = HostIdentityBindingAdmitted { host: HostIdentity }
-  | ManagedHostAccessGrounded { host: HostIdentity }
-  | PrerequisiteAbsent { host: HostIdentity, requirement: NonEmptyStr, cause: NonEmptyStr }
+  = HostIdentityBindingAdmitted { host: product.placement_supply.HostIdentity }
+  | ManagedHostAccessGrounded { host: product.placement_supply.HostIdentity }
+  | PrerequisiteAbsent { host: product.placement_supply.HostIdentity, requirement: NonEmptyStr, cause: NonEmptyStr }
 
 type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 
@@ -188,13 +188,13 @@ type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 // between refusal and drift, one position over -- and it was load-bearing rather than cosmetic,
 // because it is precisely the state both Sparks are in today.
 type SparkServingObservation
-  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingReleaseIdentity }
-  | SparkServingAbsent { host: HostIdentity }
-  | SparkServingObservationRefused { host: HostIdentity, cause: NonEmptyStr }
+  = SparkServingObserved { host: product.placement_supply.HostIdentity, loaded_release: SparkServingReleaseIdentity }
+  | SparkServingAbsent { host: product.placement_supply.HostIdentity }
+  | SparkServingObservationRefused { host: product.placement_supply.HostIdentity, cause: NonEmptyStr }
 
 type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
-  | SparkServingInstallRequired { subject: HostIdentity, desired_release: SparkServingReleaseIdentity }
+  | SparkServingInstallRequired { subject: product.placement_supply.HostIdentity, desired_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
   | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
@@ -345,7 +345,7 @@ fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOcc
 // what privilege a realization costs. Neither answers the question an operator actually has, which
 // is "can this be applied with the credentials that exist". Only the pair answers it.
 type SparkServingPlanRow {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   reconciliation: SparkServingReconciliation
   contract: ServingRequirementRefusal?
   shortfall: EscalationShortfall

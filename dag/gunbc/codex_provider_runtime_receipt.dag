@@ -10,9 +10,9 @@ type CodexProcessFingerprintStanding
 data codex_process_fingerprint_unobserved_reason: NonEmptyStr = "bundled-native pane_current_command not yet observed on this host; derive from CodexProviderRuntimeReceipt once wet observation updates process_fingerprint — never from a hand-authored literal" as NonEmptyStr
 
 type CodexProviderRuntimeReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   placement: ProviderRuntimePlacement
-  bundled_executable: FilePath
+  bundled_executable: std.types.FilePath
   version_marker: NonEmptyStr
   bundle_receipt_identity_hex: NonEmptyStr
   process_fingerprint: CodexProcessFingerprintStanding

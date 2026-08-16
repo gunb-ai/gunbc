@@ -209,11 +209,11 @@ fn ci_floor_expected_resolve_obligations() -> List<ResolveObligation> {
   ]
 }
 
-fn ci_floor_expected_resolve_obligation_count() -> Nat {
+fn ci_floor_expected_resolve_obligation_count() -> std.nat.Nat {
   ci_floor_expected_resolve_obligations() |> count
 }
 
-fn ci_floor_declared_resolve_count() -> Nat {
+fn ci_floor_declared_resolve_count() -> std.nat.Nat {
   ci_floor_expected_resolve_obligation_count()
 }
 
@@ -321,7 +321,7 @@ fn same_obligation_realized_twice(realizations: List<ResolveRealization>) -> Boo
 
 fn resolve_realization_finalization_holds(
   realizations: List<ResolveRealization>,
-  unattributed_physical_resolves: Nat,
+  unattributed_physical_resolves: std.nat.Nat,
 ) -> Bool {
   unattributed_physical_resolves == 0
     && (realizations |> count) == ci_floor_expected_resolve_obligation_count()
@@ -332,7 +332,7 @@ fn resolve_realization_finalization_holds(
     && !unknown_obligation_appeared(realizations: realizations)
 }
 
-fn cold_realization(id: ResolveObligationIdentity, nanos: Nat) -> ResolveRealization {
+fn cold_realization(id: ResolveObligationIdentity, nanos: std.nat.Nat) -> ResolveRealization {
   ColdResolvePerformed {
     obligation: expected_obligation(id: id),
     receipt: ResolveColdReceipt { resolve_nanos: nanosecond(count: nanos) },
@@ -346,7 +346,7 @@ fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
   }
 }
 
-fn cold_resolves_performed(realizations: List<ResolveRealization>) -> Nat {
+fn cold_resolves_performed(realizations: List<ResolveRealization>) -> std.nat.Nat {
   fold(realizations, init: 0, f: fn(acc, r) {
     match r {
       ColdResolvePerformed { obligation: _, receipt: _ } => acc + 1

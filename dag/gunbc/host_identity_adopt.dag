@@ -2,7 +2,7 @@ module gunbc.host_identity_adopt
 
 
 type HostIdentityAdoptReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   key: HostIdentityKnobKey
   observed_short_hostname: String
   probed_at: NonEmptyStr

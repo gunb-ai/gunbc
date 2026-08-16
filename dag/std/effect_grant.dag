@@ -197,7 +197,7 @@ fn effect_grant_decide(
 data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope> = AccessPolicy { decide: effect_grant_decide }
 
 fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessDecision {
-  effect_grant_policy.decide(effect_access_request(request: EffectRequest {
+  effect_grant_policy.decide(effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: env.frame,
     effect: verb,
     target: target,

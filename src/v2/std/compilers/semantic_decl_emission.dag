@@ -495,17 +495,17 @@ fn semantic_decl_bound_tokens_source_text(
     f: fn(lex) {
       fold_list(
         xs: tokens,
-        empty: Accepted { value: target_text_empty, diagnostics: None },
+        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
         cons: fn(acc, token) {
           match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: partial, diagnostics: ad } =>
               match token {
                 FixedToken { token_class: tc } =>
                   bind_outcome(
                     o: lex_rules_literal_for_class(rules: lex, token_class: tc),
                     f: fn(spelling) {
-                      Accepted {
+                      v2.std.diagnostic.Accepted {
                         value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)),
                         diagnostics: ad
                       }
@@ -515,7 +515,7 @@ fn semantic_decl_bound_tokens_source_text(
                   bind_outcome(
                     o: semantic_decl_binding_spelling_lookup(profile: profile, binding: b),
                     f: fn(spelling) {
-                      Accepted {
+                      v2.std.diagnostic.Accepted {
                         value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)),
                         diagnostics: ad
                       }

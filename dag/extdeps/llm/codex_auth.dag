@@ -36,13 +36,13 @@ type CodexOAuthTokens {
   id_token: JwtCompactSerialization
   access_token: JwtCompactSerialization
   refresh_token: CodexOpaqueToken
-  account_id: Uuid
+  account_id: extdeps.uuid.Uuid
 }
 
 type CodexAuthFile
   = CodexChatGptAuth {
       tokens: CodexOAuthTokens,
-      last_refresh: Rfc3339Timestamp,
+      last_refresh: extdeps.time.rfc3339.Rfc3339Timestamp,
     }
   | CodexApiKeyAuth {
       api_key: NonEmptyStr,
@@ -85,13 +85,13 @@ type CodexOrganizationMembership {
 }
 
 type CodexSubscriptionWindow {
-  active_start: Rfc3339Timestamp
-  active_until: Rfc3339Timestamp
-  last_checked: Rfc3339Timestamp
+  active_start: extdeps.time.rfc3339.Rfc3339Timestamp
+  active_until: extdeps.time.rfc3339.Rfc3339Timestamp
+  last_checked: extdeps.time.rfc3339.Rfc3339Timestamp
 }
 
 type CodexOpenAiAuthClaim {
-  chatgpt_account_id: Uuid
+  chatgpt_account_id: extdeps.uuid.Uuid
   chatgpt_user_id: NonEmptyStr
   user_id: NonEmptyStr
   plan_type: NonEmptyStr

@@ -29,7 +29,7 @@ type PinSelection
   = ExactPin
   | TrackedChannel {
       channel: NonEmptyStr
-      refresh_window_days: PositiveInt
+      refresh_window_days: std.integer.PositiveInt
     }
 
 type Pin<Subject> {

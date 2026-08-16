@@ -99,7 +99,7 @@ data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplic
 
 // The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
-  = KnownMethod { method: HttpMethod }
+  = KnownMethod { method: std.types.HttpMethod }
   | UnknownMethod { label: String }
 
 fn parse_http_method_label(label: String) -> HttpMethodParse {
@@ -139,7 +139,7 @@ type HttpStatusResponse {
 
 type HttpServerRoute {
   operation_name: String
-  method: HttpMethod
+  method: std.types.HttpMethod
   path_template: PathTemplate
   request_body: HttpRequestBodyKind
   parameters: List<HttpServerParameter>
@@ -180,7 +180,7 @@ type NodeHttpCreateServerEmissionTarget {
 }
 
 type ServedStaticRoute {
-  method: HttpMethod
+  method: std.types.HttpMethod
   path_pattern: PathTemplate
   body: String
   content_type: MediaType
@@ -192,7 +192,7 @@ type ServedStaticRouteTable {
 }
 
 type ServeHttpRequest {
-  method: HttpMethod
+  method: std.types.HttpMethod
   path: String
   body: String
 }
@@ -221,7 +221,7 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
 // The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
 type ServedRoute<H>
   = StaticRoute { route: ServedStaticRoute }
-  | DynamicRoute { method: HttpMethod, path_pattern: PathTemplate, handler: H }
+  | DynamicRoute { method: std.types.HttpMethod, path_pattern: PathTemplate, handler: H }
 
 type ServedRouteTable<H> {
   routes: List<ServedRoute<H>>
@@ -230,7 +230,7 @@ type ServedRouteTable<H> {
 type RouteSelection<H>
   = SelectedStatic { route: ServedStaticRoute }
   | SelectedDynamic { handler: H, params: List<PathParamBinding> }
-  | MethodNotAllowed { allowed: List<HttpMethod> }
+  | MethodNotAllowed { allowed: List<std.types.HttpMethod> }
   | NoRouteMatched
 
 fn served_route_method<H>(r: ServedRoute<H>) -> HttpMethod {

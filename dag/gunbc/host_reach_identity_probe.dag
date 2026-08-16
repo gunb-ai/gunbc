@@ -51,7 +51,7 @@ type ReachProbeOutcome
   | ProbeTargetUnobserved { cause: String }
 
 type HostReachIdentityProbeReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   probed_at: NonEmptyStr
   requested_principal: String
   outcome: ReachProbeOutcome

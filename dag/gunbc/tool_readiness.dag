@@ -9,7 +9,7 @@ type UnpinnedToolFrontierRow {
 
 type ToolReadinessRefusalCause
   = ToolObservationMissing { tool_name: NonEmptyStr }
-  | ToolObservationDuplicate { tool_name: NonEmptyStr, count: NonNegativeInt }
+  | ToolObservationDuplicate { tool_name: NonEmptyStr, count: std.integer.NonNegativeInt }
   | ToolMembershipNotConverged {
       plan: MembershipPlan<Pin<CliTool>>,
       admission: PinAdmission<CliTool>
@@ -19,7 +19,7 @@ type ToolReadinessRefusalCause
       plan: MembershipPlan<Pin<CliTool>>
     }
   | UnpinnedToolUndeclared
-  | UnpinnedToolFrontierDuplicate { count: NonNegativeInt }
+  | UnpinnedToolFrontierDuplicate { count: std.integer.NonNegativeInt }
 
 type ToolReadinessRefusal {
   tool: CliTool

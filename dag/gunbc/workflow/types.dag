@@ -84,7 +84,7 @@ type ImplementationPlan {
 type ImplementationTask {
   title: String
   description: String
-  file_paths: List<FilePath>?
+  file_paths: List<std.types.FilePath>?
   dependencies: List<String>?
   done: Bool = false
 }

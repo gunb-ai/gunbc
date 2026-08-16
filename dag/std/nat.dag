@@ -1,7 +1,7 @@
 module std.nat
 
 
-type Nat = CommutativeSemiring<Magnitude>
+type Nat = CommutativeSemiring<std.magnitude.Magnitude>
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }

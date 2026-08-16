@@ -1,7 +1,7 @@
 module gunbc.spark_serving_desired
 
 
-data spark_serving_desired_hosts: List<HostIdentity> = [
+data spark_serving_desired_hosts: List<product.placement_supply.HostIdentity> = [
   operator_host_srv5,
   operator_host_srv6,
 ]
@@ -80,7 +80,7 @@ type SparkServingFleetDesired
   = SparkServingFleetDesiredReady { occurrences: List<SparkServingOccurrence> }
   | SparkServingFleetDesiredRefused { cause: NonEmptyStr }
 
-fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
+fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: serving_release),

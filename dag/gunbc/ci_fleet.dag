@@ -31,7 +31,7 @@ fn per_second_billed_cost_quote(unit_price: MoneyAmountMicro, currency: Currency
   }
 }
 
-fn cost_estimate_unit_price_micros(quote: CostEstimate) -> Nat {
+fn cost_estimate_unit_price_micros(quote: CostEstimate) -> std.nat.Nat {
   money_amount_micro_count(m: quote.unit_price)
 }
 
@@ -89,7 +89,7 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 
 data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
 
-data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
+data gunbc_ci_host_identity: product.placement_supply.HostIdentity = "gunbc-ci-fleet"
 
 data gunbc_ci_cpu: CpuFacts = CpuFacts {
   catalog: altra_q6430_catalog,

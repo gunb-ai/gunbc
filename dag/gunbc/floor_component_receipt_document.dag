@@ -292,13 +292,13 @@ fn receipt_natural_member_at(v: JsonValue, key: String) -> ReceiptNatural {
 }
 
 type ReceiptNatural
-  = ReceiptNaturalFound { value: Nat }
+  = ReceiptNaturalFound { value: std.nat.Nat }
   | ReceiptNaturalFailed { decoding: FloorComponentReceiptDecoding }
 
 data component_alert_summary_note: String = "THE STRICT TYPED PROJECTION OF THE FACTS THE ALERT ACTUALLY DECIDES ON. Component interiors are still transported as JSON residue, because a total reverse decoder for std.observation.ObservationEvent is a separate obligation and half of one would fork a coproduct that already has an authority. But the four fields the alert READS — index, label, outcome, failure_mode — are exactly the fields its incident signature is keyed on, so they are not residue and must not be typed as residue. They are decoded, each required, each exactly once, each with its own located refusal.\n\nThe distinction that makes this coherent rather than arbitrary: unknown OPTIONAL detail may remain JSON, decision-driving facts may not. A field that changes what the alert says must be one the decoder has checked."
 
 type ComponentAlertSummary {
-  index: Nat
+  index: std.nat.Nat
   label: NonEmptyStr
   outcome: ComponentOutcomeRead
   failure_mode: FloorComponentFailureMode

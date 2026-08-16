@@ -100,7 +100,7 @@ fn extent_high_ns(e: ExtentInFrame) -> Nat {
 }
 
 type AttributionScan {
-  cursor: Nat
+  cursor: std.nat.Nat
   spans: List<AttributionSpan>
   refusal: AttributionResult?
 }
@@ -224,8 +224,8 @@ fn attribute_within(
 type ExtentSpec {
   occurrence: OccurrenceId
   frame: ClockFrame
-  start_ns: Nat
-  width_ns: Nat
+  start_ns: std.nat.Nat
+  width_ns: std.nat.Nat
 }
 
 type SpecConstruction

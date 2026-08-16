@@ -50,7 +50,7 @@ type NvmeFormFactor =
 
 type NvmeDeviceCatalogRow {
   part_number: NonEmptyStr
-  manufacturer: Vendor<Hardware>
+  manufacturer: Vendor<extdeps.hardware.Hardware>
 
   capacity_bytes: ByteSize
 

@@ -41,7 +41,7 @@ type FalsifierLaneEnrollment {
 }
 
 type FalsifierPlannedComponent {
-  index: Nat
+  index: std.nat.Nat
   lane: FalsifierLane
 }
 
@@ -86,10 +86,10 @@ data falsifier_run_standing_scope_note: String = "SCOPE, and the boundary that k
 data falsifier_run_standing_axes_note: String = "Three defect axes, each an exact index SET and each required to be explicitly empty — never a count equality between planned and reported (DESIGN section 5: completeness is an identity join, and count(planned) == count(reported) is satisfied by one missing component alongside one surplus one; witness_standing_reds_when_counts_agree_but_identities_do_not is the discriminating red for exactly that). MISSING is the axis the receipt cannot currently express on its own: the seed pads batches the stop policy never reached with an explicit not_reached Skipped row, so a gap in the reported set is not an unreached batch — it is the executor and the plan disagreeing about what the run consisted of, which is precisely the state no existing check can see. SURPLUS is its mirror. DUPLICATE catches two rows claiming one component, which would make attribution ambiguous rather than merely incomplete. StandingPlanEmpty fails closed rather than reporting a vacuous completeness: the falsifier always plans at least the predict-only sweep, so an empty planned roster means the projection did not run, not that there was nothing to run."
 
 type FalsifierRunStanding
-  = StandingComplete { component_count: Nat }
-  | StandingMissingComponents { missing_indices: List<Nat> }
-  | StandingSurplusComponents { surplus_indices: List<Nat> }
-  | StandingDuplicateComponents { duplicated_indices: List<Nat> }
+  = StandingComplete { component_count: std.nat.Nat }
+  | StandingMissingComponents { missing_indices: List<std.nat.Nat> }
+  | StandingSurplusComponents { surplus_indices: List<std.nat.Nat> }
+  | StandingDuplicateComponents { duplicated_indices: List<std.nat.Nat> }
   | StandingPlanEmpty { cause: NonEmptyStr }
 
 fn falsifier_run_standing_from(
@@ -175,9 +175,9 @@ fn falsifier_owner_of_lane(rows: List<FalsifierLaneOwnerRow>, lane: FalsifierLan
 }
 
 type FalsifierRouting
-  = RoutedToOwner { index: Nat, lane: FalsifierLane, owner: FalsifierLaneOwner }
-  | RoutingLaneUndetermined { index: Nat, cause: NonEmptyStr }
-  | RoutingOwnerUndeclared { index: Nat, lane: FalsifierLane, cause: NonEmptyStr }
+  = RoutedToOwner { index: std.nat.Nat, lane: FalsifierLane, owner: FalsifierLaneOwner }
+  | RoutingLaneUndetermined { index: std.nat.Nat, cause: NonEmptyStr }
+  | RoutingOwnerUndeclared { index: std.nat.Nat, lane: FalsifierLane, cause: NonEmptyStr }
 
 fn falsifier_lane_of_index(planned: List<FalsifierPlannedComponent>, index: Nat) -> FalsifierLane? {
   fold(planned, init: none, f: fn(acc, p) {
@@ -254,7 +254,7 @@ type FalsifierFailureClass
   | ClassFailedIndistinct { error: NonEmptyStr }
   | ClassTimedOut
   | ClassNotReached { reason: NonEmptyStr }
-  | ClassShownFailures { count: Nat }
+  | ClassShownFailures { count: std.nat.Nat }
 
 fn falsifier_failure_class_of_row(row: FloorComponentRow) -> FalsifierFailureClass? {
   match floor_component_transition_outcome(t: row.event.transition) {
@@ -283,7 +283,7 @@ fn falsifier_failure_class_name(c: FalsifierFailureClass) -> String {
 }
 
 type FalsifierFailingComponent {
-  index: Nat
+  index: std.nat.Nat
   routing: FalsifierRouting
   failure_class: FalsifierFailureClass
 }

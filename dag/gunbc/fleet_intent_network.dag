@@ -1,14 +1,14 @@
 module gunbc.fleet_intent_network
 
 
-data operator_host_srv1: HostIdentity = "srv1"
-data operator_host_srv2: HostIdentity = "srv2"
-data operator_host_srv3: HostIdentity = "srv3"
-data operator_host_srv4: HostIdentity = "srv4"
+data operator_host_srv1: product.placement_supply.HostIdentity = "srv1"
+data operator_host_srv2: product.placement_supply.HostIdentity = "srv2"
+data operator_host_srv3: product.placement_supply.HostIdentity = "srv3"
+data operator_host_srv4: product.placement_supply.HostIdentity = "srv4"
 
 // SPARK-LANE-A (2026-08-06). srv5/srv6 are the operator's HostIdentity slots for the two ordered NVIDIA DGX Spark units (gunbc.dgx_spark_procurement). They live here because HostIdentity naming is this module's single authority — SPARK-0 minted `srv5_reserved`/`srv6_reserved` privately inside the procurement module only because this file was mid-refactor and out of scope, which was a §3 fork of one concept (a host's fleet identity) across two homes; those private rows are deleted and the procurement module imports these. NAMING AN IDENTITY IS NOT ENROLLMENT, and that distinction is carried structurally rather than by this prose: enrollment is membership in `fleet_intent_network.endpoints` (and in gunbc.fleet_intent's ComputeHost list), and srv5/srv6 appear in neither. Updated 2026-08-07 for the arrived state: both units are now live on the LAN and the operator has authored two static reservations for them (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, both MACs ARP-confirmed), so the missing fact is no longer the addresses — it is WHICH box takes which slot. The operator supplied the router table but never stated the assignment, and per the parent lane it may be a free choice to be made rather than an observation to be recovered. Authoring `srv5-host-lan` at one of those two addresses would therefore be a 50/50 guess about which physical machine a fleet subject names, which is exactly the fabricated-plausible-output failure DESIGN §5 forbids. The observed reservations are modeled — as unassigned router facts — in gunbc.dgx_spark_procurement, and the endpoint rows here follow the same operator statement that lifts that module's router-binding wall.
-data operator_host_srv5: HostIdentity = "srv5"
-data operator_host_srv6: HostIdentity = "srv6"
+data operator_host_srv5: product.placement_supply.HostIdentity = "srv5"
+data operator_host_srv6: product.placement_supply.HostIdentity = "srv6"
 
 data network_endpoint_address_grounding_residual_note: String = "🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file are still bare `\"192.168.1.x\"` / CIDR strings even though this same lane grounded the address leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress = IpV4|IpV6, and the DHCP lease rows migrated to the ipv4_address constructor). The octet decomposition is half-consumed here: product.network_topology.NetworkEndpoint.address is typed String, so grounding these sites means re-typing that field to extdeps.network.address.IpAddress (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until then these literals are the §3 residual the reach lane closes, tracked here so the loop is visible rather than silently forked. The grounded rows the reach lane already built — gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent second grounding: srv2/srv3's address becomes those rows when the field re-types, so the transitional dual representation is marked debt heading toward one authority, not a permanent fork."
 

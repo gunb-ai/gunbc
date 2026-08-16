@@ -15,8 +15,8 @@ resource Filesystem {
   release {}
 
   capability probe {
-    input { path: FilePath }
-    output { classification: FileClassification }
+    input { path: std.types.FilePath }
+    output { classification: std.filesystem.FileClassification }
   }
 
   capability read {
@@ -25,12 +25,12 @@ resource Filesystem {
   }
 
   capability read_bytes {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output { content: Bytes }
   }
 
   capability write {
-    input { path: FilePath, content: String }
+    input { path: std.types.FilePath, content: String }
     output { written: Bool }
   }
 }
@@ -73,6 +73,6 @@ resource Entropy {
 
   capability read_bytes {
     input { count: ByteSize }
-    output { octets: List<UInt8> }
+    output { octets: List<std.integer.UInt8> }
   }
 }

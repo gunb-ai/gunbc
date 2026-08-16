@@ -26,14 +26,14 @@ data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE
 type FloorComponentRow {
   event: ObservationEvent
   selection: NodeFrontierSelection
-  witnesses: Nat
+  witnesses: std.nat.Nat
   failure_mode: FloorComponentFailureMode
 }
 
 type FloorControlState
   = ControlConcluded { row: FloorComponentRow }
   | ControlAbsent { cause: NonEmptyStr }
-  | ControlAmbiguous { cause: NonEmptyStr, matched: Nat }
+  | ControlAmbiguous { cause: NonEmptyStr, matched: std.nat.Nat }
 
 fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) -> ObservationSubject {
   ObservationSubject {

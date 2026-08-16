@@ -14,12 +14,12 @@ data cuda_compute_capabilities_authority: ExternalAuthority = extdeps_external_a
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 
 type GpuComputeCapability {
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   major: Int
   minor: Int
 }
 
-type UnsubstantiatedGpuCapabilityLabel { vendor: Vendor<Hardware> }
+type UnsubstantiatedGpuCapabilityLabel { vendor: Vendor<extdeps.hardware.Hardware> }
 
 type GpuCapabilityLabelOutcome
   = GpuCapabilityLabelOk { label: String }
@@ -44,7 +44,7 @@ fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLa
 }
 
 type GpuFacts {
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   model: NonEmptyStr
   compute_capability: GpuComputeCapability?
   memory: MemoryFacts
@@ -52,7 +52,7 @@ type GpuFacts {
 }
 
 type AcceleratorFacts {
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   model: NonEmptyStr
 }
 
@@ -62,7 +62,7 @@ type GpuSmCacheGeometry {
 }
 
 type GpuModelCatalogRow {
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   model: NonEmptyStr
   microarchitecture: NonEmptyStr
   execution_lane_count: HardwareThreadCount

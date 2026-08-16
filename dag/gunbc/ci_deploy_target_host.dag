@@ -3,8 +3,8 @@ module gunbc.ci_deploy_target_host
 
 
 type DeployTargetHostProof
-  = RunnerIdentityOnHost { host: HostIdentity }
-  | SshExplicitHost { host: HostIdentity, ssh_host: NonEmptyStr }
+  = RunnerIdentityOnHost { host: product.placement_supply.HostIdentity }
+  | SshExplicitHost { host: product.placement_supply.HostIdentity, ssh_host: NonEmptyStr }
 
 data deploy_target_host_refusal_local: String = "deploy-target-host: FAIL LocalShell apply refused — runner identity does not prove target host"
 

@@ -21,9 +21,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type OllamaSemanticVersion {
-  major: Nat
-  minor: Nat
-  patch: Nat
+  major: std.nat.Nat
+  minor: std.nat.Nat
+  patch: std.nat.Nat
 }
 
 fn ollama_semantic_version(major: Nat, minor: Nat, patch: Nat) -> OllamaSemanticVersion {

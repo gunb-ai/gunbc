@@ -8,9 +8,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data linux_execve_max_arg_strlen_page_factor: Nat = 32
+data linux_execve_max_arg_strlen_page_factor: std.nat.Nat = 32
 
-fn host_exec_arg_max_strlen_from_page(page: ByteSize, page_factor: Nat) -> ByteSize {
+fn host_exec_arg_max_strlen_from_page(page: ByteSize, page_factor: std.nat.Nat) -> ByteSize {
   byte_size(count: byte_size_count(page) * page_factor)
 }
 

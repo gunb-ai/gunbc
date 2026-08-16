@@ -341,7 +341,7 @@ data structural_coverage_gap_github_pull_review_response_residual: List<Coverage
 type ReviewComment {
   id: Int
   node_id: String
-  path: FilePath
+  path: std.types.FilePath
   line: Int?
   original_line: Int?
   body: String

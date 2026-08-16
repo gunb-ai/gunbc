@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data apt_bin_dir: FilePath = "/usr/bin"
-data apt_local_bin_dir: FilePath = "/usr/local/bin"
+data apt_bin_dir: std.types.FilePath = "/usr/bin"
+data apt_local_bin_dir: std.types.FilePath = "/usr/local/bin"
 
 data package_coreutils: NonEmptyStr = "coreutils"     
 data package_grep: NonEmptyStr = "grep"               

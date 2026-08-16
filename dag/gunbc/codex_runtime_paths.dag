@@ -5,21 +5,21 @@ data codex_runtime_paths_note: String = "Path composition for the Codex provider
 
 data codex_runtime_current_link_name: NonEmptyStr = "current" as NonEmptyStr
 
-data srv1_codex_runtime_release_root: FilePath = "/opt/gunbc/provider-runtime/codex" as FilePath
+data srv1_codex_runtime_release_root: std.types.FilePath = "/opt/gunbc/provider-runtime/codex" as std.types.FilePath
 
-fn codex_runtime_current_link_path(release_parent: FilePath) -> FilePath {
+fn codex_runtime_current_link_path(release_parent: std.types.FilePath) -> std.types.FilePath {
   concat(
     release_parent as String,
     concat("/", codex_runtime_current_link_name as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn codex_bundled_executable_at_current_link(
-  release_parent: FilePath,
+  release_parent: std.types.FilePath,
   native_executable_rel: NonEmptyStr,
-) -> FilePath {
+) -> std.types.FilePath {
   concat(
     codex_runtime_current_link_path(release_parent: release_parent) as String,
     concat("/", native_executable_rel as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }

@@ -33,7 +33,7 @@ data sha512_observe_shape_note: String = "INTERFACE: observe file bytes → Sha5
 
 service sha512sum.Sha512 {
   operation DigestFile {
-    input { path: FilePath }
+    input { path: std.types.FilePath }
     output {
       stdout: String from "stdout"
       success: Bool from "exit_success"
@@ -51,7 +51,7 @@ type Sha512FileObservation
   = Sha512FileObserved { digest: Sha512Digest }
   | Sha512FileObservationRefused { cause: NonEmptyStr }
 
-fn sha512sum_observe_file(path: FilePath) -> Sha512FileObservation {
+fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
   let read = sha512sum.Sha512.DigestFile(path: path)
   if !read.success {
     Sha512FileObservationRefused { cause: "sha512sum DigestFile failed" as NonEmptyStr }

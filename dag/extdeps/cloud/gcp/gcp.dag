@@ -31,7 +31,7 @@ type GcpOperation {
 }
 
 type GcpOAuth2AccessTokenStrategy
-  = AdcRefresh { adc_path: FilePath? }
+  = AdcRefresh { adc_path: std.types.FilePath? }
   | GcloudCli
 
 type GcpCredentialFlow

@@ -130,7 +130,7 @@ type Base64EncodeState {
   buf: Base64EncodeBuf
 }
 
-fn base64_octet_int(b: UInt8) -> Int {
+fn base64_octet_int(b: std.integer.UInt8) -> Int {
   b + 0
 }
 
@@ -180,7 +180,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String {
   }
 }
 
-fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
+fn base64_encode(octets: List<std.integer.UInt8>, variant: Base64Variant) -> String {
   let alphabet = base64_alphabet(variant: variant)
   let st = fold(octets,
     init: Base64EncodeState { out: "", buf: EncEmpty },
@@ -274,11 +274,11 @@ fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
   }
 }
 
-fn base64_octet_of_int(n: Int) -> UInt8 {
+fn base64_octet_of_int(n: Int) -> std.integer.UInt8 {
   n
 }
 
-fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
+fn base64_decode_values(vals: List<Int>) -> List<std.integer.UInt8>? {
   let st = fold(vals,
     init: Base64DecodeState { out: [], buf: DecEmpty },
     f: (acc, v) => base64_decode_step(st: acc, v: v)
@@ -289,7 +289,7 @@ fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
   }
 }
 
-fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
+fn base64_decode(s: String, variant: Base64Variant) -> List<std.integer.UInt8>? {
   match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, seen_pad: false, acc: []) {
     Absent => none
     Present { value: vals } =>

@@ -6,7 +6,7 @@ data observation_module_note: String = "P0 of the progress-and-observation lane 
 // Naming diligence (DESIGN section 3): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got.
 type ObservationSegment
   = RunSegment { id: NonEmptyStr }
-  | BatchSegment { index: Nat, label: NonEmptyStr }
+  | BatchSegment { index: std.nat.Nat, label: NonEmptyStr }
   | EntrySegment { source_path: NonEmptyStr }
   | ModuleSegment { module_path: NonEmptyStr }
   | DeclarationSegment { declaration: DeclarationRef }
@@ -176,7 +176,7 @@ type ObservationOutcome
   | Failed { error: NonEmptyStr, output: String }
   | TimedOut { basis: ClockBasis, budget: Millisecond, elapsed: Millisecond }
   | Skipped { reason: NonEmptyStr }
-  | Final { shown_failures: Nat }
+  | Final { shown_failures: std.nat.Nat }
 
 data observation_timed_out_basis_note: String = "TimedOut names the clock its cap was enforced on, so a crossing says WHICH cap it crossed. Before this, budget and elapsed were two bare magnitudes and a reader could not tell a CPU fail-stop from a wall ceiling -- the live specimen being a 5000ms CPU eval budget and a 600000ms wall receipt budget, both surfacing as TimedOut with no way to distinguish them. ONE basis governs BOTH fields rather than each carrying its own: a budget and the elapsed figure compared against it must be on the same clock or the comparison is meaningless, so two independently-based fields would make the incoherent state representable. Same reason the seed's BudgetKind sits beside the pair rather than inside each half."
 
@@ -184,7 +184,7 @@ data observation_refused_distinct_note: String = "Refused is DISTINCT from Faile
 
 type ObservationTransition
   = Begin
-  | Step { k: Nat, n: Nat }
+  | Step { k: std.nat.Nat, n: std.nat.Nat }
   | Concluded { outcome: ObservationOutcome }
 
 type ObservationEvent {
@@ -270,11 +270,11 @@ fn observation_durations_cpu_and_wall(
 data observation_wall_facade_note: String = "observation_wall is the strict wall projection every pre-ruling consumer already wanted, and it is NOT a compatibility shim: an attention threshold, a CI clamp constant and a dwell escalation are all wall notions, so a consumer asking for wall is asking correctly and now says so. What it replaces is the field access event.wall, which asked for nothing — it returned whatever the producer happened to put there. The three durations_* builders exist so a producer states its clock once at the construction site rather than at 49 of them; a producer needing a shape they do not cover constructs TimedMeasurement directly, which is still explicit about the basis. There is deliberately no observation_durations_cpu builder: a CPU-only observation has no wall figure, which no producer in this corpus can honestly claim, and minting the builder before a producer exists would be the orphan this house rejects."
 
 type SchedulerHold
-  = WindowFull { active: Nat, target: Nat }
+  = WindowFull { active: std.nat.Nat, target: std.nat.Nat }
   | CurrentHighWater { current: ByteSize, high_water: ByteSize }
   | PsiPressure { avg10: BasisPoint }
   | SwapGrowth { delta: ByteSize }
-  | AwaitFirstCost { undigested: Nat }
+  | AwaitFirstCost { undigested: std.nat.Nat }
   | InsufficientHeadroom { current: ByteSize, share: ByteSize, high_water: ByteSize }
   | AdmissionCeiling { current: ByteSize, ceiling: ByteSize }
 
@@ -782,12 +782,12 @@ data observation_renders_nothing_disposition: Disposition = Terminal {
 // vocabulary it folds rather than in a renderer, so every renderer projects the same counts.
 
 type ObservationCounts {
-  begun: Nat
-  done: Nat
-  skipped: Nat
-  refused: Nat
-  failed: Nat
-  timed_out: Nat
+  begun: std.nat.Nat
+  done: std.nat.Nat
+  skipped: std.nat.Nat
+  refused: std.nat.Nat
+  failed: std.nat.Nat
+  timed_out: std.nat.Nat
 }
 
 // Anomaly classes are COUNTED here even though they are never collapsed. Counting and emission are
@@ -849,7 +849,7 @@ type ObservationRollup {
   active_leaf: ObservationSubject?
   elapsed: Measured<Nanosecond>
   peak_rss: Measured<ByteSize>
-  measurement_absent: Nat
+  measurement_absent: std.nat.Nat
 }
 
 // elapsed ACCUMULATES the measured walls and peak_rss keeps the MAXIMUM measured reading, because a
@@ -955,7 +955,7 @@ data observation_rollup_contract: Disposition = Terminal {
 // The bytes at the end of a producer's file, before any liveness is consulted.
 type LedgerTail
   = TailComplete
-  | TailIncomplete { bytes: Nat }
+  | TailIncomplete { bytes: std.nat.Nat }
 
 type ProducerState
   = ProducerLive
@@ -993,9 +993,9 @@ fn probe_liveness_for(tail: LedgerTail, observed: ProducerState) -> ProducerLive
 
 type LedgerTailVerdict
   = TailRecordsComplete
-  | TailTorn { bytes: Nat }
-  | TailPending { bytes: Nat }
-  | TailIndeterminate { bytes: Nat, cause: NonEmptyStr }
+  | TailTorn { bytes: std.nat.Nat }
+  | TailPending { bytes: std.nat.Nat }
+  | TailIndeterminate { bytes: std.nat.Nat, cause: NonEmptyStr }
 
 fn classify_ledger_tail(observed: ProducerLiveness) -> LedgerTailVerdict {
   match observed.tail_witnessed {
@@ -1028,7 +1028,7 @@ fn classify_ledger_tail(observed: ProducerLiveness) -> LedgerTailVerdict {
 // coordination the per-producer split exists to avoid.
 type ObservationProducer
   = CoordinatorProducer
-  | OrdinaryWorkerProducer { worker_index: Nat }
+  | OrdinaryWorkerProducer { worker_index: std.nat.Nat }
   | ScopedWorkerProducer { scope_id: NonEmptyStr }
 
 fn observation_producer_key(p: ObservationProducer) -> String {
@@ -1091,7 +1091,7 @@ type OccurrenceOrigin
 // occurrence.
 type RecordedObservation {
   producer: ObservationProducer
-  producer_sequence: Nat
+  producer_sequence: std.nat.Nat
   occurrence: OccurrenceId
   origin: OccurrenceOrigin
   at: ObservationInstant
@@ -1123,8 +1123,8 @@ fn parent_occurrence(r: RecordedObservation) -> OccurrenceId? {
 
 type SequenceVerdict
   = SequenceIntact
-  | SequenceGap { after: Nat, before: Nat }
-  | SequenceReordered { at_index: Nat, previous: Nat, observed: Nat }
+  | SequenceGap { after: std.nat.Nat, before: std.nat.Nat }
+  | SequenceReordered { at_index: std.nat.Nat, previous: std.nat.Nat, observed: std.nat.Nat }
   | SequenceForeignProducer { expected: String, observed: String }
   | SequenceEmpty
 
@@ -1144,7 +1144,7 @@ fn sequence_verdict_meet(a: SequenceVerdict, b: SequenceVerdict) -> SequenceVerd
 type SequenceScan {
   started: Bool
   prev_key: String
-  prev_sequence: Nat
+  prev_sequence: std.nat.Nat
   verdict: SequenceVerdict
 }
 

@@ -10,10 +10,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data iso8601_duration_units_note: String = "ISO 8601-1:2019 duration and time-unit vocabulary: 60 seconds per minute, 60 minutes per hour."
 
-fn iso8601_seconds_per_minute() -> Nat {
+fn iso8601_seconds_per_minute() -> std.nat.Nat {
   60
 }
 
-fn iso8601_minutes_per_hour() -> Nat {
+fn iso8601_minutes_per_hour() -> std.nat.Nat {
   60
 }

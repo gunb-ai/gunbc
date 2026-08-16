@@ -24,9 +24,9 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
 
 data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
-data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
+data belt_actuate_workdir: std.types.FilePath = srv1_gunbc_repo_root
 
-data belt_observe_workdir: FilePath = "/" as FilePath
+data belt_observe_workdir: std.types.FilePath = "/" as std.types.FilePath
 
 type BeltExecOutcome
   = ExecOk { stdout: String }
@@ -44,8 +44,8 @@ fn belt_program_available(program: String) -> Bool {
 fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
-      workdir: workdir as FilePath,
-      bin_path: cmd.program as FilePath,
+      workdir: workdir as std.types.FilePath,
+      bin_path: cmd.program as std.types.FilePath,
       args: cmd.args,
       expect: OutcomeIsData,
     )
@@ -722,7 +722,7 @@ fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCod
       } else {
         let identity = gunbc.WitnessBin.Run(
           workdir: belt_observe_workdir,
-          bin_path: env_program as FilePath,
+          bin_path: env_program as std.types.FilePath,
           args: shape_codex_version_env_args_for_program(
             program: codex_program_str,
             codex_home: codex_home,
@@ -748,7 +748,7 @@ fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCod
         } else {
           let result = gunbc.WitnessBin.Run(
             workdir: belt_observe_workdir,
-            bin_path: env_program as FilePath,
+            bin_path: env_program as std.types.FilePath,
             args: shape_codex_login_status_env_args_for_program(
               program: codex_program_str,
               codex_home: codex_home,
@@ -891,15 +891,15 @@ fn belt_footprint_observe(root: BeltFootprintRoot) -> BeltFootprintObservation {
     member: root.member,
     path: root.path,
     present: shell.Test.IsDirectory(
-      path: root.path as FilePath,
+      path: root.path as std.types.FilePath,
       expect: OutcomeIsData,
     ).is_directory,
     writable: shell.Test.IsWritable(
-      path: root.path as FilePath,
+      path: root.path as std.types.FilePath,
       expect: OutcomeIsData,
     ).writable,
     searchable: shell.Test.IsExecutable(
-      path: root.path as FilePath,
+      path: root.path as std.types.FilePath,
       expect: OutcomeIsData,
     ).executable,
   }
@@ -1403,7 +1403,7 @@ fn belt_observe_for_instance(instance: HostDashboardInstance) -> BeltObserve {
   if belt_program_available(program: ls.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
-      bin_path: ls.program as FilePath,
+      bin_path: ls.program as std.types.FilePath,
       args: ls.args,
       expect: OutcomeIsData,
     )
@@ -2067,7 +2067,7 @@ fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAt
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: instance.repo_root,
-      bin_path: cmd.program as FilePath,
+      bin_path: cmd.program as std.types.FilePath,
       args: cmd.args,
     )
     if result.success {
@@ -2141,7 +2141,7 @@ fn belt_attempt_panes_observe_for_instance(
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
-      bin_path: cmd.program as FilePath,
+      bin_path: cmd.program as std.types.FilePath,
       args: cmd.args,
       expect: OutcomeIsData,
     )
@@ -2209,7 +2209,7 @@ fn belt_sessions_observe_for_instance(
   if belt_program_available(program: ls.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: belt_observe_workdir,
-      bin_path: ls.program as FilePath,
+      bin_path: ls.program as std.types.FilePath,
       args: ls.args,
       expect: OutcomeIsData,
     )

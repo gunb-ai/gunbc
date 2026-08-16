@@ -7,7 +7,7 @@ module gunbc.dgx_spark_procurement
 type HardwareProcurementIntent {
   vendor_catalog: IntegratedComputeSystemCatalogRow
   unit_count: Int
-  reserved_identities: List<HostIdentity>
+  reserved_identities: List<product.placement_supply.HostIdentity>
   ordered_note: NonEmptyStr
 }
 
@@ -65,9 +65,9 @@ type OperatorAllocation {
 }
 
 type DgxSparkRouterBinding
-  = SlotUnassigned { identity: HostIdentity }
+  = SlotUnassigned { identity: product.placement_supply.HostIdentity }
   | SlotAssigned {
-      identity: HostIdentity,
+      identity: product.placement_supply.HostIdentity,
       reservation: Cr1000aDhcpLeaseRow,
       allocation: OperatorAllocation,
     }
@@ -132,7 +132,7 @@ data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcureme
 }
 
 type DgxSparkDeployment {
-  identity: HostIdentity
+  identity: product.placement_supply.HostIdentity
   catalog: IntegratedComputeSystemCatalogRow
   observation: FleetLifecycleObservation
   router_reservation: Cr1000aDhcpLeaseRow
@@ -140,16 +140,16 @@ type DgxSparkDeployment {
 }
 
 type DgxSparkAdmissionRefusalReason
-  = DeploymentAdmissionNoEvidence { requested_identity: HostIdentity }
-  | DeploymentAdmissionAmbiguousEvidence { requested_identity: HostIdentity, candidate_count: Int }
+  = DeploymentAdmissionNoEvidence { requested_identity: product.placement_supply.HostIdentity }
+  | DeploymentAdmissionAmbiguousEvidence { requested_identity: product.placement_supply.HostIdentity, candidate_count: Int }
   | DeploymentAdmissionWrongTool { observed_tool: NonEmptyStr }
-  | DeploymentAdmissionSubjectMismatch { dispatched_subject: HostIdentity, requested_identity: HostIdentity }
+  | DeploymentAdmissionSubjectMismatch { dispatched_subject: product.placement_supply.HostIdentity, requested_identity: product.placement_supply.HostIdentity }
   | DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: Int, reported_rc: Int }
   | DeploymentAdmissionObservationNotOk { observed_status: FleetLifecycleStatus, observed_rc: Int }
-  | DeploymentAdmissionIdentityNotReserved { requested_identity: HostIdentity }
-  | DeploymentAdmissionRouterBindingMismatch { binding_identity: HostIdentity, requested_identity: HostIdentity }
-  | DeploymentAdmissionRouterBindingPending { requested_identity: HostIdentity }
-  | DeploymentAdmissionEndpointBindingMismatch { requested_identity: HostIdentity }
+  | DeploymentAdmissionIdentityNotReserved { requested_identity: product.placement_supply.HostIdentity }
+  | DeploymentAdmissionRouterBindingMismatch { binding_identity: product.placement_supply.HostIdentity, requested_identity: product.placement_supply.HostIdentity }
+  | DeploymentAdmissionRouterBindingPending { requested_identity: product.placement_supply.HostIdentity }
+  | DeploymentAdmissionEndpointBindingMismatch { requested_identity: product.placement_supply.HostIdentity }
 
 type DgxSparkAdmissionOutcome
   = DgxSparkDeploymentAdmitted { deployment: DgxSparkDeployment }
@@ -295,7 +295,7 @@ fn admit_dgx_spark_deployment(
 // SPARK-LANE-A: the procurement-grain convergence read. Per-unit disposition is DERIVED by calling admit_dgx_spark_deployment, never by a second copy of its checks -- a forked convergence rule would let a unit read "converged" here while the wall refuses it (§2/§3).
 type DgxSparkUnitDisposition
   = DgxSparkUnitDeployed { deployment: DgxSparkDeployment }
-  | DgxSparkUnitPending { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
+  | DgxSparkUnitPending { identity: product.placement_supply.HostIdentity, reason: DgxSparkAdmissionRefusalReason }
 
 type DgxSparkProcurementConvergence
   = DgxSparkProcurementConverged { deployments: List<DgxSparkDeployment> }
@@ -364,12 +364,12 @@ fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
 // too, because their inequality proves nothing about whether the machines differ. Only positive
 // evidence of distinctness admits.
 type DgxSparkPairRefusalReason
-  = PairUnitNotAdmitted { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
+  = PairUnitNotAdmitted { identity: product.placement_supply.HostIdentity, reason: DgxSparkAdmissionRefusalReason }
   | PairUnitCountWrong { admitted_count: Int }
-  | PairSubjectsNotDistinct { identity: HostIdentity }
-  | PairHardwareIdentityUnobserved { identity: HostIdentity }
-  | PairHardwareIdentityNotDistinct { first: HostIdentity, second: HostIdentity }
-  | PairHardwareIdentityIncomparable { first: HostIdentity, second: HostIdentity }
+  | PairSubjectsNotDistinct { identity: product.placement_supply.HostIdentity }
+  | PairHardwareIdentityUnobserved { identity: product.placement_supply.HostIdentity }
+  | PairHardwareIdentityNotDistinct { first: product.placement_supply.HostIdentity, second: product.placement_supply.HostIdentity }
+  | PairHardwareIdentityIncomparable { first: product.placement_supply.HostIdentity, second: product.placement_supply.HostIdentity }
 
 type DgxSparkPairAdmissionOutcome
   = DgxSparkPairAdmitted { first: DgxSparkDeployment, second: DgxSparkDeployment }

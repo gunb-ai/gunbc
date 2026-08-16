@@ -18,8 +18,8 @@ data ssh_remote_exec_carries_a_command_string_note: String = "What ExecArgv does
 
 fn shape_scp_copy_to_argv(
   host: NonEmptyStr,
-  local_path: FilePath,
-  remote_path: FilePath,
+  local_path: std.types.FilePath,
+  remote_path: std.types.FilePath,
 ) -> List<String> {
   [local_path as String, join([host as String, ":", remote_path as String], "")]
 }

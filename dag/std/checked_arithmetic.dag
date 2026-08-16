@@ -197,7 +197,7 @@ fn checked_int_optional(r: CheckedInt) -> Int? {
 // refuses with the same negation cause the negation operation reports, because that is literally
 // what fails.
 type CheckedNat
-  = CheckedNatReady { value: Nat }
+  = CheckedNatReady { value: std.nat.Nat }
   | CheckedNatOverflow { cause: IntegerOverflow }
 
 fn checked_int_magnitude(a: Int) -> CheckedNat {

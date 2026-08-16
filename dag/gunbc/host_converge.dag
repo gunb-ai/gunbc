@@ -191,7 +191,7 @@ type ConvergeTarget
       green_place_marker: GreenPlaceReadinessMarker
       live_apply: ConvergeLiveApplyPolicy
     }
-  | CodexRuntimeBundle { host_identity: HostIdentity }
+  | CodexRuntimeBundle { host_identity: product.placement_supply.HostIdentity }
 
 type ConvergeKnob {
   slice: ConvergeSlice
@@ -225,7 +225,7 @@ type SessionsMembershipProbe
   | NoMembershipProbe
 
 type HostConverge {
-  identity: HostIdentity
+  identity: product.placement_supply.HostIdentity
   knobs: List<ConvergeKnob>
   membership: SessionsMembershipProbe
 }

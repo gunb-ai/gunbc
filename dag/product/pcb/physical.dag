@@ -181,7 +181,7 @@ fn placement_refusals(
 // identity were reported as a naming defect and never as the collision they also are. Ordering by
 // a value that is not guaranteed distinct is accidental correctness; position always is.
 type OverlapScan {
-  index: Nat
+  index: std.nat.Nat
   out: List<PhysicalRefusal>
 }
 

@@ -4022,7 +4022,7 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: v2.std.node.OccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4035,7 +4035,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: v2.std.node.OccurrenceId) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
@@ -4049,7 +4049,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId)
         d: Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
           at: port_locus(port: ^dag_int_literal_lexeme_invalid),
-          correction: None
+          correction: v2.std.diagnostic.None
         }
       )
   }
@@ -4090,7 +4090,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
           d: Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
             at: node_locus(node: node),
-            correction: None
+            correction: v2.std.diagnostic.None
           }
         )
     }
@@ -4099,7 +4099,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
       d: Diagnostic {
         reason: ^dag_int_literal_lexeme_invalid,
         at: node_locus(node: node),
-        correction: None
+        correction: v2.std.diagnostic.None
       }
     )
   }
@@ -4113,7 +4113,7 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 

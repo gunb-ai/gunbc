@@ -36,7 +36,7 @@ type SystemNetworkPort {
 
 // A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuModelCatalogRow assumes a PCIe-attached card. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuModelCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
 type IntegratedComputeSystemCatalogRow {
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   model: NonEmptyStr
   soc_model: NonEmptyStr
   cpu_architecture: Architecture

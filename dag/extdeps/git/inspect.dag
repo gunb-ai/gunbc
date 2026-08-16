@@ -37,7 +37,7 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 service git.Inspect {
   operation Toplevel {
     input {}
-    output { path: FilePath from "stdout" }
+    output { path: std.types.FilePath from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
     exit {

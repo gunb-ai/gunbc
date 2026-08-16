@@ -43,8 +43,8 @@ data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
 }
 
 type SliceMembershipSignal {
-  sessions_in_slice: Nat
-  sessions_legacy_flat: Nat
+  sessions_in_slice: std.nat.Nat
+  sessions_legacy_flat: std.nat.Nat
 }
 
 type OomdEffectiveRead {

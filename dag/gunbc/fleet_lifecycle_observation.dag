@@ -59,7 +59,7 @@ type DeviceSerialNumber = NonEmptyStr where brand("DeviceSerialNumber")
 
 type DeviceHardwareIdentity
   = DeviceSerial { serial: DeviceSerialNumber }
-  | DeviceProductUuid { product_uuid: Uuid }
+  | DeviceProductUuid { product_uuid: extdeps.uuid.Uuid }
 
 // Three-valued by necessity, the same shape and the same reason as std.content_hash's
 // compare_content_hash: a serial and a product UUID are different naming schemes for one machine,
@@ -95,7 +95,7 @@ fn compare_hardware_identity(
 // `raw_evidence_identity` is the digest of the bytes the tool actually returned, so a parsed
 // envelope can be tied back to the unparsed evidence it was derived from.
 type FleetLifecycleObservation {
-  subject: HostIdentity
+  subject: product.placement_supply.HostIdentity
   endpoint_binding: EndpointBindingIdentity
   execution_receipt: ProcessReceipt
   envelope: FleetLifecycleEnvelope
@@ -114,7 +114,7 @@ fn host_identity_presentation(identity: HostIdentity) -> NonEmptyStr {
 type EnvelopeHostPresentationEvidence
   = EnvelopeHostAgreesWithSubject
   | EnvelopeHostDisagreesWithSubject {
-      subject: HostIdentity,
+      subject: product.placement_supply.HostIdentity,
       observed_host: NonEmptyStr,
       expected_presentation: NonEmptyStr,
     }
@@ -147,9 +147,9 @@ fn execution_evidence_agrees(observation: FleetLifecycleObservation) -> Bool {
 // transient failure, a stale run, a mis-dispatch -- so ambiguity is its own arm, it reaches the
 // consumer, and the consumer refuses on it.
 type ObservationSelection
-  = ObservationMissing { subject: HostIdentity }
+  = ObservationMissing { subject: product.placement_supply.HostIdentity }
   | ObservationUnique { observation: FleetLifecycleObservation }
-  | ObservationAmbiguous { subject: HostIdentity, candidate_count: Int }
+  | ObservationAmbiguous { subject: product.placement_supply.HostIdentity, candidate_count: Int }
 
 // One selector body, two entry points. Subject-grain selection is what a convergence read uses; when it reports Ambiguous, naming an exact attempt is the disambiguation, and both route through this same decision so neither can acquire a quieter rule than the other.
 fn select_unique_observation(

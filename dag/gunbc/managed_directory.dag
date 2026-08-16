@@ -10,7 +10,7 @@ type DirectoryDependent {
 
 type ManagedDirectory {
   member: NonEmptyStr
-  path: FilePath
+  path: std.types.FilePath
   owner: PosixUser
   dependents: List<DirectoryDependent>
   ownership: Ownership

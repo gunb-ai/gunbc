@@ -420,11 +420,11 @@ fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
 // hosts share nothing numerically unless something makes them, so equality across srv5 and srv6 is
 // permitted but never required, and is never evidence of one principal.
 type PosixIdentityDomain
-  = HostLocalIdentityDomain { host: HostIdentity }
-  | SharedNumericOwnershipDomain { identity: NonEmptyStr, members: List<HostIdentity> }
+  = HostLocalIdentityDomain { host: product.placement_supply.HostIdentity }
+  | SharedNumericOwnershipDomain { identity: NonEmptyStr, members: List<product.placement_supply.HostIdentity> }
 
 type PosixAccountOccurrence {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   principal: FleetPosixAccountKey
 }
 
@@ -435,7 +435,7 @@ type PosixAccountAllocation {
   gid: Int
   domain: PosixIdentityDomain
   name_scheme: NameSchemeIdentity
-  name_attempt: Nat
+  name_attempt: std.nat.Nat
 }
 
 type PosixAccountAllocationConflict
@@ -468,7 +468,7 @@ data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-abse
 type PosixAccountConflict
   = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
   | ObservedUidDiffersFromAllocation { observed: Int, allocated: Int }
-  | ObservationSubjectMismatch { observed_host: HostIdentity, allocated_host: HostIdentity }
+  | ObservationSubjectMismatch { observed_host: product.placement_supply.HostIdentity, allocated_host: product.placement_supply.HostIdentity }
 
 // THE OBSERVATION CARRIES ITS OWN SUBJECT, never a copy of the desired allocation. Copying the
 // allocation in would make every observation agree with the plan by construction -- the authored-
@@ -818,7 +818,7 @@ type ReportedAccountContradiction {
   reported_uid: Int
   reported_gid: Int
   reported_shell: PosixLoginShell
-  hosts: List<HostIdentity>
+  hosts: List<product.placement_supply.HostIdentity>
   source: NonEmptyStr
 }
 
@@ -864,11 +864,11 @@ data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/g
 // and host row this session did not execute itself.
 type FleetAutomationAllocationStanding
   = AutomationAllocationApplied {
-      host: HostIdentity
+      host: product.placement_supply.HostIdentity
       user: PosixUser
       source: NonEmptyStr
     }
-  | AutomationAllocationPending { host: HostIdentity, cause: NonEmptyStr }
+  | AutomationAllocationPending { host: product.placement_supply.HostIdentity, cause: NonEmptyStr }
 
 fn fleet_automation_user_on(host: HostIdentity) -> PosixUser {
   PosixUser {

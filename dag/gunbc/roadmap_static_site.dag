@@ -136,7 +136,7 @@ data roadmap_site_healthz_body_for_release_note: String = "THE SERVED /healthz D
 
 fn roadmap_site_healthz_route() -> ServedStaticRoute {
   ServedStaticRoute {
-    method: GET,
+    method: std.types.GET,
     path_pattern: roadmap_site_path_template(raw: roadmap_site_health_path),
     body: roadmap_site_healthz_body(),
     content_type: application_json_utf8,
@@ -146,7 +146,7 @@ fn roadmap_site_healthz_route() -> ServedStaticRoute {
 
 fn roadmap_site_text_route(artifact: SiteArtifact, content_type: MediaType) -> ServedStaticRoute {
   ServedStaticRoute {
-    method: GET,
+    method: std.types.GET,
     path_pattern: roadmap_site_path_template(raw: artifact.url_path),
     body: artifact.body,
     content_type: content_type,

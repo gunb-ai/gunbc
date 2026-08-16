@@ -55,7 +55,7 @@ data still_ram_738_srv4_shell_transport: HostShellTransportObservation = ShellTr
   gap: "A1 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal (distinct from srv4's prior ReachRefused over jump from srv2 with fleet key)" as NonEmptyStr,
 }
 
-fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTransportObservation {
+fn still_ram_738_session_shell_transport(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
   if (host as String) == (operator_host_srv1 as String) {
     still_ram_738_srv1_shell_transport
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -73,7 +73,7 @@ fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTranspo
 
 data fleet_shell_transport_observed_producer_note: String = "SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts fall through to the session receipt when the producer returns ShellTransportUnobserved."
 
-fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTransportObservation {
+fn fleet_shell_transport_observed_producer(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
   if (host as String) == (operator_host_srv3 as String) {
     parent_probe_2026_08_07_srv3_shell_transport
   } else {
@@ -85,7 +85,7 @@ fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTrans
 
 data still_ram_738_session_shell_transport_receipt_authority_note: String = "DATED SESSION RECEIPTS are pinned census rows for one principal/environment (2026-08-06). They are NOT the live observation authority: fleet_shell_transport_observation keeps producer-Unobserved as Unobserved and cites these rows only as non-authoritative provenance (review 49707 — inverted fallback would graduate stale ReachRefused for principals with keys)."
 
-fn still_ram_738_session_shell_transport_receipt_note(host: HostIdentity) -> String {
+fn still_ram_738_session_shell_transport_receipt_note(host: product.placement_supply.HostIdentity) -> String {
   match still_ram_738_session_shell_transport(host: host) {
     ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g } =>
       concat(
@@ -98,7 +98,7 @@ fn still_ram_738_session_shell_transport_receipt_note(host: HostIdentity) -> Str
   }
 }
 
-fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportObservation {
+fn fleet_shell_transport_observation(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
   match fleet_shell_transport_observed_producer(host: host) {
     ShellTransportUnobserved { reason: producer_reason } =>
       ShellTransportUnobserved {
@@ -117,7 +117,7 @@ fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportOb
   }
 }
 
-fn shell_transport_unobserved_count(hosts: List<HostIdentity>) -> Int {
+fn shell_transport_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h =>

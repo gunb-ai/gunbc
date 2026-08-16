@@ -34,7 +34,7 @@ service cargo.Build {
   }
 
   operation BuildInheritEnv {
-    input { workdir: FilePath, extra_args: List<String> = [] }
+    input { workdir: std.types.FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -48,7 +48,7 @@ service cargo.Build {
   }
 
   operation BuildManifest {
-    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    input { workdir: std.types.FilePath, manifest_path: std.types.FilePath, target_dir: std.types.FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -62,7 +62,7 @@ service cargo.Build {
   }
 
   operation BuildManifestMessages {
-    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    input { workdir: std.types.FilePath, manifest_path: std.types.FilePath, target_dir: std.types.FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

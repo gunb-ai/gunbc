@@ -22,4 +22,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 
-data amd: Vendor<Hardware> = Vendor { legal_name: "Advanced Micro Devices, Inc." }
+data amd: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Advanced Micro Devices, Inc." }

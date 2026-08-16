@@ -54,10 +54,10 @@ type BmcFanConfigReadbackSubject {
 }
 
 type BmcFanDurabilityAdmission =
-  StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>
+  StateDurabilityAdmission<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanDurabilityEvidence =
-  StateDurabilityEvidence<HostIdentity, BmcFanConfigReadbackSubject>
+  StateDurabilityEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanPolicyProjectionCapability {
   board: BaseboardModel
@@ -360,7 +360,7 @@ fn bmc_fan_policy_projection_durability_capability(
 }
 
 fn bmc_fan_policy_projection_durability_admission(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   capability: BmcFanPolicyProjectionCapability,
   perturbation_generation: StatePerturbationGeneration,
 ) -> BmcFanDurabilityAdmission {

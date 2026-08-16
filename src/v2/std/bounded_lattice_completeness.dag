@@ -124,7 +124,7 @@ fn infer_bounded_lattice_consumer_gate(
     match acc {
       Rejected { diagnostics: r } =>
         if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: non_empty_diagnostics_append(
               a: r,
               b: diagnostics_singleton(
@@ -136,7 +136,7 @@ fn infer_bounded_lattice_consumer_gate(
             )
           }
         } else {
-          Rejected { diagnostics: r }
+          v2.std.diagnostic.Rejected { diagnostics: r }
         }
       Accepted { value: _, diagnostics: d } =>
         if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
@@ -147,7 +147,7 @@ fn infer_bounded_lattice_consumer_gate(
             )
           )
         } else {
-          Accepted { value: consumer, diagnostics: d }
+          v2.std.diagnostic.Accepted { value: consumer, diagnostics: d }
         }
     }
   }) {

@@ -12,10 +12,10 @@ data basis_point_authority_note: String = "Permyriad / basis-point unity: one pa
 
 data percent_unity_note: String = "Percent unity: parts per hundred (1% = 1/100 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the hundredth submultiple."
 
-fn parts_per_ten_thousand_unity_count() -> Nat {
+fn parts_per_ten_thousand_unity_count() -> std.nat.Nat {
   10000
 }
 
-fn percent_unity_hundred_count() -> Nat {
+fn percent_unity_hundred_count() -> std.nat.Nat {
   100
 }

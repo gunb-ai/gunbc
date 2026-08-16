@@ -39,19 +39,19 @@ type OomPressureLimitLiveRead {
 }
 
 type FleetRunnerUnitsLiveRead {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   units: List<RunnerUnitMemoryLiveRead>
 }
 
 type FleetHostEffectiveReadReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   runner_slice_cap: RunnerSliceCapLiveRead
   runner_units: FleetRunnerUnitsLiveRead
   runner_width: RunnerWidthLiveRead
 }
 
 type FleetHostEffectiveReadGroundedReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   effective: FleetHostEffectiveReadReceipt
   runner_slice_cap_read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
   runner_units_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead>

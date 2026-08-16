@@ -29,11 +29,11 @@ fn space_measure_list_seq(spaces: List<ByteSize>) -> ByteSize {
   fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
 }
 
-fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+fn cost_account_measured_from_time<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
   cost_account_measured(time: time)
 }
 
-fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: ByteSize) -> CostAccount<S> {
   CostAccount {
     time: time
     space: space
@@ -42,7 +42,7 @@ fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, spa
   }
 }
 
-fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+fn time_measure_list_total<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
   time_measure(
     count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
   )
@@ -68,11 +68,11 @@ fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
     && measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
 }
 
-fn time_measure_is_zero<S>(d: Measure<Time, S, Nat>) -> Bool {
+fn time_measure_is_zero<S>(d: Measure<Time, S, std.nat.Nat>) -> Bool {
   measure_count(m: d) == 0
 }
 
-fn time_measure_seq<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+fn time_measure_seq<S>(a: Measure<Time, S, std.nat.Nat>, b: Measure<Time, S, std.nat.Nat>) -> Measure<Time, S, std.nat.Nat> {
   if time_measure_is_zero(d: a) {
     b
   } else if time_measure_is_zero(d: b) {
@@ -84,7 +84,7 @@ fn time_measure_seq<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Me
   }
 }
 
-fn time_measure_par<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+fn time_measure_par<S>(a: Measure<Time, S, std.nat.Nat>, b: Measure<Time, S, std.nat.Nat>) -> Measure<Time, S, std.nat.Nat> {
   if time_measure_is_zero(d: a) {
     b
   } else if time_measure_is_zero(d: b) {
@@ -96,7 +96,7 @@ fn time_measure_par<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Me
   }
 }
 
-fn time_measure_list_par<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+fn time_measure_list_par<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
   fold(
     times,
     init: time_measure(count: 0),
@@ -104,11 +104,11 @@ fn time_measure_list_par<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time,
   )
 }
 
-fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, std.nat.Nat>>) -> Measure<Time, S, std.nat.Nat> {
   time_measure_list_par(times: batch_times)
 }
 
-fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, Nat>>>) -> Measure<Time, S, Nat> {
+fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, std.nat.Nat>>>) -> Measure<Time, S, std.nat.Nat> {
   fold(
     batch_times,
     init: time_measure(count: 0),
@@ -120,16 +120,16 @@ fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, Nat>>>
 }
 
 fn cost_account_measured_from_schedule_critical_path<S>(
-  batch_times: List<List<Measure<Time, S, Nat>>>
+  batch_times: List<List<Measure<Time, S, std.nat.Nat>>>
 ) -> CostAccount<S> {
   cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
 }
 
-fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, Nat>>) -> CostAccount<S> {
+fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> CostAccount<S> {
   cost_account_measured_from_time(time: time_measure_list_total(times: times))
 }
 
-fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, Nat>) -> Bool {
+fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, std.nat.Nat>) -> Bool {
   if measure_count(m: wall_time) == 0 {
     false
   } else {

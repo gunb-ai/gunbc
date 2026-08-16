@@ -15,7 +15,7 @@ type RunnerSlotDesired {
 }
 
 type HostRunnerSlotAllocation {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   slots_per_host: Int
   cores_per_slot: HardwareThreadCount
   runner_slice_cap: ByteSize

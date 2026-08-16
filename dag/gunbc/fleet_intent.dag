@@ -35,7 +35,7 @@ type ExecutionSurface {
 }
 
 type ComputeHost {
-  identity: HostIdentity
+  identity: product.placement_supply.HostIdentity
   baseboard: ServerBaseboard?
   bmc_intent: BmcControlPlaneIntent?
   processors: List<ProcessorKind>
@@ -247,7 +247,7 @@ data srv3_host: ComputeHost = ComputeHost {
   network_interfaces: [],
 }
 type FleetHostMemoryPopulationDeferral {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   bmc_host: NonEmptyStr
   cause: NonEmptyStr
   dissolution: DissolutionCondition

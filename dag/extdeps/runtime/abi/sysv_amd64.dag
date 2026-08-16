@@ -37,7 +37,7 @@ data x86_64_abi_application_pdf: MediaType = MediaType {
   parameters: [],
 }
 
-data x86_64_abi_syscall_convention_authoritative_page: PositiveInt = 125
+data x86_64_abi_syscall_convention_authoritative_page: std.integer.PositiveInt = 125
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 

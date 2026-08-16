@@ -64,7 +64,7 @@ type TransportProbeOutcome
 // so a standing can be re-derived by someone who doubts it, rather than being
 // asserted by a Bool whose provenance is a memory.
 type TransportProbeObservation {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   requirement: ConfigfsTransportRequirement
   probe: NonEmptyStr
   result: NonEmptyStr

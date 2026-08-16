@@ -6,7 +6,7 @@ type CostBasis
   | Measured
 
 type CostAccount<S> {
-  time: Measure<Time, S, Nat>
+  time: Measure<Time, S, std.nat.Nat>
   space: ByteSize
   power: Watt
   basis: CostBasis
@@ -711,7 +711,7 @@ type WalkPlan<F> {
 type WalkPopulationBudgetRefusal {
   population: String
   plan_site: String
-  population_index: Nat
+  population_index: std.nat.Nat
   active_unit: String
   elapsed: Millisecond
   budget: Millisecond

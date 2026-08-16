@@ -665,7 +665,7 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
     Absent =>
       fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: found, diagnostics: _ } =>
             match found {
               Present { value: _ } => acc
@@ -1312,13 +1312,13 @@ fn body_lower_reduce(folded: Node) -> Outcome<Node> {
 fn body_lower_fold_children(node: Node) -> Outcome<Node> {
   fold(node.children, init: outcome_accepted(value: node_rebuild(n: node, children: [])), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       Accepted { value: shell, diagnostics: ad } =>
         match body_lower_fold(node: e.target) {
           Rejected { diagnostics: cr } =>
-            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+            v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
           Accepted { value: child, diagnostics: cd } =>
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: node_rebuild(
                 n: shell,
                 children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child })
@@ -1565,15 +1565,15 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
     ComputationNode { behavior: Transform } =>
       match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>
             match body_lower_reify_transform_edge(done: done, e: e) {
               Rejected { diagnostics: r } =>
-                Rejected {
+                v2.std.diagnostic.Rejected {
                   diagnostics: rejected_with_pending(pending: d, rejected: r)
                 }
               Accepted { value: next, diagnostics: ed } =>
-                Accepted {
+                v2.std.diagnostic.Accepted {
                   value: next,
                   diagnostics: diagnostics_merge(outer: d, inner: ed)
                 }
@@ -2530,7 +2530,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
     ComputationNode { behavior: Branch } =>
       match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>
             outcome_with_diagnostics(
               value: list_snoc_item(
@@ -3311,7 +3311,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
             Absent =>
               fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
                 match acc {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                   Accepted { value: found, diagnostics: _ } =>
                     match found {
                       Present { value: _ } => acc
@@ -3339,7 +3339,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
         Absent =>
           fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
             match acc {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               Accepted { value: found, diagnostics: _ } =>
                 match found {
                   Present { value: _ } => acc

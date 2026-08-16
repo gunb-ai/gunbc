@@ -37,7 +37,7 @@ fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
     a.element_type == b.element_type
 }
 
-fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
+fn inductive_field_to_dimension(field: InductiveField, param: String) -> std.termination.RankingDimension {
   TreeSize { param: param }
 }
 

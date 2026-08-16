@@ -23,7 +23,7 @@ fn codex_account_directory_name(selection: CodexAccountSelection) -> String {
   }
 }
 
-fn codex_account_state_root(home: FilePath, selection: CodexAccountSelection) -> CodexStateRoot {
+fn codex_account_state_root(home: std.types.FilePath, selection: CodexAccountSelection) -> CodexStateRoot {
   join([
     home as String,
     "/",

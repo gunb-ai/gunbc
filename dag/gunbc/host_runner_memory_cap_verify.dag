@@ -14,7 +14,7 @@ type RunnerMemoryCapVerifyTally {
 }
 
 type RunnerMemoryCapVerifyReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   tally: RunnerMemoryCapVerifyTally
   knob_count: Int
   verdict: ConvergeVerdict
@@ -143,7 +143,7 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
 
 type RunnerMemoryCapVerifyRunResult
   = RunnerMemoryCapVerifyObserved { receipt: RunnerMemoryCapVerifyReceipt }
-  | RunnerMemoryCapVerifyRefused { host: HostIdentity, reason: String }
+  | RunnerMemoryCapVerifyRefused { host: product.placement_supply.HostIdentity, reason: String }
 
 data runner_memory_cap_verify_read_absent_refusal_note: String = "The live-read arm of runner_memory_cap_verify_result_from_live_read is the fail-closed seam (DESIGN section 5): an absent typed read — clock_now_probed_at absent, or any of the three systemd.Systemctl.ShowProperty reads absent — refuses with a located reason and NEVER widens to an Observed receipt with a fabricated tally. Taking the Optional read as a parameter is what makes that arm executable hermetically: runner_memory_cap_verify_run supplies the live read, while the RED control supplies none and asserts a refusal."
 

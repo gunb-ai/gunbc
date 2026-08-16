@@ -39,7 +39,7 @@ data mirror_fold_refusal_doc: String = "DESIGN §5 fix (cursor review, PR #6596)
 
 // The presence probe is OutcomeIsData: a non-zero `test -f` here means the media is ABSENT, which is one of this fn's four declared answers (InstallMediaFetchAbsent), not a fault. The type already draws the distinction the arm formalises — InstallMediaFetchVerifyInfraFailure is the separate 'the probe itself broke' arm — so subject-state and probe-breakage were never conflated here; only the effect layer's glyph conflated them. Admissible under the §5 guard: this fn returns InstallMediaFetchObservation, a typed observation whose arms ARE the adjudication, and the exit selects among them.
 fn observe_install_media_fetch(path: NonEmptyStr, expected_hash: NonEmptyStr) -> InstallMediaFetchObservation {
-  let present = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
+  let present = shell.Test.IsFile(path: path as std.types.FilePath, expect: OutcomeIsData)
   if present.is_file == false {
     InstallMediaFetchAbsent
   } else {
@@ -63,7 +63,7 @@ fn install_media_fetch_try_mirror(
   } else {
     match sha256sum_verify_via_shell(path: part_path, expected_digest: expected_hash) {
       Sha256Matches => {
-        let moved = shell.Move.File(source: part_path as FilePath, destination: final_path as FilePath)
+        let moved = shell.Move.File(source: part_path as std.types.FilePath, destination: final_path as std.types.FilePath)
         if moved.success {
           MirrorTerminal { outcome: InstallMediaFetchFetched { path: final_path, mirror_url: url } }
         } else {
@@ -75,11 +75,11 @@ fn install_media_fetch_try_mirror(
         }
       }
       Sha256Mismatch => {
-        let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+        let cleaned = shell.Remove.RecursiveForce(path: part_path as std.types.FilePath)
         MirrorHashMismatch
       }
       Sha256VerifyInfraFailure { reason: r } => {
-        let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+        let cleaned = shell.Remove.RecursiveForce(path: part_path as std.types.FilePath)
         MirrorTerminal {
           outcome: InstallMediaFetchRefused {
             reason: concat("VerifyInfraFailureRefusal: ", r as String) as NonEmptyStr
@@ -143,7 +143,7 @@ fn install_media_fetch_reconcile(artifact: UbuntuInstallMediaArtifactRow) -> Ins
       reason: concat("VerifyInfraFailureRefusal: ", r as String) as NonEmptyStr
     }
     InstallMediaFetchAbsent => {
-      let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as FilePath)
+      let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as std.types.FilePath)
       if mkdir.success == false {
         InstallMediaFetchRefused { reason: "mkdir -p failed" as NonEmptyStr }
       } else {

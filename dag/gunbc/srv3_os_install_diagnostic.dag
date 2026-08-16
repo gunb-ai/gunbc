@@ -67,8 +67,8 @@ data bmc_install_debug_checklist_surfaces: List<OsInstallObservationSurface> = [
 ]
 
 type OsInstallAttemptIntent {
-  target_host: HostIdentity
-  actuator_host: HostIdentity
+  target_host: product.placement_supply.HostIdentity
+  actuator_host: product.placement_supply.HostIdentity
   bmc_endpoint: NonEmptyStr
   iso_path: NonEmptyStr
   iso_content_hash: ContentHash

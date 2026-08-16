@@ -69,14 +69,14 @@ fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
 
 type HealPushPlan
   = HealPushNothingToDo
-  | HealPushReady { artifacts: List<GeneratedArtifact> }
+  | HealPushReady { artifacts: List<gunbc.generated_artifact.GeneratedArtifact> }
   | HealPushPartial {
-      ready: List<GeneratedArtifact>
-      refused: List<GeneratedArtifact>
+      ready: List<gunbc.generated_artifact.GeneratedArtifact>
+      refused: List<gunbc.generated_artifact.GeneratedArtifact>
       cause: HealPushRefusal
     }
   | HealPushRefused {
-      refused: List<GeneratedArtifact>
+      refused: List<gunbc.generated_artifact.GeneratedArtifact>
       cause: HealPushRefusal
     }
   | HealPushPlanInconsistent { refused_paths: List<RepositoryPath> }

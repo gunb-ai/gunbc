@@ -22,4 +22,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 
-data asrock_rack: Vendor<Hardware> = Vendor { legal_name: "ASRock Rack Incorporation" }
+data asrock_rack: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "ASRock Rack Incorporation" }

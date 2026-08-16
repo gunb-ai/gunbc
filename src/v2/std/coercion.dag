@@ -143,7 +143,7 @@ fn coercion_identity_from_target_model(
                 }
               ) {
                 Accepted { value: fw, diagnostics: fw_d } =>
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: CoercionResult {
                       target: fw.candidate,
                       quality: Identity,
@@ -159,7 +159,7 @@ fn coercion_identity_from_target_model(
                     },
                     diagnostics: fw_d
                   }
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               }
             }
           )

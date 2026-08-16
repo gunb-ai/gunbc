@@ -16,8 +16,8 @@ type SelectionDegradationState
 
 type SelectionDegradationReceipt {
   selection_state: SelectionDegradationState
-  selected_entry_groups: Nat
-  total_entry_groups: Nat
+  selected_entry_groups: std.nat.Nat
+  total_entry_groups: std.nat.Nat
   selection_ratio_bp: BasisPoint
   fallback_reason: String
 }

@@ -1,7 +1,7 @@
 module gunbc.fleet_converge_apply
 
 
-fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
+fn fleet_compute_host_for_identity(identity: product.placement_supply.HostIdentity) -> ComputeHost? {
   find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
 }
 
@@ -69,7 +69,7 @@ fn converge_apply_fleet(transport: HostEffectTransport) -> FleetConvergeApplyRes
   converge_apply(policy: fleet_converge_policy(), transport: transport)
 }
 
-fn fleet_converge_thin_invocation(host: HostIdentity) -> ThinInvocation {
+fn fleet_converge_thin_invocation(host: product.placement_supply.HostIdentity) -> ThinInvocation {
   ThinInvocation { argv: ["gunbc", "converge", "--host", host as String] }
 }
 

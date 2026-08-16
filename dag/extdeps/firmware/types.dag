@@ -28,9 +28,9 @@ data types_scope_subject_note: String = "THE SUBJECT IS THE VENDOR FIRMWARE RELE
 // it (DESIGN section 3, the CpuArchitecture/TargetArchitecture class).
 // The BMC carrier now imports this one.
 type FirmwareSemanticVersion {
-  major: Nat
-  minor: Nat
-  patch: Nat
+  major: std.nat.Nat
+  minor: std.nat.Nat
+  patch: std.nat.Nat
 }
 
 fn firmware_semantic_version(

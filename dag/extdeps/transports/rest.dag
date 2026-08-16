@@ -78,7 +78,7 @@ data rest_bound_invocation_note: String = "REST needs a specialization of v2.std
 
 type RestBoundOperationInvocation {
   at: OperationRef
-  method: HttpMethod
+  method: std.types.HttpMethod
   target: Uri
   input_digest: Fnv1a64Structural
   auth_identity: RestAuthSensitiveIdentity

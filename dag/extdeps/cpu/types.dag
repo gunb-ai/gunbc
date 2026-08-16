@@ -46,7 +46,7 @@ type ProcessorThermalLimits {
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
-  vendor: Vendor<Hardware>
+  vendor: Vendor<extdeps.hardware.Hardware>
   architecture: Architecture
   cores: Int
   threads: HardwareThreadCount

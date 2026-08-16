@@ -39,7 +39,7 @@ fn worker_phase_label(phase: WorkerPhase) -> String {
 
 type ProcessIdentityEvidence
   = ProcessIdentityObserved {
-      pid: PositiveInt
+      pid: std.integer.PositiveInt
       started_at: Timestamp
       owner: NonEmptyStr
     }

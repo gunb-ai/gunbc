@@ -13,13 +13,13 @@ type SemVerIdentity = VersionIdentity
 type SemVerConstraint = VersionConstraint
 
 type SemVerIdentifier
-  = SemVerNumericIdentifier { value: NonNegativeInt }
+  = SemVerNumericIdentifier { value: std.integer.NonNegativeInt }
   | SemVerAlphanumericIdentifier { label: NonEmptyStr }
 
 type SemVerVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: std.integer.NonNegativeInt
+  minor: std.integer.NonNegativeInt
+  patch: std.integer.NonNegativeInt
   pre_release: List<SemVerIdentifier>
   build: List<SemVerIdentifier>
 }

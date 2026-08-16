@@ -12,9 +12,9 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: rules),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -24,9 +24,9 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: emitted) + rules_budget + 1,
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -35,9 +35,9 @@ fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int>
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: item) + rules_budget + 1,
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -53,9 +53,9 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: length(xs: tokens) + token_list_node_budget(tokens: tokens) + rules_budget + 1,
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -361,7 +361,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } =>
       match fold(
         rules.children,
-        init: Rejected {
+        init: v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: translate_grammar_relation_row_not_found_diagnostic(
               emitted: rules
@@ -393,7 +393,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                     name: ^grammar_relation_field_bodied_scaffold
                   ) {
                     Accepted { value: _, diagnostics: d } =>
-                      Accepted { value: e.target, diagnostics: d }
+                      v2.std.diagnostic.Accepted { value: e.target, diagnostics: d }
                     Rejected { diagnostics: _ } => acc
                   }
                 Positional => acc
@@ -535,7 +535,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                   bind_outcome(
                     o: concrete_syntax_token_from_node(token: item),
                     f: fn(_) {
-                      Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
+                      v2.std.diagnostic.Accepted { value: TokenSequenceConcreteToken, diagnostics: v2.std.diagnostic.None }
                     }
                   )
                 Absent =>
@@ -550,7 +550,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                     translate_concrete_token_class_missing_diagnostic(token: item)
                   )
                 Absent =>
-                  Accepted { value: TokenSequenceNonterminal, diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: TokenSequenceNonterminal, diagnostics: v2.std.diagnostic.None }
               }
           }
         }
@@ -595,7 +595,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<Lis
                   bind_outcome(
                     o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
                     f: fn(rest) {
-                      Accepted { value: Cons { head: head, tail: rest }, diagnostics: None }
+                      v2.std.diagnostic.Accepted { value: Cons { head: head, tail: rest }, diagnostics: v2.std.diagnostic.None }
                     }
                   )
                 }
@@ -654,7 +654,7 @@ fn grammar_serialize_source_matches_row(
               o: grammar_tokens_node_targets(tokens_node: tokens_root),
               f: fn(row_targets) {
                 if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
-                  Accepted { value: serialize_source, diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: serialize_source, diagnostics: v2.std.diagnostic.None }
                 } else {
                   outcome_rejected(
                     translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
@@ -825,16 +825,16 @@ fn target_serialize_relation_row_from_model_bounded(
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
-                      empty: Accepted { value: target_text_empty, diagnostics: None },
+                      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
                       cons: fn(acc, token_node) {
                         match acc {
-                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                           Accepted { value: partial, diagnostics: ad } =>
                             match token_sequence_item_kind(item: token_node) {
                               Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
                                 match token_spelling_from_model(target: target, token: token_node) {
                                   Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
+                                    v2.std.diagnostic.Accepted {
                                       value: target_text_seq(acc: partial, next: text_atom(lexeme: source)),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
@@ -842,7 +842,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                       )
                                     }
                                   Rejected { diagnostics: r } =>
-                                    Rejected {
+                                    v2.std.diagnostic.Rejected {
                                       diagnostics: rejected_with_pending(
                                         pending: diagnostics_merge(outer: ad, inner: kd),
                                         rejected: r
@@ -856,7 +856,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                   token_node
                                 ) {
                                   Accepted { value: source, diagnostics: td } =>
-                                    Accepted {
+                                    v2.std.diagnostic.Accepted {
                                       value: target_text_seq(acc: partial, next: source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
@@ -864,7 +864,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                       )
                                     }
                                   Rejected { diagnostics: r } =>
-                                    Rejected {
+                                    v2.std.diagnostic.Rejected {
                                       diagnostics: rejected_with_pending(
                                         pending: diagnostics_merge(outer: ad, inner: kd),
                                         rejected: r
@@ -872,7 +872,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                     }
                                 }
                               Rejected { diagnostics: r } =>
-                                Rejected {
+                                v2.std.diagnostic.Rejected {
                                   diagnostics: rejected_with_pending(pending: ad, rejected: r)
                                 }
                             }
@@ -956,19 +956,19 @@ fn token_sequence_to_source_bounded(
 ) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: target_text_empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, token_node) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
           match token_item_to_source_bounded(remaining - 1, token_node, target) {
             Accepted { value: source, diagnostics: td } =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: target_text_seq(acc: partial, next: source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
-              Rejected {
+              v2.std.diagnostic.Rejected {
                 diagnostics: rejected_with_pending(pending: ad, rejected: r)
               }
           }
@@ -1123,9 +1123,9 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_selection_policy),
     f: fn(priority_node) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: priority_node,
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -1261,9 +1261,9 @@ fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
       bind_outcome(
         o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_emitted),
         f: fn(emitted) {
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         }
       )
@@ -1279,9 +1279,9 @@ fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<Ta
         Present { value: node } =>
           bind_outcome(
             o: target_text_carrier_from_node(node: node),
-            f: fn(tc) { Accepted { value: optional_present(value: tc), diagnostics: None } }
+            f: fn(tc) { v2.std.diagnostic.Accepted { value: optional_present(value: tc), diagnostics: v2.std.diagnostic.None } }
           )
-        Absent => Accepted { value: optional_absent(), diagnostics: None }
+        Absent => v2.std.diagnostic.Accepted { value: optional_absent(), diagnostics: v2.std.diagnostic.None }
       }
     }
   )
@@ -1317,7 +1317,7 @@ fn target_collection_realization_from_bundle(
                               bind_outcome(
                                 o: target_text_carrier_optional_from_bundle(bundle: bundle),
                                 f: fn(text_carrier) {
-                                  Accepted {
+                                  v2.std.diagnostic.Accepted {
                                     value: TargetCollectionRealization {
                                       source_carrier: source_carrier,
                                       primary: primary,
@@ -1325,7 +1325,7 @@ fn target_collection_realization_from_bundle(
                                       fallback_diagnostic: fallback_diagnostic,
                                       text_carrier: text_carrier
                                     },
-                                    diagnostics: None
+                                    diagnostics: v2.std.diagnostic.None
                                   }
                                 }
                               )
@@ -1405,7 +1405,7 @@ fn project_set_collection_type_node(
               bind_outcome(
                 o: translate_type_expression_project(node: elem, target: target, projection: projection),
                 f: fn(elem_projected) {
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: target_type_expr_instantiation_emitted(
                       form: choice.form.apply,
                       head: target_type_expr_atom_emitted(
@@ -1414,7 +1414,7 @@ fn project_set_collection_type_node(
                       ),
                       args: Cons { head: elem_projected, tail: Empty }
                     ),
-                    diagnostics: None
+                    diagnostics: v2.std.diagnostic.None
                   }
                 }
               )
@@ -1440,7 +1440,7 @@ fn project_free_monoid_collection_type_node(
           match row.text_carrier {
             Present { value: text_carrier } =>
               if content_hash(n: elem) == content_hash(n: text_carrier.element_carrier) {
-                Accepted { value: text_carrier.emitted_type_node, diagnostics: None }
+                v2.std.diagnostic.Accepted { value: text_carrier.emitted_type_node, diagnostics: v2.std.diagnostic.None }
               } else {
                 project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
               }
@@ -1477,7 +1477,7 @@ fn project_free_monoid_via_vec_choice(
               use_site: OwnershipAtBindingProjection
             ),
             f: fn(elem_storage) {
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: target_type_expr_instantiation_emitted(
                   form: choice.form.apply,
                   head: target_type_expr_atom_emitted(
@@ -1486,7 +1486,7 @@ fn project_free_monoid_via_vec_choice(
                   ),
                   args: Cons { head: elem_storage, tail: Empty }
                 ),
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             }
           )
@@ -1673,31 +1673,31 @@ fn translate_algebra(
         TypeNode { connective: connective } =>
           match connective {
             Atom { identity: id } =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: TypeExprTranslateDone {
                   node: target_type_expr_atom_emitted(
                     form: projection.atom_form,
                     identity: id
                   )
                 },
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             Conj =>
-              Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+              v2.std.diagnostic.Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: v2.std.diagnostic.None }
             Disj =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: TypeExprTranslateVariants { variants: Empty },
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             Instantiation =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             Cardinality =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             Arrow =>
               bind_outcome(
@@ -1707,9 +1707,9 @@ fn translate_algebra(
                   projection: projection
                 ),
                 f: fn(emitted) {
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: TypeExprTranslateDone { node: emitted },
-                    diagnostics: None
+                    diagnostics: v2.std.diagnostic.None
                   }
                 }
               )
@@ -1720,16 +1720,16 @@ fn translate_algebra(
     },
     step: fn(acc, e, child) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: done, diagnostics: d } =>
           match done {
-            TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateDone { node: _ } => v2.std.diagnostic.Accepted { value: done, diagnostics: d }
             TypeExprTranslateSlots { slots: slots } =>
               match e.label {
                 Named { name: label } =>
                   match child {
                     Rejected { diagnostics: cr } =>
-                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                      v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                     Accepted { value: child_acc, diagnostics: cd } =>
                       bind_outcome(
                         o: translate_algebra_finalize(
@@ -1747,7 +1747,7 @@ fn translate_algebra(
                               use_site: OwnershipAtStructField
                             ),
                             f: fn(wrapped) {
-                              Accepted {
+                              v2.std.diagnostic.Accepted {
                                 value: TypeExprTranslateSlots {
                                   slots: list_snoc_item(
                                     xs: slots,
@@ -1774,7 +1774,7 @@ fn translate_algebra(
                 Named { name: label } =>
                   match child {
                     Rejected { diagnostics: cr } =>
-                      Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                      v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                     Accepted { value: child_acc, diagnostics: cd } =>
                       bind_outcome(
                         o: translate_algebra_finalize(
@@ -1783,7 +1783,7 @@ fn translate_algebra(
                           projection: projection
                         ),
                         f: fn(projected) {
-                          Accepted {
+                          v2.std.diagnostic.Accepted {
                             value: TypeExprTranslateVariants {
                               variants: list_snoc_item(
                                 xs: variants,
@@ -1806,7 +1806,7 @@ fn translate_algebra(
             TypeExprTranslatePositional { items: items } =>
               match child {
                 Rejected { diagnostics: cr } =>
-                  Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+                  v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                 Accepted { value: child_acc, diagnostics: cd } =>
                   bind_outcome(
                     o: translate_algebra_finalize(
@@ -1815,7 +1815,7 @@ fn translate_algebra(
                       projection: projection
                     ),
                     f: fn(projected) {
-                      Accepted {
+                      v2.std.diagnostic.Accepted {
                         value: TypeExprTranslatePositional {
                           items: list_snoc_item(xs: items, item: projected)
                         },
@@ -1934,7 +1934,7 @@ fn type_expr_atom_binding_from_positional(
       if is_empty(xs: split.tail) {
         match split.head.kind {
           TypeNode { connective: Atom { identity: id } } =>
-            Accepted { value: id, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: id, diagnostics: v2.std.diagnostic.None }
           _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
         }
       } else {
@@ -2029,7 +2029,7 @@ fn serialize_type_expr_generic_apply_bounded(
                     bind_outcome(
                       o: lex_rules_literal(target: target, token_class: form.close),
                       f: fn(close_source) {
-                        Accepted {
+                        v2.std.diagnostic.Accepted {
                           value: target_text_seq(
                             acc: target_text_seq(
                               acc: target_text_seq(acc: head_source, next: text_atom(lexeme: open_source)),
@@ -2037,7 +2037,7 @@ fn serialize_type_expr_generic_apply_bounded(
                             ),
                             next: text_atom(lexeme: close_source)
                           ),
-                          diagnostics: None
+                          diagnostics: v2.std.diagnostic.None
                         }
                       }
                     )
@@ -2066,7 +2066,7 @@ fn serialize_type_expr_args_bounded(
   } else {
     fold_list(
       xs: args,
-      empty: Accepted { value: target_text_empty, diagnostics: None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, arg) {
         bind_outcome(
           o: acc,
@@ -2117,7 +2117,7 @@ fn serialize_type_expr_separated_bounded(
   } else {
     fold_list(
       xs: items,
-      empty: Accepted { value: target_text_empty, diagnostics: None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, item) {
         bind_outcome(
           o: acc,
@@ -2250,12 +2250,12 @@ fn serialize_type_expr_record_bounded(
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.close),
                     f: fn(close_source) {
-                      Accepted {
+                      v2.std.diagnostic.Accepted {
                         value: target_text_seq(
                           acc: target_text_seq(acc: text_atom(lexeme: open_source), next: fields_source),
                           next: text_atom(lexeme: close_source)
                         ),
-                        diagnostics: None
+                        diagnostics: v2.std.diagnostic.None
                       }
                     }
                   )
@@ -2314,12 +2314,12 @@ fn serialize_type_expr_arrow_param_bounded(
           bind_outcome(
             o: lex_rules_literal(target: target, token_class: form.param_type_separator),
             f: fn(separator_source) {
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: target_text_seq(
                   acc: target_text_seq(acc: text_atom(lexeme: name_source), next: text_atom(lexeme: separator_source)),
                   next: type_source
                 ),
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             }
           )
@@ -2344,7 +2344,7 @@ fn serialize_type_expr_arrow_params_bounded(
   } else {
     fold_list(
       xs: params,
-      empty: Accepted { value: target_text_empty, diagnostics: None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, slot) {
         bind_outcome(
           o: acc,
@@ -2423,7 +2423,7 @@ fn serialize_type_expr_arrow_named_bounded(
                               emitted: codomain
                             ),
                             f: fn(codomain_source) {
-                              Accepted {
+                              v2.std.diagnostic.Accepted {
                                 value: target_text_seq(
                                   acc: target_text_seq(
                                     acc: target_text_seq(
@@ -2434,7 +2434,7 @@ fn serialize_type_expr_arrow_named_bounded(
                                   ),
                                   next: codomain_source
                                 ),
-                                diagnostics: None
+                                diagnostics: v2.std.diagnostic.None
                               }
                             }
                           )
@@ -2474,12 +2474,12 @@ fn serialize_type_expr_arrow_input_wrapped(
           bind_outcome(
             o: lex_rules_literal(target: target, token_class: form.close),
             f: fn(close_source) {
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: target_text_seq(
                   acc: target_text_seq(acc: text_atom(lexeme: open_source), next: input_source),
                   next: text_atom(lexeme: close_source)
                 ),
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
             }
           )
@@ -2503,7 +2503,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   } else {
     fold_list(
       xs: inputs,
-      empty: Accepted { value: target_text_empty, diagnostics: None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, input_node) {
         bind_outcome(
           o: acc,
@@ -2590,12 +2590,12 @@ fn serialize_type_expr_arrow_bounded(
                         emitted: split.output
                       ),
                       f: fn(output_source) {
-                        Accepted {
+                        v2.std.diagnostic.Accepted {
                           value: target_text_seq(
                             acc: target_text_seq(acc: inputs_source, next: text_atom(lexeme: arrow_source)),
                             next: output_source
                           ),
-                          diagnostics: None
+                          diagnostics: v2.std.diagnostic.None
                         }
                       }
                     )
@@ -2867,7 +2867,7 @@ fn translate_project_arrow_input_types(
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: original_inputs,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, original_input) {
       bind_outcome(
         o: acc,
@@ -3011,7 +3011,7 @@ fn translate_target_function_signature_realization_for_boundary(
                   if translate_outcome_is_signature_realization_miss(diagnostics: r) {
                     outcome_accepted(optional_absent())
                   } else {
-                    Rejected { diagnostics: r }
+                    v2.std.diagnostic.Rejected { diagnostics: r }
                   }
               }
             }
@@ -3158,7 +3158,7 @@ fn translate_coerced_shell_at_use_site_from_source(
           target: target,
           use_site: use_site
         ),
-        f: fn(wrapped) { Accepted { value: wrapped, diagnostics: d } }
+        f: fn(wrapped) { v2.std.diagnostic.Accepted { value: wrapped, diagnostics: d } }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -3586,7 +3586,7 @@ fn translate_node_with_projection(
                   target: target,
                   projection: projection
                 ),
-                f: fn(projected) { Accepted { value: projected, diagnostics: None } }
+                f: fn(projected) { v2.std.diagnostic.Accepted { value: projected, diagnostics: v2.std.diagnostic.None } }
               )
             }
           )
@@ -3606,9 +3606,9 @@ fn translate_type_expression_subtree(
       bind_outcome(
         o: translate_type_expression_children_in_node(node: node, target: target, projection: projection),
         f: fn(children) {
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: node_rebuild(n: node, children: children),
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         }
       )
@@ -3869,7 +3869,7 @@ fn translate_fold_step(
               child: child_acc.source
             ),
             f: fn(_) {
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: TranslateFoldAcc {
                   source: parent_acc.source,
                   rebuilt: node_rebuild(

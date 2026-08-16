@@ -198,11 +198,11 @@ fn npm_registry_integrity_from_decode(
   }
 }
 
-fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
+fn npm_octets_to_lower_hex(octets: List<std.integer.UInt8>) -> String {
   map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
 }
 
-fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
+fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<std.integer.UInt8>) -> Bool {
   encoded == base64_encode(octets: octets, variant: Standard)
 }
 

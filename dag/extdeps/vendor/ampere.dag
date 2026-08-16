@@ -16,4 +16,4 @@ data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAut
   }
 }
 
-data ampere_vendor: Vendor<Hardware> = Vendor { legal_name: "Ampere Computing LLC" }
+data ampere_vendor: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Ampere Computing LLC" }

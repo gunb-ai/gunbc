@@ -268,20 +268,20 @@ fn module_root_lookup(
 ) -> ModuleRootLookup {
   match fold_list(
     xs: roots,
-    empty: Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
+    empty: v2.std.diagnostic.Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: fold_state, diagnostics: _ } =>
           match fold_state {
             ManyPassingCandidates =>
-              Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
+              v2.std.diagnostic.Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
               match qualified_name_from_module_node(root: root.root) {
                 Rejected { diagnostics: d } =>
-                  Rejected { diagnostics: d }
+                  v2.std.diagnostic.Rejected { diagnostics: d }
                 Accepted { value: candidate, diagnostics: _ } =>
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: match candidate == name {
                       true =>
                         match fold_state {

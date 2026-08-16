@@ -363,7 +363,7 @@ fn facts_closure_entries_fold(
     empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
     cons: fn(acc, node) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: entries, diagnostics: _ } =>
           bind_outcome(
             o: partition_closure_entry_for_node(

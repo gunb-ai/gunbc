@@ -6,7 +6,7 @@ data host_phase_status_authority_note: String = "THE per-(host x phase) status a
 data host_phase_cell_grain_note: String = "The cell is keyed by (host, phase_label) and NOT by (host, phase) structurally, because phase_label is already the spine's own stable identity for a step (it is what the gap ledger keyed on, what the refusal strings name, and what an operator reads). Keying on the label keeps ONE identity for a phase across the spine, this matrix, and every refusal message, rather than introducing a second notion of phase identity that could disagree with the first. key_of returns identity, never content (membership_reconcile's R2 contract): a cell whose STATUS changes is Modified — the same cell re-derived — not Removed+Added, which would read as a host leaving and rejoining the fleet."
 
 type HostPhaseCell {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   phase_label: String
 }
 

@@ -11,11 +11,11 @@ fn pure_dag_seam_unreachable_float() -> Float {
 
 data pure_dag_seam_unreachable_typing_note: String = "One divergent seam, projected once per result type, because a divergent expression HAS no result type to project from. `1 / 0` never returns, so the honest type is bottom — the type that inhabits every type — and .dag has no bottom, so the seam is typed at whatever it is used as. Typing it Int alone was a silent lie wherever the enclosing declaration was not Int: `fn ... -> List<Float> { [pure_dag_seam_unreachable()] }` in the simd and wgsl float kernels declared List<Float> and produced List<Int>, and the declaration was the correct half — those are float kernels taking List<Float> arguments. The declared-type conformance wall found both by execution once it was widened to containers of ground kernel scalars; before that the gate required a plain shape and a List is not one, so the mismatch was indistinguishable from a conforming declaration (codex review 45398). The bodies are unreachable, so nothing MISBEHAVED — which is exactly why this had to be caught by construction rather than by a consumer. THE FLOAT PROJECTION MUST BORROW THE INT SEAM'S DIVERGENCE, and the first version did not — it was written `1.0 / 0.0`, which under IEEE-754 is not a trap at all but positive infinity, so the seam RETURNED and the kernels asserted to be unreachable would have produced [+inf]. That is a fabricated plausible output, the precise thing §5 forbids, introduced while fixing a different fabrication (codex review 45493). Integer division by zero traps; float division by zero does not, and the two do not have the same failure semantics however similar they look. The Float projection therefore forces the Int seam to evaluate in its condition, so divergence happens before any Float is produced; both arms are the same literal because neither is ever reached, and the literal is there to give the expression its type, not to be a value. The two fns are a §2 duplication and are deliberately marked as one: dissolve-on a bottom type, at which point one divergent seam inhabits every result type and the Float projection deletes."
 
-fn bytes_octets(b: Bytes) -> List<UInt8> {
+fn bytes_octets(b: Bytes) -> List<std.integer.UInt8> {
   [pure_dag_seam_unreachable()]
 }
 
-fn octets_bytes(o: List<UInt8>) -> Bytes {
+fn octets_bytes(o: List<std.integer.UInt8>) -> Bytes {
   o as Bytes
 }
 
