@@ -1,6 +1,6 @@
 module gunbc.host_converge_realize
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, List, Bool, NonEmptyStr, Int }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeTarget,
