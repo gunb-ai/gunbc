@@ -1,6 +1,6 @@
 module test.claim.grounded_principal_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_runner_fiction_not_in_roster() -> Bool {
   !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
