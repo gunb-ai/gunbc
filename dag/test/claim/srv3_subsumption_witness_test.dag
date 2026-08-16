@@ -49,11 +49,11 @@ test fn srv3_fabric_intended_refuses_realization() -> Bool {
 
 data host_authorized_keys_reconcile_witness_note: String = "Green-by-execution proof of the SSH-authorized-keys reconcile on REAL observed data (operator macbook reads of srv3/srv4, 2026-07-24). The load-bearing discriminations: srv3 (installed pre-#7027, missing the fleet key) yields exactly ONE upsert — the fleet-automation key, named specifically, not just a count — and TWO refusals, both the out-of-band keys the fleet does not own, REFUSED (not torn down). srv4 (installed with the fleet key in the seed) yields the empty converged plan — the negative control that proves the reconcile does not fabricate work. The R5-wall RED control (reconcile_would_teardown_only_if_ownership_claimed_it) reconstructs the wall's hinge: feed a ownership fn that lies 'Owned' about the foreign keys and the SAME spine WOULD emit teardowns — so the refusal is caused by ownership_of returning Absent, not by the spine being unable to teardown. That makes the wall discriminating rather than asserted."
 
-fn srv3_plan() -> MembershipPlan<SshPublicKey> {
+fn srv3_plan() -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile(observed: srv3_observed_authorized_keys)
 }
 
-fn srv4_plan() -> MembershipPlan<SshPublicKey> {
+fn srv4_plan() -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile(observed: srv4_observed_authorized_keys)
 }
 
@@ -61,9 +61,9 @@ test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
   let plan = srv3_plan()
   let upsert_materials = flat_map(plan.actions, a =>
     match a {
-      MemberAdded { to: m } => [m.material as String]
-      MemberChanged { from: _, to: m } => [m.material as String]
-      MemberRemoved { from: _ } => []
+      MemberAdded { at: _, to: m } => [m.material as String]
+      MemberChanged { at: _, from: _, to: m } => [m.material as String]
+      MemberRemoved { at: _, from: _ } => []
       MemberRemovalRefused { from: _, cause: _ } => []
     }
   )
@@ -78,9 +78,9 @@ test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
     match a {
       MemberRemovalRefused { from: m, cause: OwnershipUnknown } => [m.material as String]
       MemberRemovalRefused { from: _, cause: MemberNotOwned } => []
-      MemberAdded { to: _ } => []
-      MemberChanged { from: _, to: _ } => []
-      MemberRemoved { from: _ } => []
+      MemberAdded { at: _, to: _ } => []
+      MemberChanged { at: _, from: _, to: _ } => []
+      MemberRemoved { at: _, from: _ } => []
     }
   )
   tally.adds == 1
@@ -108,12 +108,8 @@ fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
 
 test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
   let honest = membership_tally(plan: srv3_plan())
-  let lying = membership_tally(plan: membership_reconcile(
-    desired: fleet_authorized_keys,
+  let lying = membership_tally(plan: host_authorized_keys_reconcile_with_ownership(
     observed: srv3_observed_authorized_keys,
-    key_of: authorized_key_identity,
-    key_eq: authorized_key_identity_eq,
-    value_eq: authorized_key_value_eq,
     ownership_of: ownership_lies_owned,
   ))
   honest.refusals == 2

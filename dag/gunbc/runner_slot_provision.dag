@@ -10,6 +10,7 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_added_count,
 }
 import gunbc.ownership { Ownership }
@@ -41,6 +42,8 @@ data runner_slot_provision_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+
+type RunnerSlotMemberAt = NonEmptyStr
 
 type RunnerSlotMember {
   instance_name: NonEmptyStr
@@ -91,14 +94,16 @@ fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
 fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
-) -> MembershipPlan<RunnerSlotMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    key_of: runner_slot_member_key,
-    key_eq: runner_slot_member_key_eq,
-    value_eq: runner_slot_member_value_eq,
-    ownership_of: runner_slot_member_ownership,
+) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: runner_slot_member_key,
+      key_eq: runner_slot_member_key_eq,
+      value_eq: runner_slot_member_value_eq,
+      ownership_of: runner_slot_member_ownership,
+    ),
   )
 }
 
@@ -129,7 +134,7 @@ fn runner_slot_enumeration_postcondition(
 
 type RunnerSlotProvisionPlan {
   host_label: NonEmptyStr
-  membership: MembershipPlan<RunnerSlotMember>
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
 }
@@ -149,14 +154,14 @@ fn runner_slot_provision_plan(
     base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        MemberAdded { to: m } =>
+        MemberAdded { at: _, to: m } =>
           [actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        MemberChanged { from: _, to: _ } => []
-        MemberRemoved { from: _ } => []
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemoved { at: _, from: _ } => []
         MemberRemovalRefused { from: _, cause: _ } => []
       }
     ),
