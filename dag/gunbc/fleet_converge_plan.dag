@@ -386,9 +386,7 @@ fn fleet_converge_plan_spark_typed_actions_consistency_admits(
   spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>,
 ) -> Bool {
   let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
-  if body_claims && length(spark_serving_typed_actions) == 0 {
-    false
-  } else if length(spark_serving_typed_actions) > 0 && !body_claims {
+  if length(spark_serving_typed_actions) > 0 && !body_claims {
     false
   } else {
     true
