@@ -42178,11 +42178,22 @@ pub fn run_required_floor(
     // Preparing without it produced a world in which every claim reading a published mock
     // resolved against nothing: 9,057 of 9,317 witnesses could not find their own code, at a
     // digest that claimed to name the same subject.
+    // ── T2 ────────────────────────────────────────────────────────────────────────────────
+    // The WHOLE projection, not the compiler phase lines printed inside it. Those lines
+    // report the second compile's phases and exclude index construction, declarer discovery,
+    // closure selection and extraction — so quoting them as this helper's cost is a derived
+    // number wearing a raw one's label. It read as ~73ms and was never measured.
+    let published_started = std::time::Instant::now();
     let published = match precompute_whole_tree_published_mock_keys(source_roots) {
         Ok(keys) if keys.is_empty() => None,
         Ok(keys) => Some(Rc::new(keys)),
         Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
     };
+    eprintln!(
+        "floor: [T2] published-mock projection total {}ms ({} key(s))",
+        published_started.elapsed().as_millis(),
+        published.as_ref().map(|k| k.len()).unwrap_or(0)
+    );
     let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
     let hermetic = evaluation_frame(
         &manifest_scope,
@@ -42196,6 +42207,14 @@ pub fn run_required_floor(
     install_output_policy_in(&hermetic, source_roots);
 
     // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    //
+    // T3/T4/T5 SPLIT THIS REGION because it is the whole blank interval. Between the
+    // preparation line and the first `floor: claims = ...` line nothing is printed, so a run
+    // cancelled in here reports one undifferentiated gap containing site/binding projection,
+    // the .dag manifest evaluation and admission decoding. Four superlinear shapes are known
+    // to live in the manifest, which is a ranked hypothesis list and not an attribution: the
+    // seams below are what turn the gap into one located term.
+    let projection_started = std::time::Instant::now();
     let files = inventory_witness_files(&prepared);
     let bindings: Vec<v1_interpreter::Value> = prepared
         .inventory
@@ -42230,6 +42249,13 @@ pub fn run_required_floor(
             ));
         }
     }
+    eprintln!(
+        "floor: [T3] witness-site and binding projection {}ms ({} site(s), {} binding(s), {} file(s))",
+        projection_started.elapsed().as_millis(),
+        sites.len(),
+        bindings.len(),
+        files.len()
+    );
     let subject = record_value(
         &hermetic,
         "ObservedSubjectIdentity",
@@ -42251,6 +42277,7 @@ pub fn run_required_floor(
     );
     let empty_sites =
         v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    let manifest_eval_started = std::time::Instant::now();
     let admission = v1_interpreter::run_in_context_with_args(
         &hermetic,
         "required_floor_attempt",
@@ -42269,7 +42296,17 @@ pub fn run_required_floor(
         false,
     )
     .map_err(|e| format!("required_floor_attempt: {e}"))?;
+    eprintln!(
+        "floor: [T4] .dag manifest evaluation {}ms",
+        manifest_eval_started.elapsed().as_millis()
+    );
+    let admission_decode_started = std::time::Instant::now();
     let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    eprintln!(
+        "floor: [T5] admission decode {}ms ({} claim(s))",
+        admission_decode_started.elapsed().as_millis(),
+        claims.len()
+    );
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
