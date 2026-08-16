@@ -37,7 +37,21 @@ import extdeps.cpu_attachment.ilm4926 {
   ilm4926,
   ilm4926_attestations,
   ilm4926_referent,
-  ilm4926_resolution_obligations,
+  attachment_board_land_pattern,
+  attachment_footprint_may_emit,
+  attachment_socket_body_is_identified,
+  attachment_unresolved_constituent_count,
+  ilm4926_attachment_standing,
+  AccessGatedReferenceCollateral,
+  PublicSocketVendorDrawing,
+  ampere_customer_reference_boards_authority,
+  lga4926_land_pattern_gated_route,
+  lga4926_land_pattern_public_route,
+  route_yields_a_carriable_fact,
+  AttachmentStanding,
+  ConstituentStanding,
+  SocketBodyStanding,
+  standing_is_established,
   ocp_mt_jade_specification_authority,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -97,44 +111,111 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
 
 // THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
 // match on each field rather than a Bool predicate over the coproduct.
-// THREE axes, not four: loading_mechanism_identity is established against the Lotes catalogue
-// page and is asserted separately by w_the_retention_assembly_resolves_without_touching_the_land_pattern.
-// The name once said four and the body always checked three.
-test fn w_three_resolution_obligations_remain_unresolved() -> Bool {
-  let o = ilm4926_resolution_obligations
-  match o.vendor_identity {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
-    && match o.orderable_part_number {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
-    && match o.board_land_pattern {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
+// THE SOCKET BODY IS UNIDENTIFIED ON BOTH OF ITS AXES, and the land pattern with it. These are
+// read through the socket-body constituent rather than off a flat record, which is the point of
+// the restructure: there is no top-level vendor_identity to answer for the whole assembly.
+test fn w_the_socket_body_is_unidentified_on_every_axis() -> Bool {
+  let a = ilm4926_attachment_standing
+  !standing_is_established(s: a.socket_body.vendor_identity)
+    && !standing_is_established(s: a.socket_body.orderable_part_number)
+    && !standing_is_established(s: attachment_board_land_pattern(a: a))
+    && !attachment_socket_body_is_identified(a: a)
     && !designation_referent_is_resolved(referent: ilm4926_referent)
 }
 
-// THE RETENTION ASSEMBLY RESOLVES; THE ATTACHMENT DOES NOT. Lotes is a publisher of record for
-// its own catalogue, so AZIF0222 establishes the loading-mechanism axis. This witness is the pair
-// to that: establishing it must leave the socket body, the orderable socket part and the board
-// land pattern exactly where they were, because the socket body is a different item and it is the
-// one that carries the pads.
+// THE RETENTION ASSEMBLY RESOLVES; THE SOCKET BODY DOES NOT. Lotes is a publisher of record for
+// its own catalogue, so AZIF0222 establishes both retention axes. This witness is the pair to
+// that: establishing them must leave every socket-body axis exactly where it was, because the
+// socket body is a different item and it is the one that carries the pads.
 test fn w_the_retention_assembly_resolves_without_touching_the_land_pattern() -> Bool {
-  (match ilm4926_resolution_obligations.loading_mechanism_identity {
-    DesignationFactEstablished { value: _, authority: a } => a == lotes_azif0222_product_authority
+  let a = ilm4926_attachment_standing
+  (match a.retention_assembly.orderable_part_number {
+    DesignationFactEstablished { value: _, authority: auth } => auth == lotes_azif0222_product_authority
     DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
   })
-    && match ilm4926_resolution_obligations.board_land_pattern {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
-    && match ilm4926_resolution_obligations.vendor_identity {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
+    && standing_is_established(s: a.retention_assembly.vendor_identity)
+    && !standing_is_established(s: attachment_board_land_pattern(a: a))
+    && !standing_is_established(s: a.socket_body.vendor_identity)
+    && !standing_is_established(s: a.socket_body.orderable_part_number)
+}
+
+// MOUNTING HARDWARE IS ITS OWN CONSTITUENT AND IS NOT COVERED BY THE RETENTION PART. Whether the
+// screws ship with AZIF0222 is unestablished, so assuming the retention row covers them would be
+// inventing a procurement fact -- three constituents, two of them unresolved.
+test fn w_mounting_hardware_is_separately_unresolved() -> Bool {
+  let a = ilm4926_attachment_standing
+  !standing_is_established(s: a.mounting_hardware.orderable_part_number)
+    && attachment_unresolved_constituent_count(a: a) == 2
+}
+
+// NO FOOTPRINT MAY EMIT. The gate is conjunctive on socket-body identity AND land pattern, so
+// resolving the retention assembly cannot open it -- which is the failure this whole module exists
+// to prevent: a released pad array for a part nobody has named.
+test fn w_no_footprint_may_emit_while_the_socket_body_is_unnamed() -> Bool {
+  !attachment_footprint_may_emit(a: ilm4926_attachment_standing)
+}
+
+// RED control: the emit gate is reachable. A predicate that can only answer false would prove
+// nothing about the corpus, so a fully identified socket body must open it -- and dropping either
+// axis alone must close it again, which is what makes the conjunction real rather than decorative.
+test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emission() -> Bool {
+  let cited = DesignationFactEstablished {
+    value: "some cited value",
+    authority: lotes_azif0222_product_authority,
+  }
+  let missing = DesignationFactUnresolved {
+    reason: "any reason at all",
+    next_authority_to_consult: none,
+  }
+  let complete = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+      board_land_pattern: cited,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  let no_land_pattern = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+      board_land_pattern: missing,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  let unnamed_socket = AttachmentStanding {
+    socket_body: SocketBodyStanding {
+      vendor_identity: missing,
+      orderable_part_number: missing,
+      board_land_pattern: cited,
+    },
+    retention_assembly: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+    mounting_hardware: ConstituentStanding {
+      vendor_identity: cited,
+      orderable_part_number: cited,
+    },
+  }
+  attachment_footprint_may_emit(a: complete)
+    && !attachment_footprint_may_emit(a: no_land_pattern)
+    && !attachment_footprint_may_emit(a: unnamed_socket)
+    && attachment_unresolved_constituent_count(a: complete) == 0
 }
 
 // RED control: the established arm is reachable only by inhabiting DesignationFactEstablished.
@@ -209,8 +290,25 @@ test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
     MountingAndOutlineGeometry => true
     BoardSidePadArray => false
   })
-    && match ilm4926_resolution_obligations.board_land_pattern {
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
-      DesignationFactEstablished { value: _, authority: _ } => false
-    }
+    && !standing_is_established(s: attachment_board_land_pattern(a: ilm4926_attachment_standing))
+}
+
+// THE TWO ROUTES ARE DISTINGUISHED BY CARRIAGE, NOT BY PREFERENCE. Obtaining the gated Ampere
+// package would answer the question for a reader and leave this public model exactly as unresolved
+// as before, so an NDA acquisition must never register as progress toward a carriable fact. Only
+// the socket-vendor route ends somewhere this repository can publish.
+test fn w_only_the_public_socket_vendor_route_yields_a_carriable_fact() -> Bool {
+  route_yields_a_carriable_fact(r: lga4926_land_pattern_public_route)
+    && !route_yields_a_carriable_fact(r: lga4926_land_pattern_gated_route)
+}
+
+// AND THE GATED ROUTE STILL EXISTS. Recording that the land pattern is written down somewhere is a
+// different claim from being able to carry it, and dropping the gated route would have made the
+// fact look undiscovered rather than unpublishable.
+test fn w_the_gated_route_is_retained_beside_the_public_one() -> Bool {
+  match lga4926_land_pattern_gated_route {
+    AccessGatedReferenceCollateral { access_route: a, why_not_carriable: _ } =>
+      a == ampere_customer_reference_boards_authority
+    PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => false
+  }
 }
