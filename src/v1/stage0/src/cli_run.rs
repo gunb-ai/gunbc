@@ -20938,16 +20938,18 @@ impl Default for DiscoveryCorpusOptions {
 }
 
 /// How the discovery corpus parallelizes. `Serial` runs every row on the caller's thread —
-/// the calibration path that also carries the width-1 closure-drift oracle. `Adaptive`
-/// drains entry-groups through a worker pool whose concurrency the memory governor admits:
-/// a new worker (= one more whole-tree index resident) is the expensive act the governor
-/// gates, replacing the retired plan-pinned `spawn_width` / `spawn_width_cap` constants.
+/// the calibration path that also carries the width-1 closure-drift oracle. Production
+/// uses `DerivedSchedule`, which computes a fixed width from `std.realize_pack` once the
+/// roster is known (witness-realization P4) — no runtime AIMD admission.
 pub enum DiscoveryWidthPolicy {
     Serial,
     /// Experimental fixed width-2 pool over one process-scoped typed-module byte store.
     /// Not production-default — cohort A/B harness only.
     ControlledWidthTwo,
-    Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
+    /// Compute width from derived per-witness space bounds + host budget after roster assembly.
+    DerivedSchedule,
+    /// Fixed worker count (internal projection of `DerivedSchedule`, or probe overrides).
+    FixedWidth(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23135,6 +23137,32 @@ fn run_discovery_corpus_with_options_inner(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
+    let width_policy = match width_policy {
+        DiscoveryWidthPolicy::DerivedSchedule => {
+            let pairs: Vec<(String, String)> = rows
+                .iter()
+                .map(|r| (r.entry.clone(), r.function.clone()))
+                .collect();
+            let derived = crate::derived_realization_schedule::derive_discovery_schedule_width(
+                source_roots,
+                &pairs,
+            )?;
+            if let Some(msg) = derived.refuse_if_budget_unreadable() {
+                return Err(msg);
+            }
+            eprintln!(
+                "run_discovery_corpus: derived schedule width={} verdict={} max_derived_bound={}",
+                derived.width,
+                derived.verdict,
+                derived
+                    .max_derived_bound_bytes
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "unknown".into()),
+            );
+            DiscoveryWidthPolicy::FixedWidth(derived.width.max(1))
+        }
+        other => other,
+    };
     // P4 advisory-first: predict the memory-packed width per witness from its derived
     // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
     if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
@@ -23418,6 +23446,9 @@ fn run_discovery_corpus_with_options_inner(
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
     return match width_policy {
+        DiscoveryWidthPolicy::DerivedSchedule => {
+            unreachable!("DerivedSchedule is lowered to FixedWidth before the pool match")
+        }
         DiscoveryWidthPolicy::Serial => {
             // Arm retention over the WHOLE serial schedule (all rows) before the single drain
             // call — a shared module stays resident until its last scheduled entry consumes it.
@@ -23615,15 +23646,13 @@ fn run_discovery_corpus_with_options_inner(
                 deferred_rows,
             ))
         }
-        DiscoveryWidthPolicy::Adaptive(governor) => {
-            // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
-            // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
-            // resident structure across every group it pulls — admission of a worker (not of a
-            // group) is therefore the memory-relevant act the governor decides.
+        DiscoveryWidthPolicy::FixedWidth(pool_width) => {
+            // Derived schedule pool: entry-groups drain through a fixed worker count chosen
+            // up front by std.realize_pack over the roster's derived space bounds.
             let groups = entry_row_groups(&rows);
-            let spawn_target_width = governor.current_target_width();
+            let spawn_target_width = pool_width;
             eprintln!(
-                "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+                "run_discovery_corpus: derived schedule pool over {} entry-group(s), {} row(s) (scheduled width={})",
                 groups.len(),
                 rows.len(),
                 spawn_target_width,
@@ -23662,7 +23691,7 @@ fn run_discovery_corpus_with_options_inner(
                     "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
                 );
                 eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+                    "run_discovery_corpus: cross_worker_store withheld (scheduled width={spawn_target_width}) — per-index typed cache until width > 1"
                 );
                 let style = ShardStyle {
                     shard_id: 0,
@@ -23785,14 +23814,15 @@ fn run_discovery_corpus_with_options_inner(
                     deferred_rows,
                 ));
             }
-            // Process-scoped typed store shell — populated only when plural workers run
-            // (target_width > 1). At width=1 the serde byte store adds retention without
-            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
-            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
-            let cross_worker_store = new_shared_typecheck_caches();
-            if floor_stream && spawn_target_width > 1 {
+            let arm_shared_store = if p1_cohort_experiment_active() {
+                p1_experimental_arm_shared_typed_store(spawn_target_width)
+            } else {
+                true
+            };
+            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
+            if floor_stream {
                 eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+                    "{} [affected-set] streaming run-witnesses live across the derived schedule pool (width {}; ▎shard N, one color each)",
                     floor_ts(),
                     spawn_target_width,
                 );
@@ -23810,62 +23840,32 @@ fn run_discovery_corpus_with_options_inner(
             let execution_authority_is_subject_for_workers = execution_authority_is_subject;
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::new();
-            let mut worker_ordinal: usize = 0;
-            loop {
-                if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
-                    break;
-                }
-                match governor.try_admit() {
-                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
-                    crate::memory_governor::AdmitDecision::Hold(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(150));
-                        continue;
-                    }
-                }
+            let mut handles = Vec::with_capacity(spawn_target_width);
+            for worker_ordinal in 0..spawn_target_width {
                 let queue_for_worker = queue.clone();
                 let abort_for_worker = abort.clone();
-                let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
                 let execution_authority_roots = execution_authority_roots_owned.clone();
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
-                let spawn_target_width = governor.current_target_width();
-                let cross_worker_store_for_worker = if spawn_target_width > 1 {
-                    Some(cross_worker_store.clone())
-                } else {
-                    None
-                };
-                if worker_ordinal == 0 && spawn_target_width <= 1 {
-                    eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-                }
-                // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
-                // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
-                // admission window has no interleaving to disambiguate.
+                let store = cross_worker_store.clone();
+                let arm_shared_for_worker = arm_shared_store;
                 let style = ShardStyle {
                     shard_id: worker_ordinal,
-                    shard_count: governor.current_target_width(),
+                    shard_count: spawn_target_width,
                     color: floor_color,
                     stream: floor_stream,
                 };
-                worker_ordinal += 1;
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
-                        // The slot was granted by try_admit on the pump thread; the guard owns the
-                        // matching release so a panicking worker cannot wedge admissions.
-                        let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
-                            governor_for_worker.clone(),
-                        );
-                        // Process-scoped typed_module_cache when governor width > 1; private cold
-                        // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                        let index = match cross_worker_store_for_worker {
-                            Some(store) => {
-                                build_multi_entry_index_with_shared_caches(&roots, store)
-                            }
-                            None => build_multi_entry_index(&roots),
+                        let index = if arm_shared_for_worker {
+                            let store = store.expect(
+                                "shared typed store armed but cross_worker_store missing",
+                            );
+                            build_multi_entry_index_with_shared_caches(&roots, store)
+                        } else {
+                            build_multi_entry_index(&roots)
                         };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                             let resolved = if execution_authority_is_subject_for_workers {
@@ -23880,25 +23880,16 @@ fn run_discovery_corpus_with_options_inner(
                                 Err(msg) => {
                                     abort_for_worker.store(true, Ordering::SeqCst);
                                     return Err(format!(
-                                        "floor runner resolve failed in worker ({msg}) — declared \
-                                 affected-set machinery must resolve; no silent \
-                                 run-everything fallback"
+                                        "floor runner resolve failed in derived-schedule worker ({msg})"
                                     ));
                                 }
                             }
                         } else {
                             None
                         };
-                        // The front-loaded admission cost (index build + runner resolve) has
-                        // landed and is visible to the creep signals: unblock admission pacing.
-                        slot.note_first_cost_paid();
                         let mut worker_summaries = Vec::new();
                         loop {
-                            // Multiplicative decrease drains here: a worker between groups retires
-                            // when concurrency sits above the (possibly just-halved) window.
-                            if governor_for_worker.should_retire()
-                                || abort_for_worker.load(Ordering::SeqCst)
-                            {
+                            if abort_for_worker.load(Ordering::SeqCst) {
                                 break;
                             }
                             let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
@@ -23918,10 +23909,7 @@ fn run_discovery_corpus_with_options_inner(
                                 budget_policy_for_workers,
                                 style,
                             ) {
-                                Ok(summary) => {
-                                    worker_summaries.push(summary);
-                                    slot.note_unit_complete();
-                                }
+                                Ok(summary) => worker_summaries.push(summary),
                                 Err(e) => {
                                     abort_for_worker.store(true, Ordering::SeqCst);
                                     return Err(e);
@@ -23952,7 +23940,7 @@ fn run_discovery_corpus_with_options_inner(
             let leftover = queue.lock().unwrap().len();
             if leftover > 0 {
                 return Err(format!(
-            "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
+            "derived-schedule discovery pool exited with {leftover} undrained entry-group(s) and no \
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
             }

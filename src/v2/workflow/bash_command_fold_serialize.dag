@@ -52,6 +52,7 @@ import v2.std.diagnostic {
   Some,
   Unavailable,
   bind_outcome,
+  diagnostics_singleton,
   node_locus
 }
 import v2.std.node {
@@ -100,7 +101,7 @@ fn bash_fold_serialize_leaf_node(
   ) {
     Holds { value: target } =>
       bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
-    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -249,9 +250,11 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
             }
           } else if kind == ^bash_build_refused_empty_word_list {
             Rejected {
-              diagnostics: Some {
-                diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_word_list)]
-              }
+              diagnostics: diagnostics_singleton(
+                d: bash_fold_unsupported_variant_diagnostic(
+                  variant: ^bash_build_refused_empty_word_list
+                )
+              )
             }
           } else {
             bash_fold_serialize_refused(variant: ^bash_fold_serialize_word_kind_unsupported)
@@ -517,9 +520,11 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
     bash_fold_serialize_negation_node(stmt: stmt)
   } else if binding == ^bash_build_refused_empty_stmt_list {
     Rejected {
-      diagnostics: Some {
-        diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_stmt_list)]
-      }
+      diagnostics: diagnostics_singleton(
+        d: bash_fold_unsupported_variant_diagnostic(
+          variant: ^bash_build_refused_empty_stmt_list
+        )
+      )
     }
   } else {
     bash_fold_serialize_leaf_node(

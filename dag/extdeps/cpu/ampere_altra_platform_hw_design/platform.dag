@@ -395,6 +395,64 @@ fn bibliography_lists_a_package_mechanical_document() -> Bool {
   any(altra_platform_bibliography, t => bibliography_entry_is_package_mechanical(title: t))
 }
 
+// THE BIBLIOGRAPHY IS NOT THE DOCUMENT'S REFERENCE SET, and reading it as one is what made the
+// row above answer a question it could not see. Section 10 lists nine titles and none is a layout
+// or mechanical document, so "is there a further Ampere document to chase" derived false. It is
+// false about section 10 and false as an answer: sections 4.2.2 and 4.3.2 each say, in running
+// text, to refer to a layout document that section 10 never lists.
+//
+// That is the empty-observation narrow in miniature — an observation that could not express a
+// referenced document rendered as the verdict "no referenced document exists", so the search
+// closed instead of widening. The remedy is a second roster over a different part of the
+// document, not a wider match on the first: the two populations have different extents and
+// fusing them would put a title in a bibliography that does not contain it.
+//
+// EACH ENTRY CARRIES ITS OWN REACHABILITY, because that is the whole reason to carry them.
+// A referenced document this repository can fetch and one behind a login are different
+// obligations with different owners, and a roster of bare titles cannot tell them apart.
+type ReferencedDocumentReach
+  = ReferencedDocumentPublic
+  | ReferencedDocumentAccessGated { gate: NonEmptyStr }
+
+type PlatformReferencedDocument {
+  title: NonEmptyStr
+  cited_by_section: NonEmptyStr
+  reach: ReferencedDocumentReach
+}
+
+data altra_platform_referenced_documents: List<PlatformReferencedDocument> = [
+  PlatformReferencedDocument {
+    title: "Altra PCB Layout Guidelines",
+    cited_by_section: "4.2.2 and 4.3.2, both as the reference layout authority",
+    reach: ReferencedDocumentAccessGated { gate: "Ampere Customer Connect" },
+  },
+  PlatformReferencedDocument {
+    title: "Altra PCIe Hot-Plug Specification",
+    cited_by_section: "2.3.5",
+    reach: ReferencedDocumentAccessGated { gate: "Ampere Customer Connect" },
+  },
+]
+
+fn referenced_document_is_board_layout(d: PlatformReferencedDocument) -> Bool {
+  string_contains(s: d.title as String, pattern: "Layout")
+}
+
+// THE ANSWER THE LANE ACTUALLY WANTS: is the board-side layout authority named anywhere in this
+// document, and if so can we reach it. Both halves, because a named unreachable document and no
+// named document at all send people to opposite places.
+fn names_a_board_layout_document() -> Bool {
+  any(altra_platform_referenced_documents, d => referenced_document_is_board_layout(d: d))
+}
+
+fn board_layout_document_is_reachable() -> Bool {
+  any(altra_platform_referenced_documents, d =>
+    referenced_document_is_board_layout(d: d)
+      && match d.reach {
+        ReferencedDocumentPublic => true
+        ReferencedDocumentAccessGated { gate: _ } => false
+      })
+}
+
 data altra_platform_impedance_scope_note: String = "WHAT THIS DOCUMENT'S IMPEDANCE TARGETS ARE NOT. Section 4.1.2 is 'Decoupling Requirements to Achieve Target Impedance' and section 4.4 is 'Power Integrity Simulations': every impedance figure in this specification is POWER-DELIVERY network target impedance, per rail, reached by decoupling. None of it is DDR trace impedance, and this document states no DDR routing rules, no trace impedance target, no length matching and no stackup. The layout guidance it does carry is power (4.1.1 Physical Design, 4.2.2 and 4.3.2 vendor reference layouts) and I2C (7.1.4). A downstream consumer reaching for a number from section 4 as a signal-integrity target would get a category error with plausible numbers attached, which is why the boundary is stated here rather than left to be inferred from what is absent."
 
-data altra_platform_section_coverage_note: String = "WHAT THIS MODULE MODELS AND WHAT IT DOES NOT, so absence is never read as a claim about the document. MODELLED, from running text: the memory topologies and slot ordering (2.2), the root-complex structure and admitted lane groupings (2.3.1), the reference-clock inputs (2.3.2), the PCIe reset scheme (2.3.3), hot-plug realization (2.3.5) and the dual-socket CCIX interconnect (2.1). NOT MODELLED, each a real section rather than an oversight: the BMC subsystem (3), power supply design, decoupling, regulator selection and power sequencing (4), clock distribution (5), the PERST encode table (6.1), miscellaneous I/O interfaces (7), system boot sequences (8) and the hardware bring-up guide (9). Those are tables, figures and electrical limits not yet transcribed; carriage is permitted because the document is publicly published (altra_platform_hw_design_publication_status), and a consumer that needs one is what earns its transcription. The socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup guidance this lane most wants are in that second group, and several of them may only exist in the unretrieved 1.20 revision."
+data altra_platform_section_coverage_note: String = "WHAT THIS MODULE MODELS AND WHAT IT DOES NOT, so absence is never read as a claim about the document. MODELLED, from running text: the memory topologies and slot ordering (2.2), the root-complex structure and admitted lane groupings (2.3.1), the reference-clock inputs (2.3.2), the PCIe reset scheme (2.3.3), hot-plug realization (2.3.5) and the dual-socket CCIX interconnect (2.1). NOT MODELLED, each a real section rather than an oversight: the BMC subsystem (3), power supply design, decoupling, regulator selection and power sequencing (4), clock distribution (5), the PERST encode table (6.1), miscellaneous I/O interfaces (7), system boot sequences (8) and the hardware bring-up guide (9). Those are tables, figures and electrical limits not yet transcribed; carriage is permitted because the document is publicly published (altra_platform_hw_design_publication_status), and a consumer that needs one is what earns its transcription. CORRECTED BY A COMPLETE READ ON 2026-08-15: an earlier revision of this sentence said the socket land pattern was in that second group of not-yet-transcribed sections. It is not in this document at all, in any section, in text or in a figure — the document instead names an access-gated layout document as the authority for it (altra_platform_referenced_documents). Keepout, DDR4 routing rules, impedance targets and stackup guidance remain genuinely untranscribed here, and some may exist only in the unretrieved 1.20 revision; the land pattern is a different case and must not be filed with them, because waiting for a transcription that can never arrive is indistinguishable from progress."
