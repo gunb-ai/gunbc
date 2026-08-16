@@ -37,6 +37,7 @@ import gunbc.spark_serving_release {
   OllamaRuntime,
   SparkServingBindListen,
   spark_serving_configuration_identity,
+  spark_serving_bind_listen_wire,
 }
 import gunbc.spark_serving_realization {
   SparkServingIntent,
@@ -65,6 +66,10 @@ data spark_serving_desired_runtime: SparkServingRuntimeKind = OllamaRuntime {}
 data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBindListen {
   host: "0.0.0.0" as NonEmptyStr,
   port: ollama_default_port,
+}
+
+fn spark_serving_desired_bind_host_port() -> String {
+  spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
 }
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
@@ -176,6 +181,10 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
   }
 }
 
+fn spark_serving_automation_principal_login() -> NonEmptyStr {
+  "gunbc-automation" as NonEmptyStr
+}
+
 fn spark_serving_automation_principal() -> NamedPrincipal {
-  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+  NamedPrincipal { login: spark_serving_automation_principal_login() }
 }
