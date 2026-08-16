@@ -207,8 +207,11 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 // owns the board geometry. A complete read of the public platform specification found no board-side
 // land pattern in any section. Two routes remain and they are not equivalent: a Lotes customer
 // drawing would be ordinary published connector documentation and publicly carriable, while the
-// Ampere Altra PCB Layout Guidelines named by sections 4.2.2 and 4.3.2 sit behind Customer Connect
-// under NDA and could not enter this public model even if obtained. The socket-vendor route is the
+// Ampere Altra PCB Layout Guidelines sit behind Customer Connect under NDA and could not enter this
+// public model even if obtained. That second route is weaker than the naming suggests: the platform
+// specification points at that document from sections 4.2.2 and 4.3.2, both titled Reference Layout
+// under VRD Implementation using Texas Instruments and Infineon Devices, so the pointer's subject is
+// voltage-regulator layout and the document's socket contents are unverified rather than known. The socket-vendor route is the
 // next authority, so this projects as unresolved rather than access-gated: a fact this repository
 // could never carry is not a fact merely waiting behind a gate.
 fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
@@ -227,7 +230,7 @@ fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStandi
         Present { value: a } =>
           if a == ampere_customer_reference_boards_authority {
             FactAccessGated {
-              subject: "Altra PCB Layout Guidelines — the board-side reference layout, named by the public platform specification sections 4.2.2 and 4.3.2 as the authority for it",
+              subject: "Altra PCB Layout Guidelines — a candidate collateral package whose socket contents are unverified; the public platform specification names it from sections 4.2.2 and 4.3.2, both of which are voltage-regulator reference layouts",
               access_route: ampere_customer_reference_boards_authority,
             }
           } else {
