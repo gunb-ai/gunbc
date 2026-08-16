@@ -1221,19 +1221,19 @@ mod cli_run_arg_channel_tests {
         let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
-        assert!(matches!(&got[0].1, str_value(s) if s == "roadmap-7"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
     }
 
     #[test]
     fn value_may_contain_further_equals_signs() {
         let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
-        assert!(matches!(&got[0].1, str_value(s) if s == "a=b=c"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
     fn empty_value_is_admitted_and_distinct_from_absent() {
         let got = parse_run_args(&spec(&["flag="])).expect("empty value is a value");
-        assert!(matches!(&got[0].1, str_value(s) if s.is_empty()));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
     }
 
     // RED controls: the refusals are the point of the channel (§5). A bare
@@ -6621,7 +6621,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
@@ -8857,7 +8857,7 @@ mod live_read_selection_manifest_producer_tests {
         LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
         LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
 
     fn source_roots() -> Vec<String> {
@@ -23494,7 +23494,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const EFFECT_REACH_STD_ENTRY: &str = "src/v2/std/effect_reach.dag";
@@ -26467,7 +26467,7 @@ mod floor_witness_a_prove {
         parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, resolve_entry_with_index,
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use im::HashMap;
     use std::path::PathBuf;
 
@@ -27036,7 +27036,7 @@ mod module_grain_affected_equivalence_tests {
         resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
         MultiEntryIndex,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::time::Instant;
@@ -34815,7 +34815,12 @@ mod reference_edge_producer_tests {
     }
 
     fn str_list_value(items: &[String]) -> crate::v1_interpreter::Value {
-        super::list_value_from_vec(items.iter().map(|s| crate::str_value(s.clone())).collect())
+        super::list_value_from_vec(
+            items
+                .iter()
+                .map(|s| crate::v1_interpreter::str_value(s.clone()))
+                .collect(),
+        )
     }
 
     fn edge_from_record(
@@ -34826,11 +34831,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::str_value(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::str_value(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
