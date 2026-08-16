@@ -158,6 +158,55 @@ reports so the result cannot be read to license the more convenient fix:**
 makes the symptom disappear under *both* hypotheses, destroying the ability to
 tell which one held.
 
+### The arm reported, and BOTH pre-registered rows are wrong
+
+```
+ 1 MiB   rc=139 SEGFAULT   980s      predicted ~370s
+ 2 MiB   rc=139 SEGFAULT   739s
+64 MiB   rc=124 TIMEOUT   1500s      (censored — my timeout)
+"overflowed its stack" in the test's own stdout:  0 occurrences
+```
+
+**Halving the stack made it crash LATER.** Not merely off the prediction — on
+the wrong side of the baseline. Stack size does not monotonically determine
+time-to-death, so the linear-exhaustion model is dead, and with it the
+conclusion "it is stack exhaustion" that had been drawn from the 64 MiB arm
+alone. That arm is a single censored observation that had not reached its own
+predicted failure under any model; it was over-read because it agreed with the
+hypothesis just adopted.
+
+The missing overflow message is now a **real** absence rather than a false one:
+the check was run against the test's own stdout, where the string would appear.
+`rc=139` with no such message is consistent with an overflow the handler could
+not report, and equally with an ordinary memory-safety segfault — which has a
+different owner.
+
+**A method error found in the same round, recorded because it invalidates a
+second claim.** The null control measured the same arm twice *within one remote
+job* (845s/834s, 1.3%). That floor was then applied to comparisons spanning
+*different* jobs. Same arm across jobs:
+
+```
+field_of_fractions (fixed):  803s   vs  845s / 834s    ~4.5% cross-job
+decl_facts:                  739s   vs  980s            ~32% cross-job
+```
+
+So the "+7–13%, far outside the noise floor" claim compared 748s from one job
+against 803–845s from two others — a cross-job comparison judged against a
+within-job floor. **Withdrawn.** It is the oracle-denominator failure applied to
+an instrument rather than to a rewrite: the control was correct and complete for
+its own subject, and its subject was narrower than the comparisons it was used
+to license.
+
+**Standing after this round:** the crash is deterministic and reproducible
+(`rc=139`, four runs, two tests). Stack exhaustion is *not* established. That the
+closure fix increases work is *not* established. Neither is refuted — both need a
+within-job A/B, the only comparison the control licenses.
+
+**Next instrument:** ONE job performing the whole comparison — same runner, same
+build, 1/2/64 MiB back to back — plus the closure-membership set diff, which
+answers correctness rather than cost and is unaffected by timing variance.
+
 **A finding worth stating regardless of the outcome:** the seed uses
 `stacker::maybe_grow` at 151 sites as its established idiom for deep structural
 recursion. `source_closure.rs` — the 429-line file this cut introduced — uses it
