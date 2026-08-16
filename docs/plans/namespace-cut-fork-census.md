@@ -45,7 +45,7 @@ meaning — but a copied body is still redundancy.
 | `list_contains_path` | 2 | test-local + `dag_compile_clean_shard_roster` |
 | `refusal_count` | 2 | different argument types (`PartAdmission` vs `RefusalAggregate`) |
 | `census_is_complete` | 2 | different argument types |
-| `row` | 2 | **579 diagnostics.** `md_helpers.row(cells)` vs a 3-arg test-local `row(host, endpoint, key)`. Different arity, different return type. The test-local one should resolve lexically inside its own file; everything else wants `gunbc.plans.md_helpers.row` |
+| `row` | 2 | **579 diagnostics. VERIFIED mechanical.** A markdown table row vs an SSH known-hosts row — different parameters, return types and domains; zero shared concept. Measured: **zero** of the 579 come from the file declaring the local `row`, confirming it resolves lexically and never entered the census; every top refusing file is `dag/gunbc/plans/*`, exactly `md_helpers`' domain. The open question is the *form*, not the target — see below |
 
 ## Class 3 — candidate §3 forks (do NOT qualify before a ruling)
 
@@ -54,7 +54,7 @@ would cement the fork by making it invisible.
 
 | name | declarers | why it is a candidate |
 |---|---|---|
-| `OccurrenceId` | 3 (2 + 1 alias) | **347 diagnostics.** `std/occurrence_identity` `{value: Int}` (SOURCE occurrence) vs `std/observation` `{attempt, id}` (observation occurrence). `src/v2/std/node.dag` is an alias of the first, not a third declaration. DESIGN already warns about sharing one `Int` space across two occurrence subjects — this is a second instance of that hazard, one layer up. Refusing consumers are overwhelmingly `occurrence_binding_*`, i.e. source occurrences, so the *target* is determinable even though the *fork* is not resolved by choosing it |
+| ~~`OccurrenceId`~~ | 3 (2 + 1 alias) | **RESOLVED — not a fork, and not a decision. Moved to mechanical.** DESIGN already rules this shape in the fleet-reconcile spine thread, and it rules *for* distinctness: `std.occurrence_identity` is "specifically about SOURCE occurrences… its allocator is coupled to `AuthoredTokenOrdinalSpace`", and "sharing one `Int` space across two subjects would let `occurrence_id_eq` answer `true` on a numeric coincidence — the cross-family comparison the ContentHash family grounding closed." So separate carriers for separate subjects is **correct**, and collapsing them would reintroduce the defect that grounding closed. The unification that *is* owed is already registered as a trigger ("one subject-parameterized minted-identity carrier, the `Vendor<Domain>` shape") and belongs to a modeling lane, not to an import deletion. **Consequence for this cut:** each of the 347 sites means exactly one subject, determined by what the site is about — qualify per-site, never unify, never pick a winner. A site that is genuinely ambiguous about which occurrence space it inhabits is a real finding worth reporting individually, because that is the wild instance of the defect DESIGN warns about |
 | `TeardownRefusalCause` | 2 | `gunbc/membership_reconcile` vs `gunbc/live_deploy/spec`. DESIGN already records `live_deploy` re-grounding onto `membership_reconcile`'s ownership as pass 2 with a declared dissolution trigger — so this is a **known pending consolidation surfacing as a name collision**, not a new finding |
 | `ObservationProducer` | 2 | `std/observation` vs `gunbc/auth/github_apps` — a consumer redeclaring a std authority |
 | `ObservationGrain` | 2 | `std/observation` vs an `extdeps/physics` paper module |
@@ -77,10 +77,34 @@ would cement the fork by making it invisible.
   `Refused`, `IdentityUnknown`, `Missing`, `Failed`. That is a limit of the
   instrument, not a claim those names are undeclared.
 
+## The open question is the qualification FORM, not the target
+
+Once `row` and `OccurrenceId` moved to mechanical, the decision bucket collapsed to
+**seventeen names at 1–5 diagnostics each, ~35 diagnostics total** — and the gate on
+starting mechanical work lifts with it.
+
+What replaced it is a question the corpus cannot answer from evidence, because every
+reference is bare and **no qualified call site exists anywhere in the tree**. The
+`row` consumers are *siblings* of their declarer (`gunbc.plans.X` calling
+`gunbc.plans.md_helpers.row`), which is the case DESIGN describes as "a sibling module
+is visible, its members projected" — implying one projection rather than a full path:
+
+```
+FORM A   md_helpers.row(..)                    sibling projection; design-conformant reading, UNPROVEN
+FORM B   gunbc.plans.md_helpers.row(..)        full path; PROVEN by the LiveTreeDisposition probe
+```
+
+579 sites ride on this, so it is probed rather than assumed — one file per form, one
+census run decides both. Note that bare `row` was only ever resolving through the
+import list; under namespace-only resolution a sibling's member was always going to
+need a projection, so this is the cut exposing a form the corpus never had to state.
+
 ## Sequencing consequence
 
-Nothing mechanical should start before Class 3 is dispositioned. `row` and
-`OccurrenceId` alone are 926 of the 961 decision-weighted diagnostics, and
-`OccurrenceId` is the one whose qualification target is determinable while its
-modeling question stays open — which is exactly the shape that gets silently
-resolved by a mechanical pass if the pass runs first.
+Class 3 is now eight names, all small, none blocking. The rule that survives is
+narrower and sharper than "settle the decisions first": **a mechanical pass must not
+run over a name whose declarers mean different subjects**, because qualification is
+precisely what makes that difference unobservable again. `OccurrenceId` is the live
+example — mechanical per-site, but only because each site's subject is determined by
+what the site is about, and a site that cannot say which occurrence space it inhabits
+must be reported rather than qualified.

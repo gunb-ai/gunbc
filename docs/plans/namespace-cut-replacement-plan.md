@@ -76,3 +76,13 @@ Method (post-retraction): instrument **real specimens** from the census, never s
 ## Registration
 
 `gunbc.replacement_cut` row `NAMESPACE-Y` — the carrier merged to main in gunbc#8276 (2026-08-15), so the row is now authorable and is an open follow-up for the executing session rather than a blocked one.
+
+## Evidence the cut produced
+
+→ [multi-declarer fork census](namespace-cut-fork-census.md) — the 19 names declared in
+more than one place, measured off the refusal population before any qualification is
+applied. Recorded because the cut makes them visible and **qualification is exactly the
+act that hides them again**: once `a.X` and `b.X` are both spelled out, nothing
+distinguishes two subjects sharing a word from one concept forked in two. It is a lower
+bound, not an inventory — a name declared twice whose references already resolve never
+enters the refusal set and so never appears.
