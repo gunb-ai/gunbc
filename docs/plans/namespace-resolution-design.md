@@ -890,3 +890,38 @@ pool-membership coincidence. Two notes carry what that measured:
 - [behaviors recovered from the deleted import tests](import-deletion-recovered-behaviors.md)
   — the properties worth re-establishing in namespace terms after the tests that
   asserted import *semantics* were deleted with the mechanism.
+
+### 5c. DECLARED RUNG DROP — accidental-binding invariant is now UNOBSERVED
+
+Filed per DESIGN §4b ("a change may lower a rung only by declaring previous
+rung, temporary rung, reason, bounded population, and restoration trigger").
+Stated here rather than as a typed carrier row because **no rung-drop carrier
+type exists in the tree** — building one is itself an open roadmap item
+(`ladder-claims-carrier`: "rung state becomes DERIVED from execution receipts,
+never stored"). That absence is part of this declaration, not an excuse for it.
+
+| field | value |
+|---|---|
+| **invariant** | a name must not bind by accident |
+| **previous rung** | mechanically preventable — `gunbc.declared_import_closure_binding` was the Class B observation surface, discriminating listed-import binding from pool-coincidence binding |
+| **temporary rung** | **unobserved** — below mitigatable; zero observers exist |
+| **reason** | the guard was written against the MECHANISM (listed import vs coincidence), not against the INVARIANT. With no imports the question it asked is unanswerable, so the file is unrestorable — it would have nothing to observe |
+| **bounded population** | 86 names declared nowhere (760 occurrences); 37 homonyms (1949 occurrences); the convention class (`extdeps_external_authority_anchor` 551 declarers, `live_tree_disposition` 1097) |
+| **restoration trigger** | a replacement observer over **reference-derived** binding: given a bare cross-module reference, decide whether exactly one declarer exists, and refuse otherwise. Retires this row |
+
+**The general law this instance establishes**, worth more than the instance:
+
+> A guard written against a MECHANISM dies with the mechanism and takes the
+> invariant's only observer with it. A guard written against the INVARIANT
+> survives the mechanism change.
+
+This is DESIGN §5's construction-over-validation axis applied to *evidence*
+rather than to code, and it explains why the loss is silent: a mechanism-coupled
+guard is unrestorable and un-migratable by construction, so it never presents as
+a restore decision. It presents as a clean deletion — which is what it is, at
+every lower grain (carrier name, declared symbol, assertion, file location).
+
+**Consequence for any delete-first cut:** a cut removes exactly the guards that
+watched the thing being cut, and those are disproportionately the guards
+watching the invariants that thing upheld. No post-hoc search finds them,
+because nothing is left to search for.
