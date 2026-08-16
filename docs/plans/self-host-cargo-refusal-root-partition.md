@@ -41,7 +41,7 @@ emission path. Do not generalize from either.
 
 ## 2. The measurement everything here rests on
 
-`docs/probes/curated_cargo_frontier_probe_sweep.tsv` — banked `941e8034862`, **2026-07-26**.
+The curated cargo sweep TSV — banked `941e8034862`, **2026-07-26**. **The TSV itself was DELETED 2026-08-16** (operator: delete anything not actively derived — a dated snapshot nothing regenerates is the same attractor as the frontier roster). The numbers reproduced in this document are the surviving record of it; recover the file from git history if a re-read is needed, and prefer a fresh run.
 Produced by `docs/probes/curated_cargo_probe_one.sh` (emit → `cssl_assemble` → cargo).
 
 Caveats the receipt carries, not to be rounded off:
@@ -175,8 +175,7 @@ partition is confirmed, so the two lanes work disjoint roots rather than the sam
 
 ## 8. The partition, from cause signatures (this supersedes the by-error-code view)
 
-**`docs/probes/canonical_seven_cause_signature_attribution_2026-07-28.tsv`** already exists in
-tree and answers the question §4 was still hypothesizing about. It groups by CAUSE SIGNATURE
+**The canonical-seven cause-signature attribution TSV (2026-07-28)** answered the question §4 was still hypothesizing about. It groups by CAUSE SIGNATURE
 rather than error code — E0308 by concrete expected/found pair, E0599 by receiver + missing
 method, E0277 by unsatisfied trait + self type — over one clean build of the same assembled
 crate. **233 signatures across 2,898 diagnostics.**
