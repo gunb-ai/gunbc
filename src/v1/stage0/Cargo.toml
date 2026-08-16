@@ -281,6 +281,11 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
 
+# STR-RC-0 acceptance probe: interpreter scaling of extdeps JSON parse (not floor-enrolled).
+[[bin]]
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
+
 # SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
 # gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
 # top of the same closure-scoped census the gate itself consumes. Not a CI consumer —

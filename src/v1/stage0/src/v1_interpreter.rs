@@ -250,7 +250,7 @@ pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
                     .iter()
                     .find(|(k, _)| resolve_sym(*k) == "head")
                     .and_then(|(_, v)| match v {
-                        Value::Str(s) => Some(s.clone()),
+                        Value::Str(s) => Some(s.to_string()),
                         Value::Variant {
                             variant_name,
                             fields: sym_fields,
@@ -262,7 +262,7 @@ pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
                                     .iter()
                                     .find(|(k, _)| resolve_sym(*k) == "identity")
                                     .and_then(|(_, v)| match v {
-                                        Value::Str(s) => Some(s.clone()),
+                                        Value::Str(s) => Some(s.to_string()),
                                         _ => None,
                                     })
                             } else {
@@ -432,7 +432,7 @@ pub enum Value {
     Bool(bool),
     Int(i64),
     Float(f64),
-    Str(String),
+    Str(Rc<str>),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
     Set(Rc<OrdSet<String>>),
@@ -458,6 +458,10 @@ pub enum Value {
 
 pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
+}
+
+pub(crate) fn str_value(s: impl AsRef<str>) -> Value {
+    Value::Str(Rc::from(s.as_ref()))
 }
 
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
@@ -2702,8 +2706,8 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
             })?;
             Ok(Value::Float(f))
         }
-        LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
-        LiteralValue::LitSymbol { value } => Ok(Value::Str(value.clone())),
+        LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
+        LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
         LiteralValue::LitNull => Ok(Value::Null),
     }
 }
@@ -2764,7 +2768,7 @@ fn eval_var(
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
                         if expr_var_name_at(body.clone(), ctx.si()) == name {
-                            return Ok(Value::Str(name));
+                            return Ok(str_value(name));
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
@@ -2851,7 +2855,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
 
     if matches!(op, BinOp::Add) {
         if let (Value::Str(a), Value::Str(b)) = (&left, &right) {
-            return Ok(Value::Str(format!("{}{}", a, b)));
+            return Ok(str_value(format!("{}{}", a, b)));
         }
     }
 
@@ -2867,20 +2871,20 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 // a native String realizes as a native `Value::Str`, never a
                 // mixed `[codepoint.., Str]` list (model↔realization).
                 if let Some(ls) = free_monoid_to_string(l) {
-                    return Ok(Value::Str(format!("{}{}", ls, s)));
+                    return Ok(str_value(format!("{}{}", ls, s)));
                 }
                 if let Some(mut result) = free_monoid_to_vec(l) {
                     if let Some(detail) = string_realization_straddle_detail(l, &result) {
                         return Err(InterpError::StringRealizationStraddle { detail });
                     }
                     record_push(result.len());
-                    result.push(Value::Str(s.clone()));
+                    result.push(str_value(s.to_string()));
                     return Ok(list_value((result)));
                 }
             }
             (Value::Str(s), r) => {
                 if let Some(rs) = free_monoid_to_string(r) {
-                    return Ok(Value::Str(format!("{}{}", s, rs)));
+                    return Ok(str_value(format!("{}{}", s, rs)));
                 }
                 if let Some(result) = free_monoid_to_vec(r) {
                     if let Some(detail) = string_realization_straddle_detail(r, &result) {
@@ -3254,7 +3258,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
         type_name: ctx.sym("LocusAnchor"),
         fields: Rc::new(vec![(
             ctx.sym("at"),
-            Value::Str("map_lookup_port".to_string()),
+            str_value("map_lookup_port".to_string()),
         )]),
     };
     let locus = Value::Variant {
@@ -3279,7 +3283,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("at"), locus),
             (ctx.sym("correction"), correction),
-            (ctx.sym("reason"), Value::Str("map_key_absent".to_string())),
+            (ctx.sym("reason"), str_value("map_key_absent".to_string())),
         ])),
     }
 }
@@ -3358,7 +3362,7 @@ fn witness_evaluation_diagnostic_value(
             ctx.sym("anchor"),
             Value::Record {
                 type_name: ctx.sym("LocusAnchor"),
-                fields: Rc::new(vec![(ctx.sym("at"), Value::Str(at))]),
+                fields: Rc::new(vec![(ctx.sym("at"), str_value(at))]),
             },
         )]),
     };
@@ -3379,7 +3383,7 @@ fn witness_evaluation_diagnostic_value(
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("at"), locus),
             (ctx.sym("correction"), correction),
-            (ctx.sym("reason"), Value::Str(error.to_string())),
+            (ctx.sym("reason"), str_value(error.to_string())),
         ])),
     }
 }
@@ -3659,7 +3663,7 @@ fn match_pattern(
                             None => None,
                             Some(c) => {
                                 let head = char_value(c);
-                                let tail = Value::Str(chars.as_str().to_string());
+                                let tail = str_value(chars.as_str().to_string());
                                 let mut bindings = HashMap::new();
                                 for fb in field_bindings.iter() {
                                     let field_name = field_binding_name_at(
@@ -4250,11 +4254,11 @@ fn parse_table_memo_scope_and_key(
         _ => return None,
     };
     let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
-        Value::Str(s) => s.clone(),
+        Value::Str(s) => s.to_string(),
         _ => return None,
     };
     let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
-        Value::Str(s) => s.clone(),
+        Value::Str(s) => s.to_string(),
         _ => return None,
     };
     let key_fields = match key {
@@ -4266,7 +4270,7 @@ fn parse_table_memo_scope_and_key(
         _ => return None,
     };
     let production = match fields_get(key_fields, ctx.sym("production")) {
-        Some(Value::Str(s)) => ctx.sym(s),
+        Some(Value::Str(s)) => ctx.sym(s.as_ref()),
         _ => return None,
     };
     Some((grammar_digest, token_stream_digest, position, production))
@@ -5177,7 +5181,7 @@ fn extract_field(
                 type_name: ctx.resolve(*type_name).to_string(),
                 field: field.to_string(),
             }),
-        Value::Map(_) => raw_map_lookup(value, &Value::Str(field.to_string()), env, ctx)
+        Value::Map(_) => raw_map_lookup(value, &str_value(field.to_string()), env, ctx)
             .map(RawMapLookup::into_raw),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
@@ -5256,7 +5260,7 @@ fn eval_map_lit(
     for child in node.children.iter() {
         let fname = field_init_node_name_at(child.clone(), ctx.si());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
-        match CanonKey::new(Value::Str(fname.clone())) {
+        match CanonKey::new(str_value(fname.clone())) {
             Some(ck) => {
                 entries = entries.update(ck, fval);
             }
@@ -5346,7 +5350,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
             }
         }
     }
-    Ok(Value::Str(result))
+    Ok(str_value(result))
 }
 
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
@@ -5598,7 +5602,7 @@ fn cast_identity_result(
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
         if kernel.is_empty() || kernel == "String" {
-            return Some(Value::Str(s.clone()));
+            return Some(str_value(s.clone()));
         }
     }
     None
@@ -5631,13 +5635,13 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }),
         },
         "String" => match val {
-            Value::Int(n) => Ok(Value::Str(n.to_string())),
-            Value::Float(n) => Ok(Value::Str(n.to_string())),
-            Value::Bool(b) => Ok(Value::Str(b.to_string())),
-            Value::Str(s) => Ok(Value::Str(s)),
+            Value::Int(n) => Ok(str_value(n.to_string())),
+            Value::Float(n) => Ok(str_value(n.to_string())),
+            Value::Bool(b) => Ok(str_value(b.to_string())),
+            Value::Str(s) => Ok(Value::Str(Rc::clone(&s))),
             // Corpus wire/debug casts for structured values — not the blanket Display
             // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(Value::Str(format!("{}", val))),
+            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(InterpError::TypeError {
                 msg: format!("cannot cast {} to String", v.type_label()),
             }),
@@ -5681,7 +5685,7 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let i = *i as usize;
             Ok(s.chars()
                 .nth(i)
-                .map(|c| Value::Str(c.to_string()))
+                .map(|c| str_value(c.to_string()))
                 .unwrap_or(Value::Null))
         }
         _ => Err(InterpError::TypeError {
@@ -5713,7 +5717,7 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             let s = *s as usize;
             let e = *e as usize;
             let sliced: String = str_val.chars().skip(s).take(e.saturating_sub(s)).collect();
-            Ok(Value::Str(sliced))
+            Ok(str_value(sliced))
         }
         _ => Err(InterpError::TypeError {
             msg: format!(
@@ -5876,11 +5880,11 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.concat" { "concat" | "append" | "push" } => {
                 if let Value::Str(s) = &$receiver {
-                    let mut result = s.clone();
+                    let mut result = s.to_string();
                     for arg in $args {
                         result.push_str(&format!("{}", arg));
                     }
-                    return Ok(Value::Str(result));
+                    return Ok(str_value(result));
                 }
                 // String grounding (model↔realization): when a native String arg
                 // participates, the whole `concat` is a String and realizes as one
@@ -5895,7 +5899,7 @@ macro_rules! v1_algebra_method_arms {
                             .map(free_monoid_to_string)
                             .collect::<Option<Vec<_>>>()
                         {
-                            return Ok(Value::Str(format!("{}{}", base, rest.concat())));
+                            return Ok(str_value(format!("{}{}", base, rest.concat())));
                         }
                     }
                 }
@@ -6052,7 +6056,7 @@ macro_rules! v1_algebra_method_arms {
                 let items = expect_list(&$receiver, "join")?;
                 let sep = $args.first().map(|v| format!("{}", v)).unwrap_or_default();
                 let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                Ok(Value::Str(strs.join(&sep)))
+                Ok(str_value(strs.join(&sep)))
             },
 
             arm "method_call.chars" { "chars" } => {
@@ -6173,7 +6177,7 @@ macro_rules! v1_algebra_method_arms {
                     [from, to] => {
                         let from_s = format!("{}", from);
                         let to_s = format!("{}", to);
-                        Ok(Value::Str(s.replace(&from_s, &to_s)))
+                        Ok(str_value(s.replace(&from_s, &to_s)))
                     }
                     _ => Err(InterpError::TypeError {
                         msg: "replace requires (from, to) arguments".to_string(),
@@ -6184,13 +6188,13 @@ macro_rules! v1_algebra_method_arms {
             arm "method_call.split" { "split" } => {
                 let s = expect_string(&$receiver, "split")?;
                 let sep = expect_str($args.first(), "split")?;
-                let parts: Vec<Value> = s.split(&sep).map(|p| Value::Str(p.to_string())).collect();
+                let parts: Vec<Value> = s.split(&sep).map(|p| str_value(p.to_string())).collect();
                 Ok(list_value((parts)))
             },
 
             arm "method_call.trim" { "trim" } => {
                 let s = expect_string(&$receiver, "trim")?;
-                Ok(Value::Str(s.trim().to_string()))
+                Ok(str_value(s.trim().to_string()))
             },
 
             arm "method_call.starts_with" { "starts_with" } => {
@@ -6216,7 +6220,7 @@ macro_rules! v1_algebra_method_arms {
                             .skip(s_idx)
                             .take(e_idx.saturating_sub(s_idx))
                             .collect();
-                        Ok(Value::Str(sliced))
+                        Ok(str_value(sliced))
                     }
                     _ => Err(InterpError::TypeError {
                         msg: "substring requires (start, end) arguments".to_string(),
@@ -6229,7 +6233,7 @@ macro_rules! v1_algebra_method_arms {
                 let idx = expect_int($args.first(), "char_at")?;
                 Ok(s.chars()
                     .nth(idx as usize)
-                    .map(|c| Value::Str(c.to_string()))
+                    .map(|c| str_value(c.to_string()))
                     .unwrap_or(Value::Null))
             },
 
@@ -6392,7 +6396,7 @@ fn wet_env_var(name: &str) -> Option<String> {
 /// handling, which is its own change with its own witnesses.
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
     if ctx.service_ops.contains_key("shell.Env.Get") {
-        let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
+        let args = [(Some("name".to_string()), str_value(var_name.to_string()))];
         match eval_service_call(
             "shell.Env",
             "Get",
@@ -6406,10 +6410,10 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
             ExpectationDeclaration::Declared(ExpectedOutcome::ExpectSuccess),
         ) {
             Ok(Value::Record { fields, .. }) => ctx.field(&fields, "value").and_then(|v| match v {
-                Value::Str(s) if !s.is_empty() => Some(s.clone()),
+                Value::Str(s) if !s.is_empty() => Some(s.to_string()),
                 _ => None,
             }),
-            Ok(Value::Str(s)) if !s.is_empty() => Some(s),
+            Ok(Value::Str(s)) if !s.is_empty() => Some(s.to_string()),
             _ => None,
         }
     } else if ctx.execution_mode.is_hermetic() {
@@ -6525,7 +6529,7 @@ fn eval_service_call(
             let confirmed_checkout_input = param_env
                 .lookup(ctx.sym("path"))
                 .and_then(|v| match v {
-                    Value::Str(s) => Some(s.clone()),
+                    Value::Str(s) => Some(s.to_string()),
                     _ => None,
                 })
                 .map(|requested| hermetic_checkout_read_disposition(&requested).is_ok())
@@ -6708,7 +6712,7 @@ fn dispatch_env_get_native(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let name = match param_env.lookup(ctx.sym("name")) {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         Some(other) => {
             return Err(InterpError::TypeError {
                 msg: format!("shell.Env.Get name must be String, got {other}"),
@@ -6721,7 +6725,7 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => Value::Str(s),
+        Some(s) => str_value(s),
         None => Value::Null,
     };
     Ok(Value::Record {
@@ -6783,7 +6787,7 @@ pub(crate) struct ShellResult {
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
-            argv.push(s.clone());
+            argv.push(s.to_string());
             Ok(())
         }
         Value::List(items) => {
@@ -6815,7 +6819,7 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
 
 fn value_as_host_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
-        return Some(s.clone());
+        return Some(s.to_string());
     }
     let items = free_monoid_to_vec(val)?;
     let mut out = String::new();
@@ -6888,7 +6892,7 @@ fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
 fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => Some(Value::Str(value.clone())),
+            LiteralValue::LitStr { value } => Some(str_value(value.clone())),
             _ => None,
         },
         ExprData::ExprListLit => {
@@ -6896,7 +6900,7 @@ fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
             for child in node.children.iter() {
                 match child.expr_data.as_ref() {
                     ExprData::ExprLiteral { value } => match value.as_ref() {
-                        LiteralValue::LitStr { value } => items.push(Value::Str(value.clone())),
+                        LiteralValue::LitStr { value } => items.push(str_value(value.clone())),
                         _ => return None,
                     },
                     _ => return None,
@@ -6937,7 +6941,7 @@ fn operation_input_binding_entry(
         } => {
             if *variant_name == ctx.sym("InputText") {
                 match fields_get(fields, ctx.sym("text")).cloned() {
-                    Some(Value::Str(text)) => Value::Str(text),
+                    Some(Value::Str(text)) => Value::Str(Rc::clone(&text)),
                     _ => {
                         return Err(ArgvRefusalCause::BindingMalformed(format!(
                             "InputText for `{name}` carries no String text"
@@ -6973,7 +6977,7 @@ fn operation_input_binding_entry(
             )))
         }
     };
-    Ok((name, bound))
+    Ok((name.to_string(), bound))
 }
 
 /// Bindings ∪ declared defaults, validated against the operation's OWN declared inputs.
@@ -7024,7 +7028,7 @@ fn bind_argv_expr(
 ) -> Result<Value, ArgvRefusalCause> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
+            LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
                 "argv element literal is {other:?}, expected a string literal"
             ))),
@@ -7054,7 +7058,7 @@ fn bind_argv_expr(
                     }
                 }
             }
-            Ok(Value::Str(result))
+            Ok(str_value(result))
         }
         _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
             "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
@@ -7117,31 +7121,31 @@ fn argv_refusal_cause_value(cause: &ArgvRefusalCause, ctx: &InterpContext) -> Va
         ArgvRefusalCause::ArgvEmpty => variant("ArgvEmpty", vec![]),
         ArgvRefusalCause::UndeclaredInputBound(name) => variant(
             "UndeclaredInputBound",
-            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+            vec![(ctx.sym("name"), str_value(name.clone()))],
         ),
         ArgvRefusalCause::DuplicateInputBinding(name) => variant(
             "DuplicateInputBinding",
-            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+            vec![(ctx.sym("name"), str_value(name.clone()))],
         ),
         ArgvRefusalCause::DeclaredInputUnbound(name) => variant(
             "DeclaredInputUnbound",
-            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+            vec![(ctx.sym("name"), str_value(name.clone()))],
         ),
         ArgvRefusalCause::TokenListInStringPosition(name) => variant(
             "TokenListInStringPosition",
-            vec![(ctx.sym("name"), Value::Str(name.clone()))],
+            vec![(ctx.sym("name"), str_value(name.clone()))],
         ),
         ArgvRefusalCause::ExecutablePositionNotLiteral(detail) => variant(
             "ExecutablePositionNotLiteral",
-            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
         ),
         ArgvRefusalCause::ArgvExpressionUnsupported(detail) => variant(
             "ArgvExpressionUnsupported",
-            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
         ),
         ArgvRefusalCause::BindingMalformed(detail) => variant(
             "BindingMalformed",
-            vec![(ctx.sym("detail"), Value::Str(detail.clone()))],
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
         ),
     }
 }
@@ -7150,9 +7154,9 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
     Value::Record {
         type_name: ctx.sym("OperationRef"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("path"), Value::Str(path.to_string())),
-            (ctx.sym("service"), Value::Str(service.to_string())),
-            (ctx.sym("operation"), Value::Str(operation.to_string())),
+            (ctx.sym("path"), str_value(path.to_string())),
+            (ctx.sym("service"), str_value(service.to_string())),
+            (ctx.sym("operation"), str_value(operation.to_string())),
         ])),
     }
 }
@@ -7176,8 +7180,8 @@ fn compile_diagnostic_census_value(
                         .map(|r| Value::Record {
                             type_name: ctx.sym("CompileDiagnosticCensusRow"),
                             fields: Rc::new(sorted_fields(vec![
-                                (ctx.sym("diagnostic_class"), Value::Str(r.diagnostic_class)),
-                                (ctx.sym("subject_name"), Value::Str(r.subject_name)),
+                                (ctx.sym("diagnostic_class"), str_value(r.diagnostic_class)),
+                                (ctx.sym("subject_name"), str_value(r.subject_name)),
                                 (ctx.sym("blocking"), Value::Bool(r.blocking)),
                                 (ctx.sym("count"), Value::Int(r.count)),
                             ])),
@@ -7189,7 +7193,7 @@ fn compile_diagnostic_census_value(
         crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => Value::Variant {
             type_name: ctx.sym("CompileDiagnosticCensus"),
             variant_name: ctx.sym("CensusNotRunnable"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
     }
 }
@@ -7229,7 +7233,7 @@ fn declared_import_closure_binding_value(
                     (ctx.sym("binding_source"), binding_source),
                     (
                         ctx.sym("definer_module"),
-                        Value::Str(observed.definer_module.unwrap_or_default()),
+                        str_value(observed.definer_module.unwrap_or_default()),
                     ),
                     (
                         ctx.sym("symbol_resolves"),
@@ -7246,7 +7250,7 @@ fn declared_import_closure_binding_value(
             Value::Variant {
                 type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
                 variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), Value::Str(cause))])),
+                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
             }
         }
     }
@@ -7265,7 +7269,7 @@ fn argv_materialization_value(
             variant_name: ctx.sym("ArgvMaterialized"),
             fields: Rc::new(sorted_fields(vec![(
                 ctx.sym("argv"),
-                list_value(argv.into_iter().map(Value::Str).collect::<Vec<_>>()),
+                list_value(argv.into_iter().map(str_value).collect::<Vec<_>>()),
             )])),
         },
         Err(cause) => Value::Variant {
@@ -8141,8 +8145,8 @@ pub(crate) fn shell_result_from_capture(
 
 fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
     match from_key {
-        "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
-        "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+        "stdout" => Some(str_value(result.stdout.retained_text.clone())),
+        "stderr" => Some(str_value(result.stderr.retained_text.clone())),
         "stdout_total_bytes" => Some(Value::Int(result.stdout.total_bytes as i64)),
         "stderr_total_bytes" => Some(Value::Int(result.stderr.total_bytes as i64)),
         "stdout_retained_bytes" => Some(Value::Int(result.stdout.retained_bytes as i64)),
@@ -8150,11 +8154,11 @@ fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
         "stdout_truncated" => Some(Value::Bool(result.stdout.truncated)),
         "stderr_truncated" => Some(Value::Bool(result.stderr.truncated)),
         "stdout_digest_hex" => Some(match &result.stdout.digest_hex {
-            Some(digest) => Value::Str(digest.clone()),
+            Some(digest) => str_value(digest.clone()),
             None => Value::Null,
         }),
         "stderr_digest_hex" => Some(match &result.stderr.digest_hex {
-            Some(digest) => Value::Str(digest.clone()),
+            Some(digest) => str_value(digest.clone()),
             None => Value::Null,
         }),
         _ => None,
@@ -8169,7 +8173,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.retained_text.clone()));
+            return Ok(str_value(result.stdout.retained_text.clone()));
         }
     };
 
@@ -8199,7 +8203,7 @@ fn map_shell_outputs(
                         .stdout
                         .retained_text
                         .lines()
-                        .map(|l| Value::Str(l.to_string()))
+                        .map(|l| str_value(l.to_string()))
                         .collect();
                     list_value((lines))
                 }
@@ -8211,8 +8215,8 @@ fn map_shell_outputs(
             if let Some(v) = match field_name.as_str() {
                 "success" => Some(Value::Bool(result.exit_code == 0)),
                 "exit_code" => Some(Value::Int(result.exit_code as i64)),
-                "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
-                "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+                "stdout" => Some(str_value(result.stdout.retained_text.clone())),
+                "stderr" => Some(str_value(result.stderr.retained_text.clone())),
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
@@ -8237,7 +8241,7 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
             let val_node = field_init_node_value(prop.clone());
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
-                    return Some(s.clone());
+                    return Some(s.to_string());
                 }
             }
         }
@@ -8487,7 +8491,7 @@ fn map_file_outputs(
             if result.content.is_empty() {
                 return Ok(Value::Bool(result.success));
             }
-            return Ok(Value::Str(result.content.clone()));
+            return Ok(str_value(result.content.clone()));
         }
     };
 
@@ -8504,9 +8508,9 @@ fn map_file_outputs(
         let value = match key {
             "write_success" | "success" => Value::Bool(result.success),
             "bytes_written" | "bytes" | "byte_count" => Value::Int(result.byte_count),
-            "path" => Value::Str(result.path.clone()),
-            "error" => Value::Str(result.error.clone()),
-            "content" => Value::Str(result.content.clone()),
+            "path" => str_value(result.path.clone()),
+            "error" => str_value(result.error.clone()),
+            "content" => str_value(result.content.clone()),
             _ => Value::Null,
         };
         fields.push((ctx.sym(&field_name), value));
@@ -8652,7 +8656,7 @@ fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> 
         "RestStatusRefused",
         vec![
             (ctx.sym("status"), Value::Int(status as i64)),
-            (ctx.sym("body"), Value::Str(body)),
+            (ctx.sym("body"), str_value(body)),
         ],
     )
 }
@@ -8661,7 +8665,7 @@ fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
     rest_outcome_variant(
         ctx,
         "RestTransportRefused",
-        vec![(ctx.sym("cause"), Value::Str(cause))],
+        vec![(ctx.sym("cause"), str_value(cause))],
     )
 }
 
@@ -8671,7 +8675,7 @@ fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) 
         "RestBodyUndecodable",
         vec![
             (ctx.sym("status"), Value::Int(status as i64)),
-            (ctx.sym("cause"), Value::Str(cause)),
+            (ctx.sym("cause"), str_value(cause)),
         ],
     )
 }
@@ -8745,7 +8749,7 @@ fn rest_auth_identity_value(
                 type_name: ctx.sym("RestAuthSensitiveIdentity"),
                 variant_name: ctx.sym("RestAuthenticated"),
                 fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("scheme"), Value::Str(scheme)),
+                    (ctx.sym("scheme"), str_value(scheme)),
                     (ctx.sym("digest"), fnv1a64_structural_value(digest, ctx)),
                 ])),
             }
@@ -8761,7 +8765,7 @@ fn rest_auth_identity_value(
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
-        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), str_value(digest))])),
     }
 }
 
@@ -8795,7 +8799,7 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
         type_name: ctx.sym("Uri"),
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("scheme"), rest_variant(ctx, "UriScheme", scheme)),
-            (ctx.sym("locator"), Value::Str(locator.to_string())),
+            (ctx.sym("locator"), str_value(locator.to_string())),
         ])),
     })
 }
@@ -8855,9 +8859,9 @@ fn rest_observation_from_value(
     };
     match ctx.resolve(*variant_name).as_str() {
         "RestExchangeRefused" => match ctx.field(fields, "cause") {
-            Some(Value::Str(cause)) if !cause.is_empty() => {
-                Ok(RestExchangeObservationHost::ExchangeRefused(cause.clone()))
-            }
+            Some(Value::Str(cause)) if !cause.is_empty() => Ok(
+                RestExchangeObservationHost::ExchangeRefused(cause.to_string()),
+            ),
             _ => Err(malformed()),
         },
         "RestResponseObserved" => {
@@ -8872,7 +8876,7 @@ fn rest_observation_from_value(
                     ..
                 }) if ctx.sym_eq(*variant_name, "RestBodyRead") => {
                     match ctx.field(fields, "body") {
-                        Some(Value::Str(body)) => RestBodyObservationHost::Read(body.clone()),
+                        Some(Value::Str(body)) => RestBodyObservationHost::Read(body.to_string()),
                         _ => return Err(malformed()),
                     }
                 }
@@ -8883,7 +8887,7 @@ fn rest_observation_from_value(
                 }) if ctx.sym_eq(*variant_name, "RestBodyReadRefused") => {
                     match ctx.field(fields, "cause") {
                         Some(Value::Str(cause)) if !cause.is_empty() => {
-                            RestBodyObservationHost::ReadRefused(cause.clone())
+                            RestBodyObservationHost::ReadRefused(cause.to_string())
                         }
                         _ => return Err(malformed()),
                     }
@@ -9357,8 +9361,8 @@ fn dispatch_rest(
             let fname = field_init_node_name_at(child.clone(), si.clone());
             let fval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
             match (fname.as_str(), &fval) {
-                ("username", Value::Str(s)) => username = Some(s.clone()),
-                ("password", Value::Str(s)) => password = Some(s.clone()),
+                ("username", Value::Str(s)) => username = Some(s.to_string()),
+                ("password", Value::Str(s)) => password = Some(s.to_string()),
                 ("username", _) | ("password", _) => {
                     return Err(InterpError::TypeError {
                         msg: format!(
@@ -9496,7 +9500,7 @@ pub fn resolve_auth(
             if !tok.is_empty() {
                 return AuthResolution::Resolved {
                     header: header_name,
-                    token: tok.clone(),
+                    token: tok.to_string(),
                 };
             }
         }
@@ -9519,7 +9523,7 @@ pub fn resolve_auth(
 fn extract_string_value(node: &Rc<Node>) -> Option<String> {
     if let ExprData::ExprLiteral { ref value } = *node.expr_data {
         if let LiteralValue::LitStr { value: s } = value.as_ref() {
-            return Some(s.clone());
+            return Some(s.to_string());
         }
     }
     None
@@ -9556,7 +9560,7 @@ fn find_service_config_string(
             // Int into its digits, and the non-empty check would wave both through as a
             // base URL. That is this function's original defect one layer down.
             return Some(match eval_expr(&val_node, param_env, ctx) {
-                Ok(Value::Str(s)) if !s.is_empty() => Ok(s),
+                Ok(Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
                 Ok(_) => Err(spelled),
                 Err(_) => Err(spelled),
             });
@@ -9603,7 +9607,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
                     return Ok(parsed);
                 }
             }
-            serde_json::Value::String(s.clone())
+            serde_json::Value::String(s.to_string())
         }
         Value::List(items) => {
             let mut arr = Vec::with_capacity(items.len());
@@ -9615,14 +9619,14 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
         Value::Set(members) => serde_json::Value::Array(
             members
                 .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
+                .map(|s| serde_json::Value::String(s.to_string()))
                 .collect(),
         ),
         Value::Map(m) => {
             let mut obj = serde_json::Map::with_capacity(m.len());
             for (k, v) in m.iter() {
                 let key = match &k.key {
-                    Value::Str(s) => s.clone(),
+                    Value::Str(s) => s.to_string(),
                     other => {
                         return Err(InterpError::TypeError {
                             msg: format!(
@@ -9667,19 +9671,19 @@ fn map_response_to_value(
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(Value::Str(text.to_string())),
+        _ => return Ok(str_value(text.to_string())),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(Value::Str(text.to_string()));
+        return Ok(str_value(text.to_string()));
     }
     if children.len() == 1 {
-        return Ok(Value::Str(text.to_string()));
+        return Ok(str_value(text.to_string()));
     }
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        fields.push((ctx.sym(&field_name), Value::Str(text.to_string())));
+        fields.push((ctx.sym(&field_name), str_value(text.to_string())));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -9759,7 +9763,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
                 Value::Float(n.as_f64().unwrap_or(0.0))
             }
         }
-        serde_json::Value::String(s) => Value::Str(s.clone()),
+        serde_json::Value::String(s) => str_value(s.clone()),
         serde_json::Value::Array(arr) => {
             list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
         }
@@ -9767,7 +9771,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(Value::Str(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
                 })
                 .collect();
             map_value(fields)
@@ -9834,7 +9838,7 @@ fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)])
         }
     }
     ctx.field(fields, "operation_key").and_then(|v| match v {
-        Value::Str(s) if !s.is_empty() => Some(s.clone()),
+        Value::Str(s) if !s.is_empty() => Some(s.to_string()),
         _ => None,
     })
 }
@@ -9873,7 +9877,7 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
         });
     }
 
-    let args = [(Some("path".to_string()), Value::Str(path))];
+    let args = [(Some("path".to_string()), str_value(path))];
     let result = eval_service_call(
         "Filesystem",
         "Read",
@@ -9890,11 +9894,11 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
         Value::Record { fields, .. } => {
             let success = matches!(ctx.field(&fields, "success"), Some(Value::Bool(true)));
             let content = match ctx.field(&fields, "content") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => String::new(),
             };
             let error = match ctx.field(&fields, "error") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => String::new(),
             };
             (content, success, error)
@@ -9918,7 +9922,7 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
 
     Ok(Value::Record {
         type_name: ctx.sym("FilesystemReadResult"),
-        fields: Rc::new(vec![(ctx.sym("content"), Value::Str(content))]),
+        fields: Rc::new(vec![(ctx.sym("content"), str_value(content))]),
     })
 }
 
@@ -10802,7 +10806,7 @@ fn emit_host_run_transport_cached_in_workspace(
             // MUST be sorted at construction; declaration order is interning-order-
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), Value::Str(phase.to_string())),
+                (ctx.sym("phase"), str_value(phase.to_string())),
                 (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
@@ -10861,13 +10865,13 @@ fn emit_host_run_transport_cached_in_workspace(
         let compile_started = std::time::Instant::now();
         for argv in build_argvs {
             let out = run_command(argv)?;
-            build_log.push(Value::Str(format!(
+            build_log.push(str_value(format!(
                 "{} -> {}",
                 argv.join(" "),
                 process_termination_label(&out.status)
             )));
             if !out.status.success() {
-                build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
+                build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
                 return Ok(transport_result(
                     "build",
                     process_termination_value(&out.status, ctx),
@@ -10885,7 +10889,7 @@ fn emit_host_run_transport_cached_in_workspace(
         let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
         let native_execution_nanos = native_started.elapsed().as_nanos();
-        build_log.push(Value::Str(format!(
+        build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
             process_termination_label(&out.status)
@@ -10918,7 +10922,7 @@ fn emit_host_run_transport_cached_in_workspace(
     let out = run_command(run_argv)?;
     let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
-    build_log.push(Value::Str(format!(
+    build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
@@ -10996,7 +11000,7 @@ fn emit_host_run_transport_in_workspace(
             // MUST be sorted at construction; declaration order is interning-order-
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), Value::Str(phase.to_string())),
+                (ctx.sym("phase"), str_value(phase.to_string())),
                 (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
@@ -11025,13 +11029,13 @@ fn emit_host_run_transport_in_workspace(
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
-        build_log.push(Value::Str(format!(
+        build_log.push(str_value(format!(
             "{} -> {}",
             argv.join(" "),
             process_termination_label(&out.status)
         )));
         if !out.status.success() {
-            build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
+            build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
                 "build",
                 process_termination_value(&out.status, ctx),
@@ -11044,7 +11048,7 @@ fn emit_host_run_transport_in_workspace(
     }
 
     let out = run_command(run_argv)?;
-    build_log.push(Value::Str(format!(
+    build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
@@ -11112,7 +11116,7 @@ macro_rules! v1_builtin_arms {
                             list_value(
                                 authored_relative_paths
                                     .into_iter()
-                                    .map(Value::Str)
+                                    .map(str_value)
                                     .collect::<Vec<_>>(),
                             ),
                         )])),
@@ -11123,7 +11127,7 @@ macro_rules! v1_builtin_arms {
                             variant_name: $ctx.sym("CargoManifestBinsParseRefused"),
                             fields: Rc::new(sorted_fields(vec![(
                                 $ctx.sym("detail"),
-                                Value::Str(detail),
+                                str_value(detail),
                             )])),
                         }
                     }
@@ -11173,7 +11177,7 @@ macro_rules! v1_builtin_arms {
                     .map(|identity| Value::Record {
                         type_name: $ctx.sym("Stage0SourceModuleIdentity"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("module_path"), Value::Str(identity.module_path)),
+                            ($ctx.sym("module_path"), str_value(identity.module_path)),
                             (
                                 $ctx.sym("provenance"),
                                 Value::Variant {
@@ -11190,7 +11194,7 @@ macro_rules! v1_builtin_arms {
                                     fields: Rc::new(Vec::new()),
                                 },
                             ),
-                            ($ctx.sym("storage_path"), Value::Str(identity.storage_path)),
+                            ($ctx.sym("storage_path"), str_value(identity.storage_path)),
                         ])),
                     })
                     .collect::<Vec<_>>();
@@ -11205,14 +11209,14 @@ macro_rules! v1_builtin_arms {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
                 })?;
-                Ok(Some(Value::Str(format!("{}", v))))
+                Ok(Some(str_value(format!("{}", v))))
             },
 
             arm "free_call.utf8_decode_bytes" { "utf8_decode_bytes" } => {
                 let bytes = expect_byte_vec($positional.first().copied(), "utf8_decode_bytes")?;
                 let text =
                     v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError { msg })?;
-                Ok(Some(Value::Str(text)))
+                Ok(Some(str_value(text)))
             },
 
             arm "free_call.bytes_octets" { "bytes_octets" } => {
@@ -11256,9 +11260,9 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.discriminant" { "discriminant" } => match $positional.first() {
                 Some(Value::Variant { variant_name, .. }) => {
-                    Ok(Some(Value::Str(resolve_sym(*variant_name))))
+                    Ok(Some(str_value(resolve_sym(*variant_name))))
                 }
-                Some(Value::Record { type_name, .. }) => Ok(Some(Value::Str(resolve_sym(*type_name)))),
+                Some(Value::Record { type_name, .. }) => Ok(Some(str_value(resolve_sym(*type_name)))),
                 _ => Ok(None),
             },
 
@@ -11288,7 +11292,7 @@ macro_rules! v1_builtin_arms {
                         _ => None,
                     })
                     .collect();
-                Ok(Some(Value::Str(s)))
+                Ok(Some(str_value(s)))
             },
 
             arm "free_call.get" { "get" } => match $positional.as_slice() {
@@ -11315,7 +11319,7 @@ macro_rules! v1_builtin_arms {
             // delete this arm with the rest of the trace_mark deletion set named there.
             arm "free_call.trace_mark" { "trace_mark" } => {
                 if let [Value::Str(s)] = $positional.as_slice() {
-                    v1_rt::trace_mark(s.clone());
+                    v1_rt::trace_mark(s.to_string());
                 }
                 Ok(Some(Value::Unit))
             },
@@ -11328,7 +11332,7 @@ macro_rules! v1_builtin_arms {
                             result.push_str(s);
                         }
                     }
-                    return Ok(Some(Value::Str(result)));
+                    return Ok(Some(str_value(result)));
                 }
                 let record_push = |copied: usize| {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
@@ -11340,7 +11344,7 @@ macro_rules! v1_builtin_arms {
                         (l, Value::Str(s)) => match free_monoid_to_vec(l) {
                             Some(mut result) => {
                                 record_push(result.len());
-                                result.push(Value::Str(s.clone()));
+                                result.push(str_value(s.to_string()));
                                 Ok(Some(list_value((result))))
                             }
                             None => Ok(None),
@@ -11401,13 +11405,13 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "substring")?;
                 let start = expect_int($positional.get(1).copied(), "substring start")?;
                 let end = expect_int($positional.get(2).copied(), "substring end")?;
-                Ok(Some(Value::Str(v1_rt::substring(&s, start, end))))
+                Ok(Some(str_value(v1_rt::substring(&s, start, end))))
             },
 
             arm "free_call.char_at" { "char_at" } => {
                 let s = expect_str($positional.first().copied(), "char_at")?;
                 let pos = expect_int($positional.get(1).copied(), "char_at pos")?;
-                Ok(Some(Value::Str(v1_rt::char_at(&s, pos))))
+                Ok(Some(str_value(v1_rt::char_at(&s, pos))))
             },
 
             arm "free_call.string_contains" { "string_contains" } => {
@@ -11424,7 +11428,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.trim" { "trim" } => {
                 let s = expect_str($positional.first().copied(), "trim")?;
-                Ok(Some(Value::Str(v1_rt::trim(s))))
+                Ok(Some(str_value(v1_rt::trim(s))))
             },
 
             arm "free_call.length" { "length" } => match $positional.first() {
@@ -11440,7 +11444,7 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.contains" { "contains" } => match $positional.as_slice() {
-                [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
+                [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub.as_ref())))),
                 [xs, target, ..] => match free_monoid_to_vec(xs) {
                     Some(items) => Ok(Some(Value::Bool(items.iter().any(|item| item == *target)))),
                     None => Ok(None),
@@ -11452,7 +11456,7 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "replace")?;
                 let from = expect_str($positional.get(1).copied(), "replace from")?;
                 let to = expect_str($positional.get(2).copied(), "replace to")?;
-                Ok(Some(Value::Str(s.replace(&from, &to))))
+                Ok(Some(str_value(s.replace(&from, &to))))
             },
 
             arm "free_call.code_point" { "code_point" } => {
@@ -11464,7 +11468,7 @@ macro_rules! v1_builtin_arms {
             arm "free_call.from_code_point" { "from_code_point" } => {
                 let cp = expect_int($positional.first().copied(), "from_code_point")?;
                 let c = char::from_u32(cp as u32).unwrap_or('\0');
-                Ok(Some(Value::Str(c.to_string())))
+                Ok(Some(str_value(c.to_string())))
             },
 
             arm "free_call.is_xid_start" { "is_xid_start" } => {
@@ -11527,7 +11531,7 @@ macro_rules! v1_builtin_arms {
                     counters.set_insert_items_copied += s.len() as u64;
                     drop(counters);
                     let mut result = s.as_ref().clone();
-                    result.insert(k.clone());
+                    result.insert(k.to_string());
                     Ok(Some(Value::Set(Rc::new(result))))
                 }
                 _ => Ok(None),
@@ -11547,7 +11551,7 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.set_contains" { "set_contains" } => match $positional.as_slice() {
-                [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_str())))),
+                [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_ref())))),
                 _ => Ok(None),
             },
 
@@ -11627,7 +11631,7 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.atom_identity_hash" { "atom_identity_hash" } => match $positional.as_slice() {
-                [Value::Str(s)] => Ok(Some(Value::Str(v1_rt::atom_identity_hash(s.clone())))),
+                [Value::Str(s)] => Ok(Some(str_value(v1_rt::atom_identity_hash(s.to_string())))),
                 _ => Err(InterpError::TypeError {
                     msg: "atom_identity_hash requires exactly one string argument".to_string(),
                 }),
@@ -11683,7 +11687,7 @@ macro_rules! v1_builtin_arms {
                             msg: "hash_combine requires exactly two Hash arguments".to_string(),
                         });
                     }
-                    Ok(Some(Value::Str(v1_rt::hash_combine(a.clone(), b.clone()))))
+                    Ok(Some(str_value(v1_rt::hash_combine(a.to_string(), b.to_string()))))
                 }
                 _ => Err(InterpError::TypeError {
                     msg: "hash_combine requires exactly two Hash arguments".to_string(),
@@ -11775,9 +11779,9 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("LayerImportFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
+                            ($ctx.sym("import_module"), str_value(f.import_module)),
                             ($ctx.sym("layer"), layer),
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("path"), str_value(f.path)),
                         ])),
                     });
                 }
@@ -11801,8 +11805,8 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ImportResolutionFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("import_module"), str_value(f.import_module)),
+                            ($ctx.sym("path"), str_value(f.path)),
                             ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
                         ])),
                     });
@@ -11833,8 +11837,8 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ImportResolutionFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("import_module"), Value::Str(f.import_module)),
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("import_module"), str_value(f.import_module)),
+                            ($ctx.sym("path"), str_value(f.path)),
                             ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
                         ])),
                     });
@@ -11863,9 +11867,9 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ModuleDependencyEdge"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("path"), str_value(f.path)),
                             ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
-                            ($ctx.sym("target_module"), Value::Str(f.import_module)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
                         ])),
                     });
                 }
@@ -11914,8 +11918,8 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("ModuleDeclarationFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("module"), Value::Str(f.module)),
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("module"), str_value(f.module)),
+                            ($ctx.sym("path"), str_value(f.path)),
                         ])),
                     });
                 }
@@ -11941,10 +11945,10 @@ macro_rules! v1_builtin_arms {
                         fields: Rc::new(sorted_fields(vec![
                             (
                                 $ctx.sym("rel_path_decl_key"),
-                                Value::Str(f.rel_path_decl_key),
+                                str_value(f.rel_path_decl_key),
                             ),
                             ($ctx.sym("tree"), tree_value),
-                            ($ctx.sym("content_hash"), Value::Str(f.content_hash)),
+                            ($ctx.sym("content_hash"), str_value(f.content_hash)),
                         ])),
                     });
                 }
@@ -12032,7 +12036,7 @@ macro_rules! v1_builtin_arms {
                                 list_value(
                                     row.declared_inputs
                                         .into_iter()
-                                        .map(Value::Str)
+                                        .map(str_value)
                                         .collect::<Vec<_>>(),
                                 ),
                             ),
@@ -12041,7 +12045,7 @@ macro_rules! v1_builtin_arms {
                                 list_value(
                                     row.argv_input_refs
                                         .into_iter()
-                                        .map(Value::Str)
+                                        .map(str_value)
                                         .collect::<Vec<_>>(),
                                 ),
                             ),
@@ -12078,8 +12082,8 @@ macro_rules! v1_builtin_arms {
                     items.push(Value::Record {
                         type_name: $ctx.sym("TransportScriptPositionFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("function"), Value::Str(f.function)),
-                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("function"), str_value(f.function)),
+                            ($ctx.sym("path"), str_value(f.path)),
                             ($ctx.sym("shape"), shape),
                         ])),
                     });
@@ -12101,10 +12105,10 @@ macro_rules! v1_builtin_arms {
                         type_name: $ctx.sym("ExtdepsTransportArgvFact"),
                         fields: Rc::new(sorted_fields(vec![
                             ($ctx.sym("argv_index"), Value::Int(f.argv_index)),
-                            ($ctx.sym("argv_token"), Value::Str(f.argv_token.clone())),
+                            ($ctx.sym("argv_token"), str_value(f.argv_token.clone())),
                             ($ctx.sym("module"), (*qn).clone()),
-                            ($ctx.sym("operation"), Value::Str(f.operation.clone())),
-                            ($ctx.sym("service"), Value::Str(f.service.clone())),
+                            ($ctx.sym("operation"), str_value(f.operation.clone())),
+                            ($ctx.sym("service"), str_value(f.service.clone())),
                             (
                                 $ctx.sym("transport_kind"),
                                 Value::Variant {
@@ -12122,10 +12126,10 @@ macro_rules! v1_builtin_arms {
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsTransportFusionFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("endpoint_key"), Value::Str(f.endpoint_key.clone())),
+                            ($ctx.sym("endpoint_key"), str_value(f.endpoint_key.clone())),
                             ($ctx.sym("module"), (*qn).clone()),
-                            ($ctx.sym("service_a"), Value::Str(f.service_a.clone())),
-                            ($ctx.sym("service_b"), Value::Str(f.service_b.clone())),
+                            ($ctx.sym("service_a"), str_value(f.service_a.clone())),
+                            ($ctx.sym("service_b"), str_value(f.service_b.clone())),
                         ])),
                     })
                     .collect();
@@ -12136,9 +12140,9 @@ macro_rules! v1_builtin_arms {
                         type_name: $ctx.sym("ExtdepsOperationInputFact"),
                         fields: Rc::new(sorted_fields(vec![
                             ($ctx.sym("module"), (*qn).clone()),
-                            ($ctx.sym("operation"), Value::Str(f.operation.clone())),
-                            ($ctx.sym("param_name"), Value::Str(f.param_name.clone())),
-                            ($ctx.sym("service"), Value::Str(f.service.clone())),
+                            ($ctx.sym("operation"), str_value(f.operation.clone())),
+                            ($ctx.sym("param_name"), str_value(f.param_name.clone())),
+                            ($ctx.sym("service"), str_value(f.service.clone())),
                         ])),
                     })
                     .collect();
@@ -12148,11 +12152,10 @@ macro_rules! v1_builtin_arms {
                     .map(|f| Value::Record {
                         type_name: $ctx.sym("ExtdepsEmbeddedPolicyLiteralFact"),
                         fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("data_name"), Value::Str(f.data_name.clone())),
-                            ($ctx.sym("field_name"), Value::Str(f.field_name.clone())),
+                            ($ctx.sym("data_name"), str_value(f.data_name.clone())),
+                            ($ctx.sym("field_name"), str_value(f.field_name.clone())),
                             (
-                                $ctx.sym("literal_value"),
-                                Value::Str(f.literal_value.clone()),
+                                $ctx.sym("literal_value"), str_value(f.literal_value.clone()),
                             ),
                             ($ctx.sym("module"), (*qn).clone()),
                         ])),
@@ -12192,12 +12195,12 @@ macro_rules! v1_builtin_arms {
                 let result = Value::Record {
                     type_name: $ctx.sym("ExtdepsExternalAuthorityModuleFacts"),
                     fields: Rc::new(sorted_fields(vec![
-                        ($ctx.sym("anchor_kind"), Value::Str(facts.anchor_kind)),
+                        ($ctx.sym("anchor_kind"), str_value(facts.anchor_kind)),
                         (
                             $ctx.sym("scheme_identity"),
-                            Value::Str(facts.scheme_identity),
+                            str_value(facts.scheme_identity),
                         ),
-                        ($ctx.sym("locator"), Value::Str(facts.locator)),
+                        ($ctx.sym("locator"), str_value(facts.locator)),
                     ])),
                 };
                 Ok(Some(result))
@@ -12212,7 +12215,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.seed_runner_bool_false_failure_detail" { "seed_runner_bool_false_failure_detail" } => {
                 let witness = expect_str($positional.first().copied(), $name)?;
-                Ok(Some(Value::Str(crate::cli_run::seed_runner_bool_false_failure_detail(
+                Ok(Some(str_value(crate::cli_run::seed_runner_bool_false_failure_detail(
                     $ctx, &witness,
                 ))))
             },
@@ -12285,29 +12288,29 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::consume_floor_compile_clean_gate_verdict(),
             ))),
 
-            arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(Value::Str(
+            arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
             ))),
 
             arm "free_call.record_regen_verify_gate_failure_detail" { "record_regen_verify_gate_failure_detail" } => {
                 if let [Value::Str(detail)] = $positional.as_slice() {
-                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.clone());
+                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.to_string());
                 }
                 Ok(Some(Value::Unit))
             },
 
-            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(Value::Str(
+            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_regen_verify_gate_failure_detail(),
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
                 if let [Value::Str(detail)] = $positional.as_slice() {
-                    crate::cli_run::record_generated_artifact_drift_gate_failure_detail(detail.clone());
+                    crate::cli_run::record_generated_artifact_drift_gate_failure_detail(detail.to_string());
                 }
                 Ok(Some(Value::Unit))
             },
 
-            arm "free_call.consume_generated_artifact_drift_gate_failure_detail" { "consume_generated_artifact_drift_gate_failure_detail" } => Ok(Some(Value::Str(
+            arm "free_call.consume_generated_artifact_drift_gate_failure_detail" { "consume_generated_artifact_drift_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_generated_artifact_drift_gate_failure_detail(),
             ))),
 
@@ -12317,17 +12320,17 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
                 let names = crate::cli_run::test_migration_debt_module_names();
-                let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+                let items: Vec<Value> = names.into_iter().map(str_value).collect();
                 Ok(Some(list_value(items)))
             },
             arm "free_call.test_migration_legacy_behavior_ids" { "test_migration_legacy_behavior_ids" } => {
                 let ids = crate::cli_run::test_migration_legacy_behavior_ids();
-                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                let items: Vec<Value> = ids.into_iter().map(str_value).collect();
                 Ok(Some(list_value(items)))
             },
             arm "free_call.test_migration_witness_behavior_ids" { "test_migration_witness_behavior_ids" } => {
                 let ids = crate::cli_run::test_migration_witness_behavior_ids();
-                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                let items: Vec<Value> = ids.into_iter().map(str_value).collect();
                 Ok(Some(list_value(items)))
             },
             arm "free_call.test_migration_behavior_discovery_holds" { "test_migration_behavior_discovery_holds" } => Ok(Some(Value::Bool(
@@ -12335,7 +12338,7 @@ macro_rules! v1_builtin_arms {
             ))),
             arm "free_call.inert_carrier_names_live" { "inert_carrier_names_live" } => {
                 let names = crate::cli_run::inert_carrier_names_live();
-                let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+                let items: Vec<Value> = names.into_iter().map(str_value).collect();
                 Ok(Some(list_value(items)))
             },
             arm "free_call.inert_carrier_declared_count" { "inert_carrier_declared_count" } => Ok(Some(Value::Int(
@@ -12396,9 +12399,9 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("closed_coproduct_wildcard"),
                                 Value::Bool(f.closed_coproduct_wildcard),
                             ),
-                            ($ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
+                            ($ctx.sym("fn_name"), str_value(f.fn_name.clone())),
                             ($ctx.sym("rostered"), Value::Bool(f.rostered)),
-                            ($ctx.sym("site"), Value::Str(f.site.clone())),
+                            ($ctx.sym("site"), str_value(f.site.clone())),
                         ])),
                     });
                 }
@@ -12416,11 +12419,11 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("closed_coproduct_scrutinee"),
                                 Value::Bool(f.closed_coproduct_scrutinee),
                             ),
-                            ($ctx.sym("class"), Value::Str(f.class.clone())),
-                            ($ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
-                            ($ctx.sym("owning_lane"), Value::Str(f.owning_lane.clone())),
-                            ($ctx.sym("rel_path"), Value::Str(f.rel_path.clone())),
-                            ($ctx.sym("site"), Value::Str(f.site.clone())),
+                            ($ctx.sym("class"), str_value(f.class.clone())),
+                            ($ctx.sym("fn_name"), str_value(f.fn_name.clone())),
+                            ($ctx.sym("owning_lane"), str_value(f.owning_lane.clone())),
+                            ($ctx.sym("rel_path"), str_value(f.rel_path.clone())),
+                            ($ctx.sym("site"), str_value(f.site.clone())),
                         ])),
                     });
                 }
@@ -13320,7 +13323,7 @@ fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<S
 /// fails `==` against a native String oracle (the held emit-weld debt).
 pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
-        return Some(s.clone());
+        return Some(s.to_string());
     }
     // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` list
     // literal representation), NEVER a modeled `String`. A modeled
@@ -13437,7 +13440,7 @@ fn expect_map(val: &Value, context: &str) -> InterpResult<Rc<HamtMap<CanonKey, V
 
 fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
     match val {
-        Value::Str(s) => Ok(s.clone()),
+        Value::Str(s) => Ok(s.to_string()),
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
@@ -13446,7 +13449,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 
 fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
     match val {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         Some(v) => Err(InterpError::TypeError {
             msg: format!(
                 "{} expects a string argument, got {}",
@@ -13495,7 +13498,7 @@ fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<Strin
             let mut out: Vec<String> = Vec::new();
             for item in items.iter() {
                 match item {
-                    Value::Str(s) => out.push(s.clone()),
+                    Value::Str(s) => out.push(s.to_string()),
                     other => {
                         return Err(InterpError::TypeError {
                             msg: format!(
@@ -13540,7 +13543,7 @@ fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<
     let mut out: Vec<String> = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s),
+            Value::Str(s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
@@ -14248,7 +14251,7 @@ mod map_shell_outputs_optional_stream_tests {
     fn optional_stdout_surfaces_text_on_success() {
         assert_eq!(
             map_optional_stream_field(0, "stdout"),
-            Value::Str("captured-stdout".to_string())
+            str_value("captured-stdout".to_string())
         );
     }
 }
