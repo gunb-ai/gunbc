@@ -122,7 +122,6 @@ pub mod v1_compiler_infer_sigs;
 pub mod v1_compiler_infer_types;
 pub mod v1_compiler_languages;
 pub mod v1_compiler_normalize;
-pub mod v1_compiler_ownership;
 pub mod v1_compiler_parse;
 pub mod v1_compiler_resolve;
 pub mod v1_compiler_runtime_go;
