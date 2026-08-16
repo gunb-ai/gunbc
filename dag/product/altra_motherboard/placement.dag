@@ -30,8 +30,11 @@ type BoardComponentRole
   | BootFirmwareEeprom
   | FirmwareFlash
   | ResetController
-  | PowerController
-  | NetworkEndpoint
+  | ProcessorRailSequencer
+  | ProcessorPowerStage
+  | ProcessorPowerGoodSupervisor
+  | HostNetworkPhy
+  | ManagementNetworkPath
   | StorageEndpoint
   | DebugConnector
 
@@ -49,8 +52,11 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
     BootFirmwareEeprom => "BootFirmwareEeprom"
     FirmwareFlash => "FirmwareFlash"
     ResetController => "ResetController"
-    PowerController => "PowerController"
-    NetworkEndpoint => "NetworkEndpoint"
+    ProcessorRailSequencer => "ProcessorRailSequencer"
+    ProcessorPowerStage => "ProcessorPowerStage"
+    ProcessorPowerGoodSupervisor => "ProcessorPowerGoodSupervisor"
+    HostNetworkPhy => "HostNetworkPhy"
+    ManagementNetworkPath => "ManagementNetworkPath"
     StorageEndpoint => "StorageEndpoint"
     DebugConnector => "DebugConnector"
   }
@@ -83,11 +89,14 @@ fn role_ordinal(r: BoardComponentRole) -> Int {
     BootFirmwareEeprom => 4
     FirmwareFlash => 5
     ResetController => 7
-    PowerController => 8
-    NetworkEndpoint => 9
-    StorageEndpoint => 10
-    DebugConnector => 11
-    ProcessorPackage => 12
+    ProcessorRailSequencer => 8
+    ProcessorPowerStage => 9
+    ProcessorPowerGoodSupervisor => 10
+    HostNetworkPhy => 11
+    ManagementNetworkPath => 12
+    StorageEndpoint => 13
+    DebugConnector => 14
+    ProcessorPackage => 15
   }
 }
 
@@ -101,8 +110,11 @@ fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
     BootFirmwareEeprom => none
     FirmwareFlash => none
     ResetController => none
-    PowerController => none
-    NetworkEndpoint => none
+    ProcessorRailSequencer => none
+    ProcessorPowerStage => none
+    ProcessorPowerGoodSupervisor => none
+    HostNetworkPhy => none
+    ManagementNetworkPath => none
     StorageEndpoint => none
     DebugConnector => none
     ProcessorPackage => none
@@ -176,6 +188,7 @@ type PlacementRefusal
   | PlannedIdentityRepeated { component: NonEmptyStr }
   | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
   | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
+  | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: BoardRequirementIdentity }
 
 // WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
 // plan is derived from a design, and once several projections exist -- a scene, a fabrication
@@ -212,44 +225,28 @@ fn altra_1p_minimum_ref() -> DeclarationRef {
 // the required roles are the cross product of two authored sets rather than a generated range --
 // and a board that populates DDR0, DDR1, DDR4 and DDR5 is expressible, which under the old shape
 // it was not.
-// CLOCK GENERATION AND CLOCK FANOUT ARE REQUIRED FUNCTIONS, AND THIS BOARD DOES NOT YET KNOW HOW
-// MANY PARTS REALIZE THEM. They were briefly BoardComponentRole variants, and that was wrong in a
-// way worth recording because the prose beside it claimed the opposite: every required ROLE is
-// joined at exactly one fill, so putting a function into the component roster silently decides
-// that one physical device provides it. The Mt. Jade reference contradicts that on its face --
-// extdeps.ocp.mt_jade.platform lists 9FGV1006B and 5P35023 generating and 9FGL0841 and 92XL1231
-// buffering -- and the component roster additionally cannot express one multifunction part
-// realizing both, or several parts jointly realizing one function, because a PlannedComponent
-// carries a single role.
-//
-// So the requirement lives here, off the physical roster, with no identity, no origin, no envelope
-// and no count. It is still reported -- an unrealized function is an obligation, not an absence --
-// and the multiplicity is decided by the realization increment that introduces the many-to-many
-// relation between parts and functions. Relaxing the join to at-least-one would have been the
-// wrong repair: it permits several devices per function while still forbidding one device from
-// serving two.
-type BoardFunctionalRequirement
-  = ClockSourceRequired
-  | ClockFanoutRequired
+// CLOCK FUNCTIONS STAY OFF THIS ROSTER. They are modeled in product.altra_motherboard.realization
+// and projected as functional obligations without coordinates — putting them on the physical
+// roster made the exactly-one population join silently decide that one device provides them.
 
-fn functional_requirement_name(f: BoardFunctionalRequirement) -> NonEmptyStr {
-  match f {
-    ClockSourceRequired => "clock source"
-    ClockFanoutRequired => "clock fanout"
-  }
+fn plan_component_identities(plan: BoardPlacementPlan) -> List<NonEmptyStr> {
+  fold(plan.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
 }
 
-fn functional_requirement_reason(f: BoardFunctionalRequirement) -> NonEmptyStr {
-  match f {
-    ClockSourceRequired =>
-      "no part has been selected to generate this board's reference clocks, and how many devices do so is unresolved"
-    ClockFanoutRequired =>
-      "no part has been selected to distribute this board's reference clocks, and how many devices do so is unresolved"
-  }
-}
-
-fn board_functional_requirements() -> List<BoardFunctionalRequirement> {
-  [ClockSourceRequired, ClockFanoutRequired]
+fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  fold(
+    population_realization_refusals(
+      roster: altra_1p_requirement_part_realizations,
+      plan_identities: plan_component_identities(plan: plan),
+    ),
+    init: [],
+    f: fn(acc, r) {
+      match r {
+        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+          concat(acc, [RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req }])
+      }
+    }
+  )
 }
 
 fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
@@ -258,8 +255,8 @@ fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
   })
   concat(
     [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
-     ResetController, PowerController, NetworkEndpoint,
-     StorageEndpoint, DebugConnector],
+     ResetController, ProcessorRailSequencer, ProcessorPowerStage, ProcessorPowerGoodSupervisor,
+     HostNetworkPhy, ManagementNetworkPath, StorageEndpoint, DebugConnector],
     slots
   )
 }
@@ -372,10 +369,13 @@ fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<Plac
 fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   concat(
     concat(
-      concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
-      identity_refusals(plan: plan)
+      concat(
+        concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
+        identity_refusals(plan: plan)
+      ),
+      design_refusals(d_ref: d_ref, plan: plan)
     ),
-    design_refusals(d_ref: d_ref, plan: plan)
+    realization_placement_refusals(plan: plan)
   )
 }
 
@@ -442,6 +442,33 @@ fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
     max: point2(frame: altra_board_frame(), x: 305000, y: 267000)
   )
 }
+
+// Vendor body length is the drawing major axis; map it to board X (body_width) and width to Y (body_height).
+fn envelope_from_package_body(b: PackageBodyDimensions, source: DeclarationRef) -> ComponentEnvelopeStanding {
+  EnvelopeEstablished {
+    envelope: PackageBodyEnvelope {
+      package_designator: b.designator,
+      body_width: b.body_length_max,
+      body_height: b.body_width_max,
+    },
+    source: source,
+  }
+}
+
+data host_phy_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: dp83867_rgz0048b_body,
+  source: decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867_rgz0048b_body"),
+)
+
+data power_stage_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: tps53688_rsb0040a_body,
+  source: decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688_rsb0040a_body"),
+)
+
+data power_good_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: tps3808_dbv0006a_body,
+  source: decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808_dbv0006a_body"),
+)
 
 // THE ONE ESTABLISHED ENVELOPE. The board-control CPLD is an iCE40 in TQ144, whose body dimensions
 // come from the public Lattice datasheet this tree already cites, and are read from the package row
@@ -554,8 +581,26 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the PowerController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "power_ctl", r: PowerController, x: 30000, y: 220000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the NetworkEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "net_phy", r: NetworkEndpoint, x: 280000, y: 120000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "processor rail enable sequencing is not established: cited rail order exists but no sequencer population is justified for this board" }, id: "power_seq", r: ProcessorRailSequencer, x: 30000, y: 220000),
+    PlannedComponent {
+      identity: "power_stage",
+      role: ProcessorPowerStage,
+      envelope: power_stage_envelope,
+      origin: point2(frame: altra_board_frame(), x: 40000, y: 220000),
+    },
+    PlannedComponent {
+      identity: "power_good",
+      role: ProcessorPowerGoodSupervisor,
+      envelope: power_good_envelope,
+      origin: point2(frame: altra_board_frame(), x: 50000, y: 220000),
+    },
+    PlannedComponent {
+      identity: "host_phy",
+      role: HostNetworkPhy,
+      envelope: host_phy_envelope,
+      origin: point2(frame: altra_board_frame(), x: 270000, y: 120000),
+    },
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "management network connectivity is not established: reference precedent names a BMC plus PHY path on a dual-socket reference board, not a selected management population for this single-socket design" }, id: "mgmt_net", r: ManagementNetworkPath, x: 280000, y: 120000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
@@ -605,11 +650,12 @@ fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
 }
 
 // HOW MANY PARTS THE GEOMETRY CHECK DID NOT SEE, and it is counted from the causes rather than
-// assumed to be zero. Two of the four refusals describe a part that will occupy board area later
-// and was not available to be checked now: a required role nothing fills, and a component whose
-// envelope is still owed. The other two describe parts that ARE present -- one unjustified, one
-// sharing a name -- so they are defects in what was checked rather than gaps in what was not, and
-// counting them here would overstate the gap.
+// assumed to be zero. Two refusal classes describe a part that will occupy board area later and
+// was not available to be checked now: a required role nothing fills, and a component whose
+// envelope is still owed. Realization refusals name functional gaps on identities that may already
+// have cited bodies on the plan — those parts were checked geometrically, so they do not belong
+// in this count. The other placement refusals describe parts that ARE present and are defects in
+// what was checked rather than gaps in what was not.
 fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
@@ -619,6 +665,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
       PlannedIdentityRepeated { component: _ } => acc
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
       PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
+      RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
     }
   })
 }

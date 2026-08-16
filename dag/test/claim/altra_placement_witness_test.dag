@@ -18,6 +18,7 @@ fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
     PlannedIdentityRepeated { component: _ } => "IdentityRepeated"
     RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
     PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
+    RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => "FunctionMissing"
   }
 }
 
@@ -62,14 +63,14 @@ test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() ->
   }
 }
 
-// THE OBLIGATIONS ARE EXACT AND COUNTED. Thirteen of the fifteen required components have no
-// established envelope; the two that do are the board-control CPLD and the processor package. A
-// count that drifted from the population would mean the roster and the plan had come apart.
+// THE OBLIGATIONS ARE EXACT AND COUNTED. Twelve of seventeen required components have no
+// established envelope; the five that do are the board-control CPLD, the processor package, and
+// three cited mechanical-candidate bodies for host PHY, power stage, and power-good supervision.
 test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      established_envelope_count(plan: p) == 2
+      established_envelope_count(plan: p) == 5
         && outstanding_obligation_count(plan: p) == 12
   }
 }
@@ -149,12 +150,21 @@ test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 2
+      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 5
         && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "board_control_cpld"
         })
         && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "processor_package"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "host_phy"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "power_stage"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "power_good"
         })
         && fold(placeable_components(plan: p), init: true, f: fn(acc, c) {
           acc && (c.identity as String) != "cpu_socket"
@@ -247,7 +257,7 @@ test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
     && roles_equal(a: DebugConnector, b: DebugConnector)
 }
 
-// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing fourteen
+// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing sixteen
 // roles, and the join reports them — so the completeness check is an identity join and not a
 // count that happens to agree.
 fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> BoardPlacementPlan {
@@ -266,7 +276,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
           origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
         }], template: p)),
         wanted: "RoleUnfilled"
-      ) == 13
+      ) == 16
   }
 }
 
@@ -325,10 +335,9 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
 }
 
 // THE BOARD AS IT STANDS TODAY REPORTS THE SUBSET ARM, and that is the whole point of the arm
-// existing. Two of fifteen parts have an established envelope, so the body-envelope check ran over
-// two rectangles and found nothing wrong -- and reporting that as a clean board would be a
-// finished-looking answer about a board that is twelve parts short. The count of unchecked parts
-// travels with the answer so a consumer cannot read the geometry verdict without it.
+// existing. Five of seventeen parts have an established envelope, so the body-envelope check ran over
+// five rectangles and found nothing wrong -- and reporting that as a clean board would be a
+// finished-looking answer about a board that is twelve parts short.
 test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check() -> Bool {
   match plan_or_empty() {
     Absent => false
@@ -454,6 +463,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
             ComponentFillsNoRequiredRole { component: _, role_named: _ } => false
             PlannedIdentityRepeated { component: _ } => false
             PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
           }
         }
       )
@@ -461,7 +471,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
 }
 
 // AND THE POSITIVE CONTROL, so the arm above is not satisfied by a check that refuses every board.
-// The reference plan fills each of its fifteen roles exactly once and raises no multiplicity cause.
+// The reference plan fills each of its seventeen roles exactly once and raises no multiplicity cause.
 test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
   match plan_or_empty() {
     Absent => false
