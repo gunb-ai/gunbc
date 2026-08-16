@@ -8,7 +8,7 @@ import gunbc.stage0_seed_retention {
   seed_retention_excluded_basenames,
   seed_retention_exclusions,
   seed_retention_arms_disjoint,
-  seed_retention_undecided_blocks,
+  seed_retention_dispositions_are_closed,
   seed_retention_rung_drops,
   seed_retention_rung_drop_basenames,
   seed_retention_rung_drops_are_retained,
@@ -52,7 +52,7 @@ test fn w_excluded_modules_are_not_retained() -> Bool {
 }
 
 test fn w_exclusion_dispositions_are_closed() -> Bool {
-  seed_retention_undecided_blocks()
+  seed_retention_dispositions_are_closed()
     && length(seed_retention_exclusions) > 0
 }
 

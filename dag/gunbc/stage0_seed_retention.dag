@@ -10,7 +10,15 @@ WHAT WAS LOST IS THE GENERATOR, NOT THE AUTHORITY, and conflating the two is the
 
 THE FORK ARM IS THE SERIOUS ONE. For the 74 AuthorityLive rows the .dag authority is present and editable, the emitted artifact is what cargo compiles, and nothing connects them. EDITING THOSE .dag FILES NO LONGER CHANGES THE BUILT COMPILER. That is DESIGN section 3 dual representation, live, and it is the intended consequence of delete-then-work-forward-on-frozen-Rust rather than a defect introduced here - but a reader who edits dag/std/algebra.dag deserves to learn from this roster that the build cannot see it, instead of discovering it from a green run that proved nothing. An orphan is inert; a fork invites work that cannot land.
 
-MEMBERSHIP ASSERTS RETENTION AND NOTHING ELSE. A row does not say the module is good, needed, or correct - only that its artifact is frozen because its generator was deleted, and that the freeze is declared rather than silent. It is NOT a count: no witness asserts the roster size against a literal, because a number copied from the current tree is a snapshot rather than an oracle. Completeness is an identity join in both directions - a previously generated artifact outside every arm below REFUSES as unclassified, and a row naming a module the tree no longer carries REFUSES as stale, so the roster cannot rot into a permission slip."
+MEMBERSHIP ASSERTS RETENTION AND NOTHING ELSE. A row does not say the module is good, needed, or correct - only that its artifact is frozen because its generator was deleted, and that the freeze is declared rather than silent. It is NOT a count: no witness asserts the roster size against a literal, because a number copied from the current tree is a snapshot rather than an oracle.
+
+COMPLETENESS IS ENFORCED IN ONE DIRECTION ONLY, and the other is declared here rather than claimed. An earlier revision of this note said completeness was an identity join in BOTH directions. That was specification-without-execution inside the paragraph asserting this roster cannot rot into a permission slip, and it is corrected rather than quietly reworded because the roster's whole purpose is to stop a declared authority standing in front of an unchecked population.
+
+  ENFORCED - stale rows. w_retained_modules_are_still_declared joins every retained row against the crate's own lib.rs, so a row naming a module the tree no longer carries REFUSES. This is the direction that actually fires: a concurrent cut deletes an artifact this roster declares retained. It is anchored on the exact pub mod declaration and carries a RED control proving it can fail.
+
+  NOT ENFORCED - unclassified artifacts. Nothing detects a previously generated artifact sitting outside every arm. It cannot be checked live: the founding population is the pre-cut generated roster at merge-base 8a799b61c4d, which is a fact about a PRIOR TREE and is unavailable to any witness running against the present one. The consequence, stated plainly: if a later change freezes a 137th artifact without adding its row, no mechanism here notices. That is the same silent-escape-hatch shape this roster closes for the founding 136, still open for anything after them, and it is mitigatable rather than prevented.
+
+  NEXT TRIGGER: an emitted-artifact identity carried on the module's own declaration and checked at ingestion, so freezing an artifact without declaring it becomes unwritable at the point the module is parsed - rather than reconstructed by a consumer that would have to know what the tree looked like before the cut."
 
 data stage0_seed_retention_trigger_note: String = "THE MIGRATION TRIGGER IS NOT RESTATED HERE, DELIBERATELY (operator ruling, 2026-08-16). Every AuthorityDeleted row dissolves on the same condition: v2 self-emits the module green-by-execution. That condition is already owned and already MEASURED by v2.compiler.self_host.frontier, whose rows are built by execution_measured_seed_retained_row precisely so that self-emission is established by execution rather than by assertion. Restating the condition here would create two carriers both answering is-this-module-self-emitted-yet, which is the dual authority DESIGN section 3 forbids arriving through the trigger instead of through the row. So this roster cites that frontier as the trigger authority and stores no self-emission state of its own.
 
@@ -26,7 +34,18 @@ BOTH WERE FOUND BY A SWEEP, NOT BY WAITING. Each concurrent cut was diffed again
 
 v1_compiler_ownership - SUPERSEDED, excluded by operator ruling. It is the emitted twin of the per-binding grain, its only purpose is to implement the defect that the ownership-grain cut removes, and per-site verdicts are taking its boundary with consumers rederived rather than reconnected. The frozen carve-out's precondition is that no replacement can hold the boundary, and here one explicitly does, so the carve-out does not reach it.
 
-v1_compiler_compiler_tests_rust - UNDECIDED, and therefore BLOCKING rather than retained. The interpreter cut deletes it; this cut retains it; nobody has stated which disposition is right. An undecided row is honest and blocks; a wrongly retained one silently preserves a defect behind a declared authority. It is recorded here rather than resolved because the deciding fact - whether a named replacement takes its boundary - belongs to the lane removing it, and guessing would be the fabricated-plausible-output failure applied to a disposition."
+v1_compiler_compiler_tests_rust - DeletedWithObligationsOpen. It was recorded UNDECIDED and blocking rather than guessed, and asking the lane that removes it produced a THIRD STATE the two-way test does not cover (gentle-dove-833, 2026-08-16). The full reason is on the row; the model consequence is here.
+
+THE THIRD STATE, and why the roster needs it. Frozen and superseded are not exhaustive. A module can go with its region while nothing replaces it AND the behaviour is still owed:
+
+  FROZEN                       authority stops, behaviour still needed, nothing replaces it -> RETAIN
+  SUPERSEDED                   the thing IS the defect, a NAMED replacement takes its boundary -> DELETE
+  DeletedWithObligationsOpen   goes with its region, nothing replaces it YET, behaviour still owed
+                               -> DELETE here, and the debt is counted in the CUTTING lane's carrier
+
+The distinction is not academic, because RETENTION AND OBLIGATION ARE DIFFERENT POPULATIONS WITH DIFFERENT OWNERS. A retention row says someone may still build this artifact. An open obligation says someone must still EARN this behaviour somewhere else. Collapsing the second into the first would park another lane's unbuilt work inside this roster, where its own lane could not see it and this roster could not discharge it. If those obligations are re-established as .dag witnesses this roster never wanted them; if they retire, they were never its rows either. Either way the row belongs to the lane that owes it.
+
+WHY IT IS NOT FROZEN, which is the part a two-way test gets wrong in the dangerous direction: the module is a PRODUCER of Rust test source whose emitted text calls the deleted interpreter, so freezing it would declare an authority in front of output that provably cannot compile. A blocking row caught that; a blanket freeze would have shipped it."
 
 type SeedRetainedModule {
   basename: NonEmptyStr
@@ -186,8 +205,8 @@ data seed_retention_exclusions: List<SeedRetentionExclusion> = [
   },
   SeedRetentionExclusion {
     basename: "v1_compiler_compiler_tests_rust",
-    disposition: "Undecided",
-    reason: "Deleted on integration/interpreter-cut and retained by this cut, with no stated disposition either way. Blocks rather than retains: the deciding fact is whether a named replacement takes its boundary, which belongs to the lane removing it. Guessing would fabricate a disposition."
+    disposition: "DeletedWithObligationsOpen",
+    reason: "Deletion population, and NEITHER frozen NOR superseded - answered by gentle-dove-833, the lane removing it. It is a GENERATOR of Rust test source text (ct_tokenizer_tests, ct_parse_tests, ct_pipeline_test, ct_self_parse_all_test, ct_self_resolve_test, ct_self_compile_test), and the text it emits contains calls to crate::v1_interpreter::run. So retaining it would freeze a producer whose OUTPUT CANNOT COMPILE once the interpreter goes - a declared authority standing in front of something provably unbuildable, which is the exact failure a blocking row exists to prevent. But nothing takes its boundary either: no named replacement exists, and the one similarly named file on that branch is a compile gate that checks targets build rather than carrying the tokenizer, parse, pipeline or self-compile behaviours. ONE SUBJECT WITH compiler_tests.rs - 34 of its 41 emitted titles matched titles in the hand-written file, which was largely its own output copied down - so excluding one while retaining the other would split a subject across this roster's boundary. The behaviour is still owed and is banked as 49 obligations at title grain in gunbc.plans.interpreter_cut_replacement, proposed 26 re-establish / 23 retire, none built."
   }
 ]
 
@@ -213,9 +232,11 @@ fn seed_retention_arms_disjoint() -> Bool {
          |> all(e => !(seed_retained_basenames() |> any(b => b == (e.basename as String))))
 }
 
-fn seed_retention_undecided_blocks() -> Bool {
+fn seed_retention_dispositions_are_closed() -> Bool {
   seed_retention_exclusions
-    |> all(e => (e.disposition as String) == "Superseded" || (e.disposition as String) == "Undecided")
+    |> all(e => (e.disposition as String) == "Superseded"
+             || (e.disposition as String) == "DeletedWithObligationsOpen"
+             || (e.disposition as String) == "Undecided")
 }
 
 data stage0_seed_retention_rung_drop_note: String = "WHY A RUNG DROP IS A SEPARATE ARM AND NOT A FIELD ON EVERY ROW (operator question, 2026-08-16). Freezing an artifact and LOWERING A GUARANTEE are different facts about it. Most retained rows lost no fixable-at-authority defect, so a regression field on all 134 would be empty in nearly every one, and an empty required field invites an author to fill it with something plausible - the fabricated-plausible-output failure aimed at a safety ledger. Worse, it would conflate frozen with regressed, when the authority note above is explicit that membership asserts retention AND NOTHING ELSE. So a rung drop is its own list keyed by basename, joined to the retention roster, leaving the retention row neutral.
@@ -241,7 +262,13 @@ data seed_retention_rung_drops: List<SeedRetentionRungDrop> = [
     temporary_rung: "Mitigatable",
     reason: "The clone-at-accumulator default. The emitter clones a value at its use site rather than moving it at its last use, so every fold threading a persistent container calls Rc::make_mut with another strong Rc live, taking the clone arm on EVERY element and copying the whole container per iteration. It was fixable at src/v1/05_emit_rust.dag, where the clone-versus-move decision is made; that authority is deleted by this cut and the artifact is frozen, so no file an author could edit reaches the built compiler. The per-binding ownership authority that fed the decision was deleted as the root of a grain error - clone-versus-move is a use-site property - and its replacement landed in std, where value_materialization folds over per-site UseSiteVerdicts; but the emitter that would CONSUME those verdicts is frozen, so the correction cannot reach the binary. Measurements authored by fierce-raven-463, which vouches for the numbers.",
     bounded_population: "42 clone-at-accumulator sites in v1_compiler_emit_rust.rs; 1 more in v1_compiler_compile.rs; 359 across all 28 emitted files. Counted at faa1539954 by matching rc_map_insert / rc_map_merge / rc_set_insert / rc_list_push / rc_list_concat applied to an identifier's .clone() - the shape where the accumulator is cloned at the call site. NOT A BURN-DOWN: per the operator verdict of 2026-07-29 on dag/tools/e0599_emitter_decision_census.dag, the count records where the emitter INSERTED a clone and never that any site is removable.",
-    magnitude: "638x at m=4000, and the scope of that number is load-bearing: it measures the MECHANISM IN ISOLATION, not this emitter's runtime. A local benchmark replicating the emitted shape - an Rc map threaded through a fold, rc_map_insert(acc.clone(), ..) versus moving acc - measured clone slope 2.0 against move slope 1.0: m=1000 clone 28.5ms / move 186us; m=2000 clone 117ms / move 376us; m=4000 clone 498ms / move 780us. WHAT SHARE OF ANY REAL PHASE THIS ACCOUNTS FOR IS UNMEASURED. A phase-grain scaling sweep was run and came back inconclusive BY CONSTRUCTION, an 18.3s size-independent term swamping the grid. This row must not be read as a measured runtime cost.",
+    magnitude: "MECHANISM CONFIRMED, MAGNITUDE ~9x CONSTANT FACTOR - and the 638x this row first carried is WITHDRAWN, along with the quadratic characterization that came with it. The mechanism is real and separately witnessed: acc.clone() holds the strong count at 2 across the insert, so Rc::make_mut copies on every iteration - receipt is strong_count=2 with allocation_moved=true on every iteration of the clone arm, against 1 and false on the moved arm. What changed is only the size, and that is exactly why the row must not keep the larger number: the defect is still real and still ONE emitter fix rather than 113 edits.
+
+THE WITHDRAWN FIGURE WAS MEASURED AGAINST THE WRONG CONTAINER. The benchmark's first line read use std::collections::HashMap, while the subject reads use im::HashMap - v1_rt.rs line 6, and verified independently against this row's own subject: v1_compiler_emit_rust.rs imports im::HashMap at its use line and contains ZERO occurrences of the std one; corpus-wide 143 emitted files import im::HashMap and exactly two import std's, neither of them this file. im::HashMap is a HAMT with O(1) clone, so against the container the emitter actually uses the ratio is ~9x and FLAT across a 16x span of n, with the fixed term measured at 0.007ms. That is a constant factor, NOT a complexity-class difference.
+
+WHY IT SURVIVED AS LONG AS IT DID, recorded because the reasoning generalizes past this row. Two INDEPENDENT implementations of the same benchmark agreed - 638x at m=4000 against 816.9x at the same n, the residual explained by String keys versus interned i64 - and that agreement read as corroboration. It was not. AGREEMENT ACROSS INSTRUMENTS THAT SHARE AN ASSUMPTION MEASURES THE ASSUMPTION. Both had copied the same wrong use line, and three independent instances of that same confusion surfaced in one night, which places the trap in the code's shape rather than in anyone's care: reproducing a function by copying its body carries the body and not the imports, and the imports are the universe.
+
+AND THE SCOPE QUALIFIER STILL BINDS at the corrected size: ~9x measures the MECHANISM IN ISOLATION, not this emitter's runtime.",
     restoration_trigger: "v2 self-hosts the emit stage, at which point the decision is authored in v2, consumes the per-site verdicts directly, and this row dissolves with the artifact. Self-emission is measured by v2.compiler.self_host.frontier and is deliberately not restated here."
   }
 ]
