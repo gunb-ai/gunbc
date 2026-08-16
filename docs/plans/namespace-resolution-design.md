@@ -166,10 +166,20 @@ occurrences:
 | homonym (2+ declarers) | 1949 | 37 |
 | **undeclared (NO declarer anywhere)** | **760** | **86** |
 
-**These are corpus facts, not branch observations.** They were measured on the
-import-cut branch, but an import brings a module into an assembled pool — it
-declares no name — so deleting every import line removes no declaration and
-these counts read identically on main today.
+**Provenance — read this before citing the numbers.** MEASURED on
+`integration/namespace-cut` @ `dda24954428` (merge-base with main `9d720b74630`),
+2026-08-15, by a declaration scan over `dag/**` and `src/v2/**`.
+
+They are **argued — not measured — to be invariant across trees**: an import
+brings a module into an assembled pool, it declares no name, so deleting every
+import line removes no declaration and cannot move a declaration count. That
+reasoning is sound and **it has not been executed on a main checkout**. If you
+need the main-side figure, run the same scan there; do not cite these as
+measured-on-main.
+
+The distinction matters beyond this table: a conclusion written without its
+provenance is indistinguishable from a measurement to the next reader — including
+its own author, later, with no memory of having derived it.
 
 Three corrections, in increasing severity:
 
