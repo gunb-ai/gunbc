@@ -14,7 +14,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
     f: fn(rules) {
       v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: rules),
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: None
       }
     }
   )
@@ -26,7 +26,7 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
     f: fn(rules_budget) {
       v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: emitted) + rules_budget + 1,
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: None
       }
     }
   )
@@ -37,7 +37,7 @@ fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int>
     f: fn(rules_budget) {
       v2.std.diagnostic.Accepted {
         value: node_subtree_count(n: item) + rules_budget + 1,
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: None
       }
     }
   )
@@ -55,7 +55,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
     f: fn(rules_budget) {
       v2.std.diagnostic.Accepted {
         value: length(xs: tokens) + token_list_node_budget(tokens: tokens) + rules_budget + 1,
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: None
       }
     }
   )
@@ -535,7 +535,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                   bind_outcome(
                     o: concrete_syntax_token_from_node(token: item),
                     f: fn(_) {
-                      v2.std.diagnostic.Accepted { value: TokenSequenceConcreteToken, diagnostics: v2.std.diagnostic.None }
+                      v2.std.diagnostic.Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
                     }
                   )
                 Absent =>
@@ -550,7 +550,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                     translate_concrete_token_class_missing_diagnostic(token: item)
                   )
                 Absent =>
-                  v2.std.diagnostic.Accepted { value: TokenSequenceNonterminal, diagnostics: v2.std.diagnostic.None }
+                  v2.std.diagnostic.Accepted { value: TokenSequenceNonterminal, diagnostics: None }
               }
           }
         }
@@ -595,7 +595,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<Lis
                   bind_outcome(
                     o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
                     f: fn(rest) {
-                      v2.std.diagnostic.Accepted { value: Cons { head: head, tail: rest }, diagnostics: v2.std.diagnostic.None }
+                      v2.std.diagnostic.Accepted { value: Cons { head: head, tail: rest }, diagnostics: None }
                     }
                   )
                 }
@@ -654,7 +654,7 @@ fn grammar_serialize_source_matches_row(
               o: grammar_tokens_node_targets(tokens_node: tokens_root),
               f: fn(row_targets) {
                 if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
-                  v2.std.diagnostic.Accepted { value: serialize_source, diagnostics: v2.std.diagnostic.None }
+                  v2.std.diagnostic.Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
                     translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
@@ -825,7 +825,7 @@ fn target_serialize_relation_row_from_model_bounded(
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
-                      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+                      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
                       cons: fn(acc, token_node) {
                         match acc {
                           Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -956,7 +956,7 @@ fn token_sequence_to_source_bounded(
 ) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
-    empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+    empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
     cons: fn(acc, token_node) {
       match acc {
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -1125,7 +1125,7 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
     f: fn(priority_node) {
       v2.std.diagnostic.Accepted {
         value: priority_node,
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: None
       }
     }
   )
@@ -1263,7 +1263,7 @@ fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
         f: fn(emitted) {
           v2.std.diagnostic.Accepted {
             value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
-            diagnostics: v2.std.diagnostic.None
+            diagnostics: None
           }
         }
       )
@@ -1279,9 +1279,9 @@ fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<Ta
         Present { value: node } =>
           bind_outcome(
             o: target_text_carrier_from_node(node: node),
-            f: fn(tc) { v2.std.diagnostic.Accepted { value: optional_present(value: tc), diagnostics: v2.std.diagnostic.None } }
+            f: fn(tc) { v2.std.diagnostic.Accepted { value: optional_present(value: tc), diagnostics: None } }
           )
-        Absent => v2.std.diagnostic.Accepted { value: optional_absent(), diagnostics: v2.std.diagnostic.None }
+        Absent => v2.std.diagnostic.Accepted { value: optional_absent(), diagnostics: None }
       }
     }
   )
@@ -1325,7 +1325,7 @@ fn target_collection_realization_from_bundle(
                                       fallback_diagnostic: fallback_diagnostic,
                                       text_carrier: text_carrier
                                     },
-                                    diagnostics: v2.std.diagnostic.None
+                                    diagnostics: None
                                   }
                                 }
                               )
@@ -1414,7 +1414,7 @@ fn project_set_collection_type_node(
                       ),
                       args: Cons { head: elem_projected, tail: Empty }
                     ),
-                    diagnostics: v2.std.diagnostic.None
+                    diagnostics: None
                   }
                 }
               )
@@ -1440,7 +1440,7 @@ fn project_free_monoid_collection_type_node(
           match row.text_carrier {
             Present { value: text_carrier } =>
               if content_hash(n: elem) == content_hash(n: text_carrier.element_carrier) {
-                v2.std.diagnostic.Accepted { value: text_carrier.emitted_type_node, diagnostics: v2.std.diagnostic.None }
+                v2.std.diagnostic.Accepted { value: text_carrier.emitted_type_node, diagnostics: None }
               } else {
                 project_free_monoid_via_vec_choice(row: row, elem: elem, target: target, projection: projection)
               }
@@ -1486,7 +1486,7 @@ fn project_free_monoid_via_vec_choice(
                   ),
                   args: Cons { head: elem_storage, tail: Empty }
                 ),
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             }
           )
@@ -1680,24 +1680,24 @@ fn translate_algebra(
                     identity: id
                   )
                 },
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             Conj =>
-              v2.std.diagnostic.Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: v2.std.diagnostic.None }
+              v2.std.diagnostic.Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
             Disj =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslateVariants { variants: Empty },
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             Instantiation =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             Cardinality =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             Arrow =>
               bind_outcome(
@@ -1709,7 +1709,7 @@ fn translate_algebra(
                 f: fn(emitted) {
                   v2.std.diagnostic.Accepted {
                     value: TypeExprTranslateDone { node: emitted },
-                    diagnostics: v2.std.diagnostic.None
+                    diagnostics: None
                   }
                 }
               )
@@ -1934,7 +1934,7 @@ fn type_expr_atom_binding_from_positional(
       if is_empty(xs: split.tail) {
         match split.head.kind {
           TypeNode { connective: Atom { identity: id } } =>
-            v2.std.diagnostic.Accepted { value: id, diagnostics: v2.std.diagnostic.None }
+            v2.std.diagnostic.Accepted { value: id, diagnostics: None }
           _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
         }
       } else {
@@ -2037,7 +2037,7 @@ fn serialize_type_expr_generic_apply_bounded(
                             ),
                             next: text_atom(lexeme: close_source)
                           ),
-                          diagnostics: v2.std.diagnostic.None
+                          diagnostics: None
                         }
                       }
                     )
@@ -2066,7 +2066,7 @@ fn serialize_type_expr_args_bounded(
   } else {
     fold_list(
       xs: args,
-      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, arg) {
         bind_outcome(
           o: acc,
@@ -2117,7 +2117,7 @@ fn serialize_type_expr_separated_bounded(
   } else {
     fold_list(
       xs: items,
-      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, item) {
         bind_outcome(
           o: acc,
@@ -2255,7 +2255,7 @@ fn serialize_type_expr_record_bounded(
                           acc: target_text_seq(acc: text_atom(lexeme: open_source), next: fields_source),
                           next: text_atom(lexeme: close_source)
                         ),
-                        diagnostics: v2.std.diagnostic.None
+                        diagnostics: None
                       }
                     }
                   )
@@ -2319,7 +2319,7 @@ fn serialize_type_expr_arrow_param_bounded(
                   acc: target_text_seq(acc: text_atom(lexeme: name_source), next: text_atom(lexeme: separator_source)),
                   next: type_source
                 ),
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             }
           )
@@ -2344,7 +2344,7 @@ fn serialize_type_expr_arrow_params_bounded(
   } else {
     fold_list(
       xs: params,
-      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, slot) {
         bind_outcome(
           o: acc,
@@ -2434,7 +2434,7 @@ fn serialize_type_expr_arrow_named_bounded(
                                   ),
                                   next: codomain_source
                                 ),
-                                diagnostics: v2.std.diagnostic.None
+                                diagnostics: None
                               }
                             }
                           )
@@ -2479,7 +2479,7 @@ fn serialize_type_expr_arrow_input_wrapped(
                   acc: target_text_seq(acc: text_atom(lexeme: open_source), next: input_source),
                   next: text_atom(lexeme: close_source)
                 ),
-                diagnostics: v2.std.diagnostic.None
+                diagnostics: None
               }
             }
           )
@@ -2503,7 +2503,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   } else {
     fold_list(
       xs: inputs,
-      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+      empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, input_node) {
         bind_outcome(
           o: acc,
@@ -2595,7 +2595,7 @@ fn serialize_type_expr_arrow_bounded(
                             acc: target_text_seq(acc: inputs_source, next: text_atom(lexeme: arrow_source)),
                             next: output_source
                           ),
-                          diagnostics: v2.std.diagnostic.None
+                          diagnostics: None
                         }
                       }
                     )
@@ -2867,7 +2867,7 @@ fn translate_project_arrow_input_types(
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: original_inputs,
-    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
+    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
     cons: fn(acc, original_input) {
       bind_outcome(
         o: acc,
@@ -3586,7 +3586,7 @@ fn translate_node_with_projection(
                   target: target,
                   projection: projection
                 ),
-                f: fn(projected) { v2.std.diagnostic.Accepted { value: projected, diagnostics: v2.std.diagnostic.None } }
+                f: fn(projected) { v2.std.diagnostic.Accepted { value: projected, diagnostics: None } }
               )
             }
           )
@@ -3608,7 +3608,7 @@ fn translate_type_expression_subtree(
         f: fn(children) {
           v2.std.diagnostic.Accepted {
             value: node_rebuild(n: node, children: children),
-            diagnostics: v2.std.diagnostic.None
+            diagnostics: None
           }
         }
       )

@@ -397,7 +397,7 @@ fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntege
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
-            v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
+            v2.std.diagnostic.Accepted { value: candidate, diagnostics: None }
           } else {
             acc
           }

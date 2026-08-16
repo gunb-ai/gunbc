@@ -468,7 +468,7 @@ fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
-  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -683,7 +683,7 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -720,7 +720,7 @@ fn resolve_edges_first_outer_then_inner(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }
     },
     f: fn(state, e) {
       match state {
@@ -808,7 +808,7 @@ fn resolve_bind_edges(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }
     },
     f: fn(state, e) {
       match state {

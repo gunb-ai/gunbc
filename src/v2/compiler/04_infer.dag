@@ -390,7 +390,7 @@ fn lookup_inferred_facts_in_entries(
 }
 
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
-  match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, entry) {
+  match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
@@ -1016,7 +1016,7 @@ fn infer_loop_fixpoint_carrier(
       bind_outcome(
         o: infer_loop_body_type_at(target: first_body, entries: entries),
         f: fn(carrier) {
-          fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: v2.std.diagnostic.None }, f: fn(acc, target) {
+          fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
             match acc {
               Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               Accepted { value: c, diagnostics: _ } =>

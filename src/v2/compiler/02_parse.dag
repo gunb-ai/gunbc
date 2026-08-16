@@ -1531,7 +1531,7 @@ fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
 }
 
 fn parse_diags_to_diagnostics(diags: List<Diagnostic>) -> Diagnostics {
-  fold_list_right(xs: diags, empty: v2.std.diagnostic.None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
+  fold_list_right(xs: diags, empty: None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
 }
 
 fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> NonEmptyDiagnostics {

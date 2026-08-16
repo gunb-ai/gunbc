@@ -57,7 +57,7 @@ fn bash_fold_serialize_stmts_semi_from(
           match list_tail(xs: rest) {
             TailFound { tail: t } =>
               bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: None }
           }
         }
       )
@@ -217,7 +217,7 @@ fn bash_fold_serialize_word_list_spelling_from(
           match list_tail(xs: rest) {
             TailFound { tail: t } =>
               bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: None }
           }
         }
       )
@@ -484,10 +484,10 @@ fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
               bind_outcome(
                 o: bash_fold_serialize_body(stmts: t),
                 f: fn(rest) {
-                  v2.std.diagnostic.Accepted { value: concat(concat(part, "\n"), rest), diagnostics: v2.std.diagnostic.None }
+                  v2.std.diagnostic.Accepted { value: concat(concat(part, "\n"), rest), diagnostics: None }
                 }
               )
-            TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: v2.std.diagnostic.None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: None }
           }
         }
       )
@@ -499,9 +499,9 @@ fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String
     o: bash_fold_serialize_body(stmts: stmts),
     f: fn(body) {
       if set_e {
-        v2.std.diagnostic.Accepted { value: concat("set -e\n", body), diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Accepted { value: concat("set -e\n", body), diagnostics: None }
       } else {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Accepted { value: body, diagnostics: None }
       }
     }
   )

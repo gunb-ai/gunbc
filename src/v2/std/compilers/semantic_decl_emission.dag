@@ -495,7 +495,7 @@ fn semantic_decl_bound_tokens_source_text(
     f: fn(lex) {
       fold_list(
         xs: tokens,
-        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
         cons: fn(acc, token) {
           match acc {
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

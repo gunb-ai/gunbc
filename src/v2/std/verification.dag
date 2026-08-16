@@ -328,7 +328,7 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
       Accepted {
-        value: v2.std.diagnostic.Accepted { value: e, diagnostics: v2.std.diagnostic.None },
+        value: v2.std.diagnostic.Accepted { value: e, diagnostics: None },
         diagnostics: None
       }
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, input: _, classification: _ } =>
@@ -338,12 +338,12 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
       }
     EqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
       Accepted {
-        value: v2.std.diagnostic.Accepted { value: r, diagnostics: v2.std.diagnostic.None },
+        value: v2.std.diagnostic.Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
     StructuralEqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
       Accepted {
-        value: v2.std.diagnostic.Accepted { value: r, diagnostics: v2.std.diagnostic.None },
+        value: v2.std.diagnostic.Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>

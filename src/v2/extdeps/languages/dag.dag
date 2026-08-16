@@ -4049,7 +4049,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: v2.std.node.O
         d: Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
           at: port_locus(port: ^dag_int_literal_lexeme_invalid),
-          correction: v2.std.diagnostic.None
+          correction: None
         }
       )
   }
@@ -4090,7 +4090,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
           d: Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
             at: node_locus(node: node),
-            correction: v2.std.diagnostic.None
+            correction: None
           }
         )
     }
@@ -4099,7 +4099,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
       d: Diagnostic {
         reason: ^dag_int_literal_lexeme_invalid,
         at: node_locus(node: node),
-        correction: v2.std.diagnostic.None
+        correction: None
       }
     )
   }
@@ -4113,7 +4113,7 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
-    correction: v2.std.diagnostic.None
+    correction: None
   }
 }
 

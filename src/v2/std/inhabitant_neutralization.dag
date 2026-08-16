@@ -57,7 +57,7 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
         Rejected { diagnostics: _ } =>
           match find_named_child(root: edge.target, name: ^facts_field_std_projection) {
             Accepted { value: _, diagnostics: _ } =>
-              Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
+              Accepted { value: edge.target, diagnostics: None }
             Rejected { diagnostics: _ } => acc
           }
       }
