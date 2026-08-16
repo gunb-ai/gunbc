@@ -43,7 +43,7 @@ import std.decl_ref { decl_ref }
 import std.primitives { builtin_registry_surface_names }
 import std.types { Bool, List, String }
 
-data primitive_identity_join_witness_note: String = "D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors executing on census plus two scaffold detectors on planted RED inputs (primitive_d0_refusal_execution_note); subject universe derived across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1: measurement scaffold deleted, primitive_surface_census_derived absorbs interpreter roster. Open denominator counted by primitive_d0_open_denominator_receipt_holds and primitive_d0_derived_rows_missing_identity_count."
+data primitive_identity_join_witness_note: String = "D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors executing on census plus two scaffold detectors on planted RED inputs (primitive_d0_refusal_execution_note); subject universe derived across the surfaces enumerated by std.primitive_identity primitive_d0_open_denominator_receipt_note (the single authority for the count; this witness asserts it rather than restating it). D1: measurement scaffold deleted, primitive_surface_census_derived absorbs interpreter roster. Open denominator counted by primitive_d0_open_denominator_receipt_holds and primitive_d0_derived_rows_missing_identity_count."
 
 test fn w_open_denominator_counted_receipt() -> Bool {
   primitive_d0_open_denominator_receipt_holds()
