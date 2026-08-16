@@ -1237,3 +1237,38 @@ parameters, so a row claiming measurement was indistinguishable from one asserti
 Cutting at the root made the census cheap and the answer was that nearly nothing depended on it —
 crate layout, wet enrollment and crate partition each read a projection that was empty at every
 call. **Do not cite roster rows as evidence of anything in this document.**
+
+### 11.12 Root A characterized at site grain (asked by `smart-ram-730`, answered by measurement)
+
+The question was whether A is really a *bound* root given that its population is E0599, "no method
+found" — a different failure from E0277's unsatisfied bound. **It is a bound root; the two codes are
+one failure reported from two positions.**
+
+| slice | sites | reading |
+|---|---:|---|
+| E0599 `<method> exists for <generic type>, but its trait bounds were not satisfied` | 64 | bound failure, reported at a call site — receivers are `Outcome<T>`, `im::Vector<T>`, `AudienceSet<P>`, `CacheLookupResult<T>`, `Option<T>` |
+| E0277 `the trait bound `T: Clone` is not satisfied` | 48 | the same failure at a coercion site (`T` 25, `A` 6, `U` 5, `P` 4, …) |
+| E0599 `no method named `clone` found for type parameter `T`` | 21 | an *unbounded* `T` genuinely has no methods — still a bound failure |
+| E0599 `as_ref` exists for `&v2_std_nat::Nat`, bounds not satisfied | 9 | **not A** — concrete receiver, no type parameter for a bound to reach |
+| **A, after deduction** | **133** | one mechanism |
+
+Totals: **142 sites** under the classifier's rule, E0599 94 / E0277 48; **133** after moving the 9
+concrete-receiver rows to the `Nat` representation family. Summed over the seven modules the same
+rows are **722**, a **5.09× inflation** — well above the corpus-wide 2.75×, so A is *more*
+concentrated in the shared floor than the average root and per-module A counts overstate it worse
+than most. Concentration by generated file: `src/v2_std_algebra.rs` **69**, `v2_std_diagnostic.rs`
+18, `std_authorization_profile.rs` 9, `v2_lens_cost.rs` 9 (four sites land inside `im-15.1.0`'s own
+source).
+
+**Is A one root? Yes at this measurement** — unlike the July DIAGNOSTICS and WITNESS buckets, which
+this run found at 8 sites and 0. There is no second population hiding inside it.
+
+**A discriminator the owner can run, offered because my data cannot settle which trigger is at
+fault:** 64 of the 142 name a *generic type* as receiver rather than a bare parameter. That is
+exactly the container-field-on-a-generic-coproduct shape `trait_derive_emit`'s own note predicts
+earns a bound from neither trigger. If the published root-cause is right, those 64 are its
+signature; if a well-formedness fix leaves them standing, the root-cause is refuted by that alone.
+
+**Do not reconcile the July emitter-decision split (369/168/63, summing 600) against the 133.**
+That census counted diagnostics summed over modules; these are distinct sites. The two are
+different denominators, and 600 vs 722 is the comparison that would mean something.
