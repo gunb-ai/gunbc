@@ -300,19 +300,27 @@ is downstream of the checkpoint keying. The identity fix must not be sized as if
 
 ### 9.1 `Hash`: a declared RHS silently replaced
 
-Found by `smart-ibex-716`. `src/v2/std/node.dag` declares `type Hash = Fnv1a64Structural`. The
-emitted crate contains `pub type Hash = v1_rt::Hash;`, and `v1_rt.rs` has `pub type Hash = String`.
-One emitted signature carries both spellings of the same type:
+Found by `smart-ibex-716`. `src/v2/std/node.dag` declares `type Hash = Fnv1a64Structural`. Emitted
+at `v2_std_node.rs` from an `03_ingest` closure, tree `5e1a73fa33`, via
+`gunbc compile --target rust` → `cssl_assemble` → `cargo check`, one signature carries both
+spellings of the same type:
 
 ```rust
 pub fn bag_hash_digest(empty: Hash, xs: Rc<Vec<v1_rt::Hash>>) -> Hash
 ```
 
-It was raised as a possible *prelude* substitution — a collision with a seed runtime type that need
-not be in the compiled corpus, and therefore possibly out of reach of declaration-identity keying.
-**Traced, it is neither.** `dag/extdeps/languages/rust/types.dag` carries a checkpoint row
-`{ dag_name: "Hash", target_type: "v1_rt::Hash", … }`, and the alias-declaration arm of
-`05_emit_rust` is:
+(Route quoted deliberately: a signature with no route behind it is what this program keeps getting
+burned by.)
+
+**An objection was raised against this specimen and then withdrawn, and it is worth recording
+because it is the first thing a reviewer will ask.** The concern was that this is a *seed-prelude*
+substitution — a collision with a runtime type that need not be in the compiled corpus at all, and
+therefore out of reach of declaration-identity keying. Traced independently by `smart-ibex-716` and
+by me to the same place, it is neither. `dag/extdeps/languages/rust/types.dag` carries a checkpoint
+row `{ dag_name: "Hash", target_type: "v1_rt::Hash" }`, and the `is_type_alias_item` arm of
+`05_emit_rust` reaches `rust_scalar_checkpoint_render_base(dag_name: item_text)` — `item_text` being
+**the alias's own authored name** — whose `Present` arm emits the row's target and never renders the
+declared RHS:
 
 ```
 match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: …) {
@@ -321,37 +329,50 @@ match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: …) 
 }
 ```
 
-`item_text` is the alias's **own authored name**, and `rust_scalar_checkpoint_render_base` is
-`lookup_checkpoint` keyed on that bare string. So the RHS is discarded for exactly one reason: the
-alias's name matches a row in the realization table. Same seam as `Bool`, same key, same fix —
-keying the relation on resolved declaration identity makes the row name the kernel `Hash`
-declaration, so `v2.std.node.Hash` no longer matches and renders its real RHS.
+So the collision is with a **row in the realization table**, not with the prelude. The original
+phrasing named where the target type *lives* rather than what performed the substitution.
 
-The "not in the corpus" worry is answerable too: kernel declarations are not nameless. `00_core`
-`kernel_span` mints the file `<kernel:Hash>` and `hash_type` carries it as its `ident_span`; `04_env`
-`source_tree_of` already treats `<kernel:` as its own tree. The kernel side has a stable identity
-to key a row to.
+The "colliding declarant is not in the closure" objection is answered structurally: kernel
+declarations are not nameless. `00_core` `kernel_span` mints the file `<kernel:Hash>` and `hash_type`
+carries it as its `ident_span`; `04_env` `source_tree_of` already treats `<kernel:` as its own tree.
+The kernel side has a stable identity for a row to name without being in the closure.
 
-This is **stronger evidence than `Bool`**: `bool` is at least a plausible realization of a type
-spelled `Bool`, whereas here a declared algebraic RHS is replaced by `String` with nothing about
-the declaration inviting it.
+This is **stronger evidence than `Bool`**, and the reason is worth stating: `bool` is a plausible
+realization of a type spelled `Bool`, so a reader can read that row as a design choice. Nothing
+reads `type Hash = Fnv1a64Structural` becoming `String` as a choice.
 
 ### 9.2 The ceiling — stated as part of the claim, not left for a reviewer
 
-`smart-ibex-716` partitioned the whole corpus against this mechanism:
+`smart-ibex-716`'s corpus partition, at the figures current as of 2026-08-16:
 
 | | sites |
 |---|---:|
-| directly attributable to name-keying | 253 |
+| directly attributable to name-keying | **286** |
 | exposed-but-not-caused | 110 |
-| **not** attributable (shape, ownership, required traits) | ~1,500 |
+| **not** attributable (shape, ownership, required traits) | ~1,470 |
+| **corpus denominator** | **1,874** |
 
-**Name-keying is ~13.5% of the wall. It is not the wall.** Three independent structural
-confirmations (`Bool`, `Nat`/algebra carrier, `Hash`) do not change that denominator, and this
-receipt does not claim otherwise.
+**Name-keying is ~15.3% of the wall. It is not the wall.** Four independent structural
+confirmations (`Bool`, the `Nat`/algebra carrier, `Hash`, and the `Witness` rows below) do not
+change that denominator, and this receipt does not claim otherwise.
+
+**The basis, so the attribution is checkable rather than flattering** (`smart-ibex-716`'s own
+statement of its limits): seven entry modules — `05_emit`, `06_translate`, `04_infer`, `03_ingest`,
+`emit_host`, `01_tokenize`, `materialization_carriers` — not twenty; **one head, no before/after**;
+`unreachable_patterns` counted as errors because the crate denies them; and the denominator is
+distinct `(file, line, col, code, signature)` sites. The *sum* over those modules is 5,156, so
+comparing 1,874 against a summed figure compares two different denominators.
+
+**Why the figure rose from 253 to 286.** 33 of Root D's 116 sites — `missing generics for enum
+Witness` — come from this same table, which carries `{ dag_name: "Witness", target_type: "Witness" }`
+plus a second row spelled `"witness"`. **A row stating a bare target type is a row claiming arity
+zero for a generic declaration**, which `dag/std/types.dag` `container_type_arity` contradicts
+directly (`"Witness": 1`). The other 73 sites of Root D are *not* name-keyed — the emitted alias is
+already applied with its parameter list dropped at the declaration while use sites still supply an
+argument — and belong to `vivid-wren-870`.
 
 Two consequences I hold myself to. The 110 exposed-but-not-caused sites are **not** mine to annex:
 §6.3 measured them appearing when the mask came off, which makes them evidence of ordering defects
 underneath the carrier, not members of this population. And the corpus denominator is
 `smart-ibex-716`'s seven-module census, not my 74 — which came from `06_translate` because that is
-where I probed. The two numbers answer different questions and must not be averaged.
+where I probed. Both are site-grain, so they **compose; they do not average**.
