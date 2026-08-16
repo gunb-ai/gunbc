@@ -42219,8 +42219,22 @@ fn floor_resource_sample() -> String {
     // ev_high/ev_max are the reclaim and kill counters for THIS level. Nonzero ev_high is
     // throttling actually happening rather than inferred from a declared row; both zero beside
     // a death means the ceiling that killed it was somewhere else.
+    //
+    // READ THE LEAF, NOT THE ROOT. These three fields first shipped reading
+    // `/sys/fs/cgroup/{name}` directly, and on CI they printed `na` on every single beat for a
+    // four-hour run: the runner's leaf is
+    // `/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv2-03.service`,
+    // the root holds no `memory.current` this process may read, and the fallback fired every
+    // time. The entry snapshot walked the path correctly while the sampler that runs
+    // continuously did not — two readers at two different levels in one commit, and the wrong
+    // one was the only one that would still be emitting when a run was cancelled.
+    //
+    // It passed locally because this container's `/proc/self/cgroup` is `0::/`, so leaf and root
+    // are the same directory and the hardcoded path was accidentally correct. A degenerate
+    // topology validated an instrument that had no chance of working anywhere else, which is why
+    // the path is now taken from the same place `floor_cgroup_envelope` takes it.
     let cg = |name: &str, idx: usize| -> String {
-        std::fs::read_to_string(format!("/sys/fs/cgroup/{name}"))
+        std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir()))
             .ok()
             .and_then(|s| {
                 if idx == usize::MAX {
@@ -42239,6 +42253,34 @@ fn floor_resource_sample() -> String {
     format!(
         "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} ev_high={ev_high} ev_max={ev_max}"
     )
+}
+
+/// THIS PROCESS'S OWN CGROUP DIRECTORY — the single answer both readers use.
+///
+/// Resolved once from `/proc/self/cgroup` and cached, because the alternative is what shipped
+/// first: the entry snapshot walking the real path while the per-beat sampler read the root,
+/// disagreeing silently for a whole run. Two readers of one fact is the duplication the repo's
+/// own rules forbid, and here it cost every cgroup reading a four-hour CI run would have given.
+///
+/// Falls back to the cgroup root only when `/proc/self/cgroup` is unreadable — the same place a
+/// container whose leaf IS the root legitimately lands.
+fn floor_cgroup_dir() -> String {
+    static DIR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let rel = std::fs::read_to_string("/proc/self/cgroup")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|l| l.rsplit("::").next().map(|p| p.to_string()))
+            })
+            .unwrap_or_default();
+        let mut dir = std::path::PathBuf::from("/sys/fs/cgroup");
+        for seg in rel.trim_matches('/').split('/').filter(|s| !s.is_empty()) {
+            dir.push(seg);
+        }
+        dir.to_string_lossy().to_string()
+    })
+    .clone()
 }
 
 pub fn floor_seam(name: &str) {
@@ -42274,6 +42316,16 @@ fn spawn_floor_heartbeat() {
         .and_then(|v| v.parse::<u64>().ok())
         .map(|v| v.max(1))
         .unwrap_or(60);
+    // The full multi-level envelope is re-emitted periodically, not only at entry and exit,
+    // because a cancelled or killed run never reaches an exit line — which is exactly what
+    // happened to the first CI run carrying this instrument, leaving one entry snapshot taken
+    // when nothing had happened yet and no reading at all from during the stall. Every ten
+    // beats keeps it cheap while guaranteeing the last terminal read carries a recent one.
+    //
+    // The ancestor walk is the part worth repeating rather than only the leaf: on the runner
+    // the leaf recorded zero high events while its parent slices recorded 141M, so the level
+    // that is throttling is not the level that owns the limit, and only the walk shows it.
+    let mut beat: u64 = 0;
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
         let seam = FLOOR_SEAM
@@ -42286,6 +42338,10 @@ fn spawn_floor_heartbeat() {
             if seam.is_empty() { "<unset>" } else { &seam },
             floor_resource_sample()
         );
+        beat += 1;
+        if beat % 10 == 0 {
+            floor_cgroup_envelope(&format!("beat-{beat}"));
+        }
     });
 }
 
@@ -42318,14 +42374,11 @@ fn spawn_floor_heartbeat() {
 /// rather than defaulted, since a fabricated zero here would re-create the exact class of
 /// error the function exists to end.
 fn floor_cgroup_envelope(when: &str) {
-    let rel = std::fs::read_to_string("/proc/self/cgroup")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.rsplit("::").next().map(|p| p.to_string()))
-        })
-        .unwrap_or_else(|| "<unreadable>".to_string());
-    eprintln!("[floor-cgroup] when={when} path={rel}");
+    // One resolver for both readers — see `floor_cgroup_dir`. This function computing the path
+    // itself while the sampler computed a different one is the defect that made every per-beat
+    // cgroup field `na` for a four-hour run.
+    let leaf = floor_cgroup_dir();
+    eprintln!("[floor-cgroup] when={when} path={leaf}");
     let field = |dir: &str, name: &str| -> String {
         std::fs::read_to_string(format!("{dir}/{name}"))
             .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
@@ -42335,10 +42388,12 @@ fn floor_cgroup_envelope(when: &str) {
     // container this is often just the root, and that itself is the finding: if no ancestor is
     // visible from inside, the process cannot observe the limit that binds it and the ceiling
     // has to be read from the host side.
-    let mut dir = std::path::PathBuf::from("/sys/fs/cgroup");
-    for seg in rel.trim_matches('/').split('/').filter(|s| !s.is_empty()) {
-        dir.push(seg);
-    }
+    //
+    // The walk is not decoration. On the runner the leaf recorded ZERO high events while its
+    // parent slices recorded 141M against unlimited maxima, so the level doing the throttling
+    // and the level holding the limit are different levels, and reading only our own would have
+    // reported a process comfortably inside its envelope while it took 16M major faults.
+    let mut dir = std::path::PathBuf::from(&leaf);
     loop {
         let d = dir.to_string_lossy().to_string();
         if std::fs::metadata(format!("{d}/memory.current")).is_ok() {
