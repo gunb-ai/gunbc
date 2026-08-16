@@ -7,10 +7,10 @@ import gunbc.fleet_converge_plan {
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_converge_realize {
-  realize_spark_serving_install_effects_argv,
-  spark_serving_install_remote_argv_refused,
-  SparkServingInstallRemoteArgvPresent,
-  SparkServingInstallRemoteArgvRefused,
+  realize_spark_serving_install_effect_commands,
+  spark_serving_install_remote_commands_refused,
+  SparkServingInstallRemoteCommandsPresent,
+  SparkServingInstallRemoteCommandsRefused,
 }
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
@@ -20,10 +20,10 @@ import gunbc.typed_argv_exec {
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 
-data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv; actuation routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits an ORDERED SEQUENCE of portable remote argvs (never one fused argv); actuation runs them in order, halting at the first failure, and routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
 
 type SparkServingFrozenApplyResult =
-    SparkServingFrozenApplied { remote_argv: List<String>, effect_count: Int }
+    SparkServingFrozenApplied { remote_commands: List<List<String>>, effect_count: Int }
   | SparkServingFrozenApplyRefused { reason: String }
 
 type SparkServingFrozenRemoteExecResult =
@@ -40,29 +40,29 @@ fn spark_serving_apply_reads_frozen_typed_rows(
     }
   } else {
     let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
-    let argv_verdict = realize_spark_serving_install_effects_argv(
+    let commands_verdict = realize_spark_serving_install_effect_commands(
       effects: frozen_effects,
       executor_login: spark_serving_automation_principal_login(),
     )
-    if spark_serving_install_remote_argv_refused(v: argv_verdict) {
-      match argv_verdict {
-        SparkServingInstallRemoteArgvRefused { reason: why } =>
+    if spark_serving_install_remote_commands_refused(v: commands_verdict) {
+      match commands_verdict {
+        SparkServingInstallRemoteCommandsRefused { reason: why } =>
           SparkServingFrozenApplyRefused {
             reason: concat("spark_serving_converge_apply: ", why),
           }
-        SparkServingInstallRemoteArgvPresent { argv: _ } =>
+        SparkServingInstallRemoteCommandsPresent { commands: _ } =>
           SparkServingFrozenApplyRefused {
-            reason: "spark_serving_converge_apply: remote argv refused verdict disagreed with shape",
+            reason: "spark_serving_converge_apply: remote commands refused verdict disagreed with shape",
           }
       }
     } else {
-      match argv_verdict {
-        SparkServingInstallRemoteArgvPresent { argv: remote_argv } =>
+      match commands_verdict {
+        SparkServingInstallRemoteCommandsPresent { commands: remote_commands } =>
           SparkServingFrozenApplied {
-            remote_argv: remote_argv,
+            remote_commands: remote_commands,
             effect_count: length(frozen_effects),
           }
-        SparkServingInstallRemoteArgvRefused { reason: why } =>
+        SparkServingInstallRemoteCommandsRefused { reason: why } =>
           SparkServingFrozenApplyRefused { reason: why }
       }
     }
@@ -90,17 +90,80 @@ fn spark_serving_exec_frozen_typed_rows(
   ) {
     SparkServingFrozenApplyRefused { reason: why } =>
       SparkServingFrozenRemoteExecRefused { reason: why }
-    SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+    SparkServingFrozenApplied { remote_commands: commands, effect_count: n } =>
       if n == 0 {
         SparkServingFrozenRemoteExecApplied {
           exec_outcome: TypedArgvExecRefused {
             reason: "spark_serving_converge_apply: converged plan — zero frozen install effects, remote exec is noop",
           },
         }
+      } else if commands.length() == 0 {
+        SparkServingFrozenRemoteExecApplied {
+          exec_outcome: TypedArgvExecRefused {
+            reason: "spark_serving_converge_apply: frozen effects realized to zero commands — refusing rather than reporting a noop as applied",
+          },
+        }
       } else {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: run_typed_argv_transport(argv: argv, transport: transport),
+          exec_outcome: spark_serving_run_command_sequence(
+            commands: commands,
+            transport: transport,
+          ),
         }
       }
+  }
+}
+
+// ORDERED, HALT ON FIRST FAILURE. These effects are sequential — a unit file must exist before
+// the manager reloads, and the manager must have reloaded before the unit enables — so running
+// the tail after a failed head would actuate against a state the plan never described. The fold
+// therefore carries the first non-success outcome forward untouched and executes nothing after
+// it. Reporting only the last outcome would let a failed head green behind a successful tail.
+// The accumulator is a coproduct rather than a sentinel outcome, because "nothing has run yet"
+// and "something ran and refused" are different states and a reason string cannot be trusted to
+// distinguish them.
+type SparkServingSequenceAcc =
+    SparkServingSequenceNotStarted
+  | SparkServingSequenceOutcome { outcome: TypedArgvExecOutcome }
+
+fn spark_serving_sequence_step(
+  acc: SparkServingSequenceAcc,
+  argv: List<String>,
+  transport: HostEffectTransport,
+) -> SparkServingSequenceAcc {
+  match acc {
+    SparkServingSequenceNotStarted =>
+      SparkServingSequenceOutcome {
+        outcome: run_typed_argv_transport(argv: argv, transport: transport),
+      }
+    SparkServingSequenceOutcome { outcome: prior } =>
+      match prior {
+        TypedArgvExecRefused { reason: _ } => acc
+        TypedArgvExecConverged { result: r } =>
+          if r.success {
+            SparkServingSequenceOutcome {
+              outcome: run_typed_argv_transport(argv: argv, transport: transport),
+            }
+          } else {
+            acc
+          }
+      }
+  }
+}
+
+fn spark_serving_run_command_sequence(
+  commands: List<List<String>>,
+  transport: HostEffectTransport,
+) -> TypedArgvExecOutcome {
+  match fold(
+    commands,
+    init: SparkServingSequenceNotStarted,
+    f: fn(acc, argv) { spark_serving_sequence_step(acc: acc, argv: argv, transport: transport) },
+  ) {
+    SparkServingSequenceNotStarted =>
+      TypedArgvExecRefused {
+        reason: "spark_serving_converge_apply: empty command sequence executed nothing",
+      }
+    SparkServingSequenceOutcome { outcome: o } => o
   }
 }
