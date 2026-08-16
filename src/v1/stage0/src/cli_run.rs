@@ -15127,7 +15127,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     let t2a = std::time::Instant::now();
     let index = build_module_index(&dag_roots);
     eprintln!(
-        "floor: [T2a] module index {}ms ({} module(s))",
+        "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
         index.len()
     );
@@ -15180,7 +15180,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         }
     }
     eprintln!(
-        "floor: [T2b] declarer discovery {}ms ({} declarer(s))",
+        "[floor-phase] phase=declarer-discovery state=completed wall_ms={} declarers={}",
         t2b.elapsed().as_millis(),
         declarers.len()
     );
@@ -15190,13 +15190,13 @@ pub fn precompute_whole_tree_published_mock_keys(
     let t2c = std::time::Instant::now();
     let facts = build_module_graph_facts_live(&dag_roots);
     eprintln!(
-        "floor: [T2c] whole-tree module graph facts {}ms",
+        "[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms={}",
         t2c.elapsed().as_millis()
     );
     let t2d = std::time::Instant::now();
     let all_sources = resolve_transitively(declarers, &index, &facts)?;
     eprintln!(
-        "floor: [T2d] declarer closure {}ms ({} source(s))",
+        "[floor-phase] phase=declarer-closure state=completed wall_ms={} sources={}",
         t2d.elapsed().as_millis(),
         all_sources.len()
     );
@@ -15208,7 +15208,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     eprintln!(
-        "floor: [T2e] closure strict resolve {}ms ({} source(s))",
+        "[floor-phase] phase=closure-strict-resolve state=completed wall_ms={} sources={}",
         t2e.elapsed().as_millis(),
         source_count
     );
@@ -42245,7 +42245,7 @@ fn spawn_floor_heartbeat() {
             .map(|g| g.clone())
             .unwrap_or_else(|_| "<seam unreadable>".to_string());
         eprintln!(
-            "floor: [hb] {}s elapsed, in {} | {}",
+            "[floor-heartbeat] wall_s={} phase={} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
             floor_resource_sample()
@@ -42259,7 +42259,8 @@ pub fn run_required_floor(
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
     spawn_floor_heartbeat();
-    floor_seam("T1 strict preparation");
+    floor_seam("strict-preparation");
+    eprintln!("[floor-phase] phase=strict-preparation state=started");
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
@@ -42270,8 +42271,8 @@ pub fn run_required_floor(
         prepared.modules_resolved + prepared.modules_excluded
     );
     eprintln!(
-        "floor: strict preparation complete in {}ms ({} module(s) resolved, {} excluded, \
-         digest={})",
+        "[floor-phase] phase=strict-preparation state=completed wall_ms={} modules_resolved={} \
+         modules_excluded={} digest={}",
         prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
     );
 
@@ -42286,7 +42287,7 @@ pub fn run_required_floor(
     // report the second compile's phases and exclude index construction, declarer discovery,
     // closure selection and extraction — so quoting them as this helper's cost is a derived
     // number wearing a raw one's label. It read as ~73ms and was never measured.
-    floor_seam("T2 published-mock projection");
+    floor_seam("published-mock-projection");
     let published_started = std::time::Instant::now();
     let published = match precompute_whole_tree_published_mock_keys(source_roots) {
         Ok(keys) if keys.is_empty() => None,
@@ -42294,7 +42295,7 @@ pub fn run_required_floor(
         Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
     };
     eprintln!(
-        "floor: [T2] published-mock projection total {}ms ({} key(s))",
+        "[floor-phase] phase=published-mock-projection state=completed wall_ms={} keys={}",
         published_started.elapsed().as_millis(),
         published.as_ref().map(|k| k.len()).unwrap_or(0)
     );
@@ -42318,7 +42319,7 @@ pub fn run_required_floor(
     // the .dag manifest evaluation and admission decoding. Four superlinear shapes are known
     // to live in the manifest, which is a ranked hypothesis list and not an attribution: the
     // seams below are what turn the gap into one located term.
-    floor_seam("T3 site+binding projection");
+    floor_seam("site-binding-projection");
     let projection_started = std::time::Instant::now();
     let files = inventory_witness_files(&prepared);
     let bindings: Vec<v1_interpreter::Value> = prepared
@@ -42355,7 +42356,7 @@ pub fn run_required_floor(
         }
     }
     eprintln!(
-        "floor: [T3] witness-site and binding projection {}ms ({} site(s), {} binding(s), {} file(s))",
+        "[floor-phase] phase=site-binding-projection state=completed wall_ms={} sites={} bindings={} files={}",
         projection_started.elapsed().as_millis(),
         sites.len(),
         bindings.len(),
@@ -42382,7 +42383,7 @@ pub fn run_required_floor(
     );
     let empty_sites =
         v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
-    floor_seam("T4 .dag manifest evaluation");
+    floor_seam("manifest-evaluation");
     let manifest_eval_started = std::time::Instant::now();
     let admission = v1_interpreter::run_in_context_with_args(
         &hermetic,
@@ -42403,14 +42404,14 @@ pub fn run_required_floor(
     )
     .map_err(|e| format!("required_floor_attempt: {e}"))?;
     eprintln!(
-        "floor: [T4] .dag manifest evaluation {}ms",
+        "[floor-phase] phase=manifest-evaluation state=completed wall_ms={}",
         manifest_eval_started.elapsed().as_millis()
     );
-    floor_seam("T5 admission decode");
+    floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
     let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
-        "floor: [T5] admission decode {}ms ({} claim(s))",
+        "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),
         claims.len()
     );
@@ -42435,7 +42436,7 @@ pub fn run_required_floor(
     // about execution history instead of about the manifest, and the acceptance census asks for
     // distinct scopes constructed to EQUAL the manifest's distinct scope identities — which is
     // only checkable if the table is built before anything runs.
-    floor_seam("T6 claim scope projection");
+    floor_seam("claim-scope-projection");
     let scope_start = std::time::Instant::now();
     let mut scopes: std::collections::HashMap<String, PreparedClaimScope> =
         std::collections::HashMap::new();
@@ -42453,7 +42454,7 @@ pub fn run_required_floor(
         scope_start.elapsed().as_millis()
     );
 
-    floor_seam("T7 claim evaluation fold");
+    floor_seam("claim-evaluation-fold");
     let eval_started = std::time::Instant::now();
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -42555,7 +42556,7 @@ fn required_floor_claims_from_admission(
             Some(v1_interpreter::Value::List(items)) => items.len(),
             _ => 0,
         };
-        eprintln!("floor: [T5a] refusal render starting ({refusal_count} refusal(s))");
+        eprintln!("[floor-phase] phase=refusal-render state=started total={refusal_count}");
         // The SAME progress obligation as the decode loop, and it was missing here first. A
         // censored run keeps only what was already printed, so an arm with an entry marker and a
         // completion timer and nothing between teaches nothing when it is the arm that stalls --
@@ -42569,7 +42570,7 @@ fn required_floor_claims_from_admission(
                 .map(|(i, r)| {
                     if i % 16 == 0 {
                         eprintln!(
-                            "floor: [T5a-progress] rendered={i} total={} elapsed_ms={} | {}",
+                            "[floor-phase-progress] phase=refusal-render rendered={i} total={} wall_ms={} {}",
                             items.len(),
                             refusal_render_started.elapsed().as_millis(),
                             floor_resource_sample()
@@ -42582,7 +42583,7 @@ fn required_floor_claims_from_admission(
             _ => "<refusal list unreadable>".to_string(),
         };
         eprintln!(
-            "floor: [T5a] refusal render {}ms ({} refusal(s), {} rendered byte(s))",
+            "[floor-phase] phase=refusal-render state=completed wall_ms={} total={} rendered_bytes={}",
             refusal_render_started.elapsed().as_millis(),
             refusal_count,
             rendered.len()
@@ -42606,7 +42607,10 @@ fn required_floor_claims_from_admission(
     // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
     // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
     let decode_loop_started = std::time::Instant::now();
-    eprintln!("floor: [T5b] claim decode starting ({} row(s))", rows.len());
+    eprintln!(
+        "[floor-phase] phase=claim-decode state=started total={}",
+        rows.len()
+    );
     let mut out = Vec::with_capacity(rows.len());
     // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
     // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
@@ -42614,7 +42618,7 @@ fn required_floor_claims_from_admission(
     for (decoded, row) in rows.iter().enumerate() {
         if decoded % 256 == 0 {
             eprintln!(
-                "floor: [T5b-progress] decoded={decoded} total={} elapsed_ms={} | {}",
+                "[floor-phase-progress] phase=claim-decode decoded={decoded} total={} wall_ms={} {}",
                 rows.len(),
                 decode_loop_started.elapsed().as_millis(),
                 floor_resource_sample()
@@ -42677,7 +42681,7 @@ fn required_floor_claims_from_admission(
         });
     }
     eprintln!(
-        "floor: [T5b] claim decode {}ms ({} claim(s))",
+        "[floor-phase] phase=claim-decode state=completed wall_ms={} claims={}",
         decode_loop_started.elapsed().as_millis(),
         out.len()
     );
