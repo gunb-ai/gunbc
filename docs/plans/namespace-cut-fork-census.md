@@ -424,3 +424,34 @@ agree and the population is very likely empty — it is not *proven* empty.
 sufficient. Also name **what your consumers depend on**, which is a different question. This
 lane traverses "calls"; a drift gate depends on "bytes"; those two never intersect however
 carefully the search is widened.
+
+### Residue closed — against the consumer's declared population, not a heuristic
+
+The header-less case above is now closed properly. The drift receipt cannot check what it
+cannot list, so its subject population is enumerable: `committed_generated_artifacts()`
+filters the **declared** `generated_artifact_registry` (`dag/gunbc/generated_artifact.dag`),
+and `artifact_path` maps each variant to its committed path. That is a declared roster, not a
+computed one, so intersecting it is an identity join against the actual consumer.
+
+```
+declared generated artifacts (file-typed)   10
+  dag/gunbc/stage0_crate_layout_generated.dag        DESIGN.md
+  dag/gunbc/stage0_crate_partition_generated.dag     ROADMAP.md
+  dag/gunbc/stage0_emit_plan_generated.dag           .github/workflows/{ci,falsifier,fleet-converge}.yml
+  src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs
+  src/v1/stage0/src/v1_interpreter_dispatch_generated.rs
+
+intersection with the 632 edited files       0
+```
+
+Three of the ten are `.dag`, which is exactly the population a `.dag`-editing pass could have
+hit — so the check was not vacuous. **Both instruments agree**: those three carry
+generated-file headers, so the earlier heuristic would have caught them too. Agreement
+between an identity join and an independent heuristic is worth more than either alone, and
+it means the header test was sound here rather than merely lucky.
+
+One stated bound: `artifact_path` also yields two computed path *fragments* (`provisioning/`,
+`/user-data`) that are concatenated at use. They are excluded as non-file-typed; they are
+provisioning outputs, not `.dag`, so they cannot intersect a `.dag`-only edit set. And the
+roster was read **unfiltered** by `artifact_is_committed` — a superset of what the receipt
+actually checks — so the empty intersection holds *a fortiori*.
