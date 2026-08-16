@@ -20558,32 +20558,74 @@ pub fn direct_import_exporter_count_of(
     }
 }
 
+thread_local! {
+    pub static RX_SKIP_NOOP: bool = std::env::var("GUNBC_RX_NOOP_SKIP").map(|v| v == "1").unwrap_or(false);
+}
+
+pub static RXC_SCANNED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static RXC_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static RXC_ADMITTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn rewire_canonical_rewrites(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     exporter_counts: Rc<HashMap<String, i64>>,
     local_names: Rc<HashMap<String, bool>>,
     inherited_keys: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    rewire_canonical_rewrites_probe(
+        type_name_index,
+        exporter_counts,
+        local_names,
+        inherited_keys,
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    )
+}
+
+pub fn rewire_canonical_rewrites_probe(
+    type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
+    exporter_counts: Rc<HashMap<String, i64>>,
+    local_names: Rc<HashMap<String, bool>>,
+    inherited_keys: Rc<Vec<String>>,
+    existing: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     inherited_keys.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &type_name_index,
-            name.clone(),
-        ) {
-            None => acc.clone(),
-            Some(facts) => {
-                if ((v1_rt::map_contains_key(&local_names, name.clone())
-                    || (direct_import_exporter_count_of(exporter_counts.clone(), name.clone())
-                        > 1))
-                    || (facts.exporter_count.clone() > 1))
-                {
-                    acc.clone()
-                } else {
-                    match facts.canonical_binding.clone() {
-                        Some(canonical) => {
-                            v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+            RXC_SCANNED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            match v1_rt::map_get(&type_name_index, name.clone()) {
+                None => acc.clone(),
+                Some(facts) => {
+                    RXC_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if ((v1_rt::map_contains_key(&local_names, name.clone())
+                        || (direct_import_exporter_count_of(
+                            exporter_counts.clone(),
+                            name.clone(),
+                        ) > 1))
+                        || (facts.exporter_count.clone() > 1))
+                    {
+                        acc.clone()
+                    } else {
+                        RXC_ADMITTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        match facts.canonical_binding.clone() {
+                            Some(canonical) => {
+                                // PROBE: a reinsertion of the binding already installed is a no-op.
+                                // Arm selected by env so BOTH arms come from ONE binary.
+                                if RX_SKIP_NOOP.with(|f| *f)
+                                    && existing
+                                        .get(&name)
+                                        .map_or(false, |e| Rc::ptr_eq(e, &canonical))
+                                {
+                                    acc.clone()
+                                } else {
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        name.clone(),
+                                        canonical.clone(),
+                                    )
+                                }
+                            }
+                            None => acc.clone(),
                         }
-                        None => acc.clone(),
                     }
                 }
             }
@@ -20617,9 +20659,38 @@ pub fn rewire_type_env_import_str_binding_identity(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
+        let __t0 = std::time::Instant::now();
         let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());
+        eprintln!(
+            "[rx2] build_export_indexes ms={} modules={} by_name={}",
+            __t0.elapsed().as_millis(),
+            modules.len(),
+            export_indexes.by_name.len()
+        );
         let type_name_index = export_indexes.by_name.clone();
         let export_name_index = export_indexes.by_module.clone();
+        let mut __keys_total: u64 = 0;
+        let mut __keys_max: u64 = 0;
+        let mut __rewrites_total: u64 = 0;
+        let mut __anc_keys: u64 = 0;
+        let mut __str_keys: u64 = 0;
+        let mut __distinct_keys: u64 = 0;
+        let mut __str_changed: u64 = 0;
+        let mut __str_already: u64 = 0;
+        let mut __anc_changed: u64 = 0;
+        let mut __anc_already: u64 = 0;
+        let mut __anc_new: u64 = 0;
+        let mut __modules_changed: u64 = 0;
+        let mut __name_hist: std::collections::BTreeMap<String, u64> =
+            std::collections::BTreeMap::new();
+        let mut __anc_alloc_only: u64 = 0;
+        let mut __anc_diff_resolved: u64 = 0;
+        let mut __anc_diff_name: u64 = 0;
+        let mut __anc_samples: u64 = 0;
+        let mut __ms_names: u128 = 0;
+        let mut __ms_rewrites: u128 = 0;
+        let mut __ms_merge: u128 = 0;
+        let __t1 = std::time::Instant::now();
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -20631,6 +20702,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         Some(names) => names.clone(),
                         None => module_exported_type_names(m.clone()),
                     };
+                    let __ta = std::time::Instant::now();
                     let import_export_names = direct_import_export_name_sets(
                         m.clone(),
                         export_name_index.clone(),
@@ -20638,18 +20710,58 @@ pub fn rewire_type_env_import_str_binding_identity(
                     );
                     let exporter_counts =
                         direct_import_exporter_counts(import_export_names.clone());
+                    __ms_names += __ta.elapsed().as_micros();
                     let ancestry_keys = Rc::new(v1_rt::map_keys(
                         &m.type_env.clone().ancestry_str_bindings.clone(),
                     ));
                     let str_keys =
                         Rc::new(v1_rt::map_keys(&m.type_env.clone().str_bindings.clone()));
                     let inherited_keys = v1_rt::concat(ancestry_keys.clone(), str_keys.clone());
-                    let rewrites = rewire_canonical_rewrites(
+                    __keys_total += inherited_keys.len() as u64;
+                    __anc_keys += ancestry_keys.len() as u64;
+                    __str_keys += str_keys.len() as u64;
+                    {
+                        let set: std::collections::HashSet<&String> = inherited_keys.iter().collect();
+                        __distinct_keys += set.len() as u64;
+                    }
+                    if (inherited_keys.len() as u64) > __keys_max { __keys_max = inherited_keys.len() as u64; }
+                    let __tb = std::time::Instant::now();
+                    let rewrites = rewire_canonical_rewrites_probe(
                         type_name_index.clone(),
                         exporter_counts.clone(),
                         local_names.clone(),
                         inherited_keys.clone(),
+                        m.type_env.ancestry_str_bindings.clone(),
                     );
+                    __ms_rewrites += __tb.elapsed().as_micros();
+                    __rewrites_total += rewrites.len() as u64;
+                    {
+                        let mut changed_here = 0u64;
+                        for (nm, canon) in rewrites.iter() {
+                            match m.type_env.str_bindings.get(nm) {
+                                Some(existing) => { if Rc::ptr_eq(existing, canon) { __str_already += 1; } else { __str_changed += 1; changed_here += 1; } }
+                                None => {}
+                            }
+                            match m.type_env.ancestry_str_bindings.get(nm) {
+                                Some(existing) => { if Rc::ptr_eq(existing, canon) { __anc_already += 1; } else {
+                                    __anc_changed += 1; changed_here += 1;
+                                    // ORIGIN CENSUS: is the difference SEMANTIC or merely a distinct allocation?
+                                    let same_name = existing.name == canon.name;
+                                    let same_resolved = Rc::ptr_eq(&existing.resolved, &canon.resolved);
+                                    if same_name && same_resolved { __anc_alloc_only += 1; }
+                                    else if same_name { __anc_diff_resolved += 1; } else { __anc_diff_name += 1; }
+                                    *__name_hist.entry(nm.clone()).or_insert(0u64) += 1;
+                                    if __anc_samples < 0 {
+                                        __anc_samples += 1;
+                                        eprintln!("[rx7] sample module={} name={} canon_name={} same_resolved={}",
+                                            authored_name_at(source_indices.clone(), m.module.clone()), nm, canon.name, same_resolved);
+                                    }
+                                } }
+                                None => { __anc_new += 1; changed_here += 1; }
+                            }
+                        }
+                        if changed_here > 0 { __modules_changed += 1; }
+                    }
                     let rewired = Rc::new(StrBindingsRewireAccum {
                         str_bindings: v1_rt::rc_map_merge(
                             m.type_env.clone().str_bindings.clone(),
@@ -20687,6 +20799,27 @@ pub fn rewire_type_env_import_str_binding_identity(
                         occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
+            }
+            eprintln!("[rx2] module_loop ms={} keys_total={} keys_max={} keys_mean={} names_ms={} rewrites_ms={} merge_ms={} rewrites_total={}",
+                __t1.elapsed().as_millis(), __keys_total, __keys_max,
+                __keys_total / (modules.len().max(1) as u64),
+                __ms_names / 1000, __ms_rewrites / 1000, __ms_merge / 1000, __rewrites_total);
+            eprintln!("[rx4] funnel scanned={} distinct={} anc_keys={} str_keys={} idx_hits={} admitted={} rewrite_names={} str_changed={} str_already={} anc_changed={} anc_already={} anc_new={} modules_changed={}/{}",
+                RXC_SCANNED.load(std::sync::atomic::Ordering::Relaxed),
+                __distinct_keys, __anc_keys, __str_keys,
+                RXC_HITS.load(std::sync::atomic::Ordering::Relaxed),
+                RXC_ADMITTED.load(std::sync::atomic::Ordering::Relaxed),
+                __rewrites_total, __str_changed, __str_already,
+                __anc_changed, __anc_already, __anc_new, __modules_changed, modules.len());
+            eprintln!(
+                "[rx7] origin alloc_only={} diff_resolved={} diff_name={} distinct_names={}",
+                __anc_alloc_only,
+                __anc_diff_resolved,
+                __anc_diff_name,
+                __name_hist.len()
+            );
+            for (n, c) in __name_hist.iter() {
+                eprintln!("[rx9] name {} {}", n, c);
             }
             __result
         })
@@ -21082,19 +21215,44 @@ pub fn reconcile_with_census_extra(
     census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck_with_census_extra(
-            graph.clone(),
-            source_indices.clone(),
-            intern_table.clone(),
-            census_fill_modules.clone(),
-            census_si.clone(),
+        macro_rules! rx {
+            ($n:expr, $e:expr) => {{
+                let t = std::time::Instant::now();
+                let v = $e;
+                eprintln!("[rx] {} ms={}", $n, t.elapsed().as_millis());
+                v
+            }};
+        }
+        let typed = rx!(
+            "typecheck",
+            typecheck_with_census_extra(
+                graph.clone(),
+                source_indices.clone(),
+                intern_table.clone(),
+                census_fill_modules.clone(),
+                census_si.clone(),
+            )
         );
-        let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
-        let modules =
-            rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
-        let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-        let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
-        let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
+        let modules = rx!(
+            "rewire_type_env_parent",
+            rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone())
+        );
+        let modules = rx!(
+            "rewire_import_str",
+            rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone())
+        );
+        let modules = rx!(
+            "rewire_func_env_parent",
+            rewire_func_env_parent_links(modules.clone(), source_indices.clone())
+        );
+        let has_v1_seed = rx!(
+            "has_v1_seed",
+            corpus_has_v1_seed_source_indices(modules.clone())
+        );
+        let emit_info = rx!(
+            "build_emit_graph_info",
+            build_emit_graph_info(modules.clone(), has_v1_seed.clone())
+        );
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

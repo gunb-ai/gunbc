@@ -2768,7 +2768,10 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
+                let __tg = std::time::Instant::now();
                 let fill = parse_census_fill_sources(options.census_only_sources.clone());
+                eprintln!("[rx3] parse_census_fill ms={}", __tg.elapsed().as_millis());
+                let __tg2 = std::time::Instant::now();
                 let census_si = fill.newline_indices.clone().iter().cloned().fold(
                     source_indices.clone(),
                     |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
@@ -2781,6 +2784,10 @@ pub fn compile_to_resolved_with_options(
                     frontend.intern_table.clone(),
                     fill.modules.clone(),
                     census_si.clone(),
+                );
+                eprintln!(
+                    "[rx3] census_si_plus_reconcile ms={}",
+                    __tg2.elapsed().as_millis()
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
