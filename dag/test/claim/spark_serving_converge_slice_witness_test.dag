@@ -40,7 +40,7 @@ import gunbc.spark_serving_converge_apply {
 import gunbc.spark_serving_converge_realize {
   spark_serving_enable_linger_remote_argv,
   spark_serving_enable_linger_argv_matches_expected,
-  realize_spark_serving_install_effects_argv,
+  realize_spark_serving_install_effect_commands,
   spark_serving_reload_user_manager_remote_argv,
   spark_serving_enable_user_unit_remote_argv,
   SparkServingInstallRemoteCommandsPresent,
@@ -81,14 +81,14 @@ test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
   }
 }
 
-// THE FUSION CONTROL. Before the command-sequence repair, realize_spark_serving_install_effects_argv
+// THE FUSION CONTROL. Before the command-sequence repair, realize_spark_serving_install_effect_commands
 // appended argv WORDS across effects, so two effects produced ONE argv with the second command's
 // words as trailing operands of the first. Nothing refused it, because every word is individually
 // portable. Two of the same effect is the smallest input that exhibits it with the single arm that
 // exists today: it must yield TWO commands of five words each, never one command of ten. If this
 // ever reads one command, the words have fused again.
 test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool {
-  match realize_spark_serving_install_effects_argv(
+  match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
@@ -101,7 +101,7 @@ test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool
 }
 
 test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
-  match realize_spark_serving_install_effects_argv(
+  match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
@@ -113,7 +113,7 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
 }
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
-  match realize_spark_serving_install_effects_argv(
+  match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount, PullModelArtifact],
     executor_login: spark_serving_automation_principal_login(),
   ) {
@@ -393,7 +393,7 @@ test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
 // manager that had not re-read the unit file. This is the first witness with two DIFFERENT
 // realized effects, so it is the first that can observe order at all.
 test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
-  match realize_spark_serving_install_effects_argv(
+  match realize_spark_serving_install_effect_commands(
     effects: [ReloadUserManager, EnableUserUnit],
     executor_login: spark_serving_automation_principal_login(),
   ) {
