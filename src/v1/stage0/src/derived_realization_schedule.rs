@@ -18,10 +18,6 @@ fn render_schedule_info_line(text: &str, emoji: bool) -> String {
     format!("{glyph} {text}")
 }
 
-fn render_schedule_done_line(text: &str, emoji: bool) -> String {
-    render_schedule_info_line(text, emoji)
-}
-
 /// The modeled packing verdict projected to a fixed worker count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedScheduleWidth {
@@ -238,7 +234,7 @@ impl RealizationConcurrency {
         let _ = REALIZATION_SCHEDULE_CENSUS_MARKER;
         let admissions = *self.admissions.lock().unwrap();
         let max_active = *self.max_active.lock().unwrap();
-        render_schedule_done_line(
+        render_schedule_info_line(
             &format!(
                 "realization schedule receipt — budget={} source={} scheduled_width={} \
                  verdict={} max_derived_bound={} admissions={} max_active={}",
