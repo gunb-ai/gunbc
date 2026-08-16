@@ -97,7 +97,40 @@ The tests that fail today with `unresolved type 'Nat'`, `'FilePath'`,
 `materialization_provider_resolved_graph_consumer_test` cases, and
 `namespace_only_refuses_fn_parent_homonym_at_call_site`.
 
-None of them tests import semantics. They fail because closure assembly is
-currently import-driven, so their dependencies never load. They are the
-evidence that the closure rebuild worked, and deleting them would remove the
-only executing check on the lane's keystone.
+None of them tests import semantics. They are the evidence that the closure
+rebuild worked, and deleting them would remove the only executing check on the
+lane's keystone.
+
+**Why they failed, corrected 2026-08-16.** The sentence above previously read
+"they fail because closure assembly is currently import-driven, so their
+dependencies never load." That diagnosis was superseded by its own lane:
+`resolve_imports_transitively_with_source_roots` now delegates to
+`closure_for_entry`, which is reference-driven. The real cause was found by
+diffing the failing files against main rather than by reasoning further about
+the resolver, and it was two things:
+
+1. This cut's corpus pass had stripped `import` lines out of `.dag` fixtures
+   that live inside **Rust string literals** and under `dag/test/fixture/`,
+   without qualifying what those imports had bound. The string-literal oracle
+   did not catch it because the oracle's subject is `.dag` FILES and those
+   fixtures are `.dag` CONTENT in a `.rs` file — outside its denominator by
+   construction.
+
+2. `closure_inner` looked every referenced name up in an index keyed on
+   **simple** declaration names, so a qualified reference
+   (`std.algebra.FieldOfFractions`) never matched and the miss arm was a bare
+   `continue` — the dependency was silently dropped and the closure came back
+   short. Since qualification is what this cut substitutes for `import`, the
+   closure builder had no way to follow the edge the cut creates.
+
+The failure shape is worth keeping: bare cross-file names match EVERY declaring
+module (the index deliberately refuses to pick a winner), which in a densely
+interconnected corpus multiplies closure width — the runtime cost and the crash
+are that width, not stack tuning.
+
+**Next-rung trigger for the `continue`.** It is repaired for qualified names and
+still silent for genuinely unknown ones, so the class sits at *mitigatable*. It
+should become a refusal — but not before the tree's remaining unresolved
+population reaches zero, because converting it earlier would require a
+suppression list, and a suppression list at a refusal arm is the escape hatch
+§5 forbids.
