@@ -1603,3 +1603,31 @@ Stated as a bound on the work rather than a plan: **the two-record split is mech
 gate is not, and landing the split without the gate would trade 34 refusals for an unmeasured
 population of over-bounded functions and their callers.** That trade has not been priced and
 should not be made by default.
+
+### 11.16 The over-bounding exposure is ~1 fn, so the usage gate is a refinement, not a prerequisite
+
+`smart-ram-730` held the two-record split behind an objection: bounding `T` in a fn that *names*
+`Outcome<T>` without ever cloning it fabricates a requirement. The objection is sound in principle;
+the question it turns on — how many such fns exist — is measurable. Measured, on the emitted
+`03_ingest` closure (177 files), over the generic coproduct carriers named in 11.15 plus their
+siblings (`Outcome`, `CacheProbe`, `ShowEffectiveRead`, `Grounding`, `AudienceSet`,
+`CacheLookupResult`, `Reconciliation`):
+
+```
+32  generic fns naming one of those carriers in a signature
+21    carrier in PARAMETER position
+21      ...and the body clones that parameter        <- 21 of 21
+ 0      ...and does not
+ 1  fns whose body contains no `.clone()` at all (carrier in return position only)
+```
+
+**No fn in this closure would be spuriously bounded on a parameter it never clones.** The single
+no-clone fn has the carrier in return position only, so at most one site is exposed. The usage gate
+is therefore a later refinement, not a prerequisite for the split.
+
+*Method and its limits, so the number is not read as stronger than it is:* signatures are recovered
+by joining continuation lines (180 of 197 generic fn signatures match single-line; the join covers
+the rest), and "clones it" is `<param>.clone()` textually. That proxy is exact for the obligation in
+question — a derive-generated `Clone` for `C<T>` is `impl<T: Clone> Clone for C<T>`, so cloning the
+carrier *is* what requires `T: Clone`. One closure, not eleven: a carrier named only in a module
+outside `03_ingest`'s closure is not counted, and the check is cheap to repeat elsewhere.
