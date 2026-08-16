@@ -59,6 +59,16 @@ fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
   ScopedKey { scope: scope_of(subject), key: key_of(subject) }
 }
 
+fn key_relation_scoped_key_eq<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
+  a: ScopedKey<Relation, Scope, Key>,
+  b: ScopedKey<Relation, Scope, Key>,
+) -> Bool {
+  let scope_eq = relation.scope_eq
+  let key_eq = relation.key_eq
+  scope_eq(a.scope, b.scope) && key_eq(a.key, b.key)
+}
+
 fn key_relation_global<Relation, Subject, Key>(
   key_of: fn(Subject) -> Key,
   key_eq: fn(Key, Key) -> Bool,
