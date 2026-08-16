@@ -1,0 +1,25 @@
+module gunbc.stage0_emit_plan_generated
+
+import std.types { List, String }
+
+data stage0_emit_plan_generated_note: String = "Generated projection — do not hand-edit. Authority: gunbc.stage0_emit_plan over parse-derived regen source identities. DECLARED SCAFFOLD supply; dissolve-on: generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, then the host supply deletes. Regen via dag/tools/generated_artifact_gate.dag main_wet."
+
+data generated_stage0_files: List<String> = [
+  "compiler_tests.rs",
+  "lib.rs",
+  "v1_rt.rs",
+  "v1_test_non_ascii_perf_fixture.rs",
+  "wt_a.rs",
+  "wt_b.rs",
+  "wt_common.rs"
+]
+
+data generated_stage0_paths: List<String> = [
+  "src/v1/stage0/src/compiler_tests.rs",
+  "src/v1/stage0/src/lib.rs",
+  "src/v1/stage0/src/v1_rt.rs",
+  "src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs",
+  "src/v1/stage0/src/wt_a.rs",
+  "src/v1/stage0/src/wt_b.rs",
+  "src/v1/stage0/src/wt_common.rs"
+]

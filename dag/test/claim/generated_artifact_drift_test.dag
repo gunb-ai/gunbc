@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -166,6 +166,7 @@ test fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: ".githooks/pre-commit")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_layout_generated.dag")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_partition_generated.dag")
+    && !path_is_ignored(path: "dag/gunbc/stage0_emit_plan_generated.dag")
     && !path_is_ignored(path: "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
     && !path_is_ignored(path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
@@ -184,7 +185,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (15 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: FleetConvergeYamlArtifact)
@@ -199,6 +200,7 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: Stage0CrateLayoutGeneratedDagArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedRsArtifact)
     && registry_contains(a: Stage0CratePartitionGeneratedDagArtifact)
+    && registry_contains(a: Stage0EmitPlanGeneratedDagArtifact)
     && registry_contains(a: V1InterpreterDispatchGeneratedRsArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
@@ -217,6 +219,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedRsArtifact)
     && artifact_is_committed(a: Stage0CratePartitionGeneratedDagArtifact)
+    && artifact_is_committed(a: Stage0EmitPlanGeneratedDagArtifact)
     && artifact_is_committed(a: V1InterpreterDispatchGeneratedRsArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
@@ -250,6 +253,7 @@ test fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: Stage0CrateLayoutGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CrateLayoutGeneratedRsArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CratePartitionGeneratedDagArtifact, expected: GitProtocol)
+    && consumer_is(a: Stage0EmitPlanGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: V1InterpreterDispatchGeneratedRsArtifact, expected: GitProtocol)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
@@ -586,7 +590,7 @@ test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
 
 }
 
-data witness_extra_validation_wired_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): artifact_extra_valid takes the already-computed generation outcome rather than generating internally, and this witness proves it is WIRED, not that generation itself works (generation is proven elsewhere, by the observer and the gate) — so it hands each arm a SYNTHETIC ArtifactGenerated { content: \"x\" }, never a real artifact_generate(a:) call; no generation happens in this witness at all. Only ONE arm (V1InterpreterDispatchGeneratedRsArtifact) still reads the generated parameter — the others ignore it and return true or delegate to ci_yml_parses. The positive alone cannot tell an arm that reads the parameter from one that discards it and returns true unconditionally, so witness_extra_validation_wired_refuses_on_generation_refusal is the discriminating RED: it hands that arm an ArtifactGenerationRefused and asserts false — a result only reachable if the arm genuinely matches on the value threaded through it. That RED cannot pass under a bare arrow-true stub."
+data witness_extra_validation_wired_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): artifact_extra_valid takes the already-computed generation outcome rather than generating internally, and this witness proves it is WIRED, not that generation itself works (generation is proven elsewhere, by the observer and the gate) — so it hands each arm a SYNTHETIC ArtifactGenerated { content: \"x\" }, never a real artifact_generate(a:) call; no generation happens in this witness at all. Only two of the twelve arms (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) read the generated parameter — the other ten ignore it and return true or delegate to ci_yml_parses. The positive alone cannot tell an arm that reads the parameter from one that discards it and returns true unconditionally, so witness_extra_validation_wired_refuses_on_generation_refusal is the discriminating RED: it hands those same two arms an ArtifactGenerationRefused and asserts false — a result only reachable if the arm genuinely matches on the value threaded through it. That RED cannot pass under a bare arrow-true stub."
 
 test fn witness_extra_validation_wired() -> Bool {
   artifact_extra_valid(a: GitignoreArtifact, generated: ArtifactGenerated { content: "x" })
@@ -597,9 +601,11 @@ test fn witness_extra_validation_wired() -> Bool {
     && artifact_extra_valid(a: FalsifierYamlArtifact, generated: ArtifactGenerated { content: "x" })
     && artifact_extra_valid(a: Stage0CrateLayoutGeneratedDagArtifact, generated: ArtifactGenerated { content: "x" })
     && artifact_extra_valid(a: Stage0CrateLayoutGeneratedRsArtifact, generated: ArtifactGenerated { content: "x" })
+    && artifact_extra_valid(a: Stage0EmitPlanGeneratedDagArtifact, generated: ArtifactGenerated { content: "x" })
     && artifact_extra_valid(a: V1InterpreterDispatchGeneratedRsArtifact, generated: ArtifactGenerated { content: "x" })
 }
 
 test fn witness_extra_validation_wired_refuses_on_generation_refusal() -> Bool {
-  !artifact_extra_valid(a: V1InterpreterDispatchGeneratedRsArtifact, generated: ArtifactGenerationRefused { reason: "x" })
+  !artifact_extra_valid(a: Stage0EmitPlanGeneratedDagArtifact, generated: ArtifactGenerationRefused { reason: "x" })
+    && !artifact_extra_valid(a: V1InterpreterDispatchGeneratedRsArtifact, generated: ArtifactGenerationRefused { reason: "x" })
 }
