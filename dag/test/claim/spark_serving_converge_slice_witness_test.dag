@@ -60,7 +60,7 @@ test fn linger_slice_plans_member_changed_when_linger_disabled() -> Bool {
     linger_enabled: false,
   )
   any(plan.actions, a => match a {
-    MemberChanged { from: _, to: _ } => true
+    MemberChanged { at: _, from: _, to: _ } => true
     _ => false
   })
 }

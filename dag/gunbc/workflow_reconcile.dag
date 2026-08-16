@@ -264,8 +264,12 @@ fn workflow_fact_member_ownership(
   workflow_fact_ownership(fact: member.fact)
 }
 
+fn workflow_fact_member_key(member: WorkflowFactMember) -> String {
+  member.fact.key
+}
+
 data workflow_fact_member_resource: KeyedResourceRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, GlobalKeyScope, String, WorkflowFactMember> = key_resource_relation_global(
-  key_of: fn(member) { member.fact.key },
+  key_of: workflow_fact_member_key,
   key_eq: workflow_fact_key_equal,
   state_of: membership_subject_self_state_of,
   state_eq: workflow_fact_member_value_equal,
