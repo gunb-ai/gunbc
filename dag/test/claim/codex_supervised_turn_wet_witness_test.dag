@@ -55,8 +55,8 @@ import gunbc.codex_supervised_turn {
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
   prepare_codex_supervised_turn_binding,
-  run_codex_supervised_turn,
 }
+import gunbc.codex_supervised_turn_run { run_codex_supervised_turn }
 import gunbc.provider_turn_adjudication { press_display_finished }
 import extdeps.shell
 

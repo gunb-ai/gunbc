@@ -2,8 +2,6 @@ module gunbc.codex_supervised_turn
 
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.algebra { trim }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.temporal_effect {
   HeldLease,
@@ -28,7 +26,6 @@ import gunbc.provider_turn_adjudication {
 import gunbc.codex_app_server_press {
   CodexAccountStandingReceipt,
   AmbientCodexCredentialContext,
-  split_gunbc_stdio_capture,
   ProviderProcessReceipt,
   ProviderProcessObservationFailed,
   parse_account_trip_session,
@@ -41,31 +38,17 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
 }
 import extdeps.filesystem.filesystem_io
-import gunbc.provider_interface_binding {
-  project_codex_app_server_stdio_binding,
-  ProviderInterfaceResolved,
-  RequiredProviderInterfaceUnavailable,
-}
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
 }
 import gunbc.provider_standing { ProviderStandingBundle }
-import gunbc.package_delivery { CodexRuntimeBundle }
 import gunbc.provider_wire_evidence {
   ProviderWireEvidenceReceipt,
   ProviderWireCaptureOk,
   ProviderWireCaptureRefused,
   retain_provider_wire_capture,
 }
-import gunbc.retained_shell_script { retained_transport }
-import extdeps.shell
-import extdeps.shell.exec
 import extdeps.llm.codex_app_server {
-  codex_app_server_initialize_request_line,
-  codex_app_server_initialized_notification_line,
-  codex_app_server_account_read_request_line,
-  codex_app_server_rate_limits_read_request_line,
-  codex_app_server_thread_start_request_line,
   codex_supervised_thread_start_id,
   codex_supervised_turn_start_wire_id,
   codex_thread_start_result_thread_key,
@@ -93,7 +76,7 @@ import extdeps.languages.json.parse {
 
 data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
 
-data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session; turn/start is emitted only after thread/start returns a threadId (fifo coprocess script). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
+data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
 
 data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
@@ -103,20 +86,9 @@ data codex_supervised_client_command_id_file_name: String = "/codex_supervised_c
 
 data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
 
+data codex_supervised_operator_verdict_note: String = "OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold. codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until session driver lands."
+
 data codex_supervised_thread_id_slot: NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as NonEmptyStr
-
-data codex_supervised_thread_id_sed_substitution_note: String = "INTERIM ASSUMPTION (not a provider guarantee). turn/start line assembly substitutes the runtime thread.id into a serialize_json-built template via in-shell sed s///. That is safe only when thread.id contains no sed delimiter characters (/ newline &). extdeps.llm.codex_app_server does not yet bind thread/start result.thread.id to a cited charset or Uuid type — only JsonString at decode. Hermetic fixtures use hyphenated alphanumeric ids (thread-uuid-1, t1); no live wire census pins the charset. If the provider emits / or other sed-significant bytes, turn/start JSON may corrupt without typed refusal — same class as the user_input escaping bug fixed on 5be306112d. Typed host_effect_apply transport (codex_supervised_turn_script_dissolve_note) removes sed substitution entirely."
-
-data codex_supervised_turn_script_dissolve_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.codex_supervised_turn",
-  decl_name: "codex_supervised_turn_script_dissolve_note",
-  field: WholeDeclaration,
-}
-
-data codex_supervised_turn_script_dissolve_note: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: codex_supervised_turn_script — concat-built bash fifo coprocess (setsid, held-open stdin, poll loop, in-shell thread-id slot substitution) for runtime-present bundled native app-server. DISSOLVES WHEN supervised Codex session realizes as typed host_effect_apply ops or grammar-emitted bash without hand-built JSON/sed (docs/plans/shell-intent-emit-realization-design.md Phase 2; operator ruling #8166 wet receipt gate).")
-
-data codex_supervised_turn_script_scaffold_note: String = "DECLARED SCAFFOLD (review 52586/52587, DESIGN §shell→intent). Runtime-present supervised app-server turn still routes through retained_transport + shell.Exec.Run because no typed app-server stdin session transport exists yet. turn/start wire bytes come from extdeps.llm.codex_app_server codex_app_server_turn_start_request_line (serialize_json); in-shell thread-id extraction and slot substitution are interim until Phase 2 host_effect_apply lands. Stay draft per codex_supervised_lease_selection_receipt_note until bounded wet CodexRunnerTurnTerminalReceipt."
-
 type CodexThreadActivity
   = CodexThreadAbsent
   | CodexThreadIdle
@@ -371,28 +343,6 @@ fn provider_standing_bundle_from_codex_supervised_binding(
   }
 }
 
-fn bash_single_quote_escape(s: String) -> String {
-  replace(s: s, old: "'", new: "'\\''")
-}
-
-fn codex_supervised_turn_codex_home(
-  credential: AmbientCodexCredentialContext,
-  standing_receipt: CodexAccountStandingReceipt?,
-) -> FilePath {
-  match standing_receipt {
-    Present { value: receipt } => receipt.subject.credential.codex_home
-    Absent => credential.codex_home
-  }
-}
-
-fn codex_supervised_turn_user_input(turn: WorkerTurn) -> String {
-  if turn.consumed_feedback == "" {
-    "continue" as String
-  } else {
-    turn.consumed_feedback
-  }
-}
-
 fn codex_supervised_turn_start_line_template(user_input: String) -> String {
   codex_app_server_turn_start_request_line(
     thread_id: codex_supervised_thread_id_slot,
@@ -418,139 +368,6 @@ fn supervised_thread_id_from_line(line: String) -> NonEmptyStr? {
         }
     }
   }
-}
-
-fn codex_supervised_turn_script(
-  executable: FilePath,
-  codex_home: FilePath,
-  cwd: FilePath,
-  user_input: String,
-  client_command_id: NonEmptyStr,
-  evidence_root: FilePath,
-) -> String {
-  let escaped_cmd_id = bash_single_quote_escape(s: client_command_id as String)
-  let cmd_id_path = bash_single_quote_escape(
-    s: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
-  )
-  let turn_line_template = bash_single_quote_escape(
-    s: codex_supervised_turn_start_line_template(user_input: user_input),
-  )
-  let thread_id_slot = bash_single_quote_escape(
-    s: codex_supervised_thread_id_slot as String,
-  )
-  concat(
-    "export CODEX_HOME='",
-    concat(
-      codex_home as String,
-      concat(
-        "'; FIFO=$(mktemp -u); OUT=$(mktemp); ERR=$(mktemp); mkfifo \"$FIFO\"; ",
-        concat(
-          "setsid '",
-          concat(
-            executable as String,
-            concat(
-              "' app-server --stdio <\"$FIFO\" >\"$OUT\" 2>\"$ERR\" & APID=$!; exec 3>\"$FIFO\"; ",
-              concat(
-                "printf '%s\\n' '",
-                concat(
-                  codex_app_server_initialize_request_line() as String,
-                  concat(
-                    "' >&3; printf '%s\\n' '",
-                    concat(
-                      codex_app_server_initialized_notification_line() as String,
-                      concat(
-                        "' >&3; printf '%s\\n' '",
-                        concat(
-                          codex_app_server_account_read_request_line() as String,
-                          concat(
-                            "' >&3; printf '%s\\n' '",
-                            concat(
-                              codex_app_server_rate_limits_read_request_line() as String,
-                              concat(
-                                "' >&3; printf '%s\\n' '",
-                                concat(
-                                  codex_app_server_thread_start_request_line(cwd: cwd) as String,
-                                  concat(
-                                    "' >&3; THREAD_ID=''; for _ in $(seq 1 600); do ",
-                                    concat(
-                                      "if [ -f \"$OUT\" ]; then LINE=$(grep '\"id\":",
-                                      concat(
-                                        to_string(n: codex_supervised_thread_start_id),
-                                        concat(
-                                          "' \"$OUT\" | tail -1); if [ -n \"$LINE\" ]; then ",
-                                          "THREAD_ID=$(printf '%s' \"$LINE\" | sed -n 's/.*\"thread\"[^}]*\"id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); fi; fi; ",
-                                          concat(
-                                            "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
-                                            concat(
-                                              "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
-                                              concat(
-                                                "printf '%s' '",
-                                                concat(
-                                                  escaped_cmd_id,
-                                                  concat(
-                                                    "' >'",
-                                                    concat(
-                                                      cmd_id_path,
-                                                      concat(
-                                                        "'; TURN_LINE=$(printf '%s' '",
-                                                        concat(
-                                                          turn_line_template,
-                                                          concat(
-                                                            "' | sed \"s/",
-                                                            concat(
-                                                              thread_id_slot,
-                                                              concat(
-                                                                "/$THREAD_ID/\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
-                                                                "TERMINAL=0; for _ in $(seq 1 600); do ",
-                                                                concat(
-                                                                  "if grep -q 'turn/completed' \"$OUT\" || grep -q 'turn/failed' \"$OUT\"; then TERMINAL=1; break; fi; ",
-                                                                  concat(
-                                                                    "sleep 0.05; done; exec 3>&-; ",
-                                                                    "wait \"$APID\"; EC=$?; ",
-                                                                    concat(
-                                                                      "if [ \"$TERMINAL\" -eq 0 ]; then EC=98; fi; ",
-                                                                      "fi; ",
-                                                                      concat(
-                                                                        "kill -TERM -$APID 2>/dev/null || true; wait \"$APID\" 2>/dev/null || true; ",
-                                                                        concat(
-                                                                          "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
-                                                                          "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  )
 }
 
 fn native_id_from_entity_result(result: JsonValue, entity_key: String) -> NonEmptyStr? {
@@ -861,87 +678,5 @@ fn codex_supervised_turn_outcome_from_capture(
       wire: wire,
     )
     CodexSupervisedTurnOk { receipt: receipt }
-  }
-}
-
-fn run_codex_supervised_turn(
-  bundle: CodexRuntimeBundle,
-  credential: AmbientCodexCredentialContext,
-  binding: CodexSupervisedTurnBinding,
-  cwd: FilePath,
-  evidence_root: FilePath,
-) -> CodexSupervisedTurnOutcome {
-  match project_codex_app_server_stdio_binding(bundle: bundle) {
-    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
-      CodexSupervisedTurnUnavailable {
-        reason: reason,
-        process: ProviderProcessReceipt {
-          exit: ProviderProcessObservationFailed,
-          wire: none,
-        },
-      }
-    ProviderInterfaceResolved { binding: projected } => {
-      let present = shell.Test.IsFile(path: projected.executable.path)
-      if present.is_file == false {
-        CodexSupervisedTurnUnavailable {
-          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
-          process: ProviderProcessReceipt {
-            exit: ProviderProcessObservationFailed,
-            wire: none,
-          },
-        }
-      } else {
-        let cmd_id = codex_supervised_turn_client_command_id(turn: binding.turn)
-        if persist_codex_supervised_turn_client_command_id(
-          evidence_root: evidence_root,
-          client_command_id: cmd_id,
-        ) == false {
-          CodexSupervisedTurnRefused {
-            reason: "failed to persist client_command_id before turn/start" as NonEmptyStr,
-          }
-        } else {
-          let running_binding = codex_supervised_turn_binding_with_observed(
-            binding: binding,
-            observed: LeaseRunningExpected,
-          )
-          let script = retained_transport(
-            body: codex_supervised_turn_script(
-              executable: projected.executable.path,
-              codex_home: codex_supervised_turn_codex_home(
-                credential: credential,
-                standing_receipt: running_binding.standing_receipt,
-              ),
-              cwd: cwd,
-              user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
-              client_command_id: cmd_id,
-              evidence_root: evidence_root,
-            ),
-            reason: "Codex supervised turn: interim runtime-present fifo coprocess until host_effect_apply typed app-server transport (codex_supervised_turn_script_dissolve_note)" as NonEmptyStr,
-            dissolves_to: codex_supervised_turn_script_dissolve_ref,
-          )
-          let run = shell.Exec.Run(script: script)
-          let capture = split_gunbc_stdio_capture(combined: run.stdout)
-          let wire_capture = retain_provider_wire_capture(
-            evidence_root: evidence_root,
-            stdout: capture.stdout,
-            stderr: capture.stderr,
-            success: run.success,
-            exit_code: capture.exit_code,
-          )
-          let wire = match wire_capture {
-            ProviderWireCaptureOk { receipt: w } => Present { value: w }
-            ProviderWireCaptureRefused { cause: _ } => none
-          }
-          codex_supervised_turn_outcome_from_capture(
-            running_binding: running_binding,
-            stdout: capture.stdout,
-            stderr: capture.stderr,
-            exit_code: capture.exit_code,
-            wire: wire,
-            evidence_root: evidence_root,
-          )
-        }
-      }
-    }
   }
 }

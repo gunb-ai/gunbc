@@ -15,6 +15,7 @@ import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdGrantListProbeShape,
 }
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
@@ -53,6 +54,10 @@ type HostEffect =
   | Srv3BmcwebTokenExtract
   | Srv3NbdProxyServe {
       intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
+  | CodexSupervisedWorkerTurn {
+      intent: CodexAppServerStdioSessionIntent,
       lease_key: NonEmptyStr,
     }
   | Srv3BootOnceReadBackSleep
