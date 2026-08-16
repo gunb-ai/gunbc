@@ -1,0 +1,21 @@
+module extdeps.cpu.ampere_altra_package_contacts
+
+import std.types { List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.cpu.ampere { ampere_altra_rev_a1_datasheet_authority }
+import extdeps.cpu.ampere_altra_package {
+  PackageContact,
+  ampere_altra_package_model_scope,
+  contacts_from_table4,
+}
+import extdeps.cpu.ampere_altra_package_table4_raw { altra_table4_pin_rows }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
+
+data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
+
+// Classified contacts are DERIVED from the transcribed Table 4 rows by the classifier in
+// extdeps.cpu.ampere_altra_package — not pre-baked in a generator.
+fn altra_package_contacts() -> List<PackageContact> {
+  contacts_from_table4(rows: altra_table4_pin_rows)
+}
