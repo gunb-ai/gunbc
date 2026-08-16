@@ -1,0 +1,197 @@
+module product.pcb.copper
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import product.compute_board.analog { AnalogCircuitIntent, ElectricalNet, NetIdentity }
+import v2.std.algebra { fold_list }
+import product.pcb.stackup {
+  AdmittedStackup,
+  CopperLayer,
+  CopperLayerFunction,
+  GroundPlane,
+  MixedSignalAndPlane,
+  PowerPlane,
+  SignalLayer,
+  admitted_stackup_authority,
+  admitted_stackup_body,
+  stackup_copper_layer_count,
+  stackup_copper_layers,
+}
+
+// COPPER REALIZES A NET; IT DOES NOT DEFINE ONE. The logical net authority is
+// product.compute_board.analog's ElectricalNet, and this module consumes it. A second net type
+// here would be the fork DESIGN section 3 forbids, and it would be the expensive kind: the two
+// would drift silently, because a copper net and a schematic net that disagree still both compile.
+//
+// What this module adds is the fact copper has that a schematic does not: WHERE the conductor is.
+// That is a position in the stackup, and it is the join that has to be made unforgeable.
+
+// A LAYER REFERENCE THAT CANNOT NAME A LAYER THAT DOES NOT EXIST. The obvious modelling is an Int
+// index into the stackup's layer list, and it is wrong twice over. It is a positional citation of
+// a thing the stackup already names structurally (DESIGN section 3), and it silently survives a
+// stackup edit: insert a ply and every trace below it is now on a different layer, with nothing to
+// notice. So a CopperLayerRef is sealed, and the only route to one is selecting from an admitted
+// stackup — which means a reference cannot outlive the stackup that produced it without someone
+// re-selecting against the new one. MEASURED, not read: a probe constructing CopperLayerRef inside
+// the witness module returned "sole_constructor type 'CopperLayerRef' cannot be constructed outside
+// its defining module" (zesty-heron-736, 2026-08-16). The probe was removed after measurement; what
+// keeps the wall honest in the enrolled suite is that every realization there reaches its layer
+// through select_copper_layer.
+// THE REFERENCE CARRIES THE STACKUP IT WAS SELECTED AGAINST. Without it, ordinal 1 from a
+// three-layer board and ordinal 1 from a twelve-layer board are the same value, so copper selected
+// against one stackup could be admitted against another - the sealing would prove the ref came from
+// SOME admitted stackup and never which one. That is the reference-without-a-referent class, and it
+// is the same one admit_stackup closed one layer up by carrying the declaration it judged.
+type CopperLayerRef sole_constructor {
+  stackup_authority: DeclarationRef
+  ordinal: Int
+  function: CopperLayerFunction
+}
+
+type LayerSelection
+  = LayerSelected { layer: CopperLayerRef }
+  | LayerOutsideStackup { requested: Int, layer_count: Int }
+
+fn mint_layer_ref(stackup_authority: DeclarationRef, ordinal: Int, function: CopperLayerFunction) -> LayerSelection
+  admit_callers: [
+    decl_ref(module_path: "product.pcb.copper", decl_name: "select_copper_layer"),
+  ]
+  = LayerSelected {
+      layer: CopperLayerRef {
+        stackup_authority: stackup_authority,
+        ordinal: ordinal,
+        function: function,
+      },
+    }
+
+// Ordinals count from the top copper layer at 0, which is the fabricator's own convention and the
+// order the stackup already carries. Out of range REFUSES with both numbers rather than clamping to
+// the nearest layer — a clamp would put copper on a real layer that nobody asked for, which is the
+// fabricated-plausible-output failure with a board attached (DESIGN section 5).
+fn select_copper_layer(a: AdmittedStackup, ordinal: Int) -> LayerSelection {
+  let layers = stackup_copper_layers(s: admitted_stackup_body(a: a))
+  let n = stackup_copper_layer_count(s: admitted_stackup_body(a: a))
+  if ordinal < 0 || ordinal >= n {
+    LayerOutsideStackup { requested: ordinal, layer_count: n }
+  } else {
+    mint_layer_ref(
+      stackup_authority: admitted_stackup_authority(a: a),
+      ordinal: ordinal,
+      function: nth_layer_function(layers: layers, ordinal: ordinal),
+    )
+  }
+}
+
+// SELECTION IS A FOLD WITH A COUNTER, because the substrate offers no list indexing primitive and
+// inventing one here to reach a layer would be a std-shaped fact authored in a product module. The
+// accumulator carries how many layers have been passed and the layers matched so far; at most one
+// can match, and the caller has already refused the out-of-range case, so the match is nonempty.
+type LayerScan {
+  seen: Int
+  picked: List<CopperLayer>
+}
+
+fn scan_for_ordinal(layers: List<CopperLayer>, ordinal: Int) -> LayerScan {
+  fold_list(
+    xs: layers,
+    empty: LayerScan { seen: 0, picked: [] },
+    cons: fn(acc, c) {
+      LayerScan {
+        seen: acc.seen + 1,
+        picked: if acc.seen == ordinal { acc.picked + [c] } else { acc.picked },
+      }
+    },
+  )
+}
+
+fn nth_layer_function(layers: List<CopperLayer>, ordinal: Int) -> CopperLayerFunction {
+  scan_for_ordinal(layers: layers, ordinal: ordinal).picked.first().function
+}
+
+fn copper_layer_ordinal(r: CopperLayerRef) -> Int {
+  r.ordinal
+}
+
+fn copper_layer_function(r: CopperLayerRef) -> CopperLayerFunction {
+  r.function
+}
+
+// A REALIZATION NAMES A LOGICAL NET AND A LAYER. It carries the NetIdentity rather than a copy of
+// the net's members, because membership is the schematic's fact and duplicating it here is how the
+// two representations start to disagree.
+type NetCopperRealization {
+  net: NetIdentity
+  layer: CopperLayerRef
+}
+
+type CopperRefusalCause
+  = RealizationNamesNoSuchNet { net: NetIdentity }
+  | NetRealizedMoreThanOnce { net: NetIdentity }
+  | RealizationSelectedAgainstAnotherStackup { net: NetIdentity }
+
+// ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
+// is renamed in the schematic and its copper realization keeps the old identity, so the board has a
+// conductor belonging to nothing and a net with no conductor. Counting realizations against nets
+// would report both boards as fine, because the count did not change (DESIGN section 5 - completeness
+// is an identity join).
+fn net_exists_in_intent(intent: AnalogCircuitIntent, net: NetIdentity) -> Bool {
+  count(filter(intent.nets, n => n.identity == net)) > 0
+}
+
+fn realizations_of_net(rs: List<NetCopperRealization>, net: NetIdentity) -> List<NetCopperRealization> {
+  filter(rs, r => r.net == net)
+}
+
+// A NET REALIZED TWICE IS TWO CONDUCTORS CLAIMING ONE NAME. That is not a redundant route - a real
+// net split across layers is one realization with vias, which this increment does not yet model -
+// so at this grain it is an authority fork in copper and refuses.
+fn copper_refusal_causes(
+  intent: AnalogCircuitIntent,
+  board: AdmittedStackup,
+  rs: List<NetCopperRealization>,
+) -> List<CopperRefusalCause> {
+  let unknown = map(
+    filter(rs, r => !net_exists_in_intent(intent: intent, net: r.net)),
+    r => RealizationNamesNoSuchNet { net: r.net },
+  )
+  let duplicated = map(
+    filter(rs, r => count(realizations_of_net(rs: rs, net: r.net)) > 1),
+    r => NetRealizedMoreThanOnce { net: r.net },
+  )
+  let foreign = map(
+    filter(rs, r => r.layer.stackup_authority != admitted_stackup_authority(a: board)),
+    r => RealizationSelectedAgainstAnotherStackup { net: r.net },
+  )
+  unknown + duplicated + foreign
+}
+
+type CopperAdmission
+  = CopperAdmitted { realizations: List<NetCopperRealization> }
+  | CopperRefused { causes: List<CopperRefusalCause> }
+
+fn admit_copper(
+  intent: AnalogCircuitIntent,
+  board: AdmittedStackup,
+  rs: List<NetCopperRealization>,
+) -> CopperAdmission {
+  let causes = copper_refusal_causes(intent: intent, board: board, rs: rs)
+  if count(causes) > 0 {
+    CopperRefused { causes: causes }
+  } else {
+    CopperAdmitted { realizations: rs }
+  }
+}
+
+// THE COVERAGE READ, KEPT SEPARATE FROM ADMISSION. A board whose copper is internally consistent is
+// not a board that is finished: admission says nothing wrong is realized, coverage says how much is
+// realized at all. Fusing them would let a board with two correct traces and forty unrouted nets
+// report as admitted-and-therefore-done, which is the completeness-versus-verdict conflation
+// PcbBodyLayoutStanding already had to split into separate arms.
+fn unrealized_nets(intent: AnalogCircuitIntent, rs: List<NetCopperRealization>) -> List<ElectricalNet> {
+  filter(intent.nets, n => count(realizations_of_net(rs: rs, net: n.identity)) == 0)
+}
+
+fn copper_is_complete_over_intent(intent: AnalogCircuitIntent, rs: List<NetCopperRealization>) -> Bool {
+  count(unrealized_nets(intent: intent, rs: rs)) == 0
+}

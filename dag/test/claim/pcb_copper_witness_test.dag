@@ -1,0 +1,299 @@
+module test.claim.pcb_copper_witness
+
+import std.logic { Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { micrometer }
+import product.compute_board.analog { AnalogCircuitIntent, ElectricalNet, NetIdentity, terminal_ref }
+import product.pcb.stackup {
+  AdmittedStackup,
+  CopperLayer,
+  DielectricLayer,
+  GroundPlane,
+  SignalLayer,
+  Stackup,
+  StackupPly,
+  StackupAdmitted,
+  StackupRefused,
+  admit_stackup,
+}
+import product.pcb.copper {
+  CopperAdmitted,
+  CopperRefused,
+  LayerOutsideStackup,
+  LayerSelected,
+  NetCopperRealization,
+  NetRealizedMoreThanOnce,
+  RealizationNamesNoSuchNet,
+  RealizationSelectedAgainstAnotherStackup,
+  admit_copper,
+  copper_is_complete_over_intent,
+  copper_layer_function,
+  copper_layer_ordinal,
+  select_copper_layer,
+  unrealized_nets,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
+data gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
+data core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+
+// Top signal, then ground, then signal: three copper layers, ordinals 0, 1, 2.
+data three_layer: Stackup = Stackup {
+  top: sig,
+  plies: [
+    StackupPly { dielectric: core, copper: gnd },
+    StackupPly { dielectric: core, copper: sig },
+  ],
+}
+
+data board_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.pcb_copper_witness",
+  decl_name: "three_layer",
+  field: WholeDeclaration,
+}
+
+data vcc: NetIdentity = "VCC" as NetIdentity
+data gnd_net: NetIdentity = "GND" as NetIdentity
+data absent_net: NetIdentity = "SPI_CLK" as NetIdentity
+
+data intent: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "witness board",
+  components: [],
+  nets: [
+    ElectricalNet { identity: vcc, members: [] },
+    ElectricalNet { identity: gnd_net, members: [] },
+  ],
+}
+
+// A SECOND, DIFFERENT BOARD. Same layer count and same functions at every ordinal, differing only
+// in copper thickness and in the declaration admission judged - so an ordinal alone cannot tell the
+// two apart, which is exactly the confusion the binding has to catch.
+data thick: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 35) }
+data thick_gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 35) }
+
+data other_board: Stackup = Stackup {
+  top: thick,
+  plies: [
+    StackupPly { dielectric: core, copper: thick_gnd },
+    StackupPly { dielectric: core, copper: thick },
+  ],
+}
+
+data other_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.pcb_copper_witness",
+  decl_name: "other_board",
+  field: WholeDeclaration,
+}
+
+fn admitted_board(s: Stackup, authority: DeclarationRef) -> AdmittedStackup? {
+  match admit_stackup(s: s, authority: authority) {
+    StackupAdmitted { admitted: a } => Present { value: a }
+    StackupRefused { causes: _ } => none
+  }
+}
+
+fn admitted_three_layer_selection(ordinal: Int) -> Bool {
+  match admit_stackup(s: three_layer, authority: board_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: ordinal) {
+        LayerSelected { layer: _ } => true
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
+      }
+  }
+}
+
+// A layer reference reports the ordinal asked for AND the function of the layer that is actually
+// there — the second is what makes the reference a read of the stackup rather than a restatement of
+// the request. Ordinal 1 is the ground plane, and the reference knows it.
+test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
+  match admit_stackup(s: three_layer, authority: board_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: 1) {
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
+        LayerSelected { layer: l } =>
+          copper_layer_ordinal(r: l) == 1
+            && match copper_layer_function(r: l) {
+              GroundPlane => true
+              SignalLayer => false
+              PowerPlane => false
+              MixedSignalAndPlane => false
+            }
+      }
+  }
+}
+
+// The top layer is signal and the bottom layer is signal, so reading only ordinal 1 could not
+// distinguish a real lookup from a constant. Reading 0 and 2 as well pins that the fold walks.
+test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
+  match admit_stackup(s: three_layer, authority: board_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: 0) {
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
+        LayerSelected { layer: top } =>
+          match select_copper_layer(a: a, ordinal: 2) {
+            LayerOutsideStackup { requested: _, layer_count: _ } => false
+            LayerSelected { layer: bottom } =>
+              copper_layer_ordinal(r: top) == 0
+                && copper_layer_ordinal(r: bottom) == 2
+                && match copper_layer_function(r: top) {
+                  SignalLayer => true
+                  GroundPlane => false
+                  PowerPlane => false
+                  MixedSignalAndPlane => false
+                }
+          }
+      }
+  }
+}
+
+// RED control: an ordinal past the last layer refuses and reports BOTH numbers, rather than
+// clamping to the nearest real layer. A clamp would put copper on a layer nobody asked for.
+test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool {
+  match admit_stackup(s: three_layer, authority: board_authority) {
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: 3) {
+        LayerSelected { layer: _ } => false
+        LayerOutsideStackup { requested: r, layer_count: n } => r == 3 && n == 3
+      }
+  }
+}
+
+test fn w_red_a_negative_ordinal_refuses() -> Bool {
+  !admitted_three_layer_selection(ordinal: 0 - 1)
+    && admitted_three_layer_selection(ordinal: 0)
+}
+
+fn realization_against(s: Stackup, authority: DeclarationRef, net: NetIdentity, ordinal: Int) -> List<NetCopperRealization> {
+  match admit_stackup(s: s, authority: authority) {
+    StackupRefused { causes: _ } => []
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: ordinal) {
+        LayerOutsideStackup { requested: _, layer_count: _ } => []
+        LayerSelected { layer: l } => [NetCopperRealization { net: net, layer: l }]
+      }
+  }
+}
+
+fn realization_on(net: NetIdentity, ordinal: Int) -> List<NetCopperRealization> {
+  match admit_stackup(s: three_layer, authority: board_authority) {
+    StackupRefused { causes: _ } => []
+    StackupAdmitted { admitted: a } =>
+      match select_copper_layer(a: a, ordinal: ordinal) {
+        LayerOutsideStackup { requested: _, layer_count: _ } => []
+        LayerSelected { layer: l } => [NetCopperRealization { net: net, layer: l }]
+      }
+  }
+}
+
+test fn w_copper_naming_real_nets_admits() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+  let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: gnd_net, ordinal: 1)
+  match admit_copper(intent: intent, board: board, rs: rs) {
+    CopperAdmitted { realizations: out } => count(out) == 2
+    CopperRefused { causes: _ } => false
+  }
+}
+  }
+}
+
+// RED control: THE RENAMED-NET CLASS. Copper naming a net the schematic does not carry is a
+// conductor belonging to nothing. A count would not see it — two nets, two realizations — which is
+// why admission joins on identity.
+test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+  let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: absent_net, ordinal: 1)
+  count(rs) == count(intent.nets)
+    && match admit_copper(intent: intent, board: board, rs: rs) {
+      CopperAdmitted { realizations: _ } => false
+      CopperRefused { causes: c } =>
+        count(c) == 1
+          && count(filter(c, x => match x {
+            RealizationNamesNoSuchNet { net: n } => n == absent_net
+            NetRealizedMoreThanOnce { net: _ } => false
+            RealizationSelectedAgainstAnotherStackup { net: _ } => false
+          })) == 1
+    }
+}
+  }
+}
+
+// RED control: one net realized on two layers is two conductors claiming one name. Both offending
+// rows are reported, because both are wrong and fixing one leaves the fork.
+test fn w_red_a_net_realized_twice_is_refused() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+  let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
+  match admit_copper(intent: intent, board: board, rs: rs) {
+    CopperAdmitted { realizations: _ } => false
+    CopperRefused { causes: c } => count(c) == 2
+  }
+}
+  }
+}
+
+// ADMISSION AND COVERAGE ARE SEPARATE AXES. An empty copper set is internally consistent — nothing
+// wrong is realized — and covers nothing. If one arm carried both, an unrouted board would report
+// as admitted-and-therefore-done.
+test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+  match admit_copper(intent: intent, board: board, rs: []) {
+    CopperRefused { causes: _ } => false
+    CopperAdmitted { realizations: _ } =>
+      count(unrealized_nets(intent: intent, rs: [])) == 2
+        && !copper_is_complete_over_intent(intent: intent, rs: [])
+  }
+}
+  }
+}
+
+test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
+  let partial = realization_on(net: vcc, ordinal: 0)
+  let full = partial + realization_on(net: gnd_net, ordinal: 1)
+  count(unrealized_nets(intent: intent, rs: partial)) == 1
+    && !copper_is_complete_over_intent(intent: intent, rs: partial)
+    && copper_is_complete_over_intent(intent: intent, rs: full)
+}
+
+// RED control: THE CROSS-STACKUP CLASS. Both boards have three layers with identical functions at
+// every ordinal, so the layer reference selected against other_board is indistinguishable from one
+// selected against three_layer by ordinal or function - only the bound declaration separates them.
+// Admitting it against three_layer must refuse, or the seal proved the ref came from SOME admitted
+// stackup and never which one.
+test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let foreign = realization_against(s: other_board, authority: other_authority, net: vcc, ordinal: 1)
+      let native = realization_on(net: vcc, ordinal: 1)
+      count(foreign) == 1
+        && count(native) == 1
+        && match admit_copper(intent: intent, board: board, rs: native) {
+          CopperRefused { causes: _ } => false
+          CopperAdmitted { realizations: _ } =>
+            match admit_copper(intent: intent, board: board, rs: foreign) {
+              CopperAdmitted { realizations: _ } => false
+              CopperRefused { causes: c } =>
+                count(filter(c, x => match x {
+                  RealizationSelectedAgainstAnotherStackup { net: n } => n == vcc
+                  RealizationNamesNoSuchNet { net: _ } => false
+                  NetRealizedMoreThanOnce { net: _ } => false
+                })) == 1
+            }
+        }
+    }
+  }
+}
