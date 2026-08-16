@@ -20,7 +20,8 @@ import extdeps.cpu_attachment.ilm4926 {
   DesignationFactUnresolved,
   DesignationResolutionStanding,
   ilm4926,
-  ilm4926_resolution_obligations,
+  attachment_board_land_pattern,
+  ilm4926_attachment_standing,
 }
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
@@ -182,7 +183,7 @@ data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
     what_is_missing: concat(
       "the socket vendor and part number for the ",
       ilm4926.designator as String,
-      " designation, and which physical part that designation names; see extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations",
+      " designation, and which physical part that designation names; see extdeps.cpu_attachment.ilm4926 ilm4926_attachment_standing",
     ),
   },
   carriage: CarriageNotApplicable {
@@ -201,10 +202,15 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 
 // THE ONE THAT MATTERS MOST. The board land pattern is the SOCKET vendor's recommended pad array,
 // not the processor's underside. PROJECTED FROM extdeps.cpu_attachment.ilm4926
-// ilm4926_resolution_obligations.board_land_pattern rather than restated here: a complete read of
-// the public platform specification found no board-side land pattern in any section, and sections
-// 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Customer Connect as the authority — access-
-// gated, not a drawing to read in the public document.
+// ilm4926_attachment_standing rather than restated here, and reached through
+// attachment_board_land_pattern so the read must go via the SOCKET BODY -- the constituent that
+// owns the board geometry. A complete read of the public platform specification found no board-side
+// land pattern in any section. Two routes remain and they are not equivalent: a Lotes customer
+// drawing would be ordinary published connector documentation and publicly carriable, while the
+// Ampere Altra PCB Layout Guidelines named by sections 4.2.2 and 4.3.2 sit behind Customer Connect
+// under NDA and could not enter this public model even if obtained. The socket-vendor route is the
+// next authority, so this projects as unresolved rather than access-gated: a fact this repository
+// could never carry is not a fact merely waiting behind a gate.
 fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
   match standing {
     DesignationFactEstablished { value: _, authority: a } =>
@@ -212,7 +218,7 @@ fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStandi
         authority: a,
         subject: DeclarationRef {
           module_path: "extdeps.cpu_attachment.ilm4926",
-          decl_name: "ilm4926_resolution_obligations",
+          decl_name: "ilm4926_attachment_standing",
           field: WholeDeclaration
         },
       }
@@ -255,7 +261,7 @@ fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> Reposito
 }
 
 fn board_land_pattern_standing_row() -> AttachmentLayerStanding {
-  let fact = board_land_pattern_fact_from_obligation(standing: ilm4926_resolution_obligations.board_land_pattern)
+  let fact = board_land_pattern_fact_from_obligation(standing: attachment_board_land_pattern(a: ilm4926_attachment_standing))
   AttachmentLayerStanding {
     layer: BoardLandPatternLayer,
     fact: fact,
