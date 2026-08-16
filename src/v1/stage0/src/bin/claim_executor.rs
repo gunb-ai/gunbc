@@ -16030,7 +16030,7 @@ mod tests {
         let results = run_batch_unit(
             vec!["src/v2".to_string()],
             unit,
-            Arc::new(RealizationConcurrency::for_walk(1).expect("test schedule")),
+            RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             None,
