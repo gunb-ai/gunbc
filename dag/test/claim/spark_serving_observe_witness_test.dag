@@ -36,6 +36,10 @@ import gunbc.spark_serving_observe {
   SparkServingObservationReportRefused,
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
+  spark_serving_observation_succeeded,
+  spark_serving_observation_was_made,
+  spark_serving_report_observations_were_made,
+  spark_serving_observation_report_from_observations,
 }
 import gunbc.spark_serving_runtime_receipt {
   spark_serving_parse_runtime_receipt_json,
@@ -518,4 +522,62 @@ test fn jetpack5_asset_digest_does_not_match_required_closure_digest() -> Bool {
         && (jetpack_digest.digest as String) == (ollama_runtime_closure_digest(rel: ollama_v0_32_9_jetpack5_release).digest as String)
     Absent => false
   }
+}
+
+// REVIEW 52605. The runner-side observe entry greened on any receipt write, so a host that could
+// not be probed at all reported the same exit code as one that answered. The repair adds a
+// distinct axis: an observation that was MADE (present or absent) is not an observation that
+// SUCCEEDED. These pin both directions, because collapsing them either way is a real defect --
+// treating absent as a probe failure would red the step on a correct reading of a bare host.
+test fn refused_observation_was_not_made() -> Bool {
+  spark_serving_observation_was_made(
+    observation: SparkServingObservationRefused {
+      host: "srv5",
+      cause: "ssh exec refused" as NonEmptyStr,
+    },
+  ) == false
+}
+
+test fn absent_observation_was_made_though_it_did_not_succeed() -> Bool {
+  let obs = SparkServingAbsent { host: "srv5" }
+  spark_serving_observation_was_made(observation: obs)
+    && spark_serving_observation_succeeded(observation: obs) == false
+}
+
+test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Bool {
+  spark_serving_report_observations_were_made(
+    report: SparkServingObservationsProduced {
+      first: SparkServingAbsent { host: "srv5" },
+      more: [
+        SparkServingObservationRefused {
+          host: "srv6",
+          cause: "ssh exec refused" as NonEmptyStr,
+        },
+      ],
+    },
+  ) == false
+}
+
+test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
+  spark_serving_report_observations_were_made(
+    report: SparkServingObservationsProduced {
+      first: SparkServingAbsent { host: "srv5" },
+      more: [SparkServingAbsent { host: "srv6" }],
+    },
+  )
+}
+
+test fn empty_observation_list_produces_no_report_rather_than_a_clean_one() -> Bool {
+  match spark_serving_observation_report_from_observations(observations: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_refused_report_is_never_read_as_observed() -> Bool {
+  spark_serving_report_observations_were_made(
+    report: SparkServingObservationReportRefused {
+      cause: "no host was probed" as NonEmptyStr,
+    },
+  ) == false
 }

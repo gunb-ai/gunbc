@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / CHARAT-0) — host transport for
+//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / CHARAT-0, STR-RC-0) — host transport for
 //! `parse_json` survival and mechanism measurements on the v1 interpreter.
 //!
 //! NOT floor-enrolled — run standalone via `cargo run --release -p v1-compiler --bin
@@ -11,13 +11,14 @@
 //!
 //! CHECKABLE RECEIPT: survival mode records Present parse + member count vs process death.
 //!
-//! DISSOLUTION: delete this bin when CHARAT-0 acceptance is floor-enrolled with a modeled
-//! witness, or when large-regime measurement refutes the hypothesis and the branch reverts.
+//! DISSOLUTION: delete this bin when CHARAT-0 string-indexing acceptance is floor-enrolled
+//! with a modeled witness (or STR-RC-0 scaffold retires), or when large-regime measurement
+//! refutes the hypothesis and the branch reverts.
 //! Receipt: `rg JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER src/v1/stage0` until deletion.
 
 /// Grep receipt for scaffold dissolution (`rg JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER`).
 pub const JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER: &str =
-    "CHARAT-0 json_parse_scaling_probe measurement transport (not floor-enrolled)";
+    "CHARAT-0 STR-RC-0 json_parse_scaling_probe measurement transport (not floor-enrolled)";
 
 use std::process::ExitCode;
 use std::time::Instant;
@@ -26,7 +27,7 @@ use v1_compiler::cli_run::{make_eval_context, resolve_entry_graph, workspace_roo
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 fn str_value(s: impl AsRef<str>) -> Value {
-    Value::Str(s.as_ref().to_string())
+    Value::Str(std::rc::Rc::from(s.as_ref()))
 }
 
 const ENTRY: &str = "dag/extdeps/languages/json/parse.dag";

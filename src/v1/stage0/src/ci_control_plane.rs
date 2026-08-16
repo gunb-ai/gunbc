@@ -86,7 +86,7 @@ fn eval_string(
     function: &str,
 ) -> Result<String, String> {
     match run_value(ctx, function)? {
-        Value::Str(s) => Ok(s),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "{function} must return String, got {other:?} (fail-closed)"
         )),
@@ -101,7 +101,7 @@ fn eval_string_list(
         Value::List(items) => items
             .iter()
             .map(|item| match item {
-                Value::Str(s) => Ok(s.clone()),
+                Value::Str(s) => Ok(s.to_string()),
                 other => Err(format!(
                     "{function} list items must be String, got {other:?} (fail-closed)"
                 )),

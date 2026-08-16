@@ -29,6 +29,8 @@ use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
 use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
+use crate::v1_interpreter::str_value;
+use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
@@ -441,7 +443,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
         RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
             variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
         },
     })
 }
@@ -1219,13 +1221,13 @@ mod cli_run_arg_channel_tests {
         let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
-        assert!(matches!(&got[0].1, Value::Str(s) if s == "roadmap-7"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
     }
 
     #[test]
     fn value_may_contain_further_equals_signs() {
         let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
-        assert!(matches!(&got[0].1, Value::Str(s) if s == "a=b=c"));
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
@@ -2485,7 +2487,7 @@ pub fn free_monoid_symbol_value_from_dotted_string(
         qn = fm_variant(
             "Cons",
             sorted_fields(vec![
-                (ctx.sym("head"), Value::Str(seg.to_string())),
+                (ctx.sym("head"), str_value(seg.to_string())),
                 (ctx.sym("tail"), qn),
             ]),
         );
@@ -3063,10 +3065,7 @@ fn call_compile_clean_bool_list_fn(
     let (graph, indices) = resolve_entry_graph_shared(&roots, FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY)
         .map_err(|e| format!("floor_compile_clean_predicates resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    let values: Vec<v1_interpreter::Value> = paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let values: Vec<v1_interpreter::Value> = paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [(Some(arg_name.to_string()), list_value_from_vec(values))];
     match v1_interpreter::run_in_context_with_args(&ctx, fn_name, &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -3194,15 +3193,13 @@ fn compile_clean_scope_plan_from_touched_paths(
     let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
         .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let paths: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        touched_paths.iter().map(|s| str_value(s.clone())).collect();
     let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
     departed_sorted.sort();
     let departed: Vec<v1_interpreter::Value> = departed_sorted
         .into_iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .map(|s| str_value(s.clone()))
         .collect();
     let args = [
         (
@@ -3239,7 +3236,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => "no compile-clean entry affected".to_string(),
             };
             Ok(CompileCleanScopePlan::SkipNoAffected { reason })
@@ -3250,7 +3247,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "RequireWholeTree") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => "whole-tree baseline required".to_string(),
             };
             eprintln!("compile-clean scope: {reason}");
@@ -3262,7 +3259,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             ..
         } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
             let reason = match ctx.field(fields, "reason") {
-                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                Some(Value::Str(r)) => r.to_string(),
                 _ => {
                     return Err(
                         "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
@@ -6624,7 +6621,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
@@ -6666,7 +6663,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
                     panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
                 };
                 match record_field(&ctx, fields, "module") {
-                    Some(Value::Str(s)) => s.clone(),
+                    Some(Value::Str(s)) => s.to_string(),
                     other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
                 }
             })
@@ -8537,21 +8534,13 @@ pub fn build_live_read_selection_manifest(
         .map(|req| v1_interpreter::Value::Record {
             type_name: ctx.sym("LiveReadSelectionRequest"),
             fields: Rc::new(vec![
-                (
-                    ctx.sym("entry_path"),
-                    v1_interpreter::Value::Str(req.entry_path.clone()),
-                ),
-                (
-                    ctx.sym("fn_name"),
-                    v1_interpreter::Value::Str(req.fn_name.clone()),
-                ),
+                (ctx.sym("entry_path"), str_value(req.entry_path.clone())),
+                (ctx.sym("fn_name"), str_value(req.fn_name.clone())),
             ]),
         })
         .collect();
-    let root_values: Vec<v1_interpreter::Value> = source_roots
-        .iter()
-        .map(|r| v1_interpreter::Value::Str(r.clone()))
-        .collect();
+    let root_values: Vec<v1_interpreter::Value> =
+        source_roots.iter().map(|r| str_value(r.clone())).collect();
 
     let args = vec![
         (
@@ -8605,7 +8594,7 @@ pub fn build_live_read_selection_manifest(
             ));
         };
         let key = match ctx.field(fields, "key") {
-            Some(v1_interpreter::Value::Str(k)) => k.clone(),
+            Some(Value::Str(k)) => k.to_string(),
             other => {
                 return Err(format!(
                     "LIVE-READ MANIFEST REFUSAL cause=RowKeyUnexpected got={other:?} — a row \
@@ -8694,7 +8683,7 @@ fn decode_live_read_selection_row(
     })?;
     if ctx.sym_eq(variant_name, "LiveReadSelectionRefused") {
         let cause = match ctx.field(fields, "cause") {
-            Some(v1_interpreter::Value::Str(c)) => c.clone(),
+            Some(Value::Str(c)) => c.to_string(),
             _ => "typed refusal without a String cause".to_string(),
         };
         return Ok(LiveReadSelectionRow::Refused { cause });
@@ -8787,7 +8776,7 @@ fn decode_live_read_carrier(
     if ctx.sym_eq(name, "DeclFactsReflection") {
         let home =
             match ctx.field(fields, "home") {
-                Some(v1_interpreter::Value::Str(h)) => h.clone(),
+                Some(Value::Str(h)) => h.to_string(),
                 _ => return Err(
                     "LIVE-READ MANIFEST REFUSAL cause=CarrierHomeUnexpected — DeclFactsReflection \
                      without a String home."
@@ -8830,7 +8819,7 @@ fn decode_live_read_path_pattern(
     }
     if ctx.sym_eq(name, "LiteralPath") {
         return match ctx.field(fields, "path") {
-            Some(v1_interpreter::Value::Str(p)) => Ok(LiveReadPathPattern::LiteralPath(p.clone())),
+            Some(Value::Str(p)) => Ok(LiveReadPathPattern::LiteralPath(p.to_string())),
             _ => Err(
                 "LIVE-READ MANIFEST REFUSAL cause=LiteralPathUnexpected — LiteralPath without a \
                  String path. Treating it as unknown would silently widen; refusing keeps the \
@@ -8841,7 +8830,7 @@ fn decode_live_read_path_pattern(
     }
     if ctx.sym_eq(name, "ParamRef") {
         return match ctx.field(fields, "name") {
-            Some(v1_interpreter::Value::Str(n)) => Ok(LiveReadPathPattern::ParamRef(n.clone())),
+            Some(Value::Str(n)) => Ok(LiveReadPathPattern::ParamRef(n.to_string())),
             _ => Err(
                 "LIVE-READ MANIFEST REFUSAL cause=ParamRefUnexpected — ParamRef without a String \
                  name."
@@ -8868,7 +8857,7 @@ mod live_read_selection_manifest_producer_tests {
         LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
         LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
 
     fn source_roots() -> Vec<String> {
@@ -9090,7 +9079,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "LiteralPath",
-            vec![("path", Value::Str("dag/gunbc/ci_spec.dag".to_string()))],
+            vec![("path", str_value("dag/gunbc/ci_spec.dag".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
@@ -9107,7 +9096,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "ParamRef",
-            vec![("name", Value::Str("roster_path".to_string()))],
+            vec![("name", str_value("roster_path".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
@@ -9151,7 +9140,7 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "LiveReadCarrier",
             "DeclFactsReflection",
-            vec![("home", Value::Str("v2.std.decl_index".to_string()))],
+            vec![("home", str_value("v2.std.decl_index".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![carrier]),
@@ -9168,7 +9157,7 @@ mod live_read_selection_manifest_producer_tests {
         let ctx = ctx_for_decoding();
         let err = decode_live_read_selection_row(
             &ctx,
-            &classified(&ctx, vec![Value::Str("v2.lens.module_graph".to_string())]),
+            &classified(&ctx, vec![str_value("v2.lens.module_graph".to_string())]),
         )
         .expect_err("a String carrier was accepted");
         assert!(
@@ -11803,7 +11792,8 @@ fn discovery_scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
     match width_policy {
         DiscoveryWidthPolicy::Serial => 1,
         DiscoveryWidthPolicy::ControlledWidthTwo => 2,
-        DiscoveryWidthPolicy::Adaptive(governor) => governor.current_target_width(),
+        DiscoveryWidthPolicy::DerivedSchedule => 1,
+        DiscoveryWidthPolicy::FixedWidth(w) => *w,
     }
 }
 
@@ -11946,7 +11936,7 @@ fn selection_degradation_dag_args(
     vec![
         (
             Some("selection_mode_tag".to_string()),
-            v1_interpreter::Value::Str(snapshot.selection_mode_tag.clone()),
+            str_value(snapshot.selection_mode_tag.clone()),
         ),
         (
             Some("selected".to_string()),
@@ -11962,7 +11952,7 @@ fn selection_degradation_dag_args(
         ),
         (
             Some("categorization_reason".to_string()),
-            v1_interpreter::Value::Str(snapshot.categorization_reason.clone()),
+            str_value(snapshot.categorization_reason.clone()),
         ),
     ]
 }
@@ -11979,7 +11969,7 @@ fn eval_selection_degradation_fn(
         &selection_degradation_dag_args(snapshot),
         false,
     ) {
-        Ok(v1_interpreter::Value::Str(line)) => Ok(line),
+        Ok(Value::Str(line)) => Ok(line.to_string()),
         Ok(other) => Err(format!(
             "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
              (entry {entry})",
@@ -15341,7 +15331,7 @@ fn render_batch_summary_line(
             arg("batch_index", batch_index),
             (
                 Some("batch_label".to_string()),
-                Value::Str(batch_label.to_string()),
+                str_value(batch_label.to_string()),
             ),
             (Some("work".to_string()), work),
             arg("declared_population", declared_population),
@@ -15354,7 +15344,7 @@ fn render_batch_summary_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s),
+        Value::Str(s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -15586,7 +15576,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
     };
     let str_field = |name: &str| -> Option<String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Str(s)) => Some(s.to_string()),
             _ => None,
         }
     };
@@ -15602,7 +15592,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
             fields: vf,
             ..
         }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Str(s)) => Some(s.to_string()),
             _ => None,
         },
         _ => None,
@@ -16242,7 +16232,7 @@ pub fn run_witness_verdict_diagnostic(
     function: &str,
 ) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(Value::Str(s)) => s.to_string(),
         Ok(other) => format!(
             "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -16285,7 +16275,7 @@ pub fn seed_runner_bool_false_failure_detail(
 /// function that way; that variant is deleted and the one honest arm now covers it.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(Value::Str(s)) => s.to_string(),
         Ok(other) => format!(
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -16407,12 +16397,9 @@ fn eval_census_string_fn(
     fn_name: &str,
     entry: &str,
 ) -> Result<String, String> {
-    let args = [(
-        Some("entry".to_string()),
-        v1_interpreter::Value::Str(entry.to_string()),
-    )];
+    let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(v1_interpreter::Value::Str(s)) => Ok(s),
+        Ok(Value::Str(s)) => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{fn_name}({entry:?}) returned {}, expected String",
             ctx.format_value(&other)
@@ -16834,10 +16821,7 @@ pub fn handle_converge(host: String) {
             }
         };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let args = [(
-        Some("host".to_string()),
-        v1_interpreter::Value::Str(host.clone()),
-    )];
+    let args = [(Some("host".to_string()), str_value(host.clone()))];
     let result =
         match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
             Ok(v) => v,
@@ -16854,7 +16838,7 @@ pub fn handle_converge(host: String) {
         std::process::exit(1);
     };
     let line = match ctx.field(fields, "line") {
-        Some(v1_interpreter::Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => {
             eprintln!("error: converge_cli_output.line was not a String");
             std::process::exit(1);
@@ -16870,7 +16854,7 @@ pub fn handle_converge(host: String) {
             fields: vf,
             ..
         }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+            Some(Value::Str(s)) => Some(s.to_string()),
             _ => None,
         },
         _ => None,
@@ -16979,10 +16963,9 @@ fn dump_residual_hunt_instrumentation() {
 fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
     raw.iter()
         .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => Ok((
-                Some(name.to_string()),
-                v1_interpreter::Value::Str(value.to_string()),
-            )),
+            Some((name, value)) if !name.is_empty() => {
+                Ok((Some(name.to_string()), str_value(value.to_string())))
+            }
             Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
             None => Err(format!(
                 "--arg `{spec}`: expected `name=value` (named arguments only)"
@@ -17057,19 +17040,19 @@ impl ScopedRunObservation {
         let mut args = vec![
             (
                 Some("entry_file".to_string()),
-                Value::Str(self.entry_file.clone()),
+                str_value(self.entry_file.clone()),
             ),
             (
                 Some("module_path".to_string()),
-                Value::Str(self.module_path.clone()),
+                str_value(self.module_path.clone()),
             ),
             (
                 Some("function".to_string()),
-                Value::Str(self.function.clone()),
+                str_value(self.function.clone()),
             ),
         ];
         if let Some((name, value)) = detail {
-            args.push((Some(name.to_string()), Value::Str(value.to_string())));
+            args.push((Some(name.to_string()), str_value(value.to_string())));
         }
         if measured {
             let wall_ns = self.started.elapsed().as_nanos();
@@ -17111,7 +17094,7 @@ impl ScopedRunObservation {
             || (measured && self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredRefused"))
         {
             let cause = match self.ctx.field(fields, "cause") {
-                Some(Value::Str(cause)) => cause.clone(),
+                Some(Value::Str(cause)) => cause.to_string(),
                 _ => "typed refusal without a String cause".to_string(),
             };
             if projection != "scoped_run_projection_refusal_write" {
@@ -18004,18 +17987,15 @@ pub fn handle_serve(
                 ),
                 Ok((method, path, body)) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
-                        (
-                            Some("method".to_string()),
-                            v1_interpreter::Value::Str(method),
-                        ),
-                        (Some("path".to_string()), v1_interpreter::Value::Str(path)),
-                        (Some("body".to_string()), v1_interpreter::Value::Str(body)),
+                        (Some("method".to_string()), str_value(method)),
+                        (Some("path".to_string()), str_value(path)),
+                        (Some("body".to_string()), str_value(body)),
                         // Captured once above and cloned per request: the value
                         // is fixed for the process lifetime, so no request can
                         // observe a different release than any other request.
                         (
                             Some("release_revision".to_string()),
-                            v1_interpreter::Value::Str(release_revision.clone()),
+                            str_value(release_revision.clone()),
                         ),
                     ];
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
@@ -18232,11 +18212,11 @@ fn serve_wire_fields(
             _ => return None,
         };
         let content_type = match ctx.field(fields, "content_type_label") {
-            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
         let body = match ctx.field(fields, "body") {
-            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
         return Some((status, content_type, body));
@@ -18270,7 +18250,7 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
                     _ => 1,
                 };
                 let reason = match ctx.field(fields, "reason") {
-                    Some(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+                    Some(Value::Str(s)) if !s.is_empty() => Some(s.to_string()),
                     _ => None,
                 };
                 ExitClass::Failure { code, reason }
@@ -19405,7 +19385,7 @@ fn witness_cost_string_field(
     name: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(v1_interpreter::Value::Str(value)) if !value.is_empty() => Ok(value.clone()),
+        Some(Value::Str(value)) if !value.is_empty() => Ok(value.to_string()),
         Some(other) => Err(format!(
             "[witness-row-cost] REFUSED: projected {name} is {}, expected NonEmptyStr",
             other.type_label_public()
@@ -19574,7 +19554,7 @@ pub fn project_witness_cost_receipt(
                     &ctx,
                     "witness_cost_entry_resolve_event",
                     &[
-                        (Some("entry".to_string()), Value::Str(entry_name.clone())),
+                        (Some("entry".to_string()), str_value(entry_name.clone())),
                         (Some("resolve".to_string()), entry_wall),
                     ],
                     false,
@@ -19592,14 +19572,14 @@ pub fn project_witness_cost_receipt(
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
-                (Some("entry".to_string()), Value::Str(outcome.entry.clone())),
+                (Some("entry".to_string()), str_value(outcome.entry.clone())),
                 (
                     Some("module_path".to_string()),
-                    Value::Str(outcome.module_path.clone()),
+                    str_value(outcome.module_path.clone()),
                 ),
                 (
                     Some("function".to_string()),
-                    Value::Str(outcome.function.clone()),
+                    str_value(outcome.function.clone()),
                 ),
                 (Some("eval".to_string()), eval),
             ];
@@ -19608,21 +19588,21 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::Fail => {
                     args.push((
                         Some("error".to_string()),
-                        Value::Str("returned Bool(false)".to_string()),
+                        str_value("returned Bool(false)".to_string()),
                     ));
                     "witness_cost_seed_failed_event"
                 }
                 ClaimOutcome::NotBool { got } => {
                     args.push((
                         Some("diagnostic".to_string()),
-                        Value::Str(format!("returned `{got}`, not Bool")),
+                        str_value(format!("returned `{got}`, not Bool")),
                     ));
                     "witness_cost_seed_refused_event"
                 }
                 ClaimOutcome::RuntimeError { message } => {
                     args.push((
                         Some("error".to_string()),
-                        Value::Str(format!("runtime error: {message}")),
+                        str_value(format!("runtime error: {message}")),
                     ));
                     "witness_cost_seed_failed_event"
                 }
@@ -21226,10 +21206,10 @@ fn owned_data_decl_record_to_value(
             type_name: ctx.sym("OwnedDataDeclInitializer"),
             variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("witness_entry"), Value::Str(witness_entry.clone())),
+                (ctx.sym("witness_entry"), str_value(witness_entry.clone())),
                 (
                     ctx.sym("witness_function"),
-                    Value::Str(witness_function.clone()),
+                    str_value(witness_function.clone()),
                 ),
             ])),
         },
@@ -21246,8 +21226,8 @@ fn owned_data_decl_record_to_value(
                 Value::Record {
                     type_name: ctx.sym("ResolvedDeclRef"),
                     fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("module"), Value::Str(resolved.module.clone())),
-                        (ctx.sym("name"), Value::Str(resolved.name.clone())),
+                        (ctx.sym("module"), str_value(resolved.module.clone())),
+                        (ctx.sym("name"), str_value(resolved.name.clone())),
                     ])),
                 },
             )])),
@@ -21256,9 +21236,9 @@ fn owned_data_decl_record_to_value(
     Value::Record {
         type_name: ctx.sym("OwnedDataDeclRecord"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("entry"), Value::Str(rec.entry.clone())),
-            (ctx.sym("module"), Value::Str(rec.module.clone())),
-            (ctx.sym("decl_name"), Value::Str(rec.decl_name.clone())),
+            (ctx.sym("entry"), str_value(rec.entry.clone())),
+            (ctx.sym("module"), str_value(rec.module.clone())),
+            (ctx.sym("decl_name"), str_value(rec.decl_name.clone())),
             (ctx.sym("initializer"), initializer),
         ])),
     }
@@ -21305,15 +21285,15 @@ fn discovery_row_from_floor_discovery_row_value(
         ));
     };
     let label = match ctx.field(fields, "label") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `label`".to_string()),
     };
     let entry = match ctx.field(fields, "entry") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `entry`".to_string()),
     };
     let function = match ctx.field(fields, "function") {
-        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Str(s)) => s.to_string(),
         _ => return Err("FloorDiscoveryRow missing `function`".to_string()),
     };
     let reads_live_tree = match ctx.field(fields, "reads_live_tree") {
@@ -21373,7 +21353,7 @@ fn parse_floor_discovery_producer_result(
             && ctx.sym_eq(*variant_name, "FloorDiscoveryRefused") =>
         {
             let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => "floor discovery refused (no reason)".to_string(),
             };
             Err(reason)
@@ -21421,13 +21401,11 @@ fn invoke_floor_discovery_producer_over_corpus(
     let (graph, indices) = resolve_workspace_entry(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
         .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let source_root_values: Vec<v1_interpreter::Value> =
+        corpus_roots.iter().map(|s| str_value(s.clone())).collect();
     let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
         .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .map(|s| str_value(s.clone()))
         .collect();
     let owned_values: Vec<v1_interpreter::Value> = owned_data_records
         .iter()
@@ -22090,16 +22068,18 @@ impl Default for DiscoveryCorpusOptions {
 }
 
 /// How the discovery corpus parallelizes. `Serial` runs every row on the caller's thread —
-/// the calibration path that also carries the width-1 closure-drift oracle. `Adaptive`
-/// drains entry-groups through a worker pool whose concurrency the memory governor admits:
-/// a new worker (= one more whole-tree index resident) is the expensive act the governor
-/// gates, replacing the retired plan-pinned `spawn_width` / `spawn_width_cap` constants.
+/// the calibration path that also carries the width-1 closure-drift oracle. Production
+/// uses `DerivedSchedule`, which computes a fixed width from `std.realize_pack` once the
+/// roster is known (witness-realization P4) — no runtime AIMD admission.
 pub enum DiscoveryWidthPolicy {
     Serial,
     /// Experimental fixed width-2 pool over one process-scoped typed-module byte store.
     /// Not production-default — cohort A/B harness only.
     ControlledWidthTwo,
-    Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
+    /// Compute width from derived per-witness space bounds + host budget after roster assembly.
+    DerivedSchedule,
+    /// Fixed worker count (internal projection of `DerivedSchedule`, or probe overrides).
+    FixedWidth(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22124,7 +22104,7 @@ fn floor_git_diff_range() -> Result<String, String> {
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => match ctx.field(fields, "text") {
-            Some(Value::Str(s)) => Ok(s.clone()),
+            Some(Value::Str(s)) => Ok(s.to_string()),
             _ => Err("UnifiedDiffOk missing `text` field".to_string()),
         },
         Value::Variant {
@@ -22132,7 +22112,7 @@ fn floor_git_diff_range() -> Result<String, String> {
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff observation failed (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22170,7 +22150,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
             .map_err(|e| format!("floor_observe_diff_comparison_readout_for_ci: {e}"))?;
     let str_field = |fields: &_, name: &str| -> Result<String, String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) => Ok(s.clone()),
+            Some(Value::Str(s)) => Ok(s.to_string()),
             _ => Err(format!("comparison readout missing `{name}`")),
         }
     };
@@ -22224,7 +22204,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
             ..
         } if ctx.sym_eq(*variant_name, "ComparisonReadoutRefused") => {
             match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => Err(r.clone()),
+                Some(Value::Str(r)) => Err(r.to_string()),
                 _ => Err("comparison readout refused (no reason)".to_string()),
             }
         }
@@ -22253,11 +22233,11 @@ fn floor_diff_baseline_readout() -> Result<(String, String), String> {
             ..
         } if ctx.sym_eq(*variant_name, "BaselineReadout") => {
             let base = match ctx.field(fields, "ref") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => return Err("BaselineReadout missing `ref`".to_string()),
             };
             let event = match ctx.field(fields, "event_name") {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 _ => return Err("BaselineReadout missing `event_name`".to_string()),
             };
             Ok((base, event))
@@ -22268,7 +22248,7 @@ fn floor_diff_baseline_readout() -> Result<(String, String), String> {
             ..
         } if ctx.sym_eq(*variant_name, "BaselineReadoutRefused") => match ctx.field(fields, "reason")
         {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("baseline readout refused (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22284,7 +22264,7 @@ fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Ve
         Value::List(items) => items
             .iter()
             .map(|v| match v {
-                Value::Str(s) => Ok(s.clone()),
+                Value::Str(s) => Ok(s.to_string()),
                 other => Err(format!("{field} entry not a String: `{other:?}`")),
             })
             .collect(),
@@ -22326,7 +22306,7 @@ fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), 
             fields,
             ..
         } if ctx.sym_eq(*variant_name, "NameStatusDiffFail") => match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Err(r.clone()),
+            Some(Value::Str(r)) => Err(r.to_string()),
             _ => Err("git diff --name-status observation failed (no reason)".to_string()),
         },
         other => Err(format!(
@@ -22726,18 +22706,14 @@ fn call_entry_affected_by_touched_paths(
             "entry_affected_by_touched_paths missing from module_graph context".to_string(),
         );
     }
-    let roots: Vec<v1_interpreter::Value> = pool_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let touched: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let roots: Vec<v1_interpreter::Value> =
+        pool_roots.iter().map(|s| str_value(s.clone())).collect();
+    let touched: Vec<v1_interpreter::Value> =
+        touched_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("entry_path".to_string()),
-            v1_interpreter::Value::Str(entry_path.to_string()),
+            str_value(entry_path.to_string()),
         ),
         (Some("pool_roots".to_string()), list_value_from_vec(roots)),
         (
@@ -22772,10 +22748,8 @@ fn call_floor_kernel_would_skip(
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("changed_paths".to_string()),
@@ -22840,10 +22814,8 @@ fn call_floor_row_would_skip(
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("reads_live_tree".to_string()),
@@ -22901,10 +22873,8 @@ fn call_floor_row_precompute_would_skip(
             "floor_row_precompute_would_skip missing from floor runner context".to_string(),
         );
     }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
+    let paths: Vec<v1_interpreter::Value> =
+        changed_paths.iter().map(|s| str_value(s.clone())).collect();
     let args = [
         (
             Some("live_row_count".to_string()),
@@ -23527,7 +23497,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
         workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
 
     const EFFECT_REACH_STD_ENTRY: &str = "src/v2/std/effect_reach.dag";
@@ -23552,7 +23522,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         items
             .iter()
             .map(|item| match item {
-                Value::Str(s) => s.clone(),
+                Value::Str(s) => s.to_string(),
                 other => panic!(
                     "effect_reach_host_sink_callee_symbols_v0 entry is not a String: {other:?}"
                 ),
@@ -24179,7 +24149,7 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                         _ => -1,
                     };
                     let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.clone(),
+                        Some(Value::Str(s)) => s.to_string(),
                         _ => String::new(),
                     };
                     let db = derived
@@ -24336,6 +24306,32 @@ fn run_discovery_corpus_with_options_inner(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
+    let width_policy = match width_policy {
+        DiscoveryWidthPolicy::DerivedSchedule => {
+            let pairs: Vec<(String, String)> = rows
+                .iter()
+                .map(|r| (r.entry.clone(), r.function.clone()))
+                .collect();
+            let derived = crate::derived_realization_schedule::derive_discovery_schedule_width(
+                source_roots,
+                &pairs,
+            )?;
+            if let Some(msg) = derived.refuse_if_budget_unreadable() {
+                return Err(msg);
+            }
+            eprintln!(
+                "run_discovery_corpus: derived schedule width={} verdict={} max_derived_bound={}",
+                derived.width,
+                derived.verdict,
+                derived
+                    .max_derived_bound_bytes
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "unknown".into()),
+            );
+            DiscoveryWidthPolicy::FixedWidth(derived.width.max(1))
+        }
+        other => other,
+    };
     // P4 advisory-first: predict the memory-packed width per witness from its derived
     // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
     if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
@@ -24619,6 +24615,9 @@ fn run_discovery_corpus_with_options_inner(
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
     return match width_policy {
+        DiscoveryWidthPolicy::DerivedSchedule => {
+            unreachable!("DerivedSchedule is lowered to FixedWidth before the pool match")
+        }
         DiscoveryWidthPolicy::Serial => {
             // Arm retention over the WHOLE serial schedule (all rows) before the single drain
             // call — a shared module stays resident until its last scheduled entry consumes it.
@@ -24816,15 +24815,13 @@ fn run_discovery_corpus_with_options_inner(
                 deferred_rows,
             ))
         }
-        DiscoveryWidthPolicy::Adaptive(governor) => {
-            // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
-            // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
-            // resident structure across every group it pulls — admission of a worker (not of a
-            // group) is therefore the memory-relevant act the governor decides.
+        DiscoveryWidthPolicy::FixedWidth(pool_width) => {
+            // Derived schedule pool: entry-groups drain through a fixed worker count chosen
+            // up front by std.realize_pack over the roster's derived space bounds.
             let groups = entry_row_groups(&rows);
-            let spawn_target_width = governor.current_target_width();
+            let spawn_target_width = pool_width;
             eprintln!(
-                "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+                "run_discovery_corpus: derived schedule pool over {} entry-group(s), {} row(s) (scheduled width={})",
                 groups.len(),
                 rows.len(),
                 spawn_target_width,
@@ -24863,7 +24860,7 @@ fn run_discovery_corpus_with_options_inner(
                     "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
                 );
                 eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+                    "run_discovery_corpus: cross_worker_store withheld (scheduled width={spawn_target_width}) — per-index typed cache until width > 1"
                 );
                 let style = ShardStyle {
                     shard_id: 0,
@@ -24986,14 +24983,15 @@ fn run_discovery_corpus_with_options_inner(
                     deferred_rows,
                 ));
             }
-            // Process-scoped typed store shell — populated only when plural workers run
-            // (target_width > 1). At width=1 the serde byte store adds retention without
-            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
-            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
-            let cross_worker_store = new_shared_typecheck_caches();
-            if floor_stream && spawn_target_width > 1 {
+            let arm_shared_store = if p1_cohort_experiment_active() {
+                p1_experimental_arm_shared_typed_store(spawn_target_width)
+            } else {
+                true
+            };
+            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
+            if floor_stream {
                 eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+                    "{} [affected-set] streaming run-witnesses live across the derived schedule pool (width {}; ▎shard N, one color each)",
                     floor_ts(),
                     spawn_target_width,
                 );
@@ -25011,62 +25009,32 @@ fn run_discovery_corpus_with_options_inner(
             let execution_authority_is_subject_for_workers = execution_authority_is_subject;
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::new();
-            let mut worker_ordinal: usize = 0;
-            loop {
-                if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
-                    break;
-                }
-                match governor.try_admit() {
-                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
-                    crate::memory_governor::AdmitDecision::Hold(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(150));
-                        continue;
-                    }
-                }
+            let mut handles = Vec::with_capacity(spawn_target_width);
+            for worker_ordinal in 0..spawn_target_width {
                 let queue_for_worker = queue.clone();
                 let abort_for_worker = abort.clone();
-                let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
                 let execution_authority_roots = execution_authority_roots_owned.clone();
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
-                let spawn_target_width = governor.current_target_width();
-                let cross_worker_store_for_worker = if spawn_target_width > 1 {
-                    Some(cross_worker_store.clone())
-                } else {
-                    None
-                };
-                if worker_ordinal == 0 && spawn_target_width <= 1 {
-                    eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-                }
-                // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
-                // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
-                // admission window has no interleaving to disambiguate.
+                let store = cross_worker_store.clone();
+                let arm_shared_for_worker = arm_shared_store;
                 let style = ShardStyle {
                     shard_id: worker_ordinal,
-                    shard_count: governor.current_target_width(),
+                    shard_count: spawn_target_width,
                     color: floor_color,
                     stream: floor_stream,
                 };
-                worker_ordinal += 1;
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
-                        // The slot was granted by try_admit on the pump thread; the guard owns the
-                        // matching release so a panicking worker cannot wedge admissions.
-                        let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
-                            governor_for_worker.clone(),
-                        );
-                        // Process-scoped typed_module_cache when governor width > 1; private cold
-                        // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                        let index = match cross_worker_store_for_worker {
-                            Some(store) => {
-                                build_multi_entry_index_with_shared_caches(&roots, store)
-                            }
-                            None => build_multi_entry_index(&roots),
+                        let index = if arm_shared_for_worker {
+                            let store = store.expect(
+                                "shared typed store armed but cross_worker_store missing",
+                            );
+                            build_multi_entry_index_with_shared_caches(&roots, store)
+                        } else {
+                            build_multi_entry_index(&roots)
                         };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                             let resolved = if execution_authority_is_subject_for_workers {
@@ -25081,25 +25049,16 @@ fn run_discovery_corpus_with_options_inner(
                                 Err(msg) => {
                                     abort_for_worker.store(true, Ordering::SeqCst);
                                     return Err(format!(
-                                        "floor runner resolve failed in worker ({msg}) — declared \
-                                 affected-set machinery must resolve; no silent \
-                                 run-everything fallback"
+                                        "floor runner resolve failed in derived-schedule worker ({msg})"
                                     ));
                                 }
                             }
                         } else {
                             None
                         };
-                        // The front-loaded admission cost (index build + runner resolve) has
-                        // landed and is visible to the creep signals: unblock admission pacing.
-                        slot.note_first_cost_paid();
                         let mut worker_summaries = Vec::new();
                         loop {
-                            // Multiplicative decrease drains here: a worker between groups retires
-                            // when concurrency sits above the (possibly just-halved) window.
-                            if governor_for_worker.should_retire()
-                                || abort_for_worker.load(Ordering::SeqCst)
-                            {
+                            if abort_for_worker.load(Ordering::SeqCst) {
                                 break;
                             }
                             let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
@@ -25119,10 +25078,7 @@ fn run_discovery_corpus_with_options_inner(
                                 budget_policy_for_workers,
                                 style,
                             ) {
-                                Ok(summary) => {
-                                    worker_summaries.push(summary);
-                                    slot.note_unit_complete();
-                                }
+                                Ok(summary) => worker_summaries.push(summary),
                                 Err(e) => {
                                     abort_for_worker.store(true, Ordering::SeqCst);
                                     return Err(e);
@@ -25153,7 +25109,7 @@ fn run_discovery_corpus_with_options_inner(
             let leftover = queue.lock().unwrap().len();
             if leftover > 0 {
                 return Err(format!(
-            "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
+            "derived-schedule discovery pool exited with {leftover} undrained entry-group(s) and no \
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
             }
@@ -26500,7 +26456,7 @@ mod floor_witness_a_prove {
         parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, resolve_entry_with_index,
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use im::HashMap;
     use std::path::PathBuf;
 
@@ -26587,7 +26543,7 @@ mod floor_witness_a_prove {
         Value::Record {
             type_name: ctx.sym("FloorDiffLineTouch"),
             fields: Rc::new(vec![
-                (ctx.sym("path"), Value::Str(path.to_string())),
+                (ctx.sym("path"), str_value(path.to_string())),
                 (ctx.sym("start_line"), int_value(start)),
                 (ctx.sym("end_line"), int_value(end)),
             ]),
@@ -26612,7 +26568,7 @@ mod floor_witness_a_prove {
             ),
             (
                 Some("file_path".to_string()),
-                Value::Str(file_path.to_string()),
+                str_value(file_path.to_string()),
             ),
             (Some("test_fn_decl_line".to_string()), int_value(decl_line)),
             (
@@ -26743,7 +26699,7 @@ mod floor_witness_a_prove {
     ) -> Result<v1_interpreter::Value, String> {
         let args = [(
             Some("changed".to_string()),
-            Value::Str(changed_path.to_string()),
+            str_value(changed_path.to_string()),
         )];
         v1_interpreter::run_in_context_with_args(
             prove_ctx,
@@ -27069,7 +27025,7 @@ mod module_grain_affected_equivalence_tests {
         resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
         MultiEntryIndex,
     };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::time::Instant;
@@ -27130,7 +27086,7 @@ mod module_grain_affected_equivalence_tests {
         v1_interpreter::list_value(
             items
                 .iter()
-                .map(|s| Value::Str(s.clone()))
+                .map(|s| str_value(s.clone()))
                 .collect::<Vec<_>>(),
         )
     }
@@ -27147,7 +27103,7 @@ mod module_grain_affected_equivalence_tests {
         let args = [
             (
                 Some("entry_path".to_string()),
-                Value::Str(entry_rel.to_string()),
+                str_value(entry_rel.to_string()),
             ),
             (Some("pool_roots".to_string()), str_list_value(roots)),
             (Some("touched_paths".to_string()), str_list_value(touched)),
@@ -27493,10 +27449,7 @@ mod module_grain_affected_equivalence_tests {
         );
 
         let args = [
-            (
-                Some("entry_path".to_string()),
-                Value::Str(entry.to_string()),
-            ),
+            (Some("entry_path".to_string()), str_value(entry.to_string())),
             (Some("pool_roots".to_string()), str_list_value(&rel_roots)),
             (Some("touched_paths".to_string()), str_list_value(&touched)),
             (
@@ -34854,7 +34807,7 @@ mod reference_edge_producer_tests {
         super::list_value_from_vec(
             items
                 .iter()
-                .map(|s| crate::v1_interpreter::Value::Str(s.clone()))
+                .map(|s| crate::v1_interpreter::str_value(s.clone()))
                 .collect(),
         )
     }
@@ -34867,11 +34820,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -35372,7 +35325,7 @@ fn commit_witness_field_str(
     name: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(v1_interpreter::Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         other => Err(format!("{name} not a String: {other:?}")),
     }
 }
@@ -41747,13 +41700,13 @@ pub fn value_to_wire_json(
         v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
         v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
-        v1_interpreter::Value::Str(s) => {
+        Value::Str(s) => {
             if s.starts_with('[') || s.starts_with('{') {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
                     return Ok(parsed);
                 }
             }
-            Ok(serde_json::Value::String(s.clone()))
+            Ok(serde_json::Value::String(s.to_string()))
         }
         v1_interpreter::Value::List(items) => {
             let mut arr = Vec::with_capacity(items.len());
@@ -41772,7 +41725,7 @@ pub fn value_to_wire_json(
             let mut obj = serde_json::Map::new();
             for (k, v) in m.iter() {
                 let key = match k.value_ref() {
-                    v1_interpreter::Value::Str(s) => s.clone(),
+                    Value::Str(s) => s.to_string(),
                     other => {
                         return Err(format!(
                             "cannot serialize map with non-string key to JSON (got {other:?} key)"

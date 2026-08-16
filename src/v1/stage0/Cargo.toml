@@ -78,7 +78,13 @@ path = "src/bin/claim_batch.rs"
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
 
-# CHARAT-0 measurement scaffold (not floor-enrolled).
+# CHARAT-0 / STR-RC-0 measurement scaffold (not floor-enrolled).
+# Local transport for `extdeps.languages.json.parse` `parse_json` interpreter scaling.
+# Modes: `scaling` (sub-40KB grid), `large` (100/200/507KB decisive regime), plus
+# `survival` and `memo_receipt` for mechanism receipts.
+# DISSOLUTION: delete when CHARAT-0 string-indexing acceptance enrolls a floor witness
+# (or STR-RC-0 scaffold retires), or when large-regime measurement refutes and reverts.
+# Carrier: `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER` in json_parse_scaling_probe.rs.
 [[bin]]
 name = "json_parse_scaling_probe"
 path = "src/bin/json_parse_scaling_probe.rs"
