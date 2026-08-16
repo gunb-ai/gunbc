@@ -1,7 +1,7 @@
 module test.claim.markup_medium_convergence
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn em_hi() -> Fragment {
   Element { tag: "em", attributes: [], children: [ FragmentText { content: "hi" } ] }

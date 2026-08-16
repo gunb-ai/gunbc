@@ -1,6 +1,6 @@
 module test.claim.yaml_multiline_block_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_top_level_multiline_is_block_literal() -> Bool {
   let out = serialize_yaml(v: yaml_string(s: "l1\nl2"))

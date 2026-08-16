@@ -1,7 +1,7 @@
 module test.claim.push_before_main_push_selection_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data push_before_selection_witness_note: String = "Discriminating witness for push-before main-push selection (checklist step 6): a planted push delta observes PushBefore (not self-compare), carries a non-empty changed-path population, and the selection-degradation receipt reads SelectionApplied with selected/total derived from that population (selected>0, selected<total). RED control witness_empty_delta_zero_selected_still_reads_applied_red documents why selected>0 matters: a zero-path diff still classifies as SelectionApplied with selected=0 — the empty-observation narrow trap the push-before baseline closes."
 

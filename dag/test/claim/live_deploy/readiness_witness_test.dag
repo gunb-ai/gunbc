@@ -1,7 +1,7 @@
 module test.claim.live_deploy.readiness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
 

@@ -1,7 +1,7 @@
 module test.claim.fleet_observation_producers_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
   fleet_shell_transport_unobserved_count() == fleet_subsumption_hosts.length() - 1

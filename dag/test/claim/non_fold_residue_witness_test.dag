@@ -1,6 +1,6 @@
 module test.claim.non_fold_residue_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn non_fold_residue_clean_holds() -> Bool {
   return non_fold_residue_unrostered_count() == 0 && non_fold_residue_stale_roster_count() == 0

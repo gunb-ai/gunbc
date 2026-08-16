@@ -1,7 +1,7 @@
 module test.claim.roadmap_row_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data roadmap_row_witness_note: String = "Composition slice 2's receipts: the RoadmapRow archetype's grid asserted over the SERVED surfaces (the emitted stylesheet and the rendered page), the actuator's scale proven derived-not-set, and the density consumption pinned — the expected blocks are assembled from the archetype's own derivation fns and asserted verbatim against the emission, the same full-block pattern the page witness set. Declared bound: contains-grain cannot count occurrences, so a ROGUE duplicate block for the same selector is outside this file's reach — the register and tactile suites scan the wider sheet."
 

@@ -144,7 +144,7 @@ fn section_4() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "parse_engine_hooks … 07_target_carriers, fold_lowering (Band A+B leaf)"), cell(text: "none"), cell(text: "no")]),
         row(cells: [cell(text: "03_normalize"), cell(text: "indirect (fn_decl rows need module-root decl binding)"), cell(text: "yes for Slice 1 rows")]),
-        row(cells: [cell(text: "03_name_resolve"), cell(text: "direct fill"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "03_name_resolve"), cell(text: "direct fill"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
         row(cells: [cell(text: "03_resolve"), cell(text: "direct consumer"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
         row(cells: [cell(text: "04_infer"), cell(text: "transitive (ResolvedTree)"), cell(text: "yes")]),
       ],

@@ -1,7 +1,7 @@
 module test.claim.ci_render_slowest_hot_style
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_body() -> List<String> {
   [

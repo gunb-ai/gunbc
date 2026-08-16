@@ -1,7 +1,7 @@
 module test.claim.diff_window_cross_seam_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data planted_base_hex: String = "abc123def4567890abc123def4567890abc12345"
 data planted_head_hex: String = "fedcba0987654321fedcba0987654321fedcba09"
@@ -186,11 +186,11 @@ test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
       ) {
         BaselineSelected { baseline: b } =>
           diff_baseline_is_exact_replay(b: b)
-            && floor_diff_mode_for_baseline(
+            && v2.workflow.floor_diff_observe.floor_diff_mode_for_baseline(
               baseline: b,
               policy: gunbc_ci_spec.diff_policy,
             ) == DiffTwoDot
-            && floor_git_diff_range_of_mode(mode: DiffTwoDot) == TwoDot
+            && v2.workflow.floor_diff_observe.floor_git_diff_range_of_mode(mode: DiffTwoDot) == TwoDot
             && diff_baseline_diff_base(b: b) == planted_base_hex
             && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
         BaselineRefused { reason: _ } => false

@@ -1,6 +1,6 @@
 module test.claim.workflow_recursive_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
   linearize_verdicts(

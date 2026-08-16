@@ -1,6 +1,6 @@
 module test.claim.srv3_runner_memory_cap_plan_verify_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_memory_cap_converged_read() -> RunnerUnitMemoryLiveRead {
   let desired = gunbc_runner_slot_desired()

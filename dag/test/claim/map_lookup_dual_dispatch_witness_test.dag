@@ -1,7 +1,7 @@
 module test.claim.map_lookup_dual_dispatch_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("a", 10)

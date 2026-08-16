@@ -1,7 +1,7 @@
 module test.claim.bmc_live_receipts_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The firmware VERSION is the per-host observation and the only one. srv3 was
 // flashed to 3.22.00 on 2026-08-11 and re-observed 2026-08-12; the surface it

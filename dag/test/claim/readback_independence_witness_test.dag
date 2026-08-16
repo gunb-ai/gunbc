@@ -1,6 +1,6 @@
 module test.claim.readback_independence
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_cited_incident_note: String = "The conjunct is the incident itself, replayed through the criterion. On srv3 2026-07-25 `sccache --show-stats` returned a full stats table — a Converged read — over a host whose modeled unit had been dead for six hours. The criterion must turn that exact input into UnknownRefused, and it must do so because of what the PROBE can do, not because of anything about the value it returned."
 

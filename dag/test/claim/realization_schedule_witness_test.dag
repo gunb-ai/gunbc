@@ -2,7 +2,7 @@ module test.claim.realization_schedule_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_correction_note: String = "Corrected 2026-07-29: the SubstrateInputsOnly stamp was FALSE and lying_substrate_inputs_only_stamp_census caught it — this file's import closure reaches the live-read carrier home v2.compiler.self_host through the v2.workflow.ci_floor_plan import. That import is intentional and stays: the witness compares against cheap_floor_gate_step_labels at its single authority rather than copying the label list (DESIGN §3), so the reach is real even though the rows themselves build synthetic schedules. The census answers reach structurally, which is its precision frontier, not an absorption; the fail-closed reading is ReadsLiveTree (never-skip), since a predict-skipped live-tree row is a selection fail-open."
 

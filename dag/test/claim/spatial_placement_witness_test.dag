@@ -1,7 +1,7 @@
 module test.claim.spatial_placement
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // SPATIAL-0 green-by-execution proofs for product.placement_supply and
 // gunbc.fleet_physical_inventory: RackResidence/same_rack (exact RackIdentity only; unobserved is

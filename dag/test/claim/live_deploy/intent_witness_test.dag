@@ -1,7 +1,7 @@
 module test.claim.live_deploy.intent
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_readback_requires_service_ready_gate() -> Bool {
   let rb = live_deploy_readback_for_spec(spec: deployment_spec_srv1())

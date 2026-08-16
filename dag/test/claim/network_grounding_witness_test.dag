@@ -1,7 +1,7 @@
 module test.claim.network_grounding
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data network_grounding_witness_home_note: String = "Consolidated green-by-execution proofs for the extdeps.network grounding leaves — the structured IPv4 address, the IpAddress/NetworkHost/SocketAddress surfaces, and the reach model. These were three witness files (ipv4_address / network_address_host / network_reach) until 2026-07-25; each was its own floor entry resolve, so consolidating them into one entry is a §6 cost-shape fix (fewer whole-tree closure resolves, zero coverage lost) — all three prove the same extdeps.network module family. The three original witness notes are preserved verbatim below."
 

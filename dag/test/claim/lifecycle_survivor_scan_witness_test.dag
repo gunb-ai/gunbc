@@ -10,7 +10,7 @@ module dag.test.claim.lifecycle_survivor_scan_witness
 // survivors, and zero is exactly what a predicate selecting nothing would also report, so
 // the predicate itself has to be shown to discriminate. These rows run the SAME function
 // production filters with, not a re-spelling of it.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Planted RED: the exact shape the migration removed must still be SELECTED.
 test fn planted_raw_survivor_is_selected() -> Bool {

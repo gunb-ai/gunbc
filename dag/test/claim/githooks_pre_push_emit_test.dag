@@ -1,7 +1,7 @@
 module test.claim.githooks_pre_push_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)

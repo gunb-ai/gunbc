@@ -1,6 +1,6 @@
 module test.claim.host_hygiene_reaper
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data reaper_test_active_slot: ResidualSlotObservation = ResidualSlotObservation {
   unit: "actions-runner@srv1-03.service" as NonEmptyStr,

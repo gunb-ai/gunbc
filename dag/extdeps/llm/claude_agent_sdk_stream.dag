@@ -48,7 +48,7 @@ fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
           JsonStringListOk { values: vs } =>
             match head {
               JsonString { value: s } =>
-                JsonStringListOk { values: list_snoc_item(xs: vs, item: s) }
+                JsonStringListOk { values: v2.std.algebra.list_snoc_item(xs: vs, item: s) }
               JsonNull => JsonStringListFail
               JsonBool { value: _ } => JsonStringListFail
               JsonNumber { lexeme: _ } => JsonStringListFail

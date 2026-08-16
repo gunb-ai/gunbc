@@ -1,6 +1,6 @@
 module test.claim.ci_oom_reclassify_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn bare_137_outcome() -> FloorOutcome {
   classify_floor_exit(e: ExitFailure { code: 137, reason: "Process completed with exit code 137." })

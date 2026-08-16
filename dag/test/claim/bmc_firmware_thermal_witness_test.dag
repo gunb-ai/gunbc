@@ -1,7 +1,7 @@
 module test.claim.bmc_firmware_thermal_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_approved_openbmc_3_22_artifact: ApprovedBmcFirmwareArtifact = ApprovedBmcFirmwareArtifact {
   firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,

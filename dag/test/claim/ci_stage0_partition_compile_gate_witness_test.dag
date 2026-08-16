@@ -1,23 +1,23 @@
 module test.claim.ci_stage0_partition_compile_gate_witness
 
 
-fn gate_materialized_render(plan: EffectPlan<BashBoundOperationInvocation>) -> String {
-  ci_stage0_partition_compile_gate_render(plan: plan)
+fn gate_materialized_render(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> String {
+  v2.workflow.ci_stage0_partition_compile_gate_emit.ci_stage0_partition_compile_gate_render(plan: plan)
 }
 
-fn gate_plan_refuses(plan: EffectPlan<BashBoundOperationInvocation>) -> Bool {
-  match effect_plan_bash_materialize(plan: plan) {
+fn gate_plan_refuses(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
+  match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: _ } => false
     EffectPlanBashMaterializationRefused { refusal: _ } => true
   }
 }
 
 test fn w_stage0_partition_gate_package_count_holds() -> Bool {
-  ci_stage0_partition_compile_gate_package_count_holds()
+  v2.workflow.ci_stage0_partition_compile_gate_emit.ci_stage0_partition_compile_gate_package_count_holds()
 }
 
 test fn w_stage0_partition_gate_script_names_all_seven_packages() -> Bool {
-  let script = ci_stage0_partition_compile_gate_script()
+  let script = v2.workflow.ci_stage0_partition_compile_gate_emit.ci_stage0_partition_compile_gate_script()
   string_contains(s: script, pattern: "v1-stage0-runtime")
     && string_contains(s: script, pattern: "v1-stage0-std-core")
     && string_contains(s: script, pattern: "v1-stage0-std-surface")
@@ -36,7 +36,7 @@ test fn w_stage0_partition_gate_shell_emit_is_scaffold_holds() -> Bool {
 
 test fn w_stage0_partition_gate_emit_carries_dissolve_marker_holds() -> Bool {
   string_contains(
-    s: ci_stage0_partition_compile_gate_script(),
+    s: v2.workflow.ci_stage0_partition_compile_gate_emit.ci_stage0_partition_compile_gate_script(),
     pattern: "🟡 dissolve-on: ci_stage0_partition_compile_gate_script"
   )
 }

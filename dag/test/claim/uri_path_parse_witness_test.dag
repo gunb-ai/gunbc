@@ -1,6 +1,6 @@
 module test.claim.uri_path_parse_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn param_path(prefix: String, param_name: String) -> String {
   concat(prefix, "/", "{", param_name, "}")

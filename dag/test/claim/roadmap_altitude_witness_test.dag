@@ -1,7 +1,7 @@
 module test.claim.roadmap_altitude_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data roadmap_altitude_witness_note: String = "Composition slice 3's receipts: the attention law's derivations proven total and fail-closed, the fold/open decision proven over RENDERED fixtures (a routine section folds, one working member holds it open), the counts wire pinned, and the client expand chain proven derived — each by execution, with the REDs planted as fixtures the same predicates must refuse."
 

@@ -1,7 +1,7 @@
 module test.claim.compute_board_admission_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // EACH FIXTURE PLANTS EXACTLY ONE DEFECT into an otherwise coherent article, and asserts the
 // cause NAMED for it rather than merely that something refused. A witness asserting only "it

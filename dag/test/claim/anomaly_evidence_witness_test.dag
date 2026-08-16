@@ -1,7 +1,7 @@
 module test.claim.anomaly_evidence_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data anomaly_evidence_witness_note: String = "Composition slice 4: anomaly evidence is a SURFACE, not a tooltip. The loud band's located reason (step: detail, or the wire reason) renders as the first line of the row's disclosure — persistent and inspectable in the DOM — while the title attribute stays a convenience channel, never the only carrier. The predicate below defines what 'is a surface' means mechanically; the RED feeds it the title-only shape (yesterday's program) and it must refuse."
 

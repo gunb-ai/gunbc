@@ -1,7 +1,7 @@
 module test.claim.llm_attempt_receipt_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_substrate: SubstrateIdentity = SubstrateIdentity {
   compiler_revision: "4b7a13d73b1" as NonEmptyStr,

@@ -1,6 +1,6 @@
 module test.claim.host_network_diagnosis
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_srv4_hinge_note: String = "THE conjunct, and it is the srv4 outage of 2026-07-25 replayed on the readings taken live from the host. cloud-init disabled by the Ubuntu live installer, netplan present and correct, interface administratively up with no carrier. The fold must blame the PHYSICAL layer and name the interface and MAC an engineer needs in order to look at the right cable — and it must NOT blame configuration, which is the answer that was actually given at the time and that sent the diagnosis down a false path."
 

@@ -7,8 +7,8 @@ data gcp_token_smoke_print_token_command: String = "gcloud auth print-access-tok
 
 data gcp_token_smoke_echo_acquired_command: String = "echo \"keyless access token acquired\""
 
-fn gcp_token_smoke_run(command: String) -> Run {
-  Run {
+fn gcp_token_smoke_run(command: String) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
     command: command,
     env: [],
     redirect: Absent,
@@ -16,12 +16,12 @@ fn gcp_token_smoke_run(command: String) -> Run {
   }
 }
 
-fn gcp_token_smoke_do(command: String) -> PipelineStep {
+fn gcp_token_smoke_do(command: String) -> v2.std.orchestration.PipelineStep {
   Do { run: gcp_token_smoke_run(command: command) }
 }
 
-fn gcp_token_smoke_intent() -> Pipeline {
-  Pipeline {
+fn gcp_token_smoke_intent() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       gcp_token_smoke_do(command: gcp_token_smoke_print_token_command),
       gcp_token_smoke_do(command: gcp_token_smoke_echo_acquired_command)
@@ -31,7 +31,7 @@ fn gcp_token_smoke_intent() -> Pipeline {
 }
 
 fn gcp_token_smoke_script() -> String {
-  match orch_emit_pipeline(p: gcp_token_smoke_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: gcp_token_smoke_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.carried

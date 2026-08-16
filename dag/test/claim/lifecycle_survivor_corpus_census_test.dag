@@ -15,7 +15,7 @@ module dag.test.claim.lifecycle_survivor_corpus_census
 // discovery by a WitnessExclusionRow AND carries a FalsifierCadenceJob enrollment, so it has
 // a named executing consumer. A witness moved out of discovery without one executes nowhere,
 // which is deletion of the evidence with the file retained.
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 // The claim. Not "every survivor is classified" -- there are none to classify, which is the
 // stronger statement and the one the migration is for. A newly authored

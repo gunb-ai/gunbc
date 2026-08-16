@@ -1,7 +1,7 @@
 module test.claim.extdeps_dpkg_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dpkg_status_path: String = "dag/extdeps/package_managers/dpkg.dag"
 data dpkg_status_service: String = "dpkg.Package"
@@ -13,12 +13,12 @@ fn argv_join(argv: List<String>) -> String {
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       dpkg_status_path,
       dpkg_status_service,
       dpkg_status_operation,
-      [operation_argv_bind_text(name: "package", text: package_tailscale as String)]
+      [v2.std.operation_argv.operation_argv_bind_text(name: "package", text: package_tailscale as String)]
     )
   )
   argv_join(argv: helper) == argv_join(argv: transport)

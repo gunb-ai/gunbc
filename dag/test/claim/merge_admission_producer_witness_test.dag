@@ -1,7 +1,7 @@
 module test.claim.merge_admission_producer_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-producer-base")
 data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"

@@ -1,6 +1,6 @@
 module test.claim.build_cache_endpoint_path
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data endpoint_path_wall_doc: String = "THE UNLINK ADMISSION'S ACCEPTANCE SET. The subject is srv4, observed 2026-08-01: a stale server.sock with no listener behind it, every new server failing with 'Address in use (os error 98)', the host uncached since roughly 2026-07-26. Exactly one of the five path states licenses removing that file, and the controls below assert the other four refuse — but the load-bearing ones are the two that assert a DIFFERENCE from ExecStartPre=rm -f, because a wall that refuses where the naive fix would also have been harmless has not been shown to be worth anything."
 

@@ -1,6 +1,6 @@
 module test.claim.terminal_capability_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data interactive_tty: TerminalEnvironment = TerminalEnvironment {
   is_tty: true, ci: false, no_color: false, dumb_term: false

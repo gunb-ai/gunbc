@@ -1,6 +1,6 @@
 module test.claim.uri_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn uri_scheme_is_http_matches_https_holds() -> Bool {
   uri_scheme_is_http(s: Https)

@@ -21,7 +21,7 @@ type ArmEnumeration
 type InterpreterDispatchEmitSite
   = EvalBuiltinInnerSite
   | EvalAlgebraMethodInnerSite
-  | EvalCallBridgeFamilySite { module: QualifiedName }
+  | EvalCallBridgeFamilySite { module: v2.std.qualified_name.QualifiedName }
   | EvalCallNativeInterceptSite
   | TryV2StdCollectionMapPrimitiveGroundingSite
   | TryParseTableMemoDispatchSite

@@ -1,7 +1,7 @@
 module test.claim.shell_exec_run_argv_embed_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data shell_exec_dag_path: String = "dag/extdeps/shell/exec.dag"
 

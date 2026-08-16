@@ -1,7 +1,7 @@
 module test.claim.git_ls_remote_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_scope_note: String = "What is claimed is the READING of a ref advertisement, not the network call. scan_advertised_refs is pure over lines the caller already holds, so every arm is reachable with no remote and no credentials. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving the scan intact would keep these green.\\n\\nWhy this capability had to exist at all: git.Core.RemoteBranches returns ref NAMES from `git branch -r`, so gunbc.roadmap_publish's RemoteBranch.head_sha - the field that makes a publication judgment exact rather than name-shaped - could not be populated from any operation in the corpus. The model had gotten ahead of the transport."
 

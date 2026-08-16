@@ -1,6 +1,6 @@
 module test.claim.host_phase_status
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data modeled_phase_fixture: PhaseDisposition = ModeledCompose {
   authorities: [

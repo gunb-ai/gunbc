@@ -112,7 +112,7 @@ fn refusal_failure_population(
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState
 ) -> List<HealPushFailure> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: unsatisfied_capabilities_for_required(
       authority: authority,
       control_plane: control_plane,
@@ -341,12 +341,12 @@ fn failure_is_actions_workflow_scope_residual(f: HealPushFailure) -> Bool {
 fn author_residual_exact(refusal: HealPushRefusal) -> Bool {
   count(refusal.failures) > 0
     && count(refusal.paths) > 0
-    && fold_list(
+    && v2.std.algebra.fold_list(
          xs: refusal.failures,
          empty: true,
          cons: fn(acc, f) { acc && failure_is_actions_workflow_scope_residual(f: f) }
        )
-    && fold_list(
+    && v2.std.algebra.fold_list(
          xs: refusal.paths,
          empty: true,
          cons: fn(acc, p) { acc && is_workflow_projection_path(path: p) }
@@ -450,7 +450,7 @@ fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposit
 }
 
 fn refusal_causes_token(causes: List<HealPushRefusalCause>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: causes,
     empty: "HealPushRefusalPopulationEmpty",
     cons: fn(acc, c) {

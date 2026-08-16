@@ -1,6 +1,6 @@
 module test.claim.host_hygiene_liveness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data liveness_test_bound: Second = second(1800)
 

@@ -1,7 +1,7 @@
 module test.claim.ci_release_bins_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positives: measured gap bins cssl_assemble / frontier_probe_survey are enrolled and appear on the build line. Retirement negative: compile_clean_floor_skip_witness is absent from the roster, release build line, and both generated workflows. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall). Per-claim test fns (no AND-umbrella; #7287 pattern)."
 

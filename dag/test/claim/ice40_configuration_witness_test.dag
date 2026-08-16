@@ -1,7 +1,7 @@
 module test.claim.ice40_configuration_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn count_of(xs: List<ConfigurationTiming>) -> Int {
   fold(xs, init: 0, f: fn(acc, _t) { acc + 1 })

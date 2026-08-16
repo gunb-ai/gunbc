@@ -1,6 +1,6 @@
 module test.claim.fleet_show_effective_read_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn per_slot_cap_wire() -> String {
   to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))

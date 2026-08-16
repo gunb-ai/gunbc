@@ -1,6 +1,6 @@
 module test.claim.runner_activation_wall
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data runner_activation_wall_doc: String = "The acceptance controls for the activation wall. Each one names a state the fleet was actually in on 2026-08-01 and asserts that it cannot yield an enable command: srv1's endpoint owned from a RETIRED slot, srv2's and srv3's from ACTIVE ones, srv4's absent behind a stale socket, and every host's placement unknown before it was read. The point of the set is that a runner may be activated only against an exact desired instance whose endpoint is held by the managed unit — not against a responsive daemon, not against a host that merely enrolled."
 

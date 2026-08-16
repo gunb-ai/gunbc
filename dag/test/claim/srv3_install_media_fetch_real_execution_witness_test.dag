@@ -1,7 +1,7 @@
 module test.claim.srv3_install_media_fetch_real_execution
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_home_doc: String = "These three witnesses drive real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_install_media_fetch_witness_test.dag so that file's pure classification witnesses keep hermetic per-PR discovery; these three are excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as declared Wet explicit entries (bin_witness_wet_entries), same lane as the bin-execution witnesses."
 

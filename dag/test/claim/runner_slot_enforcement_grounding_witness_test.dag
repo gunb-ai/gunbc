@@ -1,6 +1,6 @@
 module test.claim.runner_slot_enforcement_grounding_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_slot() -> NonEmptyStr {
   "actions-runner@srv1-01.service"

@@ -1,7 +1,7 @@
 module test.claim.gunbc_invoke_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data gunbc_invoke_deploy_srv1_pre_migration_golden_note: String = "Hand-frozen pre-Phase-3a bytes from origin/main gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 

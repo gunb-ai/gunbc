@@ -1,7 +1,7 @@
 module test.claim.stage0_partition_closure_live_census_test
 
 
-data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data witness_live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data census_split_note: String = "THE IRREDUCIBLE CENSUS, SPLIT INTO ITS OWN FILE SO ITS SIBLINGS CAN STAY PER-PR. The partition-closure gate has two halves with different costs and different subjects. The MECHANISM half — a missing roster row refuses, the refusal names the incomplete authority, two missing modules produce two defects, and the verdict carries its extent — is decidable over supplied facts, runs on a fixture in 1-4ms, and stays in test.claim.stage0_partition_closure_witness_test where per-PR discovery reaches it. THIS file carries only the CENSUS: does the LIVE roster hold against the LIVE corpus.
 

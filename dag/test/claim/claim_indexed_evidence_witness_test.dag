@@ -1,7 +1,7 @@
 module test.claim.claim_indexed_evidence_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn provider_evidence_fixture() -> ProviderInstance {
   ProviderInstance {
@@ -28,12 +28,12 @@ fn provider_evidence_fixture() -> ProviderInstance {
 data provider_evidence_bound: RunKey = "provider-attempt-1"
 data provider_other_evidence_bound: RunKey = "provider-attempt-2"
 
-data source_binding_fixture_read: DagSourceReadWitness = DagSourceReadWitness {
+data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: Medium {
     carried: "module claim.evidence.source\nfn foo() -> Bool { true }\nfn caller() -> Bool { foo() }",
     fidelity: Lossless,
   },
-  artifact: Artifact {
+  artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^source_binding_fixture_artifact,
     file_path: "dag/test/claim/source_binding_fixture.dag",

@@ -1,7 +1,7 @@
 module test.claim.codex_app_server_press_wet_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_note: String = "WET: materialize content-addressed Codex runtime under an isolated release parent, then observe account standing via observe_codex_account_preflight with caller-supplied evidence_root + CODEX_HOME. Accepts account_authenticated_rate_limits_readable OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
 

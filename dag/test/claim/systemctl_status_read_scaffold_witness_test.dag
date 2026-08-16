@@ -2,7 +2,7 @@ module test.claim.systemctl_status_read_scaffold
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_status_operation_argv_matches_authority() -> Bool {
   systemctl_status_operation_argv_matches_authority(unit: "demo.service" as NonEmptyStr)

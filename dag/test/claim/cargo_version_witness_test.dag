@@ -1,6 +1,6 @@
 module test.claim.cargo_version
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_stage0_default_package_version() -> Bool {
   default_stage0_package_version == "0.1.0"

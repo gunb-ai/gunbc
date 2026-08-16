@@ -5,7 +5,7 @@ fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 }
 
-fn render_partition_crate_kind(row: Stage0PartitionCrateRow) -> String {
+fn render_partition_crate_kind(row: v2.workflow.rust_crate_partition.Stage0PartitionCrateRow) -> String {
   match row.kind {
     Stage0FoundationCrate => "GeneratedFoundationCrate"
     Stage0LayeredCoreCrate => "GeneratedLayeredCoreCrate"
@@ -17,7 +17,7 @@ fn render_partition_nested_string_list(xs: List<String>) -> String {
   concat(
     "[\n",
     concat(
-      fold_list(xs, empty: "", cons: fn(acc, item) {
+      v2.std.algebra.fold_list(xs, empty: "", cons: fn(acc, item) {
         let line = concat("        \"", escape_dag_string_body(s: item), "\"")
         if acc == "" {
           line
@@ -30,7 +30,7 @@ fn render_partition_nested_string_list(xs: List<String>) -> String {
   )
 }
 
-fn render_partition_crate_row(row: Stage0PartitionCrateRow) -> String {
+fn render_partition_crate_row(row: v2.workflow.rust_crate_partition.Stage0PartitionCrateRow) -> String {
   concat(
     "    GeneratedPartitionCrateRow {\n",
     "      package_name: \"", escape_dag_string_body(s: row.package_name), "\",\n",
@@ -43,8 +43,8 @@ fn render_partition_crate_row(row: Stage0PartitionCrateRow) -> String {
   )
 }
 
-fn render_partition_crate_rows_items(rows: List<Stage0PartitionCrateRow>) -> String {
-  fold_list(rows, empty: "", cons: fn(acc, row) {
+fn render_partition_crate_rows_items(rows: List<v2.workflow.rust_crate_partition.Stage0PartitionCrateRow>) -> String {
+  v2.std.algebra.fold_list(rows, empty: "", cons: fn(acc, row) {
     let rendered = render_partition_crate_row(row: row)
     if acc == "" {
       rendered
@@ -55,7 +55,7 @@ fn render_partition_crate_rows_items(rows: List<Stage0PartitionCrateRow>) -> Str
 }
 
 fn expected_stage0_crate_partition_generated_dag() -> String {
-  let rows = stage0_partition_crate_rows()
+  let rows = v2.workflow.rust_crate_partition.stage0_partition_crate_rows()
   concat(
     "module gunbc.stage0_crate_partition_generated\n\n",
     "import std.types { Bool, List, String }\n\n",

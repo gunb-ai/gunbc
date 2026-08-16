@@ -1,7 +1,7 @@
 module test.claim.diff_baseline_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data planted_merge_base_sha: String = "abc123def4567890abc123def4567890abc12345"
 data planted_head_sha: String = "fedcba0987654321fedcba0987654321fedcba09"

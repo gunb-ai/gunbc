@@ -4,9 +4,9 @@ module tools.regen_verify_transport
 data regen_verify_capture_note: String = "The regen-verify gate must surface drifted generated file names on failure. regen_stage0 writes the located reason to stderr (Changed generated file(s): ...) and regen_divergence_count=N to stdout; WitnessBin.Run captures both so the gate verdict and failure receipt share one observation without a second regen invocation."
 
 fn regen_verify_failure_detail(stdout: String, stderr: String) -> String {
-  if !string_is_empty(s: stderr) {
+  if !v2.std.text.string_is_empty(s: stderr) {
     stderr
-  } else if !string_is_empty(s: stdout) {
+  } else if !v2.std.text.string_is_empty(s: stdout) {
     concat("regen-verify gate failed: ", stdout)
   } else {
     "regen-verify gate failed: witness binary exited nonzero with no diagnostic output"

@@ -1,7 +1,7 @@
 module test.claim.docker_container_stats_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_cpu_usage: CpuUsage = CpuUsage {
   total_usage: nanosecond(1234567890)

@@ -1,6 +1,6 @@
 module test.claim.interpreter_kernel_model_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_pure_eval_authority_modules() -> Bool {
   is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&

@@ -1,7 +1,7 @@
 module test.claim.altra_platform_and_mt_mitchell_authority_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // --- Each platform module joins the subject module that owns its identity ---
 

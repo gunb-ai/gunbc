@@ -1,7 +1,7 @@
 module test.claim.merge_admission_actuator_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
 data scenario_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b1")

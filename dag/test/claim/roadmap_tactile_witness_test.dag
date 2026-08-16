@@ -1,7 +1,7 @@
 module test.claim.roadmap_tactile_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data roadmap_tactile_witness_note: String = "The exemplar's walls, executed. Checkpoints 1, 2 and 7a are things a person verifies by clicking, so what a witness can honestly hold is the layer underneath them: that the vocabulary is real, that it is CONSUMED, that the mechanics are the ones the analog law requires, and that each claim has an input which makes it fail. Every witness in this file is reachable from the single test fn below — the orphaned-enrollment defect this repo just paid for once is not worth paying for twice."
 

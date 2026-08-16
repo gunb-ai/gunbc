@@ -5,7 +5,7 @@ module tools.gunbc_ci
 
 
 func main() -> ProcessExit {
-  let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
+  let script = v2.workflow.ci_release_build_emit.gunbc_ci_run_script(spec: gunbc_ci_spec)
   let result = shell.Exec.Run(script: retained_foreign(body: script, reason: "gunbc ci generate + run ci floor script"))
   return if result.success {
     ExitSuccess

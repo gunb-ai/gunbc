@@ -1,7 +1,7 @@
 module test.claim.dispatch_presentation_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dispatch_presentation_witness_note: String = "P3 keystone, re-grounded by remodel W1d (2026-07-24) and lifecycle correction (2026-07-27): the dispatch button's presentation is a projection of modeled rows, not hand pixels/colors. Reserved width derives from every caption it can wear, including dispatch receipts and observed-session presence; each state class paints its BAND's exact fill/ink vars; located fields surface in the title; and client plus stylesheet share one class vocabulary."
 

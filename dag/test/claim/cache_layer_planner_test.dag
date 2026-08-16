@@ -1,6 +1,6 @@
 module test.claim.cache_layer_planner
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cheap_recompute: CostAccount = cost_account_measured(
   time: nanosecond_duration(count: 1000),

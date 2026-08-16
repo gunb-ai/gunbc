@@ -1,7 +1,7 @@
 module test.claim.machine_shape_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rtx5090_domain: DomainId = "rtx5090" as DomainId
 data rtx5090_register_level: LevelId = "sm-register-file" as LevelId

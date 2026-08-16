@@ -1,7 +1,7 @@
 module test.claim.roadmap_program_view_live_corpus_receipt
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data live_corpus_receipt_note: String = "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822; oracle corrected per operator REQUEST_CHANGES): ONE receipt proving the live roadmap authority closure (declared_roadmap_nodes, projected_roadmap_dependency_edges_projection, roadmap_acceptance_receipts) projects through gunbc.roadmap_program_view without unresolved references — ProgramViewDerived, not tree-copied population literals. View cardinality is joined to the program spec authorities (v1_exit_finish_lines, v1_convergence_fronts), not numbers copied from today's tree. This is evidentiary integration wiring, not ordinary business logic; it rides the falsifier substrate long lane (gunbc.ci_layer_roots falsifier_substrate_long_lane_rows), excluded from per-PR discovery. Business algebra stays on planted fixtures in test.claim.roadmap_program_view_witness."
 

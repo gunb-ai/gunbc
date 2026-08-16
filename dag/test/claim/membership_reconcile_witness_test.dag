@@ -1,7 +1,7 @@
 module test.claim.membership_reconcile_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type TMember { mid: String, ver: String, own: Ownership? }
 

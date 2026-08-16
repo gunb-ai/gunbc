@@ -1,6 +1,6 @@
 module test.claim.host_compile_pool
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data compile_pool_producer_doc: String = "THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today and the one a hand-written all-true receipt would have silently contradicted. The rest assert that each not-ready reason is reachable and distinct, because five reasons that cannot be told apart are one reason with five names."
 

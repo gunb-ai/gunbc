@@ -1,7 +1,7 @@
 module test.claim.srv3_subsumption
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data srv3_subsumption_witness_home_note: String = "Consolidated green-by-execution proofs for the gunbc-layer srv3 subsumption facts — the reach row, the authorized-keys reconcile, and the toolchain target/access pairing. These three were separate witness files (fleet_reach / host_authorized_keys_reconcile / host_toolchain_reach_pairing) until 2026-07-25; each paid a full whole-tree closure resolve in the floor as its own entry, and three gunbc-closure resolves pushed batch 3 over its wall budget. They share one closure, so they are one floor entry here — a §6 cost-shape fix (fewer entry resolves, zero coverage lost), not a merge of unrelated concerns: all three are the srv3 subsumption lane. The three original witness notes are preserved verbatim below."
 

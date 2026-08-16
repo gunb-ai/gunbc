@@ -1,7 +1,7 @@
 module test.claim.sec_edgar_rollins_chemed_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sec_edgar_witness_note: String = "Rollins and Chemed both tag a CostOfGoodsAndService variant instead of GrossProfit on their FY2025 10-Ks (see rollins_facts / chemed_facts provenance notes), so the profitability witness here derives OPERATING margin (OperatingIncomeLoss / revenue) rather than gross margin. derive_gross_margin_ratio_from_facts is reused as-is — the ratio math (profit / revenue, revenue > 0) is agnostic to which profit line is passed in; no new facts.dag function is needed for this."
 

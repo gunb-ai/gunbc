@@ -2,7 +2,7 @@ module test.claim.dissolution_census_a_projection_witness_test
 
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data census_tsv_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv"
 data census_summary_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.summary.json"

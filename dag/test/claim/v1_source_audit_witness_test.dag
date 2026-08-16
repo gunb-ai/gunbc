@@ -1,7 +1,7 @@
 module test.claim.v1_source_audit_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data core_path: String = "src/v1/00_core.dag"
 data parse_path: String = "src/v1/02_parse.dag"

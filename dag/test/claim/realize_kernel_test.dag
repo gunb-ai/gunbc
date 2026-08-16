@@ -4,7 +4,7 @@ module test.claim.realize_kernel
 // is the point: green is not evidence that the remaining bare references are bound, only that the
 // closure this run happened to assemble contained them.
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
 data subject_digest_a: ContentHash = content_hash_of_value(value: "realize-kernel-witness-subject-a")

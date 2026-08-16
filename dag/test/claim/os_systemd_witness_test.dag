@@ -1,7 +1,7 @@
 module test.claim.os_systemd_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
   match parse_systemd_unit_active_state(raw: "active") {

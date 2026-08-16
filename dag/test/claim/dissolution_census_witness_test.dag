@@ -1,7 +1,7 @@
 module test.claim.dissolution_census_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn census_counters_exhaustively_partition_the_rows() -> Bool {
   let r = dissolution_census_report()

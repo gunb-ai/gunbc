@@ -1,7 +1,7 @@
 module test.claim.external_model_scope_live_cover_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_cover_witness_note: String = "The WET half of the ExternalModelScope enrollment wall (split out of external_model_scope_witness_test after the d4bef96 floor red: hermetic discovery executed these fns against the mock corpus, where Filesystem.List directory walks and git.Core.DiffNameStatus have no published operations, so they refused — correct hermetic behavior, wrong lane). This file performs genuinely live host effects (a real directory walk of dag/extdeps; a real git diff freeze..HEAD) and is discovery-excluded via the gunbc.ci_layer_roots wet-integration posture with a documented local recipe. The pure decision fns it executes (scope_cover_holds, manifest_freeze_holds) live on gunbc.extdeps_scope_frontier and keep their hermetic RED controls discovery-enrolled in external_model_scope_witness_test, where the carrier-content check (filesystem_read carve-out, hermetic-safe) also stays per-PR — the discriminating logic runs per-PR; only the live observations (directory walk, git diff) run on the wet lane."
 

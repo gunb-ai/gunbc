@@ -1,7 +1,7 @@
 module test.claim.live_deploy.candidate_checkout_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT IS `{ revision: A, bytes: B } MUST NOT BE CONSTRUCTIBLE`. Every claim here varies one axis of
 // a `git status --porcelain=v1 -z` reading and asserts what candidate admission does with it. The scan is

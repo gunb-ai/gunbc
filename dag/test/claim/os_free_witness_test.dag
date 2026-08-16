@@ -1,7 +1,7 @@
 module test.claim.os_free_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn free_output_witnesses() -> Bool {
   let memory_stats = extdeps.tools.free.MemoryStats {

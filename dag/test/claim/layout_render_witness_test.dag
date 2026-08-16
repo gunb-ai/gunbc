@@ -1,6 +1,6 @@
 module test.claim.layout_render_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 data yaml_proto: LayoutProtocol = LayoutProtocol { indent_unit: "  " }

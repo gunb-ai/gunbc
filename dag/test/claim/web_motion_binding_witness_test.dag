@@ -1,7 +1,7 @@
 module test.claim.web_motion_binding_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data web_motion_binding_witness_note: String = "The web realization's own axes, the exact providers, and the projection outward — each law beside the control that reds it. The central claim stays negative: an observation that did not look cannot conclude. Its specimen is the 2026-08-05 capability probe, reconstructed field by field."
 

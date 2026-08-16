@@ -1,7 +1,7 @@
 module test.claim.site_register_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_themes_coherent() -> Bool {
   themes_coherent(themes: site_themes, roles: theme_roles)

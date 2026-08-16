@@ -1,6 +1,6 @@
 module test.claim.roadmap_gate
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
   RoadmapDocument {

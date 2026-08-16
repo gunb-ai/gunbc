@@ -1,6 +1,6 @@
 module test.claim.react_jsx_emit
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn browse_page_jsx() -> String {
   serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page())

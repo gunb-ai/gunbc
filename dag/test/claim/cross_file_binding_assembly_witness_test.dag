@@ -1,7 +1,7 @@
 module test.claim.cross_file_binding_assembly_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data cfba_witness_note: String = "N3-B0 acceptance witness: one exposure authority (DeclarationExposureGrounding, all three variants pairwise-discriminated across module-root and single-ancestor containment shapes) plus the collision-free cross-file assembly substrate (assemble_cross_file_binding_closure) in std.occurrence_binding_candidates. Structural controls at the bottom prove the two former duplicate helpers (gunbc.type_reference_binding_context's local exposure walk, v1.gunbc.occurrence_binding_parser_walk's local exposure walk + StructuralBindingWalk copy) are deleted from their old homes and the single authority is present where claimed."
 
@@ -13,11 +13,11 @@ fn cfba_span(marker: Int) -> SourceSpan {
   SourceSpan { file: "fixture.dag", start: marker, end: marker + 1 }
 }
 
-fn cfba_containment(ancestors: List<OccurrenceId>, terminal: OccurrenceId) -> OccurrenceContainmentPath {
+fn cfba_containment(ancestors: List<std.occurrence_identity.OccurrenceId>, terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath { ancestors: ancestors, terminal: terminal }
 }
 
-fn cfba_index_entry(occurrence: OccurrenceId, name: String, containment: OccurrenceContainmentPath) -> OccurrenceIndexEntry {
+fn cfba_index_entry(occurrence: std.occurrence_identity.OccurrenceId, name: String, containment: OccurrenceContainmentPath) -> OccurrenceIndexEntry {
   OccurrenceIndexEntry {
     projection: OccurrenceProjection {
       occurrence: occurrence,
@@ -28,7 +28,7 @@ fn cfba_index_entry(occurrence: OccurrenceId, name: String, containment: Occurre
   }
 }
 
-fn cfba_declaration(occurrence: OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> DeclarationOccurrence {
+fn cfba_declaration(occurrence: std.occurrence_identity.OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> DeclarationOccurrence {
   DeclarationOccurrence {
     occurrence: occurrence,
     containment: containment,
@@ -37,7 +37,7 @@ fn cfba_declaration(occurrence: OccurrenceId, containment: OccurrenceContainment
   }
 }
 
-fn cfba_reference(occurrence: OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> ReferenceOccurrence {
+fn cfba_reference(occurrence: std.occurrence_identity.OccurrenceId, containment: OccurrenceContainmentPath, category: OccurrenceCategory) -> ReferenceOccurrence {
   ReferenceOccurrence {
     occurrence: occurrence,
     containment: containment,
@@ -49,7 +49,7 @@ fn cfba_reference(occurrence: OccurrenceId, containment: OccurrenceContainmentPa
 // --- DeclarationExposureGrounding: all three variants pairwise-discriminated ---
 
 test fn module_local_member_exposure_at_module_root_holds() -> Bool {
-  let decl = OccurrenceId { value: 10 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 10 }
   let path = cfba_containment(ancestors: [], terminal: decl)
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.a"),
@@ -62,7 +62,7 @@ test fn module_local_member_exposure_at_module_root_holds() -> Bool {
 }
 
 test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool {
-  let decl = OccurrenceId { value: 11 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 11 }
   let path = cfba_containment(ancestors: [], terminal: decl)
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.a"),
@@ -75,8 +75,8 @@ test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_ho
 }
 
 test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
-  let outer = OccurrenceId { value: 1 }
-  let decl = OccurrenceId { value: 20 }
+  let outer = std.occurrence_identity.OccurrenceId { value: 1 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 20 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.b"),
@@ -89,8 +89,8 @@ test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds
 }
 
 test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_holds() -> Bool {
-  let outer = OccurrenceId { value: 1 }
-  let decl = OccurrenceId { value: 21 }
+  let outer = std.occurrence_identity.OccurrenceId { value: 1 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 21 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.b"),
@@ -103,8 +103,8 @@ test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_h
 }
 
 test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
-  let outer = OccurrenceId { value: 1 }
-  let decl = OccurrenceId { value: 22 }
+  let outer = std.occurrence_identity.OccurrenceId { value: 1 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 22 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.c"),
@@ -124,7 +124,7 @@ fn cfba_single_occurrence_closure_row(
   name: String,
   category: OccurrenceCategory
 ) -> CrossFileBindingClosureRow {
-  let occ = OccurrenceId { value: 0 }
+  let occ = std.occurrence_identity.OccurrenceId { value: 0 }
   let path = cfba_containment(ancestors: [], terminal: occ)
   CrossFileBindingClosureRow {
     transport: OccurrenceTransport {
@@ -203,8 +203,8 @@ fn cfba_provider_with_reference_closure_row(
   ref_name: String,
   ref_category: OccurrenceCategory
 ) -> CrossFileBindingClosureRow {
-  let decl_occ = OccurrenceId { value: 0 }
-  let ref_occ = OccurrenceId { value: 1 }
+  let decl_occ = std.occurrence_identity.OccurrenceId { value: 0 }
+  let ref_occ = std.occurrence_identity.OccurrenceId { value: 1 }
   let decl_path = cfba_containment(ancestors: [], terminal: decl_occ)
   let ref_path = cfba_containment(ancestors: [], terminal: ref_occ)
   CrossFileBindingClosureRow {
@@ -293,8 +293,8 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
 }
 
 test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_holds() -> Bool {
-  let outer = OccurrenceId { value: 5 }
-  let binder = OccurrenceId { value: 6 }
+  let outer = std.occurrence_identity.OccurrenceId { value: 5 }
+  let binder = std.occurrence_identity.OccurrenceId { value: 6 }
   let outer_path = cfba_containment(ancestors: [], terminal: outer)
   let binder_path = cfba_containment(ancestors: [outer], terminal: binder)
   let consumer = CrossFileBindingClosureRow {

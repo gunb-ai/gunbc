@@ -1,6 +1,6 @@
 module test.claim.hostname_allocation_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
   HostnameAllocation {

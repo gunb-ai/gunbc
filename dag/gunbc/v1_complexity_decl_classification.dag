@@ -9,11 +9,11 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn decl_fact_is_v1_complexity(fact: DeclFact) -> Bool {
+fn decl_fact_is_v1_complexity(fact: v2.std.decl_index.DeclFact) -> Bool {
   fact.rel_path == v1_complexity_source_rel_path
 }
 
-fn v1_complexity_decl_population(pool_roots: List<String>) -> List<DeclFact> {
+fn v1_complexity_decl_population(pool_roots: List<String>) -> List<v2.std.decl_index.DeclFact> {
   filter(
     xs: decl_facts(pool_roots: pool_roots),
     predicate: decl_fact_is_v1_complexity
@@ -34,12 +34,12 @@ fn roster_contains_decl_name(roster: List<V1ComplexityDeclClassification>, name:
   })
 }
 
-fn population_name_in_roster(fact: DeclFact, roster: List<V1ComplexityDeclClassification>) -> Bool {
+fn population_name_in_roster(fact: v2.std.decl_index.DeclFact, roster: List<V1ComplexityDeclClassification>) -> Bool {
   roster_contains_decl_name(roster: roster, name: fact.name)
 }
 
 fn every_population_fact_classified(
-  facts: List<DeclFact>,
+  facts: List<v2.std.decl_index.DeclFact>,
   roster: List<V1ComplexityDeclClassification>
 ) -> Bool {
   fold(facts, init: true, f: fn(ok, fact) {
@@ -47,13 +47,13 @@ fn every_population_fact_classified(
   })
 }
 
-fn classification_matches_fact(c: V1ComplexityDeclClassification, fact: DeclFact) -> Bool {
+fn classification_matches_fact(c: V1ComplexityDeclClassification, fact: v2.std.decl_index.DeclFact) -> Bool {
   string_eq(a: c.decl_name, b: fact.name)
 }
 
 fn roster_name_in_population(
   row: V1ComplexityDeclClassification,
-  facts: List<DeclFact>
+  facts: List<v2.std.decl_index.DeclFact>
 ) -> Bool {
   fold(facts, init: false, f: fn(found, fact) {
     found || classification_matches_fact(c: row, fact: fact)
@@ -62,7 +62,7 @@ fn roster_name_in_population(
 
 fn every_roster_row_matches_population(
   roster: List<V1ComplexityDeclClassification>,
-  facts: List<DeclFact>
+  facts: List<v2.std.decl_index.DeclFact>
 ) -> Bool {
   fold(roster, init: true, f: fn(ok, row) {
     ok && roster_name_in_population(row: row, facts: facts)

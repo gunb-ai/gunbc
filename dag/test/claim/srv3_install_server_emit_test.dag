@@ -1,7 +1,7 @@
 module test.claim.srv3_install_server_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_dnsmasq_is_proxy_dhcp_uefi_http_boot() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)

@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data pure_perturb_control_note: String = "P0 (operator-directed, 2026-08-05): the former per-artifact live perturb loop called artifact_generate three times per committed artifact just to prove generated != generated + suffix — a GENERIC string-inequality fact, re-proved once per generator, that never touched a real committed byte (DESIGN section 6: do not test that the processor does math well). Deleted. The pure leaf (assess_generated_artifact_observation) and pure group (assess_generated_artifact_population) policies in gunbc.generated_artifact_assessment are exercised below with tiny CONSTRUCTED receipts — no producer call, no Filesystem, no artifact_generate — covering clean, drift, generation-refusal, committed-read-refusal, extra-validation-refusal and group-identity (missing/duplicate/unknown) verdicts. gunbc.generated_artifact_assessment imports gunbc.generated_artifact ONLY — it cannot import Filesystem or the generator, so purity here is by construction, not by convention (loyal-ram-550 review of #7823). The one remaining LIVE fact — every registered committed artifact observed exactly once, byte-clean, against real disk state — is the production drift gate itself (dag/tools/generated_artifact_gate.dag, run_generated_artifact_drift_gate_body), which now calls the live producer exactly once per artifact per run; its byte-for-byte fixed point is additionally isolated at dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag."
 

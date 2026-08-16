@@ -1,7 +1,7 @@
 module test.claim.runner_capacity_plan_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host() -> Bool {
   let plan = runner_capacity_plan(

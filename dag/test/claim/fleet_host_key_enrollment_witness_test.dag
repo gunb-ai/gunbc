@@ -1,7 +1,7 @@
 module test.claim.fleet_host_key_enrollment_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Acceptance item 4: an empty registry answers none for every host (nothing enrolled
 // means no expectation — the probe stays on the Unenrolled arm, never a fabricated

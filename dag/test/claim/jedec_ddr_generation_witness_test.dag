@@ -1,6 +1,6 @@
 module test.claim.jedec_ddr_generation
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data mod_ddr4_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-DDR4",

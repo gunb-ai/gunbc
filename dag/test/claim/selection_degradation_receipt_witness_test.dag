@@ -1,7 +1,7 @@
 module test.claim.selection_degradation_receipt_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Executing consumer for gunbc.selection_degradation_receipt (floor prep-tax P2). THE PAIR IS THE PROOF: a narrowed affected run must read SelectionApplied with honest counts; a whole-corpus affected run must read SelectionSuperset with an explicit fallback_reason — never quiet success. RED controls mislabel a superset as applied.
 test fn sdr_applied_narrowed_receipt() -> Bool {

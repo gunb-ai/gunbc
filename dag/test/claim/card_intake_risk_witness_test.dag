@@ -1,7 +1,7 @@
 module test.claim.card_intake_risk_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_zero_results_classifies_no_match() -> Bool {
   match classify_catalog_match(total_items: 0, first_product_id: 0) {

@@ -30,7 +30,7 @@ module gunbc.lifecycle_survivor_scan
 // inability to observe one are different states.
 data lifecycle_survivor_scan_roots: List<String> = ["dag", "src/v2"]
 
-data lifecycle_survivor_scan_facts: List<DataDeclTypeFact> = data_decl_type_facts(pool_roots: lifecycle_survivor_scan_roots)
+data lifecycle_survivor_scan_facts: List<v2.std.decl_index.DataDeclTypeFact> = data_decl_type_facts(pool_roots: lifecycle_survivor_scan_roots)
 
 // Raw prose is exactly the two bare string carriers, matching `type_is_bare_string` in the
 // field-grain wall. A refined or wrapped carrier is not raw; a `DissolutionCondition` is the
@@ -43,16 +43,16 @@ fn type_is_raw_prose(type_name: String) -> Bool {
 // (decided by the SAME roster the field wall consults, never a second spelling list), its
 // declared type is still bare string, and the result is projected at exact declaration
 // identity rather than by name alone.
-fn fact_is_raw_lifecycle_survivor(f: DataDeclTypeFact) -> Bool {
-  decl_name_is_lifecycle_carrier(name: f.decl_name) && type_is_raw_prose(type_name: f.type_name)
+fn fact_is_raw_lifecycle_survivor(f: v2.std.decl_index.DataDeclTypeFact) -> Bool {
+  v2.lens.lifecycle_carrier.decl_name_is_lifecycle_carrier(name: f.decl_name) && type_is_raw_prose(type_name: f.type_name)
 }
 
-fn raw_lifecycle_string_survivor_facts() -> List<DataDeclTypeFact> {
+fn raw_lifecycle_string_survivor_facts() -> List<v2.std.decl_index.DataDeclTypeFact> {
   filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { fact_is_raw_lifecycle_survivor(f: f) })
 }
 
 fn raw_lifecycle_string_survivor_refs() -> List<DeclarationRef> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: raw_lifecycle_string_survivor_facts(),
     f: fn(f) { decl_ref(module_path: f.module_path, decl_name: f.decl_name) }
   )
@@ -63,7 +63,7 @@ fn raw_lifecycle_string_survivor_count() -> Int {
 }
 
 fn raw_lifecycle_string_survivor_keys() -> List<String> {
-  list_map(xs: raw_lifecycle_string_survivor_refs(), f: fn(r) { declaration_ref_display_key(ref: r) })
+  v2.std.algebra.list_map(xs: raw_lifecycle_string_survivor_refs(), f: fn(r) { declaration_ref_display_key(ref: r) })
 }
 
 // The gate. An unclassified raw survivor does not need to be classified -- it needs to not
@@ -104,21 +104,21 @@ fn scan_reaches_test_modules() -> Bool {
 // Synthetic rows exercising the selection predicate directly. The corpus count above is zero
 // today, so on its own it cannot distinguish a predicate that selects correctly from one
 // that selects nothing at all. These run the SAME predicate production uses.
-data planted_raw_survivor: DataDeclTypeFact = DataDeclTypeFact {
+data planted_raw_survivor: v2.std.decl_index.DataDeclTypeFact = v2.std.decl_index.DataDeclTypeFact {
   module_path: "planted.specimen",
   decl_name: "planted_carrier_dissolve_on",
   type_name: "String",
   rel_path: "planted/specimen.dag"
 }
 
-data planted_migrated_control: DataDeclTypeFact = DataDeclTypeFact {
+data planted_migrated_control: v2.std.decl_index.DataDeclTypeFact = v2.std.decl_index.DataDeclTypeFact {
   module_path: "planted.specimen",
   decl_name: "planted_carrier_dissolve_on",
   type_name: "DissolutionCondition",
   rel_path: "planted/specimen.dag"
 }
 
-data planted_nonempty_str_survivor: DataDeclTypeFact = DataDeclTypeFact {
+data planted_nonempty_str_survivor: v2.std.decl_index.DataDeclTypeFact = v2.std.decl_index.DataDeclTypeFact {
   module_path: "planted.specimen",
   decl_name: "planted_carrier_retirement_trigger",
   type_name: "NonEmptyStr",
@@ -128,7 +128,7 @@ data planted_nonempty_str_survivor: DataDeclTypeFact = DataDeclTypeFact {
 // Discriminating in the other direction: a predicate that rejected every String declaration
 // would satisfy the migrated control and still be wrong, so an ordinary String declaration
 // outside the name class must also be rejected -- for the right reason.
-data planted_ordinary_string_note: DataDeclTypeFact = DataDeclTypeFact {
+data planted_ordinary_string_note: v2.std.decl_index.DataDeclTypeFact = v2.std.decl_index.DataDeclTypeFact {
   module_path: "planted.specimen",
   decl_name: "planted_carrier_note",
   type_name: "String",

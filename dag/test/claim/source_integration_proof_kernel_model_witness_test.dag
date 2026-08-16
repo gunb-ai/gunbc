@@ -1,7 +1,7 @@
 module test.claim.source_integration_proof_kernel_model_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the candidate-generation fold from finite declared generators rather than a caller-supplied CandidateSet: one transformation plus one scheduled inference generator derives four combination classes from the accepted seed. Tightening inference_rounds or candidate_classes changes the disposition to a typed, located, counted refusal; proposal, grounding, and frame controls remain distinct. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt, so callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim generator completeness or the public reconciliation fold exists; those remain live capabilities in the separate quarantined closing witness."
 

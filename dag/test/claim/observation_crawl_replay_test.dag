@@ -1,7 +1,7 @@
 module test.claim.observation_crawl_replay_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_note: String = "End-to-end replay of the captured crawl window of run 30044816605 through the P1 CI renderer, asserting the WHOLE assembled block by execution — the flagship's before/after made a green witness rather than a hand-typed sample. Every input number is read off that run's log: the t=33m heartbeat carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process sat inside for 606984ms, v2.compiler.normalized_tree, was disclosed only at walk end. This witness renders those same facts and asserts the block now NAMES the activity where the capture was silent. observation_crawl_after_block is also the function the PR body's after-sample is produced from, so the pasted sample is a projection of a green execution, not prose."
 

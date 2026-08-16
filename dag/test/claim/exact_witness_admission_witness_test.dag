@@ -1,16 +1,16 @@
 module test.claim.exact_witness_admission_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data exact_witness_admission_witness_note: String = "Executes the walls over gunbc.explicit_witness_admission, the one function-grain authority for exact witness admission. THE DISCRIMINATING RED is admission_reaches_the_admitted_function_and_not_its_sibling, and it runs against a SYNTHETIC fixture that this witness authors itself: one admission over a fixture entry holding an expected-red function and an ordinary green one. It asserts the admission reaches the first and NOT the second. Under the representation this lane replaced - a file-grain WitnessExclusionRow beside a probe_red row - the second half was FALSE by construction: the file-level exclusion hid every function in the file while the schedule named one, so the green sibling executed nowhere and the reconciliation still passed, because it only ever asked whether some scheduled row's entry CONTAINED the exclusion pattern. THE FIXTURE IS DELIBERATE AND THE ALTERNATIVE WAS TRIED. The first draft anchored this assertion to the real live instance instead, on the reasoning that a wall is better evidenced by a defect that actually happened. That is normally the stronger move, and here it was the wrong one: it binds the evidence to the defect's CONTINUED EXISTENCE, which is the one thing a wall exists to end. Caught in review before merge - gunbc#7688 dissolves that very quarantine tonight (the operator recorded the seed-honesty verdict, the closing contract greened, and the row climbs out under DESIGN 4b(4)), which would have left this assertion with no subject: passing vacuously or redding for a reason that has nothing to do with the wall. Evidence that must survive a climb has to be constructed so the climb cannot delete it. DESIGN 4b(4) says the climb deletes the production machinery and keeps the evidence enrolled; a live-anchored assertion cannot satisfy that clause because the machinery and the subject are the same rows. THE HISTORICAL RECEIPT, past tense and no longer load-bearing: when this lane opened, the bad state had exactly one live instance, measured on the pre-change tree - seed_honesty_discharge_unavailable_test.dag, 8 of whose 9 functions had no probe row while the file's classification named the whole file QuarantineProbeExpectRed, absorbed as OfflineLocalRecipe by the test/claim/execution/ path policy so the Phase 0(b) orphan refusal never saw them. Everywhere else the file-grain roster form or that refusal already covered it. That instance is a provenance note for why the wall was built, not the thing the wall is tested against. THE REMAINING CLAIMS are the walls over the live rows, and they are population-independent by construction - each is a universal over the admission rows plus a projection identity, so they stay meaningful at any roster size including zero, and none of them is where the discrimination lives. Synthetic RED controls cover the duplicate row, the non-executing cadence, and the file-grain shape that does reach the sibling."
 
 test fn exact_witness_admission_walls_hold() -> Bool {
-  explicit_witness_admission_uniqueness_holds()
-    && explicit_witness_admission_rows_well_formed_holds()
-    && explicit_witness_admissions_are_scheduled_holds()
-    && explicit_witness_admissions_are_excluded_holds()
-    && witness_exclusion_frontier_carries_no_admission_holds()
+  v2.workflow.witness_admission.explicit_witness_admission_uniqueness_holds()
+    && v2.workflow.witness_admission.explicit_witness_admission_rows_well_formed_holds()
+    && v2.workflow.witness_admission.explicit_witness_admissions_are_scheduled_holds()
+    && v2.workflow.witness_admission.explicit_witness_admissions_are_excluded_holds()
+    && v2.workflow.witness_admission.witness_exclusion_frontier_carries_no_admission_holds()
 }
 
 data fixture_entry: String = "dag/test/claim/synthetic_admission_witness_test.dag"
@@ -66,7 +66,7 @@ test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Boo
 }
 
 test fn every_live_admission_is_reached_by_its_own_row() -> Bool {
-  explicit_witness_admissions_each_cover_themselves()
+  v2.workflow.witness_admission.explicit_witness_admissions_each_cover_themselves()
 }
 
 test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {

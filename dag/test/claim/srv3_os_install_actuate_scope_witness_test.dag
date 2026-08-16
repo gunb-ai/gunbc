@@ -1,7 +1,7 @@
 module test.claim.srv3_os_install_actuate_scope
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The seed gap is not askable while no mechanism is selected, and the
 // discriminating half is the conjunction: Absent ALONE would also be produced by

@@ -1,7 +1,7 @@
 module test.claim.claude_sdk_parser_drop_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data claude_sdk_parser_drop_witness_note: String = "Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface control, RED forgery controls over claude_sdk_parser_drop_receipt_holds on inline JSON (dropped-array shortcut and absent sdk_parsed_event_types). The wet receipt filesystem_read witness lives in claude_sdk_parser_drop_live_witness_test.dag (ReadsLiveTree)."
 

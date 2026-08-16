@@ -1,6 +1,6 @@
 module test.claim.gha_expression_roundtrip
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn core_expr() -> Expression {
   LogicalOr {

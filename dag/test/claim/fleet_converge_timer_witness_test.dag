@@ -1,7 +1,7 @@
 module test.claim.fleet_converge_timer_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Option A shape: calendar cadence WITH Persistent=true (catch-up after downtime — the
 // offline-host property) and jitter. Persistent on a monotonic timer would be silently

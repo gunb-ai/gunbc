@@ -1,7 +1,7 @@
 module test.claim.nbd_proxy_endpoint
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn altrad8ud_nbd_proxy_primary_endpoint_is_vm_slot_index() -> Bool {
   asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint

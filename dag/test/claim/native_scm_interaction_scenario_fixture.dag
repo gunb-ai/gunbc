@@ -263,8 +263,8 @@ fn native_scm_scenario_fixture_projection(
     VisibilityAuthorizedDetails => "/workspaces/native-scm-contract"
   }
   NativeScmProjection {
-    workspace: optional_present(value: workspace),
-    target: optional_present(value: "main"),
+    workspace: v2.std.optional.optional_present(value: workspace),
+    target: v2.std.optional.optional_present(value: "main"),
     realizations: [],
   }
 }

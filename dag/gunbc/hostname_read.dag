@@ -12,7 +12,7 @@ data hostname_read_short_path: String = "dag/extdeps/tools/hostname.dag"
 data hostname_read_short_service: String = "os.Hostname"
 data hostname_read_short_operation: String = "ReadShort"
 
-fn hostname_short_read_operation_argv() -> ArgvMaterialization {
+fn hostname_short_read_operation_argv() -> v2.std.operation_argv.ArgvMaterialization {
   shell_materialize_operation_argv(
     hostname_read_short_path,
     hostname_read_short_service,
@@ -66,7 +66,7 @@ fn hostname_short_read_fleet_ssh(target: SshTarget, context: FleetSshExecutionCo
         outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
       )
     ArgvMaterializationRefused { at: _, cause: c } =>
-      HostnameShortCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+      HostnameShortCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
   }
 }
 
@@ -74,7 +74,7 @@ fn hostname_short_read_ssh(host: NonEmptyStr) -> HostnameShortCapture {
   match hostname_short_read_operation_argv() {
     ArgvMaterialized { argv: argv } => hostname_short_read_ssh_argv(host: host, argv: argv)
     ArgvMaterializationRefused { at: _, cause: c } =>
-      HostnameShortCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+      HostnameShortCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
   }
 }
 

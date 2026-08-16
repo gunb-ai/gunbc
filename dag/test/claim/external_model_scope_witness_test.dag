@@ -1,7 +1,7 @@
 module test.claim.external_model_scope_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data external_model_scope_witness_note: String = "RED and GREEN controls for the external_model_scope_decision KERNEL, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows is incoherent; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster is coherent. These are controls of the decision kernel over DECLARED facts — not proof of an admission wall (the kernel's honesty boundary is external_model_scope_decision_kernel_note; the mechanical wall witnessed here is scope PRESENCE: the frozen-manifest cover accounting below). Plus the staged-enrollment accounting for gunbc.extdeps_scope_frontier's frozen legacy manifest."
 

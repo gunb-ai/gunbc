@@ -227,7 +227,7 @@ fn native_scm_resolve_choice(
         }
       },
       additional: fn(index) {
-        match list_at_optional(
+        match v2.std.collection.list_at_optional(
           xs: continuation.options.additional_options,
           index: index,
         ) {
@@ -319,7 +319,7 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
   if authorized {
     match receipt.receipt_details {
       Present { value: details } =>
-        optional_present(
+        v2.std.optional.optional_present(
           value: concat(
             "proposal=",
             concat(
@@ -331,10 +331,10 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
             ),
           ),
         )
-      Absent => optional_absent()
+      Absent => v2.std.optional.optional_absent()
     }
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 data native_scm_contract_test_fixture_boundary_note: String = "Named scenario construction and the submission-ledger oracle live only in test.claim.native_scm_interaction_scenario_fixture. This production carrier owns presentation, structural continuation identity, terminal-outcome shape, projection attachment, and inspection only; it cannot manufacture Landed from a scenario name."

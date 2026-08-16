@@ -1,7 +1,7 @@
 module test.claim.proc_self_cgroup_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_unified_single: String = "0::/user.slice/user-1000.slice/session-3.scope\n"
 
@@ -162,11 +162,11 @@ test fn proc_self_cgroup_three_refusal_states_are_distinct_holds() -> Bool {
 
 test fn bash_assign_from_content_matches_record_for_observed_holds() -> Bool {
   let record = read_unified_cgroup_membership(content: fixture_unified_single)
-  bash_membership_assign_from_content(
+  v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
     content: fixture_unified_single,
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
-  ) == bash_membership_assign_from_record(
+  ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
     record: record,
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -174,11 +174,11 @@ test fn bash_assign_from_content_matches_record_for_observed_holds() -> Bool {
 }
 
 test fn bash_assign_from_content_refuses_missing_holds() -> Bool {
-  bash_membership_assign_from_content(
+  v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
     content: fixture_missing_unified,
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
-  ) == bash_membership_assign_from_record(
+  ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
     record: MembershipMissing,
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -189,11 +189,11 @@ test fn bash_assign_from_content_refuses_ambiguous_holds() -> Bool {
   let record = read_unified_cgroup_membership(content: fixture_unified_duplicate)
   match record {
     MembershipAmbiguous { first: _, second: _ } =>
-      bash_membership_assign_from_content(
+      v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
         content: fixture_unified_duplicate,
         walk_var: cgroup_walk_var,
         mount_root: cgroup_mount_root,
-      ) == bash_membership_assign_from_record(
+      ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
         record: record,
         walk_var: cgroup_walk_var,
         mount_root: cgroup_mount_root,
@@ -206,11 +206,11 @@ test fn bash_assign_from_content_refuses_malformed_holds() -> Bool {
   let record = read_unified_cgroup_membership(content: fixture_malformed_no_colon)
   match record {
     MembershipMalformed { cause: _ } =>
-      bash_membership_assign_from_content(
+      v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_content(
         content: fixture_malformed_no_colon,
         walk_var: cgroup_walk_var,
         mount_root: cgroup_mount_root,
-      ) == bash_membership_assign_from_record(
+      ) == v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_record(
         record: record,
         walk_var: cgroup_walk_var,
         mount_root: cgroup_mount_root,
@@ -220,7 +220,7 @@ test fn bash_assign_from_content_refuses_malformed_holds() -> Bool {
 }
 
 test fn bash_assign_from_source_has_no_grep_c_or_head_or_widen_holds() -> Bool {
-  let cmd = bash_membership_assign_from_source(
+  let cmd = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: "/proc/self/cgroup",
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -232,7 +232,7 @@ test fn bash_assign_from_source_has_no_grep_c_or_head_or_widen_holds() -> Bool {
 }
 
 test fn bash_assign_from_source_preserves_refusal_markers_holds() -> Bool {
-  let cmd = bash_membership_assign_from_source(
+  let cmd = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: "/proc/self/cgroup",
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -250,7 +250,7 @@ data cgroup_locate_spec: NearestAncestorContaining = NearestAncestorContaining {
 }
 
 test fn cgroup_locate_assign_preserves_membership_refusals_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
   string_contains(s: cmd, pattern: "cgroup_membership=malformed")
     && string_contains(s: cmd, pattern: "cgroup_membership=missing")
     && string_contains(s: cmd, pattern: "cgroup_membership=ambiguous")
@@ -261,21 +261,21 @@ test fn cgroup_locate_assign_preserves_membership_refusals_holds() -> Bool {
 }
 
 test fn cgroup_locate_assign_uses_runtime_scan_not_sed_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
   string_contains(s: cmd, pattern: "_cg_n=0")
     && string_contains(s: cmd, pattern: "[ \"$_cg_h\" = \"0\" ]")
     && string_contains(s: cmd, pattern: "d=\"/sys/fs/cgroup$_cg_rel\"")
 }
 
 test fn cgroup_locate_cond_preserves_predicate_shape_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_cond_command(spec: cgroup_locate_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_cond_command(spec: cgroup_locate_spec)
   string_contains(s: cmd, pattern: "[ -n \"$d\" ]")
     && string_contains(s: cmd, pattern: "[ \"$d\" != \"/sys/fs/cgroup\" ]")
     && string_contains(s: cmd, pattern: "! [ -f \"$d/memory.peak\" ]")
 }
 
 test fn cgroup_locate_body_preserves_ascent_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_body_command(spec: cgroup_locate_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_body_command(spec: cgroup_locate_spec)
   cmd == "d=$(dirname \"$d\")"
 }
 

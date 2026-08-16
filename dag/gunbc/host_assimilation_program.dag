@@ -62,7 +62,7 @@ fn host_phase_participations(phase: HostStandupPhase) -> List<FleetParticipation
 }
 
 fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ps,
     empty: false,
     cons: fn(acc, p) { if acc { true } else { fleet_participation_eq(a: p, b: wanted) } }
@@ -74,7 +74,7 @@ fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) 
 }
 
 fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: wanted,
     empty: false,
     cons: fn(acc, w) { if acc { true } else { step_serves_participation(step: step, wanted: w) } }
@@ -145,7 +145,7 @@ fn assimilation_completion_input_list_contains(
   inputs: List<AssimilationCompleteInput>,
   wanted: AssimilationCompleteInput,
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: inputs,
     empty: false,
     cons: fn(acc, r) {
@@ -173,7 +173,7 @@ fn assimilation_completion_inputs_union(
   a: List<AssimilationCompleteInput>,
   b: List<AssimilationCompleteInput>,
 ) -> List<AssimilationCompleteInput> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: b,
     empty: a,
     cons: fn(acc, wanted_input) {
@@ -206,7 +206,7 @@ fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<Assimil
 data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
 
 fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: participation,
     empty: empty_assimilation_complete_input_list,
     cons: fn(acc, p) {

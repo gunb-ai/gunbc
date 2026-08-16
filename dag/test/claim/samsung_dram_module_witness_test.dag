@@ -1,6 +1,6 @@
 module test.claim.samsung_dram_module
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The negative control is the SAME capacity, generation and vendor with the
 // organization axes changed to the shape the label does not carry. It exists so

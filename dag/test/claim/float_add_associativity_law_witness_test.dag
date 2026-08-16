@@ -1,7 +1,7 @@
 module test.claim.float_add_associativity_law_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_float_add_associativity_refuted_by_execution() -> Bool {
   float_add_associativity_refutation_holds()

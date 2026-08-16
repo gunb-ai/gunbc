@@ -2,7 +2,7 @@ module test.claim.proc_self_cgroup_real_execution_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cgroup_mount_root: FilePathParts = FilePathParts { segments: ["sys", "fs", "cgroup"] }
 
@@ -36,7 +36,7 @@ fn run_membership_assign_shell_fails(body: String, marker: String, content: Stri
   )
   !result.success
     && string_contains(s: result.stderr, pattern: marker)
-    && bash_membership_cross_realization_law_holds(
+    && v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_cross_realization_law_holds(
       content: content,
       success: result.success,
       stderr: result.stderr,
@@ -48,7 +48,7 @@ fn run_membership_assign_shell_fails(body: String, marker: String, content: Stri
 fn run_membership_assign_observed(dir: String, content: String, expected_abs: String) -> Bool {
   let path = cgroup_fixture_path(dir: dir, name: "cgroup")
   let seeded = write_cgroup_fixture(dir: dir, name: "cgroup", content: content)
-  let body = bash_membership_assign_from_source(
+  let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: path,
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -63,7 +63,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
     expect: OutcomeIsData,
   )
   seeded && result.success && (trim(s: result.stdout) == expected_abs)
-    && bash_membership_cross_realization_law_holds(
+    && v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_cross_realization_law_holds(
       content: content,
       success: result.success,
       stderr: result.stderr,
@@ -74,7 +74,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
 
 test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let body = bash_membership_assign_from_source(
+  let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -95,7 +95,7 @@ test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool {
 
 test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let body = bash_membership_assign_from_source(
+  let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,
@@ -116,7 +116,7 @@ test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool {
 
 test fn bash_assign_from_source_refuses_malformed_shell_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let body = bash_membership_assign_from_source(
+  let body = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
     walk_var: cgroup_walk_var,
     mount_root: cgroup_mount_root,

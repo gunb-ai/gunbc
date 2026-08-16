@@ -4,13 +4,13 @@ module test.claim.cli_run_floor_lens_oracle_witness
 
 
 test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool {
-  !disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
-    !disposition_is_terminal(d: cli_run_floor_lens_observation_hand_rust_scaffold)
+  !v2.lens.disposition_redundancy.disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
+    !v2.lens.disposition_redundancy.disposition_is_terminal(d: cli_run_floor_lens_observation_hand_rust_scaffold)
 }
 
 test fn floor_lens_scaffold_shape_reader_discriminates() -> Bool {
-  !disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold)
-    && disposition_is_terminal(d: cli_run_floor_lens_scaffold_shape_red_control)
+  !v2.lens.disposition_redundancy.disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold)
+    && v2.lens.disposition_redundancy.disposition_is_terminal(d: cli_run_floor_lens_scaffold_shape_red_control)
 }
 
 test fn floor_lens_hand_rust_trigger_names_sites_and_ticket() -> Bool {

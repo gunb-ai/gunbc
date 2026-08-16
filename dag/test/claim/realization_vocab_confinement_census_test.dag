@@ -1,7 +1,7 @@
 module test.claim.realization_vocab_confinement_census_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data confinement_census_witness_note: String = "THE SUBJECT ROSTERS ARE READ FROM THE REAL LENS MODULE, not restated here. Every expected key in this file is taken from v2.lens.realization_vocabulary_containment's own declared data, so a roster edit moves both the census and its expectation together and this file never becomes a second copy of the confinement surface. What it does independently is COUNT and CROSS-CHECK: the arithmetic below sums the four rosters, which is a different assembly than either the census enumeration or its classification performs."
 
@@ -15,7 +15,7 @@ fn confinement_witness_roster_total() -> Int {
   let exact = count(target_ast_vocab_modules)
   let prefixes = count(target_ast_vocab_module_prefixes)
   let edges = count(realization_edge_path_prefixes)
-  let exceptions = count(realization_vocab_grandfathered_edge_keys())
+  let exceptions = count(v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys())
   exact + prefixes + edges + exceptions
 }
 

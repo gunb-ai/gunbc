@@ -1,7 +1,7 @@
 module test.claim.fleet_runner_connectivity_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data acceptance_corpus_note: String = "These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline, one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's repair loop must not misread as detached on a roster API blip."
 

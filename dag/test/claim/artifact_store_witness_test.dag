@@ -1,7 +1,7 @@
 module test.claim.artifact_store_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider that did not declare the byte ceiling it is being sized by (the retention field's first behavioral reader, audit F5). The budget is DERIVED from the provider, so the fixtures can no longer declare an unobserved ceiling and be handed an exact number anyway; each refusal names its own cause because the remedies differ."
 

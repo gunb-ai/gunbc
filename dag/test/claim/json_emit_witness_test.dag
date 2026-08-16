@@ -1,6 +1,6 @@
 module test.claim.json_emit_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_json_cites_rfc8259() -> Bool {
   match extdeps.languages.json.emit.extdeps_external_authority_anchor {

@@ -1,7 +1,7 @@
 module test.claim.shared_pool_encoding_control
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE OWNER-SWAP REPRESENTATION CONTROL, executed before any GB10 derivation is attempted.
 // Question: can std.machine_shape give ONE canonical identity to a pool that is genuinely shared,

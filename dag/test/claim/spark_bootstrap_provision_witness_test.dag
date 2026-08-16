@@ -6,7 +6,7 @@ module test.claim.spark_bootstrap_provision_witness
 // one import turned every bare reference into "no such function".
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Controls over the Spark credential population model. The prior revision of this witness proved
 // least-privilege properties of an IAM binding set that has since been deleted along with the

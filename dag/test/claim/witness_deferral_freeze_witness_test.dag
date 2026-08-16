@@ -2,7 +2,7 @@ module dag.test.claim.witness_deferral_freeze_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_deferral_freeze_witness_note: String = "MECHANISM ON FIXTURES, per the decomposition rule this lane's own wall enforces: a corpus census may be irreducible but a mechanism never is, so every claim here plants its own tiny rosters and the live-population join runs where it is already paid for — the host admission step the floor executes per PR (cli_run collect_unexecuted_deferred_witnesses / collect_stale_frozen_path_deferrals, pinned by unfrozen_offline_path_row_refuses_as_unclassified_path_deferral and frozen_path_deferral_roster_carries_no_stale_rows). Folding the whole live roster through the live refusal here would be quadratic and would put this file over the very budget whose evasion it exists to close.
 

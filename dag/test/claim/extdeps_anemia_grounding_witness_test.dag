@@ -1,7 +1,7 @@
 module test.claim.extdeps_anemia_grounding_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_email: Email = "author@example.com"
 data sample_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"

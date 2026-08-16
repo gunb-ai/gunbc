@@ -1,6 +1,6 @@
 module test.claim.realization_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_unknown_independence_never_reorders() -> Bool {
   let indep = std.realization.Unknown

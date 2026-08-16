@@ -111,15 +111,15 @@ data scaffold_disposition_census_identity_adversarial_controls_note: String = "I
 
 data scaffold_census_planted_ambiguous_qualified_name: String = "test.fixture.scaffold_disposition_census.pool.specimens.g1_planted_ambiguous_scaffold_control_RED"
 
-data scaffold_census_planted_ambiguous_control_facts: List<DeclFact> = [
-  DeclFact {
+data scaffold_census_planted_ambiguous_control_facts: List<v2.std.decl_index.DeclFact> = [
+  v2.std.decl_index.DeclFact {
     qualified_name: scaffold_census_planted_ambiguous_qualified_name,
     name: "g1_planted_ambiguous_scaffold_control_RED",
     kind: DataItem,
     node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/scaffold_census_ambiguous_a.dag"
   },
-  DeclFact {
+  v2.std.decl_index.DeclFact {
     qualified_name: scaffold_census_planted_ambiguous_qualified_name,
     name: "g1_planted_ambiguous_scaffold_control_RED",
     kind: DataItem,

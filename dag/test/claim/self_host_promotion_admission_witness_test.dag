@@ -4,17 +4,17 @@ module test.claim.self_host_promotion_admission_witness
 // Test-side projection. The authority carrier deliberately exposes no is_* Bool over
 // PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,
 // so the collapse belongs here, at the assertion boundary, not on the admission API.
-fn pa_admitted(o: PromotionOutcome) -> Bool {
+fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) -> Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => true
     PromotionRefused { causes: _ } => false
   }
 }
 
-fn pa_artifact(hex: String) -> GeneratedArtifactIdentity {
+fn pa_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
-      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+      ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
     Absent => ArtifactNotMaterialized
   }
 }
@@ -25,12 +25,12 @@ data pa_candidate_artifact_hex: String = "8913ea1d5983297e05f1c0ca75a7f85d551f30
 
 data pa_successor_artifact_hex: String = "cf931ac453463355533c6e57f0bc87105ef261954875975dfcf463e4fcbf9af0f94c76a2bd7f538e84f3264cfaa5291f3b63f34ffd2f6f09214c329d5688c895"
 
-fn pa_digest(label: String) -> Hash {
-  symbol_identity_digest(sym: label)
+fn pa_digest(label: String) -> v2.std.node.Hash {
+  v2.std.node.symbol_identity_digest(sym: label)
 }
 
-fn pa_identity(closure_label: String, artifact_hex: String) -> GenerationIdentity {
-  GenerationIdentity {
+fn pa_identity(closure_label: String, artifact_hex: String) -> v2.compiler.self_host.generation.GenerationIdentity {
+  v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: pa_digest(label: "producer-compiler"),
     source_closure: pa_digest(label: closure_label),
     target_model: pa_digest(label: "target-model-rust"),
@@ -40,20 +40,20 @@ fn pa_identity(closure_label: String, artifact_hex: String) -> GenerationIdentit
   }
 }
 
-fn pa_seed_identity() -> GenerationIdentity {
+fn pa_seed_identity() -> v2.compiler.self_host.generation.GenerationIdentity {
   pa_identity(closure_label: "seed-closure", artifact_hex: pa_seed_artifact_hex)
 }
 
 // The candidate's source closure DELIBERATELY differs from the seed's. That is the
 // normal, expected case for a real self-host candidate: it emits its own source.
-fn pa_candidate_identity() -> GenerationIdentity {
+fn pa_candidate_identity() -> v2.compiler.self_host.generation.GenerationIdentity {
   pa_identity(
     closure_label: "candidate-closure-DIFFERENT-FROM-SEED",
     artifact_hex: pa_candidate_artifact_hex
   )
 }
 
-fn pa_successor_identity() -> GenerationIdentity {
+fn pa_successor_identity() -> v2.compiler.self_host.generation.GenerationIdentity {
   pa_identity(
     closure_label: "successor-closure",
     artifact_hex: pa_successor_artifact_hex
@@ -64,37 +64,37 @@ fn pa_successor_identity() -> GenerationIdentity {
 // source closure, target model, toolchain, build configuration AND artifact digest
 // are all equal across seed, candidate and successor. A byte comparison of emitted
 // source would report a perfect fixed point here.
-fn pa_identical_identity() -> GenerationIdentity {
+fn pa_identical_identity() -> v2.compiler.self_host.generation.GenerationIdentity {
   pa_identity(closure_label: "seed-closure", artifact_hex: pa_seed_artifact_hex)
 }
 
-fn pa_identical_candidate() -> CandidateGeneration {
-  CandidateGeneration {
+fn pa_identical_candidate() -> v2.compiler.self_host.generation.CandidateGeneration {
+  v2.compiler.self_host.generation.CandidateGeneration {
     identity: pa_identical_identity(),
-    produced_by_seed: SeedGeneration { identity: pa_identical_identity() }
+    produced_by_seed: v2.compiler.self_host.generation.SeedGeneration { identity: pa_identical_identity() }
   }
 }
 
-fn pa_seed() -> SeedGeneration {
-  SeedGeneration { identity: pa_seed_identity() }
+fn pa_seed() -> v2.compiler.self_host.generation.SeedGeneration {
+  v2.compiler.self_host.generation.SeedGeneration { identity: pa_seed_identity() }
 }
 
-fn pa_candidate() -> CandidateGeneration {
-  CandidateGeneration {
+fn pa_candidate() -> v2.compiler.self_host.generation.CandidateGeneration {
+  v2.compiler.self_host.generation.CandidateGeneration {
     identity: pa_candidate_identity(),
     produced_by_seed: pa_seed()
   }
 }
 
-fn pa_successor() -> SuccessorGeneration {
-  SuccessorGeneration {
+fn pa_successor() -> v2.compiler.self_host.generation.SuccessorGeneration {
+  v2.compiler.self_host.generation.SuccessorGeneration {
     identity: pa_successor_identity(),
     produced_by_candidate: pa_candidate()
   }
 }
 
 fn pa_build(
-  subject: GenerationIdentity,
+  subject: v2.compiler.self_host.generation.GenerationIdentity,
   outcome: ObservedVerdict<BuildOutcome>
 ) -> BuildReceipt {
   BuildReceipt { subject: subject, outcome: outcome }

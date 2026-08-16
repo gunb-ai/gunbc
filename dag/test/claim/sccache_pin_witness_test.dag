@@ -1,7 +1,7 @@
 module test.claim.sccache_pin_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sccache_aarch64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
   binary_release: sccache_release_0_15_0,

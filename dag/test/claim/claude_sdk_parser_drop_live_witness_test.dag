@@ -1,7 +1,7 @@
 module test.claim.claude_sdk_parser_drop_live_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data claude_sdk_parser_drop_live_witness_note: String = "Wet half of audit §4.1 parser-drop evidence, split out of claude_sdk_parser_drop_witness_test.dag so hermetic discovery can run the fixture/RED controls without a lying SubstrateInputsOnly disposition on a filesystem_read witness. Reads the committed probe receipt and re-derives control_response parser-drop through claude_sdk_parser_drop_receipt_holds."
 

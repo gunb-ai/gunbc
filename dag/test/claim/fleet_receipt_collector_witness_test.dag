@@ -1,6 +1,6 @@
 module test.claim.fleet_receipt_collector_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Join 5 (operator verdict): the collector's parse is the BACKWARD read of the same
 // byte-locked line the CLI renders forward — a rendered receipt round-trips to an equal

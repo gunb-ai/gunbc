@@ -1,7 +1,7 @@
 module test.claim.runner_capacity_operator_access_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
   let req = runner_capacity_host_in_band_admission_requirement(host: operator_host_srv3)

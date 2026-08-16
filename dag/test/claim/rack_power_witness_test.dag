@@ -1,7 +1,7 @@
 module test.claim.rack_power_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_a() -> PhysicalAssetIdentity { ("srv-chassis-1" as PhysicalAssetIdentity) }
 fn host_b() -> PhysicalAssetIdentity { ("srv-chassis-2" as PhysicalAssetIdentity) }

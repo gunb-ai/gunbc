@@ -12,13 +12,13 @@ type CommitWriter
 type CommitWriterArtifactClassificationReceipt sole_constructor {
   path: GitPath
   indexed_oid: GitObjectId
-  artifact: Artifact
+  artifact: v2.std.artifact.Artifact
 }
 
 type CommitWriterArtifactClassificationFailure
-  = CommitWriterArtifactNotTracked { artifact: Artifact }
+  = CommitWriterArtifactNotTracked { artifact: v2.std.artifact.Artifact }
   | CommitWriterArtifactPathDoesNotMatch {
-      artifact: Artifact,
+      artifact: v2.std.artifact.Artifact,
       provenance_file_path: String,
     }
 
@@ -57,7 +57,7 @@ type CommitWriterStagedBlobObservation {
 type CompleteStagedCommitObservation {
   index: List<GitIndexEntry>
   blobs: List<CommitWriterStagedBlobObservation>
-  module_storage: List<ModuleStorageBinding>
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>
 }
 
 type ExactIndexBlobCoverageReceipt sole_constructor {
@@ -114,7 +114,7 @@ type CommitWriterRefusal
       blob_indexed_oid: GitObjectId,
       provenance_indexed_oid: GitObjectId,
     }
-  | CommitWriterArtifactUntrackedRefusal { path: GitPath, artifact: Artifact }
+  | CommitWriterArtifactUntrackedRefusal { path: GitPath, artifact: v2.std.artifact.Artifact }
   | CommitWriterConflictMarkerTextRefusal {
       location: ConflictMarkerLocation
     }

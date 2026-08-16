@@ -1,7 +1,7 @@
 module test.claim.commit_check_demand_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn demand_decl(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {

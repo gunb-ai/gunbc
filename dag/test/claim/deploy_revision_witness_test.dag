@@ -1,7 +1,7 @@
 module test.claim.deploy_revision_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sha_older: CommitSha = "1111111111111111111111111111111111111111"
 data sha_newer: CommitSha = "2222222222222222222222222222222222222222"

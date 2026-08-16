@@ -1,7 +1,7 @@
 module test.claim.free_tier_serving_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data solo_scm_user_envelope: FreeTierUserEnvelope = FreeTierUserEnvelope {
   storage_bytes_per_user: byte_size(count: 100000000),

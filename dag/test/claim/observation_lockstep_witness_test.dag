@@ -1,7 +1,7 @@
 module test.claim.observation_lockstep_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_note: String = "Lockstep half of the P0 acceptance (docs/plans/progress-observation-design.md section 5): the laws are data rows and the substrate model is the authority, so both are held against the live tree rather than against a restatement. Three couplings are proven by execution here. One, no orphan law — every law row names a declaration that must actually exist in std.observation, so a law cannot be a sentence nobody executes. Two, the SchedulerHold coproduct and the seed governor's HoldReason must carry the same variants, so a hold reason added on one side reds instead of silently rendering as a missing cause. Three, the dwell threshold's derivation from the heartbeat period is checked against the period the seed actually sleeps, so the row cannot drift into taste. Each check carries a negative control in the same run: a name known to be absent must read as absent, which is what separates this from a grep that passes vacuously."
 

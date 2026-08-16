@@ -1,7 +1,7 @@
 module test.claim.runner_connectivity_recovery_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn act_ts(s: String) -> Timestamp {
   s as Timestamp

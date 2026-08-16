@@ -1,7 +1,7 @@
 module test.claim.srv3_install_media_fetch
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_split_doc: String = "The three shell.Mktemp.Dir/Filesystem.Write real-execution witnesses formerly here moved to srv3_install_media_fetch_real_execution_witness_test.dag (no mock_response on those shell ops - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus and are re-enrolled there as declared Wet entries)."
 

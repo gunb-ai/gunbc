@@ -1,6 +1,6 @@
 module test.claim.computation_demand_duplication_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn synthetic_replicated_invocation(run_site: String, out_dir: String) -> v2.lens.duplicate_computation.TypedArgvInvocation {
   v2.lens.duplicate_computation.TypedArgvInvocation {

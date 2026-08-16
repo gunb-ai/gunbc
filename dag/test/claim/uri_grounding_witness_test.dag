@@ -1,6 +1,6 @@
 module test.claim.uri_grounding_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_uri_requires_scheme_and_locator() -> Bool {
   let uri = Uri { scheme: Https, locator: "api.example.com" }

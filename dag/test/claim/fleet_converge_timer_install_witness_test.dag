@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_timer_install_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Timer cadence retired (sleek-heron-218): every enrolled host routes to TimerRetired;
 // only names outside the fleet applicability join stay on TimerOutsideFleet.

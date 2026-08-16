@@ -16,7 +16,7 @@ fn step_index_of(steps: List<Step>, name: String) -> Int {
 }
 
 test fn w_gate_script_names_release_test_execution_command() -> Bool {
-  let script = ci_v1_compiler_tests_compile_gate_script()
+  let script = v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_script()
   string_contains(s: script, pattern: "'test'")
     && string_contains(s: script, pattern: "'v1-compiler-tests'")
     && string_contains(s: script, pattern: "'--release'")

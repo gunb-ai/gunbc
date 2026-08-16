@@ -1,7 +1,7 @@
 module test.claim.roadmap_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data parent_id: RoadmapNodeId = "invert-hand-maintained"
 data second_parent_id: RoadmapNodeId = "model-before-implement"

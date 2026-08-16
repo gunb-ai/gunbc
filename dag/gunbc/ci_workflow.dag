@@ -38,7 +38,7 @@ fn ci_heal_revalidation_preflight_step() -> Step {
   RunStep {
     name: Present { value: "Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA" },
     id: none,
-    run: ci_heal_revalidation_preflight_script(),
+    run: v2.workflow.ci_heal_revalidation_preflight_emit.ci_heal_revalidation_preflight_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -59,7 +59,7 @@ fn ci_isolate_toolchain_step() -> Step {
   RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
-    run: ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
+    run: v2.workflow.ci_workflow_run_emit.ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
     shell: none,
     env: none,
     working_directory: none,
@@ -75,7 +75,7 @@ fn ci_native_cache_root_step() -> Step {
   RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
-    run: ci_native_cache_root_script(),
+    run: v2.workflow.ci_workflow_run_emit.ci_native_cache_root_script(),
     shell: none,
     env: none,
     working_directory: none,

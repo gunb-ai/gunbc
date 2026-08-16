@@ -1,6 +1,6 @@
 module test.claim.wet_hermetic_equivalence_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data wet_hermetic_equivalence_representative_prefix: String = "src/v2/test/lens_mock_totality/"
 

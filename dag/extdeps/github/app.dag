@@ -100,7 +100,7 @@ fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
 }
 
 fn permission_axis_from_wire(name: NonEmptyStr) -> GitHubPermissionAxis? {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: all_permission_axes,
     empty: none,
     cons: fn(found, axis) {
@@ -204,7 +204,7 @@ fn permission_name_occurrences(
   perms: List<GitHubAppPermission>,
   name: GitHubPermissionAxis
 ) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: perms,
     empty: 0,
     cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
@@ -212,7 +212,7 @@ fn permission_name_occurrences(
 }
 
 fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: perms,
     empty: none,
     cons: fn(found, p) {
@@ -281,7 +281,7 @@ fn requested_permissions(
 }
 
 fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> AuthoredPermissionProjection {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: perms,
     empty: AuthoredPermissions { permissions: [] },
     cons: fn(acc, p) {
@@ -304,7 +304,7 @@ fn permission_access_in(
   perms: List<GitHubAppPermission>,
   name: GitHubPermissionAxis
 ) -> GitHubAppPermissionAccess? {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: perms,
     empty: none,
     cons: fn(found, p) {
@@ -329,7 +329,7 @@ fn permission_narrowing_verdict(
     UnknownPermissionWireName { wire_name } =>
       NarrowingUnverifiable { unknown_wire_name: wire_name }
     AuthoredPermissions { permissions } =>
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: permissions,
         empty: NarrowingWithinInstallation,
         cons: fn(verdict, r) {

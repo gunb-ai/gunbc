@@ -1,7 +1,7 @@
 module test.claim.root4_measure_missing_generics_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data root4_measure_missing_generics_witness_note: String = "Root-4 measure_missing_generics family: a function-generic container argument must preserve its applied arguments through render_rust_decl_type overlay resolution. The executable emitter-level fixtures use deliberately synthetic Root4AppliedCarrier, Root4AliasCarrier, and Root4ZeroArityCarrier names, so they exercise the structural shape without re-declaring the canonical std.measure.Measure authority; canonical Measure behavior is covered by the stamped canonical-seven receipt. The decision is structural (__applied_type_args or resolved-type children), never a type-name check. The combined-state fixture proves that an explicitly empty applied-argument property does not suppress non-empty resolved children. RED controls: w_zero_param_alias_list_param_unchanged preserves the existing closed-alias realization; w_unrelated_zero_param_leaf_unchanged proves a bare leaf without applied or resolved children does not gain arguments."
 

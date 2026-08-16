@@ -1,7 +1,7 @@
 module test.claim.roadmap_receipt_continuity_live_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_witness_split_note: String = "SPLIT OUT OF roadmap_receipt_continuity_acceptance_test.dag AND roadmap_authority_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN. roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so under the hermetic envelope the observation REFUSES rather than skipping — and a planted git refusal must refuse integrity rather than fabricate prior_history = current. The hermetic contract keeps planted red controls only; this file executes the live git-observed integrity path on the wet corpora batch."
 

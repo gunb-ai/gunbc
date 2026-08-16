@@ -1,6 +1,6 @@
 module test.claim.spark_provisioning_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Controlled fixtures. Every credential ref, environment standing and observation below is
 // authored HERE, in the witness, so each count and verdict is grounded in an input this

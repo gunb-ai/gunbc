@@ -1,7 +1,7 @@
 module test.claim.merge_lifecycle_interleaving_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data incident_fixture_note: String = "The two PRs of the 2026-07-16 main-red, as symbolic identities (real receipts cited in gunbc.merge_lifecycle.merge_lifecycle_incident_note: #6663 green run 29459154549, first union red run 29461044828, root fix #6701). pr_a is #6663 (the P0 field wall), pr_b is #6686 (the std.types import edge). Zero file overlap, both green in isolation, union red — the judge-x-evidence squash race."
 

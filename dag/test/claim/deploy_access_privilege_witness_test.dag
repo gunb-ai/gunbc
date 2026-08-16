@@ -1,6 +1,6 @@
 module test.claim.deploy_access_privilege_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 

@@ -1,7 +1,7 @@
 module test.claim.code_change_workflow_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
 data witness_pr_url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"

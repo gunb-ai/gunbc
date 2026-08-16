@@ -1,7 +1,7 @@
 module test.claim.push_event_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Hermetic executing consumer for extdeps.github.push_event JSON ingest and git object-id validation. Payload read refusal on a missing path lives in test.claim.push_event_witness_wet (Filesystem.Read is wet-only).
 test fn witness_push_before_observed_from_json() -> Bool {

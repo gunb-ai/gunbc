@@ -1,7 +1,7 @@
 module test.claim.realize_pack_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data realize_pack_witness_note: String = "P4 v0 ACCEPT: memory-safe realize packing. width = min(independence, budget/derived_bound); packing NEVER exceeds budget by construction (the exit-137 control); a BoundUnknown (underivable) bound -> width-1 maturation reserve; an unreadable budget REFUSES rather than fabricating a width (retires realization_width conservative_fallback_width, the §5 finding). NOTE on realize_packs_within_budget: budget 100 / bound 25 = 4 naive, but memory_bounded_shard_count reserves 20% headroom (effective 80 -> floor(80/25) = 3) — the maturation-reserve margin (admitted demand grows post-admission); the safe pack is 3, and 3*25 = 75 <= 100 leaves the headroom by construction."
 

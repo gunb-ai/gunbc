@@ -1,7 +1,7 @@
 module test.claim.scm_compatibility_git_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn git_fixture_binding() -> GitCompatibilityBindingOutcome {
   git_compatibility_bind(

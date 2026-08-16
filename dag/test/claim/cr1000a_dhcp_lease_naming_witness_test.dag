@@ -1,7 +1,7 @@
 module test.claim.cr1000a_dhcp_lease_naming
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data srv1_option12_host_name: HostName = HostName {
   name: DomainName { labels: ["srv1" as DnsLabel] },

@@ -1,6 +1,6 @@
 module test.claim.keyed_delta_fold_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type FixtureVal {
   payload: String

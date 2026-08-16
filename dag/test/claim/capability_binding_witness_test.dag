@@ -1,7 +1,7 @@
 module test.claim.capability_binding_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data capability_binding_witness_note: String = "The four-layer separation and the derived per-capability verdict, each law beside the control that reds it. The claims are mostly about what the model REFUSES to say: that an operating system supports something, that a readable sensor is a fit one, that a caller may declare a tap qualified, that a degradation needs no resolvable alternative, and that a synthetic source may stand in for hardware without saying so."
 

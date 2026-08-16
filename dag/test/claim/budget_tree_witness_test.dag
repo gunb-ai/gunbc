@@ -1,7 +1,7 @@
 module test.claim.budget_tree_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn claim(name: String, amount: std.nat.Nat, p: BudgetPriority) -> BudgetClaim {
   BudgetClaim { item: LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }

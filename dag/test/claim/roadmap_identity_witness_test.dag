@@ -1,7 +1,7 @@
 module test.claim.roadmap_identity_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data identity_witness_scope_note: String = "WHAT THESE PROVE, AND THE ONE THING THEY CANNOT. They prove the registry is well formed here and now — identities unique across active and tombstoned rows, active slugs unique, the index total over declared nodes, resolution exactly-one in all three outcomes. They CANNOT prove permanence: an identity silently REPLACED between the base revision and this head produces a tree satisfying every claim below, because a snapshot cannot see history. Claiming otherwise would be the coverage-by-illusion this repository names, so the base-versus-head gate is declared owed on the carrier rather than implied here.\\n\\nThe rename claim is the discriminating one. Identity's whole purpose is surviving a slug change, and nothing else in this file would notice if identity silently tracked the slug — every uniqueness and totality claim holds just as well for a registry where identity IS the slug. Constructing a node, renaming its slug, and asserting the identity is unchanged is the only claim here that fails if the separation collapses."
 

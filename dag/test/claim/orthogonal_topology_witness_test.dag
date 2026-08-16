@@ -11,7 +11,7 @@ fn mm_registry() -> SpatialFrameRegistry {
   }
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn room() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
 fn building() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }

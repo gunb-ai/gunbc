@@ -1,7 +1,7 @@
 module test.claim.memory_part_selection_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data stick_32g: ByteSize = byte_size(count: 34359738368)
 

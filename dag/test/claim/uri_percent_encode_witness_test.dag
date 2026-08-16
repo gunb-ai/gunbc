@@ -1,6 +1,6 @@
 module test.claim.uri_percent_encode_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_negative_scalar: Int = 0 - 1
 

@@ -1,7 +1,7 @@
 module test.claim.dag_compile_clean_shard_totality_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_correction_note: String = "Corrected 2026-07-29: the SubstrateInputsOnly stamp was FALSE and lying_substrate_inputs_only_stamp_census caught it — this file's import closure reaches the live-read carrier home tools.dag_compile_clean_shard_roster. The stamp is file-grain but this file is two-grain: the Class C split above left the synthetic fixture-grain rows here ALONGSIDE compile_clean_shard_totality_holds_on_live_tree, which scans the real tree. One stamp cannot be true for both grains, so it must take the fail-closed value (DESIGN §5) — ReadsLiveTree restores the never-skip tooth, since a SubstrateInputsOnly row is predict-skip-eligible and a wrongly skipped live-tree row is a selection fail-open. Falsifier rehoming (note below) governs which CADENCE the row runs on; it does not make the file's live-tree reach disappear."
 

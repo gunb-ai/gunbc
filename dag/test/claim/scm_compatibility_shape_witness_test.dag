@@ -1,6 +1,6 @@
 module test.claim.scm_compatibility_shape_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type SyntheticFourthReceipt {
   target: NonEmptyStr

@@ -1,7 +1,7 @@
 module test.claim.os_install_actuator_selection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
   os_install_actuator_requirement_kinds.first() == BmcNetworkReach

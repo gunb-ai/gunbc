@@ -1,7 +1,7 @@
 module test.claim.rust_stage0_gates_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn w_rs_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/src/lib.rs") }
 fn w_cargo_toml_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/Cargo.toml") }

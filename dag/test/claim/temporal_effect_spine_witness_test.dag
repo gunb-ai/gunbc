@@ -1,6 +1,6 @@
 module test.claim.temporal_effect_spine
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_intent_hash: ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as NonEmptyStr)
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr

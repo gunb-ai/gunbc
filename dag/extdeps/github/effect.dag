@@ -68,7 +68,7 @@ fn is_workflow_projection_path(path: RepositoryPath) -> Bool {
 }
 
 fn any_workflow_projection_path(paths: List<RepositoryPath>) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: false,
     cons: fn(found, p) { found || is_workflow_projection_path(path: p) }

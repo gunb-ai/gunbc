@@ -1,7 +1,7 @@
 module test.claim.commit_witness_claim_roster_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data synthetic_stale_entry: String = "dag/test/claim/synthetic_missing_roster_witness_test.dag"
 data synthetic_stale_fn: String = "this_witness_function_does_not_exist"

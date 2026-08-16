@@ -1,7 +1,7 @@
 module test.claim.scm_agentic_stress_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data stress_note: String = "Stressing the profile toward agent-driven development, because the human-authored numbers load the wrong axis. Human baseline: 200 object reads and 20 writes per user-month. Agent-autonomous baseline below: 2,000,000 logical NODE reads and 200,000 node writes per user-month -- four orders of magnitude, which is roughly one agent working continuously at a few thousand node reads an hour, and still conservative for a fleet of agents. Storage and egress are also raised (500 MB held, 2 GB moved) but only by single-digit multiples, because dedup flattens what agents store far more than it flattens what they touch. The finding this witness pins: at these rates operations stop being a rounding error and become the entire bill on request-metered vendors, which INVERTS the provider ranking computed on the human profile."
 

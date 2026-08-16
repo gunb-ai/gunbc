@@ -3,8 +3,8 @@ module gunbc.source_integration_claim_evidence
 
 type SourceBindingFact {
   bound: RunKey
-  source_read: DagSourceReadWitness
-  binding: OccurrenceBinding<OccurrenceId>
+  source_read: v2.compiler.source_authority.DagSourceReadWitness
+  binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId>
 }
 
 type SourceIntegrationProposition

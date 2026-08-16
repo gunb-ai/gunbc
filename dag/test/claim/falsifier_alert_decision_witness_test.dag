@@ -1,7 +1,7 @@
 module test.claim.falsifier_alert_decision_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data falsifier_alert_decision_witness_note: String = "ALERT-4's evidence. alert_decision performs no GitHub calls, so every property here is a fixture and a comparison — no live issue, no live run, no live clock. That is what makes the arms that are hardest to reach in production the cheapest to prove: the heartbeat boundary, the corrupt-marker refusal and the escalation-survives-undeclared-ownership property are all one call each.\\n\\nEach claim exercises ONE arm and asserts the arm itself, not merely that something happened. A decision procedure with sixteen terminal arms, eight of them refusals, is exactly the shape where `it returned a refusal` passes while the WRONG refusal is returned — and those eight route to eight different investigations, so the wrong one sends a human to the wrong place."
 

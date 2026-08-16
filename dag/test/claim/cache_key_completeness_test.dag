@@ -1,6 +1,6 @@
 module test.claim.cache_key_completeness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.cache_key_completeness"
 

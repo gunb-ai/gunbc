@@ -1,13 +1,13 @@
 module gunbc.test.claim.witness_execution_class_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn pure_disposition() -> Optional<LiveTreeDisposition> {
+fn pure_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
   Present { value: SubstrateInputsOnly }
 }
 
-fn live_disposition() -> Optional<LiveTreeDisposition> {
+fn live_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
   Present { value: ReadsLiveTree }
 }
 

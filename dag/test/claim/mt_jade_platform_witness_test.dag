@@ -1,7 +1,7 @@
 module test.claim.mt_jade_platform_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data expected_mt_jade_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
   declaration: DeclarationRef {

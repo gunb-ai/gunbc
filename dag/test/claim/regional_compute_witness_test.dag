@@ -1,7 +1,7 @@
 module test.claim.regional_compute_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Answers the operator's wage-intuition question by execution over cited rows: is compute cheaper where wages are lower? Every claim below is derived from the two machine-readable price authorities with the SKU held fixed per provider, so a difference is a region fact. The headline is a totality claim -- no sampled region is cheaper than its provider's US baseline -- which is the shape that would break loudly if a future re-pull found one, rather than a single-region spot check that could stay true while the thesis rotted.
 fn premium_bp_of(baseline: RegionalComputeRow, region: RegionalComputeRow) -> Nat? {

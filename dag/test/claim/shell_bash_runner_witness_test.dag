@@ -2,7 +2,7 @@ module test.claim.shell_bash_runner
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
   string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "dissolve-on:")

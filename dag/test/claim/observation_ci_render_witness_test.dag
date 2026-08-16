@@ -1,7 +1,7 @@
 module test.claim.observation_ci_render_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_note: String = "P1 flagship acceptance (docs/plans/progress-observation-design.md section 5): re-render the CAPTURED crawl window of run 30044816605 through the escalation law and produce named activity where there was silence. The fixture below is not invented — every number is read off that run's log: the heartbeat at t=33m carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process was actually inside for the whole window, v2.compiler.normalized_tree, was disclosed only at walk end as typecheck-attribution ms=606984. The renderer is a pure function of the stream, which is exactly what makes replaying a real captured run possible."
 

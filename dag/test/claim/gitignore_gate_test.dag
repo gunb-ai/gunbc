@@ -1,6 +1,6 @@
 module test.claim.gitignore_gate
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_has_cargo_patterns() -> Bool {
   let eg = expected_gitignore()

@@ -1,7 +1,7 @@
 module test.claim.json_parse_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data json_parse_witness_note: String = "parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the claims below are stated as round-trips over one JsonValue rather than against golden bytes (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper survives. The \\u claims fail against an unescaper that passes \\u through, which is what this parser did before it carried json_hex4_at - a receipt detail field carrying a control character would have silently gained four literal hex characters and lost the character itself."
 

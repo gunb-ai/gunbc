@@ -1,7 +1,7 @@
 module test.claim.srv3_os_install
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // ARCH-GROUNDED is still the claim and is asserted directly on the mapping,
 // which is where it lives. The srv3 clause that used to read the architecture off

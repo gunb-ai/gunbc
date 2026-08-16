@@ -1,7 +1,7 @@
 module test.claim.roadmap_publish_observe_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_scope_note: String = "Every arm of the remote-branch observation is claimed here with no remote and no credentials, which is possible only because the deciding function takes the three values the transport returns rather than calling it. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving remote_branch_observation_of intact would keep these green - the shim that calls it has no branches of its own, which is what makes that residue small enough to state rather than large enough to hide in."
 

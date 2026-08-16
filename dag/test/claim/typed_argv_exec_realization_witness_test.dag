@@ -1,7 +1,7 @@
 module test.claim.typed_argv_exec_realization_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data typed_argv_exec_realization_note: String = "Wave C5 receipt: deploy-preflight probe effects realize through typed argv service operations (access.PosixEffectivePrincipal.Read, sudo.NopasswdExecuteProbe.Check, sudo.NopasswdGrantList.Read) on LocalShell and gunbc.typed_argv_exec_over_ssh on SshShell — one argv shape per op, N transport handlers, no concat-shell. Package-managed binaries that may be absent use the grant-list read plus exact NOPASSWD-row parser rather than an execute check. The list query's exit status alone is never treated as authorization. Argv tokens outside the portable allowlist fail closed before ssh spawn."
 

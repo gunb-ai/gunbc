@@ -1,6 +1,6 @@
 module test.claim.yaml_quoting_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn ser_kv(k: String, s: String) -> String {
   serialize_yaml(v: yaml_mapping(entries: [kv(key: k, value: yaml_string(s: s))]))

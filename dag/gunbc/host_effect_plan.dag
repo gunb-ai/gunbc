@@ -65,14 +65,14 @@ fn host_effect_plan_apply_rest(
   if !reconciliation_converged(r: head_result) {
     head_result
   } else {
-    match list_head(xs: rest) {
+    match v2.std.algebra.list_head(xs: rest) {
       HeadAbsent => head_result
       HeadFound { value: next } =>
         host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
-          rest: match list_tail(xs: rest) {
+          rest: match v2.std.algebra.list_tail(xs: rest) {
             TailFound { tail: t } => t
-            TailAbsent => freemonoid_empty()
+            TailAbsent => v2.std.algebra.freemonoid_empty()
           },
           ctx: ctx,
         )
@@ -84,7 +84,7 @@ fn host_effect_plan_apply(
   plan: HostEffectPlan,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match list_head(xs: plan.steps) {
+  match v2.std.algebra.list_head(xs: plan.steps) {
     HeadAbsent =>
       NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
@@ -99,9 +99,9 @@ fn host_effect_plan_apply(
     HeadFound { value: first } =>
       host_effect_plan_apply_rest(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
-        rest: match list_tail(xs: plan.steps) {
+        rest: match v2.std.algebra.list_tail(xs: plan.steps) {
           TailFound { tail: t } => t
-          TailAbsent => freemonoid_empty()
+          TailAbsent => v2.std.algebra.freemonoid_empty()
         },
         ctx: ctx,
       )

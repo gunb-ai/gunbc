@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_apply_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_srv3_host_converge() -> HostConverge {
   HostConverge {

@@ -1,6 +1,6 @@
 module test.claim.emit_host_gate_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn nonempty(s: String) -> Bool {
   s != ""

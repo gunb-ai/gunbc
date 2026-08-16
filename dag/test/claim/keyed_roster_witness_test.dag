@@ -1,7 +1,7 @@
 module test.claim.keyed_roster_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data keyed_roster_witness_note: String = "Lane 4 witnesses (generated-file conflict policy charter, docs/plans/generated-file-conflict-policy.md on session/crisp-bat-830): construction refuses a repeated path key with a typed KeyedRosterDuplicateKey / KeyedRosterBuildDuplicateKey carrying key + both colliding rows (located, not a bare Bool). keyed_roster_union models the git clean-merge failure mode: two branches each append disjoint rows admit; overlapping path keys refuse. keyed_merge_row_lists is the deliberate contrast (silent first-wins, reconcile grain). Per-PR admission: enrolled on commit_gate_roster (GithubActionsCiJob) plus affected-set discovery when dag/std/ or enrolled roster carriers change."
 

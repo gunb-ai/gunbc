@@ -3,7 +3,7 @@ module test.claim.instrument_physical_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data instrument_physical_witness_note: String = "The physical-character amendment and the focal audition, each law with the control that reds it. Three of these claims exist because a review found the corresponding hole: an amplitude was a signed Int so two channels could cancel and pass the budget; the enclosure and the focal plate were admitted by SEPARATE gates so each passed while the plate moved farther than either bound described; and the composed law said below while the arithmetic admitted equality. The reading claims that used to live here moved to the sandbox witness when the camera was rewired to read gunbc.roadmap_program_view instead of authored rows."
 

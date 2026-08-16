@@ -1,6 +1,6 @@
 module test.claim.build_cache_placement_observation
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data placement_observation_witness_doc: String = "The step-1 controls for the endpoint-owner observer, at the MODEL grain. Every fixture below is synthetic; the live counterparts were captured read-only against srv1, srv2 and srv3 on 2026-08-01 and are recorded in docs/plans/build-cache-placement-receipt.md. The controls that can only be executed against a real host — that --show-stats does not manufacture a server, that a compile does, and that two consecutive observations do not perturb the subject — are live receipts rather than witnesses here, because a hermetic fixture cannot falsify them."
 

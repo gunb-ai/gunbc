@@ -1,7 +1,7 @@
 module test.claim.github_app_registry
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data control_plane_probe_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.auth.github_apps",
@@ -181,7 +181,7 @@ test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
     effect: workflow_advance_effect
   )
   count(unsatisfied) == 1
-    && fold_list(
+    && v2.std.algebra.fold_list(
          xs: unsatisfied,
          empty: false,
          cons: fn(_acc, c) {
@@ -208,7 +208,7 @@ test fn witness_actions_token_scope_vocabulary_has_no_workflows() -> Bool {
 
 test fn witness_axis_wire_names_are_a_bijection() -> Bool {
   count(all_permission_axes) == 22
-    && fold_list(
+    && v2.std.algebra.fold_list(
          xs: all_permission_axes,
          empty: true,
          cons: fn(ok, axis) {
@@ -231,7 +231,7 @@ test fn witness_installation_approval_pending_when_grant_incomplete() -> Bool {
       count(request.accept) == 1
         && request.installation.value == 999
         && request.installation_locator.locator == "github.com/organizations/gunb-ai/settings/installations/999"
-        && fold_list(
+        && v2.std.algebra.fold_list(
              xs: request.accept,
              empty: false,
              cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" }
@@ -319,7 +319,7 @@ test fn witness_credential_app_must_match_the_observed_subject() -> Bool {
     authority: other_installation_credential,
     control_plane: control_plane,
     effect: workflow_advance_effect
-  ) && fold_list(
+  ) && v2.std.algebra.fold_list(
     xs: unsatisfied_capabilities(
       authority: other_app_credential,
       control_plane: control_plane,
@@ -549,7 +549,7 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
     && count(github_effect_required_permissions(
          effect: RegisterOrganizationRunner { organization: GitHubOrganizationRef { login: "gunb-ai" } }
        )) == 1
-    && fold_list(
+    && v2.std.algebra.fold_list(
          xs: github_effect_required_permissions(
            effect: RegisterOrganizationRunner { organization: GitHubOrganizationRef { login: "gunb-ai" } }
          ),
@@ -764,7 +764,7 @@ test fn witness_registration_gap_precedes_installation_approval() -> Bool {
     AppRegistrationPermissionMissing { request } =>
       count(request.add) == 1
         && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
-        && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" })
+        && v2.std.algebra.fold_list(xs: request.add, empty: false, cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" })
     _ => false
   }
 }

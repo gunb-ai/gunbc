@@ -1,7 +1,7 @@
 module test.claim.ilm4926_designation_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_ilm4926_is_carried_as_a_designator() -> Bool {
   ilm4926.designator == "ILM4926"

@@ -1,7 +1,7 @@
 module test.claim.resolution_divergence_silent_pick_gate_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn resolution_divergence_in_process_seed_receipt_holds() -> Bool {
   match resolution_divergence_in_process_seed_scaffold {

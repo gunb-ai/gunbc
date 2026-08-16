@@ -1,7 +1,7 @@
 module test.claim.contracts_placement
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn anthropic_chat_message_contract_targets_correct_coproduct() -> Bool {
   anthropic_chat_message_wire_contract.coproduct.decl_name == "AnthropicChatMessage"

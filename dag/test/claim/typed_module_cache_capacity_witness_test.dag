@@ -1,7 +1,7 @@
 module test.claim.typed_module_cache_capacity_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data typed_module_cache_capacity_witness_note: String = "Executes the modelled cap derivation that extdeps.realization.reconcile_in_process now cites as its RuntimeDerivedLimit authority. The load-bearing cell is unreadable_budget_refuses_rather_than_defaulting: the seed's previous unwrap_or(CEIL) turned an unknown budget into the MOST PERMISSIVE cap available and OOM-killed the full witness corpus twice, so the discriminating question is not whether a cap is produced but whether the refusal survives. Both clamp directions are pinned because a one-sided clamp would look correct on the ordinary budget and fail exactly at the extremes the clamp exists for."
 

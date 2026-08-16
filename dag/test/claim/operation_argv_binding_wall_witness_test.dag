@@ -1,7 +1,7 @@
 module test.claim.operation_argv_binding_wall_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data operation_argv_binding_wall_note: String = "What EARNS the genericity. A binder that reads the declaration could have become a wider channel than the fixed list it replaces, so two classes are walled, both proven here by execution against real corpus declarations. (1) UNDECLARED NAMES ARE REFUSED, not injected: the seed's previous materializer inserted package, bin, args, unit and property into the binding environment of EVERY operation unconditionally -- a live hole, not a hypothetical one, since any operation whose argv referenced one of those names took the caller's value whether or not it declared the input. (2) THE EXECUTABLE POSITION IS NOT BINDABLE (see the corpus witness and dag/test/fixture/argv_executable_position_probe.dag). Each refusal is typed and located and has no arm that proceeds -- nothing is sanitized, escaped, or dropped (DESIGN 5)."
 
@@ -13,11 +13,11 @@ data git_service: String = "git.Core"
 data cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data cargo_service: String = "cargo.Build"
 
-fn argv_text(m: ArgvMaterialization) -> String {
-  join(operation_argv_tokens_or_refusal_label(m: m), " ")
+fn argv_text(m: v2.std.operation_argv.ArgvMaterialization) -> String {
+  join(v2.std.operation_argv.operation_argv_tokens_or_refusal_label(m: m), " ")
 }
 
-fn show_property_with(bindings: List<OperationInputBinding>) -> ArgvMaterialization {
+fn show_property_with(bindings: List<v2.std.operation_argv.OperationInputBinding>) -> v2.std.operation_argv.ArgvMaterialization {
   shell_materialize_operation_argv(
     systemctl_path,
     systemctl_service,
@@ -30,20 +30,20 @@ test fn operation_argv_declared_inputs_bind_by_name() -> Bool {
   argv_text(
     m: show_property_with(
       bindings: [
-        operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-        operation_argv_bind_text(name: "property", text: "ActiveState")
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "property", text: "ActiveState")
       ]
     )
   ) == "systemctl show gunbc.service --property=ActiveState --value"
 }
 
 test fn operation_argv_RED_undeclared_name_is_refused_not_injected() -> Bool {
-  let label = operation_argv_refusal_label(
+  let label = v2.std.operation_argv.operation_argv_refusal_label(
     m: show_property_with(
       bindings: [
-        operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-        operation_argv_bind_text(name: "property", text: "ActiveState"),
-        operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "property", text: "ActiveState"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")
       ]
     )
   )
@@ -51,25 +51,25 @@ test fn operation_argv_RED_undeclared_name_is_refused_not_injected() -> Bool {
 }
 
 test fn operation_argv_RED_undeclared_package_and_property_are_refused_too() -> Bool {
-  let package_label = operation_argv_refusal_label(
+  let package_label = v2.std.operation_argv.operation_argv_refusal_label(
     m: shell_materialize_operation_argv(
       git_path,
       git_service,
       "Diff",
       [
-        operation_argv_bind_text(name: "base", text: "origin/main"),
-        operation_argv_bind_text(name: "package", text: "tailscale")
+        v2.std.operation_argv.operation_argv_bind_text(name: "base", text: "origin/main"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: "tailscale")
       ]
     )
   )
-  let args_label = operation_argv_refusal_label(
+  let args_label = v2.std.operation_argv.operation_argv_refusal_label(
     m: shell_materialize_operation_argv(
       git_path,
       git_service,
       "Diff",
       [
-        operation_argv_bind_text(name: "base", text: "origin/main"),
-        operation_argv_bind_text_list(name: "args", items: ["--exec", "rm"])
+        v2.std.operation_argv.operation_argv_bind_text(name: "base", text: "origin/main"),
+        v2.std.operation_argv.operation_argv_bind_text_list(name: "args", items: ["--exec", "rm"])
       ]
     )
   )
@@ -78,12 +78,12 @@ test fn operation_argv_RED_undeclared_package_and_property_are_refused_too() -> 
 
 test fn operation_argv_RED_duplicate_binding_is_refused() -> Bool {
   string_contains(
-    operation_argv_refusal_label(
+    v2.std.operation_argv.operation_argv_refusal_label(
       m: show_property_with(
         bindings: [
-          operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-          operation_argv_bind_text(name: "property", text: "ActiveState"),
-          operation_argv_bind_text(name: "unit", text: "other.service")
+          v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service"),
+          v2.std.operation_argv.operation_argv_bind_text(name: "property", text: "ActiveState"),
+          v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "other.service")
         ]
       )
     ),
@@ -93,8 +93,8 @@ test fn operation_argv_RED_duplicate_binding_is_refused() -> Bool {
 
 test fn operation_argv_RED_unbound_input_without_default_is_refused() -> Bool {
   string_contains(
-    operation_argv_refusal_label(
-      m: show_property_with(bindings: [operation_argv_bind_text(name: "unit", text: "gunbc.service")])
+    v2.std.operation_argv.operation_argv_refusal_label(
+      m: show_property_with(bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service")])
     ),
     "DeclaredInputUnbound:property"
   )
@@ -106,7 +106,7 @@ test fn operation_argv_declared_default_is_read_from_the_declaration() -> Bool {
       git_path,
       git_service,
       "Diff",
-      [operation_argv_bind_text(name: "base", text: "origin/main")]
+      [v2.std.operation_argv.operation_argv_bind_text(name: "base", text: "origin/main")]
     )
   ) == "git diff origin/main HEAD"
 }
@@ -118,9 +118,9 @@ test fn git_fetch_no_tags_materializes_its_typed_stall_deadline() -> Bool {
       git_service,
       "FetchNoTags",
       [
-        operation_argv_bind_text(name: "remote", text: "origin"),
-        operation_argv_bind_text(name: "ref", text: "main"),
-        operation_argv_bind_text(name: "stall_deadline_seconds", text: "240")
+        v2.std.operation_argv.operation_argv_bind_text(name: "remote", text: "origin"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "ref", text: "main"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "stall_deadline_seconds", text: "240")
       ]
     )
   ) == "git -c http.lowSpeedLimit=1 -c http.lowSpeedTime=240 fetch --no-tags origin main"
@@ -128,14 +128,14 @@ test fn git_fetch_no_tags_materializes_its_typed_stall_deadline() -> Bool {
 
 test fn git_fetch_no_tags_RED_missing_stall_deadline_is_refused() -> Bool {
   string_contains(
-    operation_argv_refusal_label(
+    v2.std.operation_argv.operation_argv_refusal_label(
       m: shell_materialize_operation_argv(
         git_path,
         git_service,
         "FetchNoTags",
         [
-          operation_argv_bind_text(name: "remote", text: "origin"),
-          operation_argv_bind_text(name: "ref", text: "main")
+          v2.std.operation_argv.operation_argv_bind_text(name: "remote", text: "origin"),
+          v2.std.operation_argv.operation_argv_bind_text(name: "ref", text: "main")
         ]
       )
     ),
@@ -149,14 +149,14 @@ test fn operation_argv_list_valued_input_expands_to_tokens() -> Bool {
       cargo_path,
       cargo_service,
       "Build",
-      [operation_argv_bind_text_list(name: "extra_args", items: ["--release", "-p", "v1-compiler"])]
+      [v2.std.operation_argv.operation_argv_bind_text_list(name: "extra_args", items: ["--release", "-p", "v1-compiler"])]
     )
   ) == "cargo build --release -p v1-compiler"
 }
 
 test fn operation_argv_RED_missing_operation_is_refused() -> Bool {
   string_contains(
-    operation_argv_refusal_label(
+    v2.std.operation_argv.operation_argv_refusal_label(
       m: shell_materialize_operation_argv(git_path, git_service, "NoSuchOperation", [])
     ),
     "OperationNotFound"
@@ -167,8 +167,8 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
   argv_text(
     m: show_property_with(
       bindings: [
-        operation_argv_bind_text(name: "unit", text: "gunbc.service"),
-        operation_argv_bind_text(name: "property", text: "ActiveState")
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "property", text: "ActiveState")
       ]
     )
   ) != "systemctl show gunbc.service --property=SubState --value"
@@ -181,9 +181,9 @@ test fn operation_argv_previously_unbindable_operation_now_materializes() -> Boo
       "redfish.Http",
       "GetSystem",
       [
-        operation_argv_bind_text(name: "username", text: "operator"),
-        operation_argv_bind_text(name: "password", text: "secret"),
-        operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc")
+        v2.std.operation_argv.operation_argv_bind_text(name: "username", text: "operator"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "password", text: "secret"),
+        v2.std.operation_argv.operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc")
       ]
     )
   ) == "curl --fail-with-body -sS -k -u operator:secret https://srv4-bmc/redfish/v1/Systems/system"

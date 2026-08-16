@@ -1,7 +1,7 @@
 module test.claim.tool_readiness_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data expected_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-hermetic-expected" as NonEmptyStr)
 data other_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-host-other" as NonEmptyStr)

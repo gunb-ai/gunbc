@@ -1,7 +1,7 @@
 module test.claim.push_event_witness_wet
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data push_event_fixture_path: String = "dag/test/fixture/github_push_event/main_push.json"
 

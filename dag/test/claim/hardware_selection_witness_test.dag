@@ -1,7 +1,7 @@
 module test.claim.hardware_selection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data altra8: Platform = Platform {
   label: "altra-8ch-ddr4-3200",

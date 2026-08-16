@@ -1,7 +1,7 @@
 module test.claim.bmc_onboarding_lifecycle
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {

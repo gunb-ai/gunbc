@@ -1,7 +1,7 @@
 module test.claim.bmc_capability_solve
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
   match bmc_firmware_version_from_wire(wire: "3.anything") {

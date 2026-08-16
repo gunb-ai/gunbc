@@ -1,7 +1,7 @@
 module test.claim.bmc_onboard_body_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn netrc_content_shape_holds() -> Bool {
   let got = netrc_content(host: "192.168.1.192", account: "root", password: "s3cr3t")

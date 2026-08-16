@@ -1,7 +1,7 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool {
   let digest = sha256sum_verify_via_shell(

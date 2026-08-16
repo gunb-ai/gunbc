@@ -1,6 +1,6 @@
 module test.claim.render_glyphs_ansi_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_completed_ascii() -> Bool {
   match resolve_symbol(id: NodeCompleted, tier: Ascii) {

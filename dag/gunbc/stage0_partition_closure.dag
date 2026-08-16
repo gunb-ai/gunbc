@@ -145,13 +145,13 @@ type DedupAcc {
 
 // file path -> declaring module identity, from the same declaration authority the edge
 // producer uses, so the join cannot disagree with the edges it is joining.
-fn path_to_module_index_from(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+fn path_to_module_index_from(decls: List<v2.lens.module_graph.ModuleDeclarationFact>) -> Map<String, String> {
   decls |> fold(init: empty_map(), f: fn(m, fact) { map_insert(m, fact.path, fact.module) })
 }
 
 // emitted basename -> declaring module identity. The basename is PROJECTED through the
 // emit-plan authority, never respelled here.
-fn basename_to_module_index_from(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+fn basename_to_module_index_from(decls: List<v2.lens.module_graph.ModuleDeclarationFact>) -> Map<String, String> {
   decls |> fold(init: empty_map(), f: fn(m, fact) {
       map_insert(m, stage0_module_emit_basename(module_path: fact.module), fact.module)
     })
@@ -171,7 +171,7 @@ type ModuleTargetsAcc {
 // declaring module -> the modules it references, keyed by module identity rather than by file
 // path, because module identity is this gate's subject.
 fn module_target_index_from(
-  edges: List<ModuleDependencyEdge>,
+  edges: List<v2.lens.module_graph.ModuleDependencyEdge>,
   paths: Map<String, String>
 ) -> Map<String, List<String>> {
   edges
@@ -341,8 +341,8 @@ fn partition_closure_verdict() -> PartitionClosureVerdict {
 // w_live_corpus_partition_closure_holds alone. Leaving the old sentence would be a note
 // describing a property the tree stopped having.
 fn partition_closure_verdict_for_rows(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
-  let decls = module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
-  let edges = dependency_resolution_facts_live(
+  let decls = v2.lens.module_graph.module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
+  let edges = v2.lens.module_graph.dependency_resolution_facts_live(
     pool_roots: partition_closure_pool_roots,
     importer_roots: partition_closure_pool_roots,
     exclude_substrings: partition_closure_exclude_substrings

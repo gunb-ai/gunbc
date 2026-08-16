@@ -1,7 +1,7 @@
 module test.claim.floor_discovery_exact_subject_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data tested_commit: GitObjectId = GitSha1ObjectId {
   digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
@@ -30,10 +30,10 @@ fn subject_fx(
   commit: GitObjectId,
   tree: GitObjectId,
   roots: List<String>,
-) -> FloorDiscoverySubject {
-  FloorDiscoverySubject {
-    tested_commit: floor_discovery_commit_id(object_id: commit),
-    tested_tree: floor_discovery_tree_id(object_id: tree),
+) -> v2.workflow.floor_discovery.FloorDiscoverySubject {
+  v2.workflow.floor_discovery.FloorDiscoverySubject {
+    tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: commit),
+    tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tree),
     source_roots: roots,
     execution_authority_source_roots: ["dag", "src/v2"],
     naming_authority_identity: naming_identity(),
@@ -42,11 +42,11 @@ fn subject_fx(
 }
 
 fn request_fx(
-  subject: FloorDiscoverySubject,
+  subject: v2.workflow.floor_discovery.FloorDiscoverySubject,
   scope: List<String>,
   mode: ExecutionMode,
-) -> FloorDiscoveryRequest {
-  FloorDiscoveryRequest {
+) -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
+  v2.workflow.floor_discovery.FloorDiscoveryRequest {
     subject: subject,
     scan_dirs: ["dag/test/claim"],
     exclude_substrings: ["/long/"],
@@ -55,16 +55,16 @@ fn request_fx(
   }
 }
 
-fn canonical_subject() -> FloorDiscoverySubject {
+fn canonical_subject() -> v2.workflow.floor_discovery.FloorDiscoverySubject {
   subject_fx(commit: tested_commit, tree: tested_tree, roots: ["dag", "src/v1"])
 }
 
-fn canonical_request() -> FloorDiscoveryRequest {
+fn canonical_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
   request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: Hermetic)
 }
 
 test fn exact_subject_binds() -> Bool {
-  match floor_discovery_subject_bind(
+  match v2.workflow.floor_discovery.floor_discovery_subject_bind(
     expected: canonical_subject(),
     observed: canonical_subject(),
   ) {
@@ -74,7 +74,7 @@ test fn exact_subject_binds() -> Bool {
 }
 
 test fn wrong_commit_refuses_at_commit_coordinate() -> Bool {
-  match floor_discovery_subject_bind(
+  match v2.workflow.floor_discovery.floor_discovery_subject_bind(
     expected: canonical_subject(),
     observed: subject_fx(commit: other_commit, tree: tested_tree, roots: ["dag", "src/v1"]),
   ) {
@@ -86,7 +86,7 @@ test fn wrong_commit_refuses_at_commit_coordinate() -> Bool {
 }
 
 test fn wrong_tree_refuses_at_tree_coordinate() -> Bool {
-  match floor_discovery_subject_bind(
+  match v2.workflow.floor_discovery.floor_discovery_subject_bind(
     expected: canonical_subject(),
     observed: subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"]),
   ) {
@@ -98,7 +98,7 @@ test fn wrong_tree_refuses_at_tree_coordinate() -> Bool {
 }
 
 test fn source_root_order_is_part_of_the_subject() -> Bool {
-  match floor_discovery_subject_bind(
+  match v2.workflow.floor_discovery.floor_discovery_subject_bind(
     expected: canonical_subject(),
     observed: subject_fx(commit: tested_commit, tree: tested_tree, roots: ["src/v1", "dag"]),
   ) {
@@ -111,7 +111,7 @@ test fn source_root_order_is_part_of_the_subject() -> Bool {
 
 test fn request_preserves_subject_refusal() -> Bool {
   let wrong_subject = subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"])
-  match floor_discovery_request_bind(
+  match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: canonical_request(),
     observed: request_fx(subject: wrong_subject, scope: ["dag/test/claim"], mode: Hermetic),
   ) {
@@ -125,7 +125,7 @@ test fn request_preserves_subject_refusal() -> Bool {
 }
 
 test fn wrong_scope_refuses_without_widening() -> Bool {
-  match floor_discovery_request_bind(
+  match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: canonical_request(),
     observed: request_fx(subject: canonical_subject(), scope: [], mode: Hermetic),
   ) {
@@ -137,7 +137,7 @@ test fn wrong_scope_refuses_without_widening() -> Bool {
 }
 
 test fn wrong_execution_mode_refuses() -> Bool {
-  match floor_discovery_request_bind(
+  match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: canonical_request(),
     observed: request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: Wet),
   ) {
@@ -149,7 +149,7 @@ test fn wrong_execution_mode_refuses() -> Bool {
 }
 
 test fn exact_request_binds() -> Bool {
-  match floor_discovery_request_bind(
+  match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: canonical_request(),
     observed: canonical_request(),
   ) {
@@ -159,15 +159,15 @@ test fn exact_request_binds() -> Bool {
 }
 
 test fn commit_and_tree_each_move_request_identity() -> Bool {
-  let canonical = floor_discovery_request_identity(request: canonical_request())
-  let changed_commit = floor_discovery_request_identity(
+  let canonical = v2.workflow.floor_discovery.floor_discovery_request_identity(request: canonical_request())
+  let changed_commit = v2.workflow.floor_discovery.floor_discovery_request_identity(
     request: request_fx(
       subject: subject_fx(commit: other_commit, tree: tested_tree, roots: ["dag", "src/v1"]),
       scope: ["dag/test/claim"],
       mode: Hermetic,
     )
   )
-  let changed_tree = floor_discovery_request_identity(
+  let changed_tree = v2.workflow.floor_discovery.floor_discovery_request_identity(
     request: request_fx(
       subject: subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"]),
       scope: ["dag/test/claim"],
@@ -180,20 +180,20 @@ test fn commit_and_tree_each_move_request_identity() -> Bool {
 }
 
 test fn canonical_request_identity_matches_bootstrap_golden() -> Bool {
-  floor_discovery_request_identity(request: canonical_request()).digest == "f8e90d00ba0ad7f8"
+  v2.workflow.floor_discovery.floor_discovery_request_identity(request: canonical_request()).digest == "f8e90d00ba0ad7f8"
 }
 
 test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
   let request = canonical_request()
-  let after_commit = floor_discovery_transport_observe(
-    state: floor_discovery_transport_initialize(request: request),
-    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+  let after_commit = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
+    state: v2.workflow.floor_discovery_transport.floor_discovery_transport_initialize(request: request),
+    observation: CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
   )
-  let after_tree = floor_discovery_transport_observe(
+  let after_tree = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: after_commit,
-    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+    observation: TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
   )
-  match floor_discovery_transport_observe(
+  match v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: after_tree,
     observation: TrackedWorktreeObserved { modified_paths: ["src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs"] },
   ) {
@@ -204,30 +204,30 @@ test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
 
 test fn transport_requires_clean_worktree_before_publication() -> Bool {
   let request = canonical_request()
-  let s0 = floor_discovery_transport_initialize(request: request)
-  let s1 = floor_discovery_transport_observe(
+  let s0 = v2.workflow.floor_discovery_transport.floor_discovery_transport_initialize(request: request)
+  let s1 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s0,
-    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+    observation: CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
   )
-  let s2 = floor_discovery_transport_observe(
+  let s2 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s1,
-    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+    observation: TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
   )
-  let s3 = floor_discovery_transport_observe(
+  let s3 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s2,
     observation: TrackedWorktreeObserved { modified_paths: [] },
   )
-  let s4 = floor_discovery_transport_observe(
+  let s4 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s3,
     observation: UntrackedWorktreeObserved { paths: [] },
   )
-  let s5 = floor_discovery_transport_observe(
+  let s5 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s4,
     observation: SnapshotPublished {
-      receipt: FloorDiscoverySnapshotWriteReceipt {
-        artifact: FloorDiscoverySnapshotArtifact {
-          request_identity_digest: floor_discovery_request_identity(request: request),
-          payload_digest: floor_discovery_request_identity(request: request),
+      receipt: v2.workflow.floor_discovery_transport.FloorDiscoverySnapshotWriteReceipt {
+        artifact: v2.workflow.floor_discovery_transport.FloorDiscoverySnapshotArtifact {
+          request_identity_digest: v2.workflow.floor_discovery.floor_discovery_request_identity(request: request),
+          payload_digest: v2.workflow.floor_discovery.floor_discovery_request_identity(request: request),
         },
         walk_attempt_id: "attempt-test",
       },

@@ -1,6 +1,6 @@
 module test.claim.build_latency_actions_collect_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_window: NonEmptyStr = "controlled fixture: two hosts, one build job each, success only" as NonEmptyStr
 

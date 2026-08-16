@@ -150,7 +150,7 @@ fn attempt_is_escalated(d: ReviewDisposition) -> Bool {
 }
 
 fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: receipts,
     empty: 0,
     cons: fn(acc, r) { if attempt_is_accepted(d: r.disposition) { acc + 1 } else { acc } }
@@ -158,7 +158,7 @@ fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
 }
 
 fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: receipts,
     empty: 0,
     cons: fn(acc, r) { if attempt_is_escalated(d: r.disposition) { acc + 1 } else { acc } }
@@ -166,7 +166,7 @@ fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
 }
 
 fn attempt_roster_count(receipts: List<LlmAttemptReceipt>) -> Nat {
-  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
+  v2.std.algebra.fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
 
 type GoodputRefusalCause

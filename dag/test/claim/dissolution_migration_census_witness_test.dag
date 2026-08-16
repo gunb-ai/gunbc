@@ -1,7 +1,7 @@
 module test.claim.dissolution_migration_census
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn residue_population_is_the_five_class_partition() -> Bool {
   let parts = length(xs: historical_receipt_rows()) + length(xs: dissolves_by_greening_rows()) + length(xs: refusal_or_reason_rows()) + length(xs: not_a_lifecycle_carrier_rows()) + length(xs: narrative_only_rows())

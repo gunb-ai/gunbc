@@ -2,7 +2,7 @@ module test.claim.roadmap_presentation_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data presentation_witness_fixture_note: String = "Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live count or a live row is a moving target that turns a semantic claim into a snapshot transcription (the A1 lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with Environment/Workspace/Agent complete, four pending, worker process exited, session container present."
 

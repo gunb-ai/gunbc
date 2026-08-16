@@ -2,7 +2,7 @@ module test.claim.stage0_crate_layout_witness
 
 
 test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
-  if compiler_frontier_emitter_produced_count() == 0 {
+  if v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_count() == 0 {
     true
   } else {
     generated_stage0_filenames
@@ -15,18 +15,18 @@ test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
 }
 
 test fn w_generated_stage0_filenames_match_frontier() -> Bool {
-  generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
+  generated_stage0_filenames.length() == v2.compiler.self_host.frontier.hand_maintained_stage0_filenames().length()
     && generated_stage0_filenames
-      |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
+      |> all(f => v2.compiler.self_host.frontier.hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
 test fn w_generated_stage0_dirs_match_frontier() -> Bool {
-  generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
+  generated_stage0_dirs.length() == v2.compiler.self_host.frontier.hand_maintained_stage0_dirs().length()
     && generated_stage0_dirs
-      |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))
+      |> all(d => v2.compiler.self_host.frontier.hand_maintained_stage0_dirs() |> any(g => g == d))
 }
 
 test fn w_self_emitted_derived_count() -> Bool {
-  compiler_frontier_emitter_produced_stage0_mod_basenames().length() == compiler_frontier_emitter_produced_count()
+  v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_stage0_mod_basenames().length() == v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_count()
 }
 

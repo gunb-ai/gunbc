@@ -1,7 +1,7 @@
 module test.claim.host_effect_plan_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
 
@@ -18,17 +18,17 @@ fn witness_plan_ctx() -> HostEffectPlanContext {
 }
 
 fn witness_empty_plan() -> HostEffectPlan {
-  EffectPlan { steps: [], on_failure: FailFast }
+  v2.std.effect_plan.EffectPlan { steps: [], on_failure: FailFast }
 }
 
 fn witness_if_control_flow_plan() -> HostEffectPlan {
-  EffectPlan {
+  v2.std.effect_plan.EffectPlan {
     steps: [
       If {
         cond: ExitZero {
-          run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+          run: v2.std.orchestration.Run { command: "true", env: [], redirect: Absent, capture: Absent }
         },
-        then_: EffectPlan { steps: [], on_failure: FailFast },
+        then_: v2.std.effect_plan.EffectPlan { steps: [], on_failure: FailFast },
         else_: Absent,
       },
     ],

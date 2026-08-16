@@ -1,6 +1,6 @@
 module test.claim.cargo_artifact_selection_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_artifact_selection_witness_note: String = "These claims exist because service cargo.Build reports success, stdout and stderr and NEVER the path of the artifact it produced, so a consumer had to assemble that path by convention — and a stale binary at the conventional location satisfies a convention-derived observation completely, giving a digest honestly computed over the wrong bytes. The decode under test reads the path cargo itself reported. The discriminating claims are the refusals, not the happy path: a first-wins selector, a last-wins member lookup, and a decoder that skips lines it cannot read all pass the selection claim below while being exactly the defects that would let a wrong or absent artifact read as a good one. Line numbers in the refusals are asserted as EXACT values rather than merely non-selection, because a decoder that refuses with the wrong location sends the reader to the wrong line of a build log."
 

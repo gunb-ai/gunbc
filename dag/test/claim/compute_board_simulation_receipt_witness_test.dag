@@ -1,7 +1,7 @@
 module test.claim.compute_board_simulation_receipt_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE JOIN, and it is the only thing that keeps a recorded run from decaying into folklore. The
 // receipt says a tool accepted these exact bytes; this asserts the product still emits exactly

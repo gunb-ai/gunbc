@@ -1,7 +1,7 @@
 module test.claim.srv3_os_install_actuate_workflow
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_boot_once_cd_default_approval_is_pending() -> Bool {
   match srv3_boot_once_cd_default_approval {

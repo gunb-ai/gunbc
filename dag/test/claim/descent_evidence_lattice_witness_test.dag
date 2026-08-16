@@ -1,6 +1,6 @@
 module test.claim.descent_evidence_lattice
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn rank_of_meet(a: DescentEvidence, b: DescentEvidence) -> Int {
   evidence_rank(e: descent_evidence_lattice_meet(a: a, b: b))

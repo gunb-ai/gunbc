@@ -1,7 +1,7 @@
 module test.claim.salience_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data salience_witness_note: String = "S1 selective-spectacle receipts (operator recalibration 2026-08-02), each a decided law with its RED control: the budget table grants energy to focus only; a second ordinary focal subject in one region is a typed refusal while Critical coexists; emission refuses for the wrong role, outside the envelope, and without a non-emission discriminator (so reduced-motion/no-emission renderings keep every distinction by construction); attraction is bounded and borrows the register's one spring rather than minting a second; and the principles carrier holds the revised thesis with the three new laws carried by real salience declarations."
 

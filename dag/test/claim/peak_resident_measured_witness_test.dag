@@ -1,7 +1,7 @@
 module test.claim.peak_resident_measured_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_reason: String = "peak_resident_measured_holds reads /proc/self/status (VmHWM) through the observed_peak_resident_bytes host builtin - host state outside the resolved substrate closure, the exact hidden-behind-a-builtin class the entry-text classifier cannot see (live_tree.dag) - so this row declares ReadsLiveTree and never predict-skips."
 

@@ -1,7 +1,7 @@
 module test.claim.session_residency_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_note: String = "These rows pin WHICH hosts owe a sessions reservation. They are cheap and they exist because the previous derivation of this same fact was a correlation that survived only as long as an unrelated file stayed unchanged — see gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note. A wrong answer here does not fail loudly; it silently removes the largest non-runner claim from a host's conservation sum."
 

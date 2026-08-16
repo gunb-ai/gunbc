@@ -2,7 +2,7 @@ module test.claim.roadmap_page_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
 

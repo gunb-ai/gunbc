@@ -1,7 +1,7 @@
 module test.claim.ssh_transport_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 

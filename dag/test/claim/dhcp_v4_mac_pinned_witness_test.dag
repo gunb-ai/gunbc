@@ -1,7 +1,7 @@
 module test.claim.dhcp_v4_mac_pinned_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn dhcp_mac_pinned_static_reservation_not_contradictory() -> Bool {
   dhcp_mac_pinned_reservation_not_contradictory(

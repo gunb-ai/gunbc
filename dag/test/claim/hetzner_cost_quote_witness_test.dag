@@ -1,6 +1,6 @@
 module test.claim.hetzner_cost_quote_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
   cost_estimate_unit_price_micros(

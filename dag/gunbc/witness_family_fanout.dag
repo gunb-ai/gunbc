@@ -8,7 +8,7 @@ type WitnessFamilyKind
   | ClaimFamily
 
 type WitnessFamilyLane {
-  lane_id: Symbol,
+  lane_id: v2.std.node.Symbol,
   lane_number: Int,
   kind: WitnessFamilyKind,
   title: String,

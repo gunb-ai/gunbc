@@ -69,32 +69,32 @@ test fn classify_region_unknown_is_unclassified() -> Bool {
 }
 
 test fn hermetic_is_replayable_isolated_not_live() -> Bool {
-  envelope_replayable(env: hermetic_envelope())
-    && envelope_isolated(env: hermetic_envelope())
-    && !envelope_live_tree_intersects(env: hermetic_envelope())
+  envelope_replayable(env: v2.std.execution_envelope.hermetic_envelope())
+    && envelope_isolated(env: v2.std.execution_envelope.hermetic_envelope())
+    && !envelope_live_tree_intersects(env: v2.std.execution_envelope.hermetic_envelope())
 }
 
 test fn wet_is_not_replayable_not_isolated_reads_live() -> Bool {
-  !envelope_replayable(env: wet_envelope())
-    && !envelope_isolated(env: wet_envelope())
-    && envelope_live_tree_intersects(env: wet_envelope())
+  !envelope_replayable(env: v2.std.execution_envelope.wet_envelope())
+    && !envelope_isolated(env: v2.std.execution_envelope.wet_envelope())
+    && envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope())
 }
 
 test fn record_reach_identical_to_wet() -> Bool {
-  (envelope_replayable(env: record_envelope()) == envelope_replayable(env: wet_envelope()))
-    && (envelope_isolated(env: record_envelope()) == envelope_isolated(env: wet_envelope()))
-    && (envelope_live_tree_intersects(env: record_envelope()) == envelope_live_tree_intersects(env: wet_envelope()))
+  (envelope_replayable(env: v2.std.execution_envelope.record_envelope()) == envelope_replayable(env: v2.std.execution_envelope.wet_envelope()))
+    && (envelope_isolated(env: v2.std.execution_envelope.record_envelope()) == envelope_isolated(env: v2.std.execution_envelope.wet_envelope()))
+    && (envelope_live_tree_intersects(env: v2.std.execution_envelope.record_envelope()) == envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope()))
 }
 
 test fn derive_disposition_hermetic_is_substrate_only() -> Bool {
-  match derive_live_tree_disposition(env: hermetic_envelope()) {
+  match v2.std.execution_envelope.derive_live_tree_disposition(env: v2.std.execution_envelope.hermetic_envelope()) {
     SubstrateInputsOnly => true
     ReadsLiveTree => false
   }
 }
 
 test fn derive_disposition_wet_is_reads_live() -> Bool {
-  match derive_live_tree_disposition(env: wet_envelope()) {
+  match v2.std.execution_envelope.derive_live_tree_disposition(env: v2.std.execution_envelope.wet_envelope()) {
     ReadsLiveTree => true
     SubstrateInputsOnly => false
   }

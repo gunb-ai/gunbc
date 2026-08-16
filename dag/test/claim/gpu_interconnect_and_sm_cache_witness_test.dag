@@ -1,7 +1,7 @@
 module test.claim.gpu_interconnect_and_sm_cache_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rtx_5090_pcie_lane_count: Nat = 16
 data rtx_5090_sm_shared_memory_bytes: Nat = 102400

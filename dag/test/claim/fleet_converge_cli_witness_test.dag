@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_cli_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
   converge_cli_routes_to_slice1(host: "srv1")

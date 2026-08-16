@@ -1,7 +1,7 @@
 module test.claim.roadmap_sandbox_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data roadmap_sandbox_witness_note: String = "P4 keystone: /sandbox is the register at every depth plus every component in every state, and it doubles as the visual witness. Gallery totality is the wire vocabulary re-witnessed as coverage (one static instance per wire label; drop one -> RED). The echo answers ANY wire arm on demand with the SAME belt JSON shape production sends (proven per label; unknown label refuses 400). The live instances are one pressable button per arm, all driven by the shared client program. The register depths (roles under both themes, scales) render from the authorities, so the sandbox cannot drift from the live surfaces."
 

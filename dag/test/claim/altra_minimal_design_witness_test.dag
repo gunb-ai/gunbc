@@ -1,7 +1,7 @@
 module test.claim.altra_minimal_design_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FIXTURE NAMES ITS CHANNELS, which is the point of the change under test. An earlier version
 // of this helper took a channel COUNT, and could therefore only ever build populations that were

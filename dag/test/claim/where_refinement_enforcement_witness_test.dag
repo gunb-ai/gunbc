@@ -1,7 +1,7 @@
 module test.claim.where_refinement_enforcement_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals including unary-negated int literals (review 45131), record fields, direct returns, data inits, call args, as-casts (review 45036); inherited predicates compose through refined-alias chains (review 45121 — NonEmptyStr where brand). DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): non-literal values at refined positions and deferred predicates (brand, Pattern) — wall after grounding (decidable, evidence carrier missing); counted via compile_clean_diagnostic_histogram, not silently widened. dissolve-on: feature:refinement-evidence-at-non-literal-positions. Centralized via with_expected_where_refinement_diags (review 44949). Seed-retained host seam (review 45103): src/v1/stage0/src/cli_run.rs compile_dag_rust_emit_check + compile_clean_diagnostic_is_advisory + histogram key — wires the existing builtin consumer to compile_clean_diagnostic_is_hard / WhereRefinementUnenforced counting; no new policy. Witness scaffold dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane). Predicate-kind strings: dissolve-on feature:where-refinement-predicate-coproduct."
 

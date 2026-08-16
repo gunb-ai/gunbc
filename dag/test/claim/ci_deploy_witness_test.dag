@@ -2,7 +2,7 @@ module test.claim.ci_deploy_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ci_deploy_witness_hermetic_split_note: String = "The observed half of this file (witness_deploy_access_preflight_is_fail_closed, which shells live whoami + sudo -n via deploy_access_check_observed) lives in test.claim.ci_deploy_observed_wet, OFFLINE per the hermetic-floor posture (operator 2026-07-11). This file keeps the hermetic half: pure pins over the deploy spec/script/workflow and the mock-shaped deploy_access_check(access, actor) dual — the dependency-injection exemplar the posture generalizes."
 

@@ -1,7 +1,7 @@
 module test.claim.runner_replace_incarnation_seam_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_os_target() -> NodeControlPlane {
   HostOs { node: srv3_host }

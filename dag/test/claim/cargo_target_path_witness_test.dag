@@ -1,6 +1,6 @@
 module test.claim.cargo_target_path
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn render_file_path(parts: FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {

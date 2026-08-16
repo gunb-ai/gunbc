@@ -1,6 +1,6 @@
 module test.claim.measure_lifted_algebra
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn scale_fraction_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(10), num: 4, den: 5)) == 8

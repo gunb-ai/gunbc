@@ -1,7 +1,7 @@
 module test.claim.srv3_os_install_actuator_toolchain_ensure
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Bool {
   srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt()

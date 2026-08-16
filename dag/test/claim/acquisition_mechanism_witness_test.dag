@@ -1,7 +1,7 @@
 module test.claim.acquisition_mechanism_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn acquisition_witness_floor_equals(f: AcquisitionCostForecast, expected: Nat) -> Bool {
   match acquisition_forecast_cost_floor_micros(forecast: f) {

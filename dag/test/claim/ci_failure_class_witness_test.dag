@@ -1,6 +1,6 @@
 module test.claim.ci_failure_class_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn class_is_infra(c: FloorFailureClass) -> Bool {
   match c {

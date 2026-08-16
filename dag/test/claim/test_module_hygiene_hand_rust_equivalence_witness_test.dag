@@ -1,7 +1,7 @@
 module test.claim.test_module_hygiene_hand_rust_equivalence_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS FILE USED TO CARRY, and why it does not. Fourteen of the eighteen witnesses here
 // pinned gunbc.test_module_hygiene orphan_plain_names_or_refuse against synthetic ModuleSurface

@@ -56,12 +56,12 @@ fn typed_argv_shell_safe_refusal_token(token: String) -> String? {
 }
 
 fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
-  match list_head(xs: argv) {
+  match v2.std.algebra.list_head(xs: argv) {
     HeadFound { value: token } =>
       match typed_argv_shell_safe_refusal_token(token: token) {
         Present { value: why } => Present { value: why }
         Absent =>
-          match list_tail(xs: argv) {
+          match v2.std.algebra.list_tail(xs: argv) {
             TailFound { tail: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
             TailAbsent => none
           }

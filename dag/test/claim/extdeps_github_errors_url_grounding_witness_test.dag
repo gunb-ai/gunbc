@@ -1,6 +1,6 @@
 module test.claim.extdeps_github_errors_url_grounding_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_docs_url: NonEmptyStr = "https://docs.github.com/rest"
 

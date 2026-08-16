@@ -1,6 +1,6 @@
 module test.claim.filesystem_entry_kind_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_other(k: EntryKind) -> Bool {
   match k { Other => true  _ => false }

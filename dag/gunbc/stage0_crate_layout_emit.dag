@@ -10,7 +10,7 @@ fn escape_rust_string_literal_body(s: String) -> String {
 }
 
 fn render_dag_string_list_items(xs: List<String>) -> String {
-  fold_list(xs, empty: "", cons: fn(acc, item) {
+  v2.std.algebra.fold_list(xs, empty: "", cons: fn(acc, item) {
     let line = concat("  \"", item, "\"")
     if acc == "" {
       line
@@ -25,7 +25,7 @@ fn render_dag_string_list(xs: List<String>) -> String {
 }
 
 fn render_rust_str_slice_items(xs: List<String>) -> String {
-  fold_list(xs, empty: "", cons: fn(acc, item) {
+  v2.std.algebra.fold_list(xs, empty: "", cons: fn(acc, item) {
     let line = concat("    \"", escape_rust_string_literal_body(s: item), "\"")
     if acc == "" {
       line
@@ -36,10 +36,10 @@ fn render_rust_str_slice_items(xs: List<String>) -> String {
 }
 
 fn expected_stage0_crate_layout_generated_dag() -> String {
-  let pub_mod_block = emit_hand_maintained_pub_mod_block()
-  let pub_mod_basenames = hand_maintained_pub_mod_basenames()
-  let stage0_filenames = hand_maintained_stage0_filenames()
-  let stage0_dirs = hand_maintained_stage0_dirs()
+  let pub_mod_block = v2.compiler.self_host.frontier.emit_hand_maintained_pub_mod_block()
+  let pub_mod_basenames = v2.compiler.self_host.frontier.hand_maintained_pub_mod_basenames()
+  let stage0_filenames = v2.compiler.self_host.frontier.hand_maintained_stage0_filenames()
+  let stage0_dirs = v2.compiler.self_host.frontier.hand_maintained_stage0_dirs()
   concat(
     "module gunbc.stage0_crate_layout_generated\n\n",
     "import std.types { List, String }\n\n",

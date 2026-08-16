@@ -1,6 +1,6 @@
 module test.claim.oomd_install_grounding_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_thresholds() -> OomdGroundingThresholds {
   OomdGroundingThresholds {

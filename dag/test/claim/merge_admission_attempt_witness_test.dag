@@ -1,7 +1,7 @@
 module test.claim.merge_admission_attempt_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data attempt_a_raw: String = "12345-1-ci"
 data attempt_b_raw: String = "12345-2-ci"

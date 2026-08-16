@@ -1,7 +1,7 @@
 module test.claim.observation_rollup_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rollup_witness_home_doc: String = "S1 of the display-grain lane: the fold that accumulates routine leaf events into their ancestor at a declared grain, so a batch emits one conclusion instead of one line per witness. These claims pin the two properties the fold exists for and the two it must NOT have. What it exists for: routine and anomaly classes both COUNT (a summary claiming `0 failed` is only trustworthy if failures were tallied on the same pass), and the ancestor is located by the containment path rather than by a second taxonomy. What it must not have: an event outside the rollup's subject is REFUSED rather than folded (which would inflate a batch with foreign work) or dropped (which would report an incomplete total as if it were complete), and a subject with no segment at the requested grain answers Absent rather than substituting the root."
 

@@ -1,6 +1,6 @@
 module test.claim.srv3_runner_memory_converge_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_memory_max_knob_name() -> String {
   "per_slot_memory_max_bytes"

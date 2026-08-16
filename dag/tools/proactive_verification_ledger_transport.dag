@@ -15,7 +15,7 @@ fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
 }
 
 fn run_executable_ledger_rows() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ledger_executable_family_rows(),
     empty: true,
     cons: fn(acc, row) { acc && run_family_ledger_row(row: row) }

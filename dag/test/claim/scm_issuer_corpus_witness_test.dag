@@ -1,7 +1,7 @@
 module test.claim.scm_issuer_corpus_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The SCM-economics comparable set, all SIC 7372 Services-Prepackaged Software: GitLab (pure-play SCM), Atlassian (developer-collaboration suite incl. Bitbucket -- the nearest pure-play comparable), Microsoft (GitHub's owner, the scale contrast whose GitHub-level economics are NOT filed). Two arms GitLab's seven loss-making years could not exercise are exercised here: NonNegativeUsd (Microsoft profitable in all four years; Atlassian FY2022 operating income positive before three loss years) and Unfiled (Microsoft's FY2022 OperatingExpenses, untagged in its own 10-K).
 fn w_cross_foots(

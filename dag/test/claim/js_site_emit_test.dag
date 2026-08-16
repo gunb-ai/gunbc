@@ -1,6 +1,6 @@
 module test.claim.js_site_emit
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn js_site_hostile_page() -> JsSitePage {
   JsSitePage {

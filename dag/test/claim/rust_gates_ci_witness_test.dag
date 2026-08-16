@@ -1,7 +1,7 @@
 module test.claim.rust_gates_ci_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 test fn w_diag_names_check() -> Bool {
   string_contains(

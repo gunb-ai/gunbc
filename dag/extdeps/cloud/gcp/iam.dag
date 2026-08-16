@@ -222,7 +222,7 @@ fn role_grants_permission(authority: RolePermissionAuthority, permission: String
 }
 
 fn list_contains_string(xs: List<String>, needle: String) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == needle })
+  v2.std.algebra.fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == needle })
 }
 
 type ImpersonationChain {

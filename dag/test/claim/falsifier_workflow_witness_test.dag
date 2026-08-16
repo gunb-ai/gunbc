@@ -2,7 +2,7 @@ module test.claim.falsifier_workflow_witness_test
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn falsifier_cron_renders_every_four_hours_utc() -> Bool {
   render_cron_schedule(s: falsifier_cadence_cron) == "0 0,4,8,12,16,20 * * *"

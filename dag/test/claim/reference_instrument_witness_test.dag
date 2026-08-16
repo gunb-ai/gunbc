@@ -1,7 +1,7 @@
 module test.claim.reference_instrument_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them, RECUT against a direct read of both manuals (2026-08-04). The prior witness set was ten green claims over an inverted attribution, and it is the reason these claims are shaped differently: they read the product rosters and the evidence rows, and the evidence rows point INTO the product modules, so a wrong setting can no longer be consistent with a right attribution. What no in-repo witness can establish is that a quoted wording matches the upstream document — that is a read-path fact, carried as a SourceReadReceipt, and the lesson recorded rather than papered over is that ten structural greens did not make the upstream claim true."
 

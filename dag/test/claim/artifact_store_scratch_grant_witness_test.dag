@@ -1,7 +1,7 @@
 module test.claim.artifact_store_scratch_grant_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // P-B discriminating witnesses for std.artifact_store_scratch_grant (docs/plans/effect-namespace-grants.md 6). A /tmp/gunbc_* store root Permits Read+Write; a repo-tree or non-gunbc /tmp path is a located std.access.Deny from EffectRequest — the RED control for the extdeps.realization.artifact_store_fs construction wall.
 data witness_scratch_root: String = "/tmp/gunbc_artifact_store_witness"

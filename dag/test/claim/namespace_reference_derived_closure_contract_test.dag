@@ -3,18 +3,18 @@ module test.claim.namespace_reference_derived_closure_contract
 
 data namespace_reference_derived_closure_contract_witness_note: String = "CONTROLLED FIXTURES for the six-clause closing fold. The positive population independently authors one satisfying observation per roadmap clause. Each RED changes only the discriminating output: remove the same-file neighbour, leak the sibling branch, leak the later declaration, collapse one distinct homonym, duplicate one provider dependency, or admit one unrelated loaded file. These tests prove the contract rejects every bad state; they do not claim the gated production candidate producer exists. The quarantined acceptance witness imports no fixture from this module."
 
-fn oid(value: Int) -> OccurrenceId { OccurrenceId { value: value } }
+fn oid(value: Int) -> std.occurrence_identity.OccurrenceId { std.occurrence_identity.OccurrenceId { value: value } }
 
 fn fixture_span() -> SourceSpan {
   SourceSpan { file: "contract-fixture.dag", start: 1, end: 2 }
 }
 
-fn fixture_path(ancestor: OccurrenceId, terminal: OccurrenceId) -> OccurrenceContainmentPath {
+fn fixture_path(ancestor: std.occurrence_identity.OccurrenceId, terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath { ancestors: [ancestor], terminal: terminal }
 }
 
 fn fixture_index_entry(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
   containment: OccurrenceContainmentPath,
 ) -> OccurrenceIndexEntry {
@@ -73,7 +73,7 @@ fn fixture_transport() -> OccurrenceTransport {
   }
 }
 
-fn p1_outcome(supplied_candidates: List<OccurrenceId>) -> OccurrenceReferenceBindingOutcome {
+fn p1_outcome(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> OccurrenceReferenceBindingOutcome {
   resolve_reference_occurrence_binding(
     transport: fixture_transport(),
     occurrence: oid(value: 10),
@@ -81,7 +81,7 @@ fn p1_outcome(supplied_candidates: List<OccurrenceId>) -> OccurrenceReferenceBin
   )
 }
 
-fn p1_resolution(supplied_candidates: List<OccurrenceId>) -> StructuralBindingResolved {
+fn p1_resolution(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> StructuralBindingResolved {
   StructuralBindingResolved {
     binding_outcome: p1_outcome(supplied_candidates: supplied_candidates),
   }

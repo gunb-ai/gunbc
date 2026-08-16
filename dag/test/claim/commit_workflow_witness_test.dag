@@ -1,7 +1,7 @@
 module test.claim.commit_workflow_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 test fn witness_ci_spec_projects_from_roster() -> Bool {
   gate_lists_eq(left: gunbc_ci_floor_gates, right: commit_workflow_ci_floor_gates)

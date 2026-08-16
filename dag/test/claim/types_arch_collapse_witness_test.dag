@@ -1,7 +1,7 @@
 module test.claim.types_arch_collapse
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data std_types_path: String = "dag/std/types.dag"
 data cpu_types_path: String = "dag/extdeps/cpu/types.dag"

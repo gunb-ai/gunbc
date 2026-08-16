@@ -1,7 +1,7 @@
 module test.claim.github_mergeable_state_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
   match parse_mergeable_state(raw: "MERGEABLE") {

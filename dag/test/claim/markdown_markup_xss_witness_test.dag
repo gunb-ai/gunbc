@@ -1,6 +1,6 @@
 module test.claim.markdown_markup_xss_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_readme_doc() -> MarkdownDocument {
   MarkdownDocument {

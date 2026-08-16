@@ -1,6 +1,6 @@
 module test.claim.realization_scale_agnostic
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn milli(count: std.nat.Nat) -> Measure<Time, Milli, std.nat.Nat> {
   time_measure(count: count)

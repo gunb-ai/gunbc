@@ -12,14 +12,14 @@ data systemctl_show_property_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_show_property_service: String = "systemd.Systemctl"
 data systemctl_show_property_operation: String = "ShowProperty"
 
-fn systemctl_show_property_operation_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> ArgvMaterialization {
+fn systemctl_show_property_operation_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> v2.std.operation_argv.ArgvMaterialization {
   shell_materialize_operation_argv(
     systemctl_show_property_path,
     systemctl_show_property_service,
     systemctl_show_property_operation,
     [
-      operation_argv_bind_text(name: "unit", text: unit as String),
-      operation_argv_bind_text(name: "property", text: systemd_unit_property_wire(property: property) as String)
+      v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: unit as String),
+      v2.std.operation_argv.operation_argv_bind_text(name: "property", text: systemd_unit_property_wire(property: property) as String)
     ]
   )
 }
@@ -69,7 +69,7 @@ fn systemctl_show_property_read_fleet_ssh(
         outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
       )
     ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemdPropertyCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+      SystemdPropertyCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
   }
 }
 
@@ -82,7 +82,7 @@ fn systemctl_show_property_read_ssh(
     ArgvMaterialized { argv: argv } =>
       systemctl_show_property_read_ssh_argv(host: host, argv: argv)
     ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemdPropertyCaptureRefused { reason: operation_argv_cause_label(cause: c) }
+      SystemdPropertyCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
   }
 }
 

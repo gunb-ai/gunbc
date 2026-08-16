@@ -2,7 +2,7 @@ module test.claim.reconcile_in_process_cache
 
 // Same repair as hermetic_fixture_realization_test: the partial import list is the defect.
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
 test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {

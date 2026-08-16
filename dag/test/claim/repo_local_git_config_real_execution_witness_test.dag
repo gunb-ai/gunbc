@@ -1,7 +1,7 @@
 module test.claim.repo_local_git_config_real_execution
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witness for repository-local Git config actuator (generated-file conflict policy charter, lane 2, review 46452/46471). Creates an isolated temp git repo via git.Core.InitInRepo, proves local read-back is empty before actuation, then invokes repo_local_git_config_converge_actuate_at — the single modeled actuator — and requires Converged with two upserts and both desired bindings present. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — git.Core.ConfigLocalGetInRepo/SetInRepo/InitInRepo and shell.Mktemp.Dir have no mock_response."
 

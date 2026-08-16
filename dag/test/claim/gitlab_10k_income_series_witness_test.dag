@@ -1,7 +1,7 @@
 module test.claim.gitlab_10k_income_series_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data gitlab_gross_margin_series_band_low_bp: BasisPoint = basis_point(8700)
 

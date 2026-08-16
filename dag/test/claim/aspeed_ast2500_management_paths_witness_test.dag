@@ -1,7 +1,7 @@
 module test.claim.aspeed_ast2500_management_paths_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_eq(a: Ast2500ManagementAcquisitionPath, b: Ast2500ManagementAcquisitionPath) -> Bool {
   match a {

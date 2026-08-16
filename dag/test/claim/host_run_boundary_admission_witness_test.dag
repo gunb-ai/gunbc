@@ -9,7 +9,7 @@ fn construction_network_boundary() -> BoundaryMaterialization {
   }
 }
 
-fn is_under_constructed_convention(a: HostRunBoundaryAdmission) -> Bool {
+fn is_under_constructed_convention(a: v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmission) -> Bool {
   match a {
     HostRunBoundaryUnderConstructed { grade: g } =>
       match g {
@@ -21,7 +21,7 @@ fn is_under_constructed_convention(a: HostRunBoundaryAdmission) -> Bool {
   }
 }
 
-fn is_refused_for(a: HostRunBoundaryAdmission, tree: NamespaceTree) -> Bool {
+fn is_refused_for(a: v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmission, tree: NamespaceTree) -> Bool {
   match a {
     HostRunBoundaryRefused { tree: t } => namespace_tree_eq(a: t, b: tree)
     HostRunBoundaryAdmitted => false
@@ -30,20 +30,20 @@ fn is_refused_for(a: HostRunBoundaryAdmission, tree: NamespaceTree) -> Bool {
 }
 
 test fn host_run_admits_construction_only() -> Bool {
-  host_run_boundary_is_admitted(
-    a: host_run_network_boundary_admits(provided: construction_network_boundary())
+  v2.compiler.host_run_boundary_admission.host_run_boundary_is_admitted(
+    a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(provided: construction_network_boundary())
   )
 }
 
 test fn host_run_refuses_convention_boundary() -> Bool {
   is_under_constructed_convention(
-    a: host_run_network_boundary_admits(provided: simulated_boundary(trees: [UriTree]))
+    a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(provided: simulated_boundary(trees: [UriTree]))
   )
 }
 
 test fn host_run_refuses_missing_network_layer() -> Bool {
   is_refused_for(
-    a: host_run_network_boundary_admits(
+    a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(
       provided: simulated_boundary(trees: [FilesystemPathTree])
     ),
     tree: UriTree

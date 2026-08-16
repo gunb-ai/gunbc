@@ -1,7 +1,7 @@
 module test.claim.native_scm_interaction_contract_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
   native_scm_receipt_for(scenario: scenario)

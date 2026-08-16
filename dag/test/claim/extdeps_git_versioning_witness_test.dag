@@ -1,6 +1,6 @@
 module test.claim.extdeps_git_versioning_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_git_2_0_anchor() -> Bool {
   git_2_0_release.major == 2

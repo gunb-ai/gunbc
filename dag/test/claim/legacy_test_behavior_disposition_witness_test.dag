@@ -1,7 +1,7 @@
 module test.claim.legacy_test_behavior_disposition_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data fixture_covered_behavior: LegacyTestBehavior = LegacyTestBehavior {
   source_file: "fixture/legacy.rs" as FilePath,

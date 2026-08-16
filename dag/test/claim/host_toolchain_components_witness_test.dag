@@ -1,6 +1,6 @@
 module test.claim.host_toolchain_components
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_incident_hinge_note: String = "THE conjunct this module exists for, and it is the srv2 floor failure replayed on the toolchain state read live from the host. The pinned toolchain 1.93.0 carried rustfmt the entire time, so any check keyed on 'does this host have rustfmt' answered yes throughout. The toolchain the shim actually resolved — ghrunner's default, stable — did not, and the gate failed every run. The verdict on the resolving toolchain must be Absent, and the presence of rustfmt in the OTHER toolchain must not soften it: under that state the gate fails every time, so it is not a partial success."
 

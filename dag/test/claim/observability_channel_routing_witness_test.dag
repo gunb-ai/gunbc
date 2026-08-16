@@ -1,7 +1,7 @@
 module test.claim.observability_channel_routing
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn out_of_band_cannot_observe_storage() -> Bool {
   match route_observation(channel: OutOfBand, class: StorageInventory) {

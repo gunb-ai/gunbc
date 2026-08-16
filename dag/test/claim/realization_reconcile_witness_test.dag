@@ -1,6 +1,6 @@
 module test.claim.realization_reconcile_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_share(m: Materialization) -> Bool {
   match m {

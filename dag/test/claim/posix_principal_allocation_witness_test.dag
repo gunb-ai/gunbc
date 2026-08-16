@@ -1,6 +1,6 @@
 module test.claim.posix_principal_allocation_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // CONTROLS OVER THE NEW ARMS, authored because their absence is what made the previous attempt
 // unverifiable. That attempt reported 25/25 passing witnesses as validation of a new account model

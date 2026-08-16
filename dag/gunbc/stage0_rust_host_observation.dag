@@ -81,7 +81,7 @@ fn normalize_cargo_bin_repo_paths(
   package_root: String,
   authored_paths: List<String>
 ) -> CargoBinRepoPathsProjection {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: authored_paths,
     empty: CargoBinRepoPathsProjected { paths: [] },
     cons: fn(acc, authored_path) {
@@ -96,7 +96,7 @@ fn normalize_cargo_bin_repo_paths(
             CargoBinRepoPathProjectionRefused { authored_path: refused, detail: detail } =>
               CargoBinRepoPathsProjectionRefused { authored_path: refused, detail: detail }
             CargoBinRepoPathProjected { path: path } =>
-              CargoBinRepoPathsProjected { paths: list_snoc_item(xs: paths, item: path) }
+              CargoBinRepoPathsProjected { paths: v2.std.algebra.list_snoc_item(xs: paths, item: path) }
           }
       }
     }

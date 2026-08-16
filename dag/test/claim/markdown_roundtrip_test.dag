@@ -1,6 +1,6 @@
 module test.claim.markdown_roundtrip
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_doc() -> MarkdownDocument {
   MarkdownDocument {

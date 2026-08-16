@@ -2,7 +2,7 @@ module test.claim.compile_diagnostic_census_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data census_live_tree_note: String = "ReadsLiveTree, and the divergence from the sibling is deliberate. compile_dag_diagnostic_census resolves the synthetic source against build_module_path_index_from_witness_roots, which walks the live tree - so the read is real. dag/test/claim/transport_script_wall_compile_red_test.dag declares SubstrateInputsOnly while calling compile_dag_rust_emit_check, which takes the SAME host path; that row is either a latent mis-declaration or a judgment that the index is substrate, and the falsifier cadence is what would surface it either way. This file does not copy the claim it cannot verify: undeclared is ReadsLiveTree by the fail-closed default and the honest declaration costs only selection-eligibility."
 

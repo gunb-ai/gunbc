@@ -1,7 +1,7 @@
 module test.claim.build_cache_latency_probe_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_subject_is_the_derivation_note: String = "THESE ROWS TEST THE DERIVATION, NOT THE FLEET, and the distinction is the 2026-08-01 test-oracle ruling applied to a probe. A witness asserting 'srv1 is currently slow' would compare a live population to a number read off that same population — a change detector whose entire content is whoever last updated the literal, and one that would go red the moment the defect is FIXED, which is the opposite of what a fix should do to a test.\n\nSo the fixtures below are CONTROLLED: populations authored here with known answers, exercising the median selection, the even/odd split, the empty refusal, and both sides of the policy ratio. The one row that touches recorded data asserts only INTERNAL CONSISTENCY of the 2026-08-05 receipt — that its stored verdict equals what the derivation produces from its stored samples — which stays true forever regardless of what the fleet does next, and would red only if someone edited the receipt's numbers without re-deriving its verdict."
 

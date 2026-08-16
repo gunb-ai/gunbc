@@ -1,7 +1,7 @@
 module test.claim.recorded_observation_envelope_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn a_subject() -> ObservationSubject {
   ObservationSubject { segments: [
@@ -20,11 +20,11 @@ fn an_event() -> ObservationEvent {
   }
 }
 
-fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> OccurrenceId {
-  OccurrenceId { attempt: attempt, id: id }
+fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> std.observation.OccurrenceId {
+  std.observation.OccurrenceId { attempt: attempt, id: id }
 }
 
-fn rec(p: ObservationProducer, seq: Nat, occ: OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
+fn rec(p: ObservationProducer, seq: Nat, occ: std.observation.OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
   RecordedObservation {
     producer: p,
     producer_sequence: seq,

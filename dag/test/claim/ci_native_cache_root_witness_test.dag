@@ -2,7 +2,7 @@ module test.claim.ci_native_cache_root_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ci_native_cache_root_witness_note: String = "Discriminating witnesses for the toolchain-segment reorder+refuse fix (operator 2026-07-29): the isolate prelude must NOT derive GUNBC_TOOLCHAIN_SEG from ambient rustc (that either fabricates toolchain-unresolved or silently keys on the wrong toolchain); the dedicated native-cache step after setup-rust-toolchain must refuse on rustc -V failure. RED controls perturb the good emission with the retired fabrication literal so a regression re-opens the absorbing fallback. Prelude ordering: witness_prelude_native_cache_root_step_follows_setup_rust uses ci_native_cache_prelude_order_bridge_note — adjacency proxy, safe-direction brittleness only."
 

@@ -1,7 +1,7 @@
 module test.claim.runner_broker_progress_watchdog_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn remote_offline() -> RemoteRegistrationEvidence {
   RemoteRegistrationObserved {

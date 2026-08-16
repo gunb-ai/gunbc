@@ -1,7 +1,7 @@
 module test.claim.githooks_pre_push_plan
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn witness_plan_roster_authority() -> Bool {
   length(pre_push_all_bindings()) > 0

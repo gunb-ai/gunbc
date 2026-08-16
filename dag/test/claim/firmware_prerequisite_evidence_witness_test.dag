@@ -1,7 +1,7 @@
 module test.claim.firmware_prerequisite_evidence_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // A SECOND, LOWER REFUSAL, authored rather than observed — the fixture that
 // makes order-independence testable at all. With one refusal and one

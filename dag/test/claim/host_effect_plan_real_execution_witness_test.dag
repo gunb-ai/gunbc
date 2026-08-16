@@ -1,7 +1,7 @@
 module test.claim.host_effect_plan_real_execution
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witnesses for Wave A2 Do-effect leaves: real shell.Exec.Run (LocalShell true/exit-1) through host_effect_plan_apply. Split out of host_effect_plan_witness_test.dag so hermetic per-PR discovery keeps the pure refusal poles; excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled in bin_witness_wet_entries, same lane as host_build_cache_provision_real_execution_witness_test.dag."
 
@@ -18,21 +18,21 @@ fn witness_plan_ctx() -> HostEffectPlanContext {
 }
 
 fn witness_single_do_true_plan() -> HostEffectPlan {
-  EffectPlan {
+  v2.std.effect_plan.EffectPlan {
     steps: [Do { effect: ShellCommand { script: "true" } }],
     on_failure: FailFast,
   }
 }
 
 fn witness_single_do_false_plan() -> HostEffectPlan {
-  EffectPlan {
+  v2.std.effect_plan.EffectPlan {
     steps: [Do { effect: ShellCommand { script: "exit 1" } }],
     on_failure: FailFast,
   }
 }
 
 fn witness_sequential_do_plan() -> HostEffectPlan {
-  EffectPlan {
+  v2.std.effect_plan.EffectPlan {
     steps: [
       Do { effect: ShellCommand { script: "true" } },
       Do { effect: ShellCommand { script: "true" } },

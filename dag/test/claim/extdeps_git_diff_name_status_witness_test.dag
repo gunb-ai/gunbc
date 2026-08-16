@@ -1,6 +1,6 @@
 module test.claim.extdeps_git_diff_name_status_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn append_name_status_token(acc: String, token: String) -> String {
   if acc == "" { token } else { concat(acc, concat(git_diff_name_status_field_separator, token)) }

@@ -1,7 +1,7 @@
 module test.claim.compile_clean_cost_clamp_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data compile_clean_cost_clamp_witness_note: String = "Executing consumer for the compile-clean leg clamp (gunbc.ci_spec gunbc_ci_compile_clean_clamp_note — the prelude-coverage follow-up (a) first slice). THE PAIR IS THE PROOF (the witness_row_cost_drift discipline): a wall one millisecond over the computed clamp MUST exceed and the clamp value itself MUST NOT — either alone is satisfiable by a broken comparator. The formula pins (overhead*1000 + units*rate) keep claim_executor's Rust mirror honest: the executor reads the same two constants through the plan context and computes the same arithmetic, so a drifted mirror shows up here as a wrong pinned value. The 258000ms control is the observed basis run (30602520347, srv1-01, ~1648-unit whole-tree entry closure post-#7490) sitting WITHIN the clamp — the clamp reds runaways, not the healthy wall it was sized from. Runtime enforcement receipt: target/floor-compile-clean-wall-receipt.txt; RED control GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS (min-only)."
 

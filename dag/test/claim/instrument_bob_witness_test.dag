@@ -1,7 +1,7 @@
 module test.claim.instrument_bob_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data instrument_bob_witness_note: String = "The three properties that make the bob a modelled behaviour rather than an animation — bounded, settling, inert — each with the control that reds it. The settle claim is the one worth reading closely: it is carried as descent evidence over the advance function, so a retune that made the envelope grow would not merely look wrong, it would fail a claim about termination."
 

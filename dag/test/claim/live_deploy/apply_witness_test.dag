@@ -1,7 +1,7 @@
 module test.claim.live_deploy.apply
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn tailscale_status_fixture(proxy: String) -> String {
   join([

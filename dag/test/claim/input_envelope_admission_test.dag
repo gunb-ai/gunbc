@@ -1,7 +1,7 @@
 module test.claim.input_envelope_admission
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data test_envelope: InputEnvelope = BoundedInput {
   bounds: [

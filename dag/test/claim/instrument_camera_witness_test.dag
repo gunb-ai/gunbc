@@ -1,7 +1,7 @@
 module test.claim.instrument_camera_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data instrument_camera_witness_note: String = "First v1-deletion instrument, model layer. Each claim is a decided law with the control that reds when it breaks: the camera cannot write a program fact and cannot skip a detent; the salience role is DERIVED from selection rather than handed in (firing salience_note's dissolve-on); and the derived assignments are judged by the same focal-admission fold that judges hand-authored ones, so the projection is checked by the register's own authority instead of by a second copy of its rule. The subjects are V0's four real v1-deletion finish lines read from gunbc.v1_deletion_plan, not a demo roster, so a fifth line reaches the instrument by being declared once."
 

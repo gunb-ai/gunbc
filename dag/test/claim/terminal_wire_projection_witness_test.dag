@@ -1,7 +1,7 @@
 module test.claim.terminal_wire_projection_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_note: String = "Terminal-wire acceptance for the observation P2 prerequisite. These rows discriminate exact ECMA-48 bytes and the next-state transition for every cursor action, including downgrade and contradiction arms. The renderer supplies text; project_terminal_write is the sole owner of CR, LF, and erase-line control spelling."
 

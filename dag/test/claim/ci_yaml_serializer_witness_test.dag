@@ -1,6 +1,6 @@
 module test.claim.ci_yaml_serializer_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -169,7 +169,7 @@ test fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
 test fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
   let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
-  let build_script = ci_release_build_script()
+  let build_script = v2.workflow.ci_release_build_emit.ci_release_build_script()
   string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
     !string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: yaml, pattern: "$ROOT/target/release/claim_executor") &&

@@ -1,7 +1,7 @@
 module test.claim.fleet_intent_storage
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn every_host_carries_its_real_drive() -> Bool {
   list_length(items: srv1_host.storage) == 1

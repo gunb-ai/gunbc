@@ -1,7 +1,7 @@
 module test.claim.compute_board_emission_entry_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE HOST BOUNDARY IS WHERE A REFUSAL IS EASIEST TO LOSE AND WORST TO LOSE. These entries used
 // to answer a refused article with the literal string "REFUSED: article not admitted", which a

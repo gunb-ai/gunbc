@@ -1,7 +1,7 @@
 module test.claim.base64_rfc4648_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn b64_std_of_utf8(s: String) -> String {
   base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)

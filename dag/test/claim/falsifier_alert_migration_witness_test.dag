@@ -1,7 +1,7 @@
 module test.claim.falsifier_alert_migration_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data falsifier_alert_migration_witness_note: String = "ALERT-0..3's executing evidence. Every claim here runs against a FIXTURE authored in this file — a hand-written event payload, a hand-written state marker, a hand-written receipt — never against the live tree or a live API, because what is under test is a decision procedure and its inputs are exactly the discriminating ones. The fixtures are the smallest payloads that cross the boundary being tested plus the one field that decides it, per DESIGN's witness-cost rule.\n\nEACH GREEN CLAIM IS PAIRED WITH A RED CONTROL that fails for the intended reason, because a decoder that accepted everything and a wall that admitted everything would both pass the positive half alone. The admission claims are the ones this matters most for: a trust wall proven only by admitting a good event is indistinguishable from `return true`."
 

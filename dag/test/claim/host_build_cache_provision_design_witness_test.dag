@@ -1,6 +1,6 @@
 module test.claim.host_build_cache_provision_design
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
   build_cache_provision_read_back_fails_closed()

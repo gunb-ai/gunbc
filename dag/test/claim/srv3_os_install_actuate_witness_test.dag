@@ -1,7 +1,7 @@
 module test.claim.srv3_os_install_actuate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Was "has three steps". The count only ever mattered as a proxy for the plan
 // being derived from the solved mechanism, and srv3's BMC upgrade now exercises

@@ -2,7 +2,7 @@ module test.claim.roadmap_focus_witness_test
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data focus_witness_note: String = "Focus is a VIEW, so the property that matters is not what it shows but what it cannot do: it must never be able to lose work. These claims pin the two ways a filtered projection goes wrong. First, the filter must be a partition and not an edit — visible plus hidden equals the whole declared set, so a node cannot fall out of both and vanish from the roadmap entirely; that is checked by arithmetic against the same list the filter runs over, not by trusting the filter. Second, the page must not read as a shorter roadmap — the notice carries a DERIVED count, so a reader who forgot the focus was set is told what is missing rather than shown a plausible-looking complete page.\n\nThe RED control is the one that would otherwise rot: clearing the focus must restore every node. Without it, a filter that silently dropped nodes on BOTH paths would still satisfy an is-subset check and still look correct on the focused page."
 

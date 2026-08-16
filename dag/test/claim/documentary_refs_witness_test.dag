@@ -3,16 +3,16 @@ module test.claim.documentary_refs_witness
 
 data documentary_refs_witness_note: String = "THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES. cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance path rather than a second algorithm agreeing with it. The fact populations below are planted rather than live because the SUBJECT of these claims is the mechanism: that a reference which cannot resolve refuses, and that the same reference against an intact population does not. The smallest crossing specimen is the requirement plus one."
 
-fn fixture_modules() -> List<ModuleDeclarationFact> {
+fn fixture_modules() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   [
-    ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
-    ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
-    ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap_authority.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap_authority.dag" },
   ]
 }
 
-fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact {
-  DeclFact {
+fn fixture_fact(qualified_name: String, name: String, path: String) -> v2.std.decl_index.DeclFact {
+  v2.std.decl_index.DeclFact {
     qualified_name: qualified_name,
     name: name,
     kind: FnItem,
@@ -23,7 +23,7 @@ fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact 
 
 data intact_population_note: String = "The four declarations the generated document names, present exactly once each. This is the control that proves the refusals below are caused by the perturbation rather than by a fixture that never resolved anything."
 
-fn intact_facts() -> List<DeclFact> {
+fn intact_facts() -> List<v2.std.decl_index.DeclFact> {
   [
     fixture_fact(
       qualified_name: "std.symbol_index.SymbolIndex",
@@ -48,8 +48,8 @@ fn intact_facts() -> List<DeclFact> {
   ]
 }
 
-fn refusals_against(facts: List<DeclFact>) -> Int {
-  cited_declaration_ref_refusal_count(
+fn refusals_against(facts: List<v2.std.decl_index.DeclFact>) -> Int {
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
     refs: generated_document_declaration_refs(),
     facts: facts,
     modules: fixture_modules(),
@@ -62,7 +62,7 @@ test fn documentary_refs_intact_population_resolves_clean() -> Bool {
 
 data rename_control_note: String = "THE PRODUCT RED. A referenced system is renamed -- here by removing the declaration the document names and leaving the rest of the population intact -- and NO DOCUMENT SOURCE IS EDITED. The refusal count rises, which is the whole claim: the generated paragraph names its systems through typed rows, so the rename reaches the required gate rather than leaving a sentence quietly describing a declaration that no longer exists. Before this change that same rename moved nothing, because the name lived inside a string literal."
 
-fn facts_without(qualified_name: String) -> List<DeclFact> {
+fn facts_without(qualified_name: String) -> List<v2.std.decl_index.DeclFact> {
   fold(intact_facts(), init: [], f: fn(acc, f) {
     if f.qualified_name == qualified_name { acc } else { concat(acc, [f]) }
   })

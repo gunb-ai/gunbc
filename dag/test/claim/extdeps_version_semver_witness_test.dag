@@ -1,6 +1,6 @@
 module test.claim.extdeps_version_semver
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
 fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }

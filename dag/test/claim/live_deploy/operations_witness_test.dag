@@ -1,7 +1,7 @@
 module test.claim.live_deploy.operations_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data apt_install_path: String = "dag/extdeps/package_managers/apt.dag"
 data apt_install_service: String = "apt.PackageManager"
@@ -16,13 +16,13 @@ fn argv_join(argv: List<String>) -> String {
 
 test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
   let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       "dag/extdeps/package_managers/dpkg.dag",
       "dpkg.Package",
       "Status",
       [
-        operation_argv_bind_text(name: "package", text: package_tailscale as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: package_tailscale as String)
       ]
     )
   )
@@ -31,13 +31,13 @@ test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
 
 test fn witness_apt_install_argv_matches_transport_row() -> Bool {
   let helper = apt_install_argv(package: package_nodejs)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       apt_install_path,
       apt_install_service,
       apt_install_operation,
       [
-        operation_argv_bind_text(name: "package", text: package_nodejs as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: package_nodejs as String)
       ]
     )
   )
@@ -46,13 +46,13 @@ test fn witness_apt_install_argv_matches_transport_row() -> Bool {
 
 test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "Restart",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )
@@ -61,13 +61,13 @@ test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
 
 test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "DisableNow",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )
@@ -76,7 +76,7 @@ test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
 
 test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   let helper = systemctl_daemon_reload_argv()
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
@@ -89,13 +89,13 @@ test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
 
 test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
   let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "Enable",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
       ]
     )
   )

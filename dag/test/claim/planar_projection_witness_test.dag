@@ -2,7 +2,7 @@ module test.claim.planar_projection_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
 fn page() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }

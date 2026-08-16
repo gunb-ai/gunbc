@@ -1,7 +1,7 @@
 module gunbc.test.claim.realization_attempt_keystone_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data keystone_note: String = "CI2-0 Commit B keystone (operator mandate): the realization-attempt harness proven by execution in both directions BEFORE the sweep consumes it. Positive control: a planted minimal module emits through the canonical pipeline (tokenize->parse->normalize->resolve->emit against rust_target_model_staging) and reports V2TranslateSerialized with nonzero bytes. Negative control: planted garbage refuses at PhaseFrontend with a typed cause — the harness cannot report green on input the pipeline rejects. Live keystone: a REAL corpus entry produces a typed standing (either arm) with a nonempty phase label — the attempt never absorbs, never defaults, and bundle membership appears nowhere in the computation."
 

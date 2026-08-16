@@ -1,7 +1,7 @@
 module test.claim.codex_package_delivery_wet_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_note: String = "WET: exact wrapper+platform lock-nodes → admit HTTPS registry archives into isolated cache → npm ci --offline → native Codex executable read-back. Release parent is an isolated mktemp root (not hardcoded /opt) so CI hosts and local runners share one path. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
 

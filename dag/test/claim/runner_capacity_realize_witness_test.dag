@@ -1,7 +1,7 @@
 module test.claim.runner_capacity_realize_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn apply_seam_plans_two_additions_not_count_refusal() -> Bool {
   let plan = runner_capacity_plan(

@@ -1,7 +1,7 @@
 module test.claim.sessions_panel_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sessions_panel_witness_note: String = "Sessions receipts keep five axes mechanically distinct on the wire and client: session-container presence, pane/process lifecycle, configured provider versus provider observation, readiness/phase, and cleanup eligibility. A retained dead pane remains session present, projects process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup unavailable. Session-list refusal remains LOUD/503 and can never become an empty successful set. Production standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry) — the wire must not fabricate a partial session row."
 

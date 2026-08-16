@@ -9,11 +9,11 @@ data tested_tree: GitObjectId = GitSha1ObjectId {
   digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
 }
 
-fn discovery_request() -> FloorDiscoveryRequest {
-  FloorDiscoveryRequest {
-    subject: FloorDiscoverySubject {
-      tested_commit: floor_discovery_commit_id(object_id: tested_commit),
-      tested_tree: floor_discovery_tree_id(object_id: tested_tree),
+fn discovery_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
+  v2.workflow.floor_discovery.FloorDiscoveryRequest {
+    subject: v2.workflow.floor_discovery.FloorDiscoverySubject {
+      tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit),
+      tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree),
       source_roots: ["dag", "src/v2"],
       execution_authority_source_roots: ["dag", "src/v2"],
       naming_authority_identity: content_hash_atom(value: "floor-preparation-naming-fixture"),
@@ -50,30 +50,30 @@ fn witness_extra() -> ScheduleWitnessEntry {
   }
 }
 
-fn entry_request(witness: ScheduleWitnessEntry, closure: String) -> PreparedFloorEntryRequest {
-  PreparedFloorEntryRequest {
+fn entry_request(witness: ScheduleWitnessEntry, closure: String) -> v2.workflow.floor_preparation.PreparedFloorEntryRequest {
+  v2.workflow.floor_preparation.PreparedFloorEntryRequest {
     witness: witness,
     closure_digest: content_hash_atom(value: closure),
   }
 }
 
-fn entry_a() -> PreparedFloorEntryRequest {
+fn entry_a() -> v2.workflow.floor_preparation.PreparedFloorEntryRequest {
   entry_request(witness: witness_a(), closure: "closure-a")
 }
 
-fn entry_b() -> PreparedFloorEntryRequest {
+fn entry_b() -> v2.workflow.floor_preparation.PreparedFloorEntryRequest {
   entry_request(witness: witness_b(), closure: "closure-b")
 }
 
-fn request_with(selected: List<PreparedFloorEntryRequest>) -> PreparedFloorSubjectRequest {
-  PreparedFloorSubjectRequest {
+fn request_with(selected: List<v2.workflow.floor_preparation.PreparedFloorEntryRequest>) -> v2.workflow.floor_preparation.PreparedFloorSubjectRequest {
+  v2.workflow.floor_preparation.PreparedFloorSubjectRequest {
     discovery: discovery_request(),
     selected: selected,
     policy: ResolveSelectedClosuresV1 {},
   }
 }
 
-fn canonical_request() -> PreparedFloorSubjectRequest {
+fn canonical_request() -> v2.workflow.floor_preparation.PreparedFloorSubjectRequest {
   request_with(selected: [entry_a(), entry_b()])
 }
 
@@ -84,10 +84,10 @@ fn artifact_part(label: String) -> ArtifactPart {
   }
 }
 
-fn artifact_for(entry: PreparedFloorEntryRequest) -> MaterializedArtifact {
+fn artifact_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> MaterializedArtifact {
   ResolvedGraphArtifact {
     request_key: request_key(
-      req: prepared_floor_entry_artifact_request(
+      req: v2.workflow.floor_preparation.prepared_floor_entry_artifact_request(
         discovery: discovery_request(),
         entry: entry,
       )
@@ -98,9 +98,9 @@ fn artifact_for(entry: PreparedFloorEntryRequest) -> MaterializedArtifact {
   }
 }
 
-fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
+fn probe_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> v2.workflow.floor_preparation.PreparedFloorEntryProbe {
   let artifact = artifact_for(entry: entry)
-  PreparedFloorEntryProbe {
+  v2.workflow.floor_preparation.PreparedFloorEntryProbe {
     witness: entry.witness,
     probe: ProbeFound {
       artifact: artifact,
@@ -111,12 +111,12 @@ fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
 
 test fn exact_prepared_artifact_set_serves() -> Bool {
   let request = canonical_request()
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request,
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_b())],
   ) {
     PreparedFloorSubjectReady { identity: identity, entries: entries } =>
-      identity == prepared_claim_subject_identity(request: request)
+      identity == v2.workflow.floor_preparation.prepared_claim_subject_identity(request: request)
         && entries.count() == 2
         && entries.first().witness.entry == witness_a().entry
     PreparedFloorSubjectRefused { cause: _ } => false
@@ -124,7 +124,7 @@ test fn exact_prepared_artifact_set_serves() -> Bool {
 }
 
 test fn missing_prepared_identity_refuses() -> Bool {
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: canonical_request(),
     probes: [probe_for(entry: entry_a())],
   ) {
@@ -136,9 +136,9 @@ test fn missing_prepared_identity_refuses() -> Bool {
 }
 
 test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
-    probes: [PreparedFloorEntryProbe { witness: witness_a(), probe: ProbeAbsent }],
+    probes: [v2.workflow.floor_preparation.PreparedFloorEntryProbe { witness: witness_a(), probe: ProbeAbsent }],
   ) {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorProviderRefused {
@@ -152,9 +152,9 @@ test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
 
 test fn wrong_artifact_key_refuses() -> Bool {
   let wrong = artifact_for(entry: entry_b())
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
-    probes: [PreparedFloorEntryProbe {
+    probes: [v2.workflow.floor_preparation.PreparedFloorEntryProbe {
       witness: witness_a(),
       probe: ProbeFound {
         artifact: wrong,
@@ -173,7 +173,7 @@ test fn wrong_artifact_key_refuses() -> Bool {
 }
 
 test fn duplicate_selected_identity_refuses() -> Bool {
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a(), entry_a()]),
     probes: [probe_for(entry: entry_a())],
   ) {
@@ -185,7 +185,7 @@ test fn duplicate_selected_identity_refuses() -> Bool {
 }
 
 test fn duplicate_probe_identity_refuses() -> Bool {
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_a())],
   ) {
@@ -198,7 +198,7 @@ test fn duplicate_probe_identity_refuses() -> Bool {
 
 test fn unexpected_probe_identity_refuses() -> Bool {
   let extra = entry_request(witness: witness_extra(), closure: "closure-extra")
-  match prepared_floor_subject_serve(
+  match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: extra)],
   ) {
@@ -210,10 +210,10 @@ test fn unexpected_probe_identity_refuses() -> Bool {
 }
 
 test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool {
-  let canonical = prepared_claim_subject_identity(
+  let canonical = v2.workflow.floor_preparation.prepared_claim_subject_identity(
     request: request_with(selected: [entry_a()])
   )
-  let changed = prepared_claim_subject_identity(
+  let changed = v2.workflow.floor_preparation.prepared_claim_subject_identity(
     request: request_with(
       selected: [entry_request(witness: witness_a(), closure: "changed-closure-a")]
     )

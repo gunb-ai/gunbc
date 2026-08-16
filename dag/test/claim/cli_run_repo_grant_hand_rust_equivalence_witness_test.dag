@@ -2,7 +2,7 @@ module test.claim.cli_run_repo_grant_hand_rust_equivalence_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cli_run_repo_grant_hand_rust_equivalence_note: String = "Pins the HAND-RUST repo_relative_path gate (src/v1/stage0/src/cli_run.rs) against gunbc.cli_run_repo_grant on the SAME fixture spellings — parallel-representation drift guard until Chunk F dissolves the Rust gate. The .dag side asserts admit_effect verdicts; the Rust side is proven by cli_run.rs cli_run_repo_grant_equivalence_tests (named discriminators below). Both must agree: contained rel admits, absolute-outside refuses, parent-segment refuses."
 

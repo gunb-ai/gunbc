@@ -1,7 +1,7 @@
 module test.claim.cpu_l1_cache_geometry_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ampere_altra_l1_data_kibibytes_per_core: Nat = 64
 data ampere_altra_l1_line_bytes: Nat = 64

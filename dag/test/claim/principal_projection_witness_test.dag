@@ -1,7 +1,7 @@
 module test.claim.principal_projection_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn oidc_evidence() -> OidcIdTokenClaims {
   OidcIdTokenClaims {

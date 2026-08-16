@@ -1,7 +1,7 @@
 module test.claim.roadmap_receipt_continuity_acceptance
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data unreadable_carrier_text_fixture: String = "{ not json"
 

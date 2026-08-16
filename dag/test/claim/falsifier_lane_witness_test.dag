@@ -1,7 +1,7 @@
 module test.claim.falsifier_lane_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data falsifier_lane_witness_grain_note: String = "Every row here is fixture-grain: hand-built enrollment lists and component rows constructed through the receipt's own floor_component_row_of, never a scan of the live tree and never a real cadence receipt. The live-plan half — that the falsifier schedule and the lane attribution stay derived from one enrollment list — is proven in src/v2/test/claim/falsifier_lane_plan_agreement_test.dag, which reaches the plan module and carries its own disposition. Keeping the two apart is the Class C split: a stamp is file-grain, so a file mixing fixture algebra with a live-plan read would have to take the fail-closed value and lose predict-skip eligibility for rows that genuinely do not read the tree."
 

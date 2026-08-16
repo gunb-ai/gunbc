@@ -1,7 +1,7 @@
 module test.claim.annotation_carrier
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
   length(xs: census_closure_frontier_rows()) == 24

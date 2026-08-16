@@ -1,7 +1,7 @@
 module test.claim.state_response_totality_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data state_response_totality_witness_note: String = "Composition slice 1's census consumer (the interaction-totality law): every (dispatch state x stateful channel) cell resolves in-family over the EMITTED stylesheet or sits under a declared ConstantByLaw ruling; cells counted, zero undeclared, cross-family and dropped-member REDs live below as planted fixtures. Shaped for later StandingIntent enrollment per gunbc.design.state_response.state_response_census_note; the registry is deliberately not built here."
 

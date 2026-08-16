@@ -1,7 +1,7 @@
 module test.claim.crosstree_probe
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn probe_dag_tree() -> std.access.AccessDecision {
   std.access.Permit

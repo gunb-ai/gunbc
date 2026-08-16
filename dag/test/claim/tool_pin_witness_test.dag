@@ -1,7 +1,7 @@
 module test.claim.tool_pin_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1930-aarch64" as NonEmptyStr)
 data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as NonEmptyStr)

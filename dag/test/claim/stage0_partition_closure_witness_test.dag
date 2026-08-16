@@ -1,7 +1,7 @@
 module test.claim.stage0_partition_closure_witness_test
 
 
-data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data witness_live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_subject_note: String = "SUBJECT: adding one module must be ONE action, and the drift gate must REFUSE when it is not. The incident this reproduces cost three separate hand commits discovered by three CI round trips - the ci.yml heal exclusion list, the stage0 seed .rs, and the crate partition roster plus a lib.rs mod line - because each generator derives from a different partial authority and none knows about the others. The generated-artifact gate reported ZERO DRIFT throughout, because its roster covers neither the emitted stage0 seed nor the partition crate lib.rs files; it was answering a question about its own registered population and being read as answering one about the tree. The RED below removes a roster row from a COPY of the live rows and requires a located refusal naming the roster; the positive controls require that the unmodified live corpus holds and that transitive reexport visibility is honoured, because a check that refuses correct rows is worse than none."
 

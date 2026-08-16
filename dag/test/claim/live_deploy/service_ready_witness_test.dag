@@ -1,7 +1,7 @@
 module test.claim.live_deploy.service_ready
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_service_ready_unit_authority() -> Bool {
   live_deploy_service_ready_unit_authority == gunbc_roadmap_unit_name

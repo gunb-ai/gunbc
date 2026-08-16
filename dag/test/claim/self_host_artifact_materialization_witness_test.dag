@@ -1,6 +1,6 @@
 module test.claim.self_host_artifact_materialization_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data artifact_materialization_witness_note: String = "These claims execute the two PURE folds that carry every decision in gunbc.self_host_artifact_materialization, which is why the decisions are witnessed on every PR instead of behind a wet cadence. The discriminating claims are not the happy path: they are that a build failure never reads as a path refusal, that no failure arm produces ArtifactMaterialized, and that the executable carried out of the fold is the one the cargo stream NAMED. That last one is the whole lane in a single assertion — a convention-derived path would satisfy every other claim here while pointing at a different file than the one digested."
 

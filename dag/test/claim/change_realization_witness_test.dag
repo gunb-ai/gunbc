@@ -1,7 +1,7 @@
 module test.claim.change_realization_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn str_eq(a: String, b: String) -> Bool { a == b }
 

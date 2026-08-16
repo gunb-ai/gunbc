@@ -44,28 +44,28 @@ fn other_blob_oid() -> GitObjectId {
   GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" as Sha1DigestHex } }
 }
 
-fn source_artifact() -> Artifact {
-  Artifact {
+fn source_artifact() -> v2.std.artifact.Artifact {
+  v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^publication_grant_source,
     file_path: "dag/gunbc/publication_grant.dag",
   }
 }
 
-fn fixture_artifact() -> Artifact {
-  Artifact {
+fn fixture_artifact() -> v2.std.artifact.Artifact {
+  v2.std.artifact.Artifact {
     kind: TestClaimArtifact,
     id: ^conflict_marker_fixture,
     file_path: "dag/test/claim/conflict_marker_fixture.dag",
   }
 }
 
-fn module_storage_for(artifact: Artifact) -> List<ModuleStorageBinding> {
-  [ModuleStorageBinding {
+fn module_storage_for(artifact: v2.std.artifact.Artifact) -> List<v2.compiler.source_authority.ModuleStorageBinding> {
+  [v2.compiler.source_authority.ModuleStorageBinding {
     module: [^commit_writer_fixture_module],
     provenance: ParsedFromSource {
       artifact: artifact,
-      span_index: span_index_empty(),
+      span_index: v2.std.provenance.span_index_empty(),
     },
     source_root: DagTree,
   }]
@@ -93,8 +93,8 @@ fn classified_text_blob(
   oid: GitObjectId,
   text: String,
   grammar: GitEffectiveConflictMarkerGrammar,
-  artifact: Artifact,
-  module_storage: List<ModuleStorageBinding>,
+  artifact: v2.std.artifact.Artifact,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
 ) -> CommitWriterStagedBlobObservation {
   let classification = match commit_writer_classify_artifact(
     module_storage: module_storage,
@@ -290,7 +290,7 @@ test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
 
 test fn source_path_with_test_claim_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
-  let claimed = Artifact {
+  let claimed = v2.std.artifact.Artifact {
     kind: TestClaimArtifact,
     id: ^source_path_test_claim,
     file_path: "dag/gunbc/publication_grant.dag",
@@ -319,7 +319,7 @@ test fn source_path_with_test_claim_refuses() -> Bool {
 
 test fn mismatched_provenance_file_path_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
-  let mismatched = Artifact {
+  let mismatched = v2.std.artifact.Artifact {
     kind: TestClaimArtifact,
     id: ^mismatched_fixture_claim,
     file_path: "dag/test/claim/conflict_marker_fixture.dag",
@@ -349,7 +349,7 @@ test fn mismatched_provenance_file_path_refuses() -> Bool {
 
 test fn fabricated_matching_artifact_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
-  let fabricated = Artifact {
+  let fabricated = v2.std.artifact.Artifact {
     kind: TestClaimArtifact,
     id: ^fabricated_matching_fixture,
     file_path: "dag/gunbc/publication_grant.dag",

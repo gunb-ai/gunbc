@@ -1,7 +1,7 @@
 module test.claim.nbd_proxy_serve_transport
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
   bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"

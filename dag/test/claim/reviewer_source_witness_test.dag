@@ -1,6 +1,6 @@
 module test.claim.reviewer_source_witness_test
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_policy_id: NonEmptyStr = "sec-1"
 data witness_policy_version: NonEmptyStr = "v2"

@@ -1,6 +1,6 @@
 module test.claim.realization_schedule_critical_path
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_parallel_batch_takes_max_not_sum() -> Bool {
   let batch = [

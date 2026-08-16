@@ -1,7 +1,7 @@
 module test.claim.compute_board_article_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The exact decks. These are FULL EQUALITY, not substring probes: a substring oracle passes on
 // a deck with an extra element, a missing element, a wrong reference node or a reordered

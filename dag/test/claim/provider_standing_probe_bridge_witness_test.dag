@@ -42,7 +42,7 @@ test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() 
         reason == provider_standing_probe_bridge_entitlement_unobserved_reason
       _ => false
     }
-    && match list_head(xs: bundle.limits) {
+    && match v2.std.algebra.list_head(xs: bundle.limits) {
       HeadFound { value: LimitObservationUnobserved { reason } } =>
         reason == provider_standing_probe_bridge_limit_unobserved_reason
       HeadAbsent => false

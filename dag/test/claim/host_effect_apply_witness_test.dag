@@ -1,6 +1,6 @@
 module test.claim.host_effect_apply_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
