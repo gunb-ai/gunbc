@@ -11,7 +11,9 @@ import gunbc.commit_workflow {
   live_roster_has_no_bare_deenrolled_witness,
   live_roster_falsifier_witness_entries,
   roster_has_no_bare_deenrolled_gate,
-  live_roster_has_no_bare_deenrolled_gate
+  live_roster_has_no_bare_deenrolled_gate,
+  bare_deenrolled_witness_rows,
+  bare_deenrolled_gate_rows
 }
 import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
@@ -100,17 +102,28 @@ test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
 }
 
+// THE PAIR BELOW ASSERTS TWO DIFFERENT CONSTANTS ON ONE FUNCTION, and that is what makes it
+// self-evidencing rather than merely green. A negative control spelled only
+// !roster_has_no_bare_deenrolled_witness(..) is satisfied by ANY nonzero count, so it and its
+// positive sibling would both pass against a predicate that answered "bare" for every roster —
+// two rows, one expression, indistinguishable claims. Pinning 0 against 1 cannot be satisfied
+// by a constant, a default, or an unpopulated result: the count must genuinely vary with the
+// roster for both rows to pass, so every green run re-proves the field is live. The counts are
+// MEASURED from the rows, not read off the implementation — the negative roster differs from
+// the positive one by exactly the one bare row it adds. The named predicate is asserted beside
+// the count deliberately: the predicate is the surface production reads, the count is the part
+// that discriminates, and dropping either would lose a different thing.
 test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
+  let clean_roster = [synthetic_pr_row(), synthetic_rehomed_row()]
   live_roster_has_no_bare_deenrolled_witness()
-    && roster_has_no_bare_deenrolled_witness(
-         roster: [synthetic_pr_row(), synthetic_rehomed_row()]
-       )
+    && roster_has_no_bare_deenrolled_witness(roster: clean_roster)
+    && bare_deenrolled_witness_rows(roster: clean_roster).count() == 0
 }
 
 test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
-  !roster_has_no_bare_deenrolled_witness(
-    roster: [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
-  )
+  let dropped_roster = [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
+  !roster_has_no_bare_deenrolled_witness(roster: dropped_roster)
+    && bare_deenrolled_witness_rows(roster: dropped_roster).count() == 1
 }
 
 data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only CommitWitnessClaim rows. A CommitSpecGate could be moved to surfaces: [FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, INCLUDING the surface asymmetry that makes them two predicates rather than one: the regen-job row is a POSITIVE control here (a gate on GithubActionsCiRegenJob is correctly enrolled — project_ci_regen_job_gates executes it) where the byte-identical witness row is the NEGATIVE control above. If those two ever agree, one of them is wrong; gate_enrollment_surface_asymmetry_note carries the reasoning."
@@ -141,14 +154,14 @@ fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
 }
 
 test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
+  let clean_roster = [synthetic_cadence_gate_row(), synthetic_ci_job_gate_row()]
   live_roster_has_no_bare_deenrolled_gate()
-    && roster_has_no_bare_deenrolled_gate(
-         roster: [synthetic_cadence_gate_row(), synthetic_ci_job_gate_row()]
-       )
+    && roster_has_no_bare_deenrolled_gate(roster: clean_roster)
+    && bare_deenrolled_gate_rows(roster: clean_roster).count() == 0
 }
 
 test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
-  !roster_has_no_bare_deenrolled_gate(
-    roster: [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
-  )
+  let dropped_roster = [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
+  !roster_has_no_bare_deenrolled_gate(roster: dropped_roster)
+    && bare_deenrolled_gate_rows(roster: dropped_roster).count() == 1
 }

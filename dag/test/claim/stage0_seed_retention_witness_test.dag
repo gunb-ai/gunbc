@@ -4,6 +4,8 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import gunbc.stage0_seed_retention {
+  seed_retained_authority_deleted,
+  seed_retained_authority_live,
   seed_retained_basenames,
   seed_retention_excluded_basenames,
   seed_retention_exclusions,
@@ -30,9 +32,31 @@ fn module_is_declared(src: String, basename: String) -> Bool {
   string_contains(s: src, pattern: concat(concat("pub mod ", basename), ";"))
 }
 
+// VACUITY GUARD, and it is here because this file applied it inconsistently. `all` over an
+// EMPTY list answers true, so every row below that folds `all` across the roster would pass
+// having checked nothing at all if the roster were ever emptied — by a bad edit, a failed
+// projection, or a sibling cut removing its last row. w_exclusion_dispositions_are_closed and
+// w_frozen_properties_name_retained_modules already carried a `length > 0` guard; the rows
+// covering the RETAINED roster — the largest population and the one this file is named for —
+// did not. That inconsistency was the tell: the risk had been recognised and then applied to
+// the two small arms while the main one went unguarded.
+//
+// BOTH ARMS are asserted rather than the union, because they are two independent facts: a
+// roster carrying only authority-deleted rows and one carrying only authority-live rows are
+// different failures, and a single union count cannot distinguish them. EXACT counts (60 and
+// 74 at authoring) are deliberately NOT pinned: sibling cuts legitimately move rows between
+// the arms and into the exclusion roster, so a pinned total would red on correct work and
+// become the change-detector DESIGN section 5 rejects. Non-emptiness is the strongest claim
+// here that is stable under legitimate movement.
+fn retained_population_is_live() -> Bool {
+  length(seed_retained_authority_deleted) > 0
+    && length(seed_retained_authority_live) > 0
+}
+
 test fn w_retained_modules_are_still_declared() -> Bool {
   let src = stage0_lib_source()
   string_length(s: src) > 0
+    && retained_population_is_live()
     && seed_retained_basenames() |> all(b => module_is_declared(src: src, basename: b))
 }
 
@@ -43,12 +67,15 @@ test fn w_declaration_probe_discriminates() -> Bool {
 }
 
 test fn w_retention_arms_are_disjoint() -> Bool {
-  seed_retention_arms_disjoint()
+  retained_population_is_live()
+    && seed_retention_arms_disjoint()
 }
 
 test fn w_excluded_modules_are_not_retained() -> Bool {
-  seed_retention_excluded_basenames()
-    |> all(e => !(seed_retained_basenames() |> any(b => b == e)))
+  retained_population_is_live()
+    && length(seed_retention_exclusions) > 0
+    && seed_retention_excluded_basenames()
+         |> all(e => !(seed_retained_basenames() |> any(b => b == e)))
 }
 
 test fn w_exclusion_dispositions_are_closed() -> Bool {
@@ -61,7 +88,33 @@ test fn w_frozen_properties_name_retained_modules() -> Bool {
     && length(seed_retention_frozen_properties) > 0
 }
 
-test fn w_frozen_property_modules_are_still_declared() -> Bool {
-  let src = stage0_lib_source()
-  seed_retention_frozen_property_basenames() |> all(b => module_is_declared(src: src, basename: b))
+// REPLACES w_frozen_property_modules_are_still_declared, WHICH WAS A DUPLICATE RATHER THAN A
+// CONTROL. That row asserted the frozen-property modules are declared in lib.rs. But
+// w_frozen_properties_name_retained_modules already asserts those basenames are a SUBSET of the
+// retained roster, and w_retained_modules_are_still_declared already asserts EVERY retained
+// basename is declared — so the deleted row could not have been false while its two siblings
+// held. It was mutation-sensitive (breaking the census would have redded it) and still carried
+// nothing of its own; mutation-sensitivity is not the property that was missing, INDEPENDENT
+// CONTENT was. Nothing about its history made it suspicious: it was authored in one sitting,
+// not introduced by an edit, which is why the check belongs at authoring time rather than after
+// a rename or a repair.
+//
+// THE REPLACEMENT ASSERTS SOMETHING NO SIBLING NAMES: which ARM the frozen module sits in. A
+// frozen property claims no file an author could edit reaches the built compiler, and that claim
+// is only coherent when the module's .dag AUTHORITY IS DELETED — a property over a module whose
+// authority is still live is incoherent on its face, because the authority is exactly the file
+// an author would edit. The retained roster carries both arms and neither sibling distinguishes
+// them, so this row can be false in a way nothing else here can detect.
+//
+// BOTH DIRECTIONS are asserted, not just presence in the deleted arm: present-in-neither and
+// present-in-both are different failures, and the second would otherwise be caught only
+// indirectly by the disjointness row. Note what is deliberately NOT asserted — that the record's
+// prose fields are non-empty. They are typed NonEmptyStr, so no mechanism could make such a
+// check false, and a row that cannot fail is the vacuity this pass exists to remove, not a
+// strengthening of it.
+test fn w_frozen_properties_name_authority_deleted_modules() -> Bool {
+  length(seed_retention_frozen_properties) > 0
+    && seed_retention_frozen_property_basenames()
+         |> all(b => (seed_retained_authority_deleted |> any(d => (d.basename as String) == b))
+                       && !(seed_retained_authority_live |> any(l => (l.basename as String) == b)))
 }
