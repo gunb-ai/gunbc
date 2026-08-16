@@ -123,7 +123,7 @@ fn spark_serving_fleet_converge_plan_artifact(
   linger_enabled: Bool,
 ) -> FleetConvergePlanArtifact? {
   if !spark_serving_converge_host_is_spark(host: host) {
-    Absent
+    none
   } else {
     let host_identity = host as HostIdentity
     let linger_plan = spark_serving_linger_membership_plan(
