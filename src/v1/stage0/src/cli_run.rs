@@ -42187,6 +42187,36 @@ const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
 // diagnostic in the signature of every function it passes through.
 static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
+// WALL TIME ALONE CANNOT SEPARATE COMPUTE FROM BLOCKING, and those have opposite remedies. CPU
+// rising with wall is compute or livelock; wall rising with CPU flat is waiting on something; RSS
+// and major faults rising while progress is flat is reclaim churn. One /proc read per tick buys
+// that discrimination, and without it a heartbeat only proves the process is alive -- which the
+// runner's "Terminate orphan process" line already proved, after four hours.
+fn floor_resource_sample() -> String {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    let f: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let hz = 100u64;
+    let cpu_ms = (tick(11) + tick(12)) * 1000 / hz;
+    let majflt = tick(9);
+    let rss_kb = std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|m| {
+            m.split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .map(|pages| pages * 4)
+        .unwrap_or(0);
+    format!("cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt}")
+}
+
 pub fn floor_seam(name: &str) {
     if let Ok(mut g) = FLOOR_SEAM.lock() {
         g.clear();
@@ -42215,9 +42245,10 @@ fn spawn_floor_heartbeat() {
             .map(|g| g.clone())
             .unwrap_or_else(|_| "<seam unreadable>".to_string());
         eprintln!(
-            "floor: [hb] {}s elapsed, in {}",
+            "floor: [hb] {}s elapsed, in {} | {}",
             started.elapsed().as_secs(),
-            if seam.is_empty() { "<unset>" } else { &seam }
+            if seam.is_empty() { "<unset>" } else { &seam },
+            floor_resource_sample()
         );
     });
 }
@@ -42525,10 +42556,27 @@ fn required_floor_claims_from_admission(
             _ => 0,
         };
         eprintln!("floor: [T5a] refusal render starting ({refusal_count} refusal(s))");
+        // The SAME progress obligation as the decode loop, and it was missing here first. A
+        // censored run keeps only what was already printed, so an arm with an entry marker and a
+        // completion timer and nothing between teaches nothing when it is the arm that stalls --
+        // and a rate plus a denominator is a completion estimate obtainable WITHOUT completing.
+        // Every 16 rather than every 256 because a refusal render is few rows of possibly enormous
+        // output, so the interesting variance is per-row, not across thousands.
         let rendered = match ctx.field(fields, "refusals") {
             Some(v1_interpreter::Value::List(items)) => items
                 .iter()
-                .map(|r| format!("{r:?}"))
+                .enumerate()
+                .map(|(i, r)| {
+                    if i % 16 == 0 {
+                        eprintln!(
+                            "floor: [T5a-progress] rendered={i} total={} elapsed_ms={} | {}",
+                            items.len(),
+                            refusal_render_started.elapsed().as_millis(),
+                            floor_resource_sample()
+                        );
+                    }
+                    format!("{r:?}")
+                })
                 .collect::<Vec<_>>()
                 .join("\n  "),
             _ => "<refusal list unreadable>".to_string(),
@@ -42560,7 +42608,18 @@ fn required_floor_claims_from_admission(
     let decode_loop_started = std::time::Instant::now();
     eprintln!("floor: [T5b] claim decode starting ({} row(s))", rows.len());
     let mut out = Vec::with_capacity(rows.len());
-    for row in rows.iter() {
+    // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
+    // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
+    // so decoded-0 and decoded-9000 present identically. The tick is what separates them.
+    for (decoded, row) in rows.iter().enumerate() {
+        if decoded % 256 == 0 {
+            eprintln!(
+                "floor: [T5b-progress] decoded={decoded} total={} elapsed_ms={} | {}",
+                rows.len(),
+                decode_loop_started.elapsed().as_millis(),
+                floor_resource_sample()
+            );
+        }
         let v1_interpreter::Value::Record { fields: cf, .. } = row else {
             return Err("a manifest claim is not a record".to_string());
         };
