@@ -25087,67 +25087,6 @@ new file mode 100644
     }
 
     #[test]
-    fn live_tree_declared_row_not_skipped_on_unrelated_diff() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let (runner_graph, runner_indices) =
-            super::resolve_entry_graph(&roots, super::FLOOR_RUNNER_ENTRY)
-                .expect("floor runner resolves");
-        let runner_ctx =
-            super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
-        let live_entry =
-            "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag";
-        assert!(
-            super::read_entry_live_tree_disposition(live_entry)
-                .expect("long live-corpus witness readable"),
-            "the live-scan witness entry must declare (or default to) ReadsLiveTree"
-        );
-        let substrate_entry =
-            "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
-        assert!(
-            !super::read_entry_live_tree_disposition(substrate_entry)
-                .expect("clean_tree fast-lane note entry readable"),
-            "the fast-lane note entry must declare SubstrateInputsOnly after long-lane offloading"
-        );
-        let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
-        let skip = super::call_floor_row_would_skip(
-            &runner_ctx,
-            true,
-            &changed_paths,
-            &[],
-            false,
-            false,
-            false,
-            false,
-        )
-        .expect("live-tree row skip");
-        assert!(
-            !skip,
-            "a ReadsLiveTree row must not skip on unrelated node-frontier diff"
-        );
-        let kernel_skip = super::call_floor_row_would_skip(
-            &runner_ctx,
-            false,
-            &changed_paths,
-            &[],
-            false,
-            false,
-            false,
-            false,
-        )
-        .expect("substrate-only row skip");
-        assert!(
-            kernel_skip,
-            "the same unrelated diff must skip a declared SubstrateInputsOnly row \
-             (discriminating control: the disposition is what flips the decision)"
-        );
-    }
-
-    #[test]
     fn import_closure_carrier_home_matches_submodules() {
         use std::collections::HashSet;
 
@@ -26522,27 +26461,6 @@ mod node_frontier_plumbing_controls {
             .expect("qualify"),
             "a ReadsLiveTree entry must NOT qualify for skip-before-resolve even when the diff is outside its import closure (never predict-skip)"
         );
-    }
-
-    // §5 prove-the-refusal-fires: layer-3 backstop is by-design hard to reach in integration
-    // (the .dag model + entry_qualifies_for_skip_without_resolve gate first) — direct RED.
-    #[test]
-    fn refuse_reads_live_tree_selection_skip_fires_red_on_live_tree_row() {
-        let live = super::DiscoveryRow {
-            label: "live".to_string(),
-            entry: "e.dag".to_string(),
-            function: "live_holds".to_string(),
-            reads_live_tree: true,
-        };
-        let err = super::refuse_reads_live_tree_selection_skip(&live, "test")
-            .expect_err("ReadsLiveTree row must refuse selection skip");
-        assert!(err.contains("ReadsLiveTreeSelectionSkip"));
-        let substrate = super::DiscoveryRow {
-            reads_live_tree: false,
-            ..live
-        };
-        super::refuse_reads_live_tree_selection_skip(&substrate, "test")
-            .expect("SubstrateInputsOnly row may proceed to skip evaluation");
     }
 
     // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
@@ -29476,11 +29394,10 @@ mod moduleless_entry_skip_tests {
 mod discovery_summary_merge_tests {
     use super::{
         compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
-        project_witness_cost_receipt, render_selection_degradation_receipt_line,
-        repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
-        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
-        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        ResolveStageNanos, SelectionSkippedDiscoveryRow,
+        project_witness_cost_receipt, repo_relative_dag_path, run_discovery_corpus_with_options,
+        top_n_slowest_witnesses, witness_execution_leg_cache_put, ClaimOutcome,
+        DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
+        DiscoveryWitnessOutcome, EntryResolveReceipt, ResolveStageNanos,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 

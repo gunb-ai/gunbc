@@ -12830,7 +12830,6 @@ mod tests {
             true,
             true,
             true,
-            true,
             false,
             true,
         );
@@ -16626,9 +16625,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
-            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures: vec![killed_detail.into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
@@ -16647,7 +16644,6 @@ mod tests {
             roster_closure_nodes: 0,
             total_entry_groups: 0,
             selected_entry_groups: 0,
-            selection_categorization_reason: None,
         };
         let killed = ClaimOutcome::TimedOut {
             elapsed_ms: 900_001,
@@ -16714,9 +16710,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
-            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures,
             witness_outcomes: vec![DiscoveryWitnessOutcome {
@@ -16735,7 +16729,6 @@ mod tests {
             roster_closure_nodes: 0,
             total_entry_groups: 0,
             selected_entry_groups: 0,
-            selection_categorization_reason: None,
         };
 
         for projected in [
@@ -16781,9 +16774,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
-            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures: vec!["e.dag::f failed".into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
@@ -16802,7 +16793,6 @@ mod tests {
             roster_closure_nodes: 0,
             total_entry_groups: 0,
             selected_entry_groups: 0,
-            selection_categorization_reason: None,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
         let result = discovery_claim_result(
@@ -16823,49 +16813,6 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
-        );
-    }
-
-    #[test]
-    fn scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome() {
-        use v1_compiler::cli_run::{
-            DiscoverySummary, EntryResolveReceipt, ResolveStageNanos, SelectionSkippedDiscoveryRow,
-        };
-        let summary = DiscoverySummary {
-            total: 0,
-            passed: 0,
-            skipped: 1,
-            deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
-                entry: "src/v1/tests/claim/caret_parse_smoke_test.dag".into(),
-                function: "w_caret_tokenizes_as_sh_caret".into(),
-                provenance: "skip-before-resolve-fast-path".into(),
-            }],
-            divergences: Vec::new(),
-            failures: Vec::new(),
-            witness_outcomes: Vec::new(),
-            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
-            total_resolve_nanos: 0,
-            total_stage_nanos: ResolveStageNanos::default(),
-            performance_receipts: Vec::new(),
-            total_measured_nanos: 0,
-            roster_closure_nodes: 0,
-            total_entry_groups: 0,
-            selected_entry_groups: 0,
-            selection_categorization_reason: None,
-        };
-        let (label, provenance) = scoped_witness_summary_outcome(
-            &summary,
-            "src/v1/tests/claim/caret_parse_smoke_test.dag",
-            "w_caret_tokenizes_as_sh_caret",
-        )
-        .expect("an unaffected enrolled row must remain present in the receipt");
-        assert_eq!(label, "selection-skipped");
-        assert_eq!(provenance, "skip-before-resolve-fast-path");
-        assert!(
-            summary.failures.is_empty(),
-            "selection skip is not a refusal"
         );
     }
 
