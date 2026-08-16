@@ -202,9 +202,11 @@ import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
   host_effect_nbd_proxy_serve_session_binding,
 }
-import extdeps.llm.codex_app_server_stdio_session {
-  CodexAppServerStdioSessionIntent,
-  codex_supervised_worker_turn_driver_frontier_note,
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
+import gunbc.host_effect_codex_supervised_turn {
+  host_effect_codex_supervised_turn_apply,
+  CodexSupervisedSessionApplyConverged,
+  CodexSupervisedSessionApplyRefused,
 }
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
@@ -506,7 +508,7 @@ fn srv3_shell_reconcile(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
       DoesNotGround {
         reason: shell_exec_failure_reason_headered(
@@ -792,7 +794,7 @@ fn toolchain_ensure_reconcile(
   effect_label: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
       DoesNotGround {
         reason: shell_exec_failure_reason_headered(
@@ -1638,7 +1640,7 @@ fn reconcile_shell_exec_observed(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
       DoesNotGround { reason: shell_exec_failure_reason(observed: observed) }
     }
@@ -1907,12 +1909,36 @@ fn realize_codex_supervised_worker_turn_on_host(
   transport: HostEffectTransport,
   intent_record: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  NotConverged {
-    reason: concat(
-      "host_effect_apply: CodexSupervisedWorkerTurn session coprocess driver not landed (#8166 RejectAndFinishNow). ",
-      codex_supervised_worker_turn_driver_frontier_note,
-    ),
-    applied: intent_record,
+  let cmd_id_read = Filesystem.Read(path: intent.client_command_id_path)
+  if cmd_id_read.success == false || cmd_id_read.content == "" {
+    NotConverged {
+      reason: "CodexSupervisedWorkerTurn: client_command_id unreadable at persisted path before session apply",
+      applied: intent_record,
+    }
+  } else {
+    match host_effect_codex_supervised_turn_apply(
+      intent: intent,
+      lease_key: lease_key,
+      client_command_id: cmd_id_read.content as NonEmptyStr,
+      transport: transport,
+    ) {
+      CodexSupervisedSessionApplyConverged {
+        stdout: out,
+        stderr: err,
+        exit_code: code,
+      } =>
+        reconcile_shell_exec_observed(
+          observed: ShellExecObserved {
+            exit_code: code,
+            success: code == 0,
+            stdout: out,
+            stderr: err,
+          },
+          intent: intent_record,
+        )
+      CodexSupervisedSessionApplyRefused { reason: why } =>
+        NotConverged { reason: why, applied: intent_record }
+    }
   }
 }
 
@@ -1936,7 +1962,7 @@ fn realize_nbd_proxy_session_on_host(
           },
         },
         grounding: Grounds {
-          evidence: ShellEffectApplied { exit_code: 0, stdout: out },
+          evidence: ShellEffectApplied { exit_code: 0, stdout: out, stderr: "" },
         },
       )
     NbdProxyServeApplyRefused { reason: why } =>
@@ -2136,7 +2162,7 @@ fn deploy_access_shell_apply_success_stdout(
   ) {
     Converged { evidence: e, applied: _ } =>
       match e {
-        ShellEffectApplied { stdout: out, exit_code: code } =>
+        ShellEffectApplied { stdout: out, exit_code: code, stderr: _ } =>
           if code == 0 {
             Present { value: out }
           } else {

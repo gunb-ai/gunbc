@@ -160,6 +160,7 @@ pub mod wt_common;
 pub mod v1_interpreter_dispatch_generated;
 pub mod ci_control_plane;
 pub mod cli_run;
+pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
 pub mod memory_governor;

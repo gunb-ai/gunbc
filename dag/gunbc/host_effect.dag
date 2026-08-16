@@ -186,7 +186,7 @@ type HostEffectIntent {
 }
 
 type HostEffectEvidence =
-    ShellEffectApplied { exit_code: Int, stdout: String }
+    ShellEffectApplied { exit_code: Int, stdout: String, stderr: String }
   | ConvergePlanApplied { exit_code: Int, stdout: String }
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {

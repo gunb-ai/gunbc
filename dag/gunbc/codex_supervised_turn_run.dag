@@ -7,6 +7,9 @@ import gunbc.codex_app_server_press {
   CodexAccountStandingReceipt,
   ProviderProcessReceipt,
   ProviderProcessObservationFailed,
+  retain_provider_wire_capture,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
 }
 import gunbc.provider_interface_binding {
   project_codex_app_server_stdio_binding,
@@ -21,7 +24,10 @@ import gunbc.host_effect {
   HostOs,
   LocalShell,
   host_effect_identity_evidence,
+  ShellEffectApplied,
+  ConvergePlanApplied,
 }
+import std.temporal_effect { HeldSessionLease, LeaseRunningExpected }
 import gunbc.host_effect_realize { host_effect_apply }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import extdeps.llm.codex_app_server {
@@ -54,7 +60,9 @@ fn codex_supervised_worker_turn_apply(
   executor_host: ComputeHost,
   intent: CodexAppServerStdioSessionIntent,
   lease_key: NonEmptyStr,
-) -> CodexSupervisedWorkerTurnApplyOutcome {
+  running_binding: CodexSupervisedTurnBinding,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
   let r = host_effect_apply(
     target: HostOs { node: executor_host },
     effect: CodexSupervisedWorkerTurn {
@@ -65,14 +73,36 @@ fn codex_supervised_worker_turn_apply(
     transport: LocalShell,
   )
   match r {
-    Converged { evidence: _, applied: _ } =>
-      CodexSupervisedWorkerTurnApplyRefused {
-        reason: "Codex supervised worker turn session driver capture not wired from HostEffectEvidence" as NonEmptyStr,
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: stdout, stderr: stderr, exit_code: code } => {
+          let wire_capture = retain_provider_wire_capture(
+            evidence_root: evidence_root,
+            stdout: stdout,
+            stderr: stderr,
+            success: code == 0,
+            exit_code: Present { value: code },
+          )
+          let wire = match wire_capture {
+            ProviderWireCaptureOk { receipt: w } => Present { value: w }
+            ProviderWireCaptureRefused { cause: _ } => none
+          }
+          codex_supervised_turn_outcome_from_capture(
+            running_binding: running_binding,
+            stdout: stdout,
+            stderr: stderr,
+            exit_code: Present { value: code },
+            wire: wire,
+            evidence_root: evidence_root,
+          )
+        }
+        ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          CodexSupervisedTurnRefused {
+            reason: "Codex supervised worker turn returned unexpected ConvergePlanApplied evidence" as NonEmptyStr,
+          }
       }
-    NotConverged { reason: _, applied: _ } =>
-      CodexSupervisedWorkerTurnApplyRefused {
-        reason: "Codex supervised worker turn host_effect_apply did not converge — session driver frontier" as NonEmptyStr,
-      }
+    NotConverged { reason: why, applied: _ } =>
+      CodexSupervisedTurnRefused { reason: why as NonEmptyStr }
   }
 }
 
@@ -177,14 +207,13 @@ fn run_codex_supervised_turn(
                 user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
                 evidence_root: evidence_root,
               )
-              match codex_supervised_worker_turn_apply(
+              codex_supervised_worker_turn_apply(
                 executor_host: srv1_host,
                 intent: session_intent,
                 lease_key: lease_key,
-              ) {
-                CodexSupervisedWorkerTurnApplyRefused { reason: reason } =>
-                  CodexSupervisedTurnRefused { reason: reason }
-              }
+                running_binding: running_binding,
+                evidence_root: evidence_root,
+              )
             }
             _ =>
               CodexSupervisedTurnRefused {
