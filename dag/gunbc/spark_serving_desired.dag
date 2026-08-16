@@ -17,6 +17,10 @@ data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBin
   port: ollama_default_port,
 }
 
+fn spark_serving_desired_bind_host_port() -> String {
+  spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
+}
+
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
 data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
@@ -126,6 +130,10 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
   }
 }
 
+fn spark_serving_automation_principal_login() -> NonEmptyStr {
+  "gunbc-automation" as NonEmptyStr
+}
+
 fn spark_serving_automation_principal() -> NamedPrincipal {
-  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+  NamedPrincipal { login: spark_serving_automation_principal_login() }
 }

@@ -221,16 +221,19 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
+        spark_typed_actions_wire: "",
       ) {
         Present { value: hex } =>
           fleet_converge_plan_bundle_matches(
             plan_body: artifact.plan_body,
             apply_shell: artifact.apply_shell,
+            spark_typed_actions_wire: "",
             claimed_hex: hex as String,
           )
             && !fleet_converge_plan_bundle_matches(
               plan_body: artifact.plan_body,
               apply_shell: concat(artifact.apply_shell, "# tamper"),
+              spark_typed_actions_wire: "",
               claimed_hex: hex as String,
             )
         Absent => false

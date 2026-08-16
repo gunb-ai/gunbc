@@ -1447,6 +1447,28 @@ fn reconcile_ssh_argv_exec_outcome(
   }
 }
 
+data run_typed_argv_transport_authority_note: String = "Executor→target typed remote argv transport binding (codex_runtime_converge_local_shell_locus dissolve-on class; review 51883). SshShell routes through typed_argv_exec_over_ssh on the transport endpoint; FleetSsh routes through typed_argv_exec_over_fleet_ssh with sealed context. LocalShell refuses — remote argv requires a transport that names the target host. Shell script bodies use host_effect_realize run_shell_transport instead."
+
+fn run_typed_argv_transport(
+  argv: List<String>,
+  transport: HostEffectTransport,
+) -> TypedArgvExecOutcome {
+  match transport {
+    LocalShell =>
+      TypedArgvExecRefused {
+        reason: "run_typed_argv_transport: LocalShell has no remote target — use SshShell or FleetSsh when executor and subject host differ",
+      }
+    SshShell { ssh_host: h } =>
+      typed_argv_exec_over_ssh(host: h, argv: argv)
+    FleetSsh { target: t, context: c } =>
+      typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      TypedArgvExecRefused {
+        reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
+      }
+  }
+}
+
 fn realize_effective_principal_read_on_host(
   read: EffectivePosixPrincipalRead,
   transport: HostEffectTransport,

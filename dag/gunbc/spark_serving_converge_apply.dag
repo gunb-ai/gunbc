@@ -1,0 +1,86 @@
+module gunbc.spark_serving_converge_apply
+
+data spark_serving_converge_apply_authority_note: std.types.String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits portable remote argv; actuation routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings)."
+
+type SparkServingFrozenApplyResult =
+    SparkServingFrozenApplied { remote_argv: std.types.List<std.types.String>, effect_count: std.types.Int }
+  | SparkServingFrozenApplyRefused { reason: std.types.String }
+
+type SparkServingFrozenRemoteExecResult =
+    SparkServingFrozenRemoteExecApplied { exec_outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome }
+  | SparkServingFrozenRemoteExecRefused { reason: std.types.String }
+
+fn spark_serving_apply_reads_frozen_typed_rows(
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
+  claimed_bundle_hex: std.types.String,
+) -> SparkServingFrozenApplyResult {
+  if !gunbc.fleet_converge_plan.fleet_converge_plan_artifact_bundle_admits(artifact: artifact, claimed_hex: claimed_bundle_hex) {
+    SparkServingFrozenApplyRefused {
+      reason: "spark_serving_converge_apply: plan artifact bundle/hash consistency refused — typed rows cannot be smuggled beside an unverified v1 digest",
+    }
+  } else {
+    let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
+    let argv_verdict = gunbc.spark_serving_converge_realize.realize_spark_serving_install_effects_argv(
+      effects: frozen_effects,
+      executor_login: gunbc.spark_serving_desired.spark_serving_automation_principal_login(),
+    )
+    if gunbc.spark_serving_converge_realize.spark_serving_install_remote_argv_refused(v: argv_verdict) {
+      match argv_verdict {
+        gunbc.spark_serving_converge_realize.SparkServingInstallRemoteArgvRefused { reason: why } =>
+          SparkServingFrozenApplyRefused {
+            reason: concat("spark_serving_converge_apply: ", why),
+          }
+        gunbc.spark_serving_converge_realize.SparkServingInstallRemoteArgvPresent { argv: _ } =>
+          SparkServingFrozenApplyRefused {
+            reason: "spark_serving_converge_apply: remote argv refused verdict disagreed with shape",
+          }
+      }
+    } else {
+      match argv_verdict {
+        gunbc.spark_serving_converge_realize.SparkServingInstallRemoteArgvPresent { argv: remote_argv } =>
+          SparkServingFrozenApplied {
+            remote_argv: remote_argv,
+            effect_count: length(frozen_effects),
+          }
+        gunbc.spark_serving_converge_realize.SparkServingInstallRemoteArgvRefused { reason: why } =>
+          SparkServingFrozenApplyRefused { reason: why }
+      }
+    }
+  }
+}
+
+// TAKES THE TRANSPORT, DOES NOT PICK IT. The earlier signature took a context plus a
+// target and assembled FleetSsh itself, which fixed one transport inside a function whose
+// name then had to claim it. That made the operator-workstation credential path the only
+// reachable one, and it is the path spark_credential_access_token_frontier_note says fails
+// at runtime on GHA runner slots — so the CI dispatch mode this lane adds was wired to a
+// route that cannot execute there. The transport is now the caller's decision, and the two
+// callers hold visibly different preconditions: FleetSsh cannot be constructed without a
+// context whose anchor passed a content readback, while SshShell carries no trust facts and
+// relies on the runner job having established them out of band. Fusing them is what let the
+// stronger name stand over the weaker guarantee.
+fn spark_serving_exec_frozen_typed_rows(
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
+  claimed_bundle_hex: std.types.String,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> SparkServingFrozenRemoteExecResult {
+  match spark_serving_apply_reads_frozen_typed_rows(
+    artifact: artifact,
+    claimed_bundle_hex: claimed_bundle_hex,
+  ) {
+    SparkServingFrozenApplyRefused { reason: why } =>
+      SparkServingFrozenRemoteExecRefused { reason: why }
+    SparkServingFrozenApplied { remote_argv: argv, effect_count: n } =>
+      if n == 0 {
+        SparkServingFrozenRemoteExecApplied {
+          exec_outcome: gunbc.typed_argv_exec.TypedArgvExecRefused {
+            reason: "spark_serving_converge_apply: converged plan — zero frozen install effects, remote exec is noop",
+          },
+        }
+      } else {
+        SparkServingFrozenRemoteExecApplied {
+          exec_outcome: gunbc.host_effect_realize.run_typed_argv_transport(argv: argv, transport: transport),
+        }
+      }
+  }
+}

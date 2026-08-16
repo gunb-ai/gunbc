@@ -1,7 +1,9 @@
 module gunbc.fleet_converge_plan_cli
 
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
+data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
+
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
 
 func observe_host_short_wet() -> String
   uses net: Network
@@ -69,11 +71,17 @@ func fleet_converge_plan_wet() -> ProcessExit
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
+        spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+          rows: artifact.spark_serving_typed_actions,
+        ),
       ) {
         Absent =>
           exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
           let planned_generation = prior_generation + 1
+          let spark_wire = fleet_converge_spark_serving_typed_actions_wire(
+            rows: artifact.spark_serving_typed_actions,
+          )
           let mkdir = run_shell_commands(
             commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
             transport: LocalExec,
@@ -102,6 +110,10 @@ func fleet_converge_plan_wet() -> ProcessExit
                 path: fleet_converge_plan_member_set_fp_path,
                 content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
               )
+              let w_spark_wire = Filesystem.Write(
+                path: fleet_converge_plan_spark_typed_actions_wire_path,
+                content: spark_wire,
+              )
               if w_plan.success
                 && w_base.success
                 && w_hash.success
@@ -109,7 +121,8 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_host.success
                 && w_gen.success
                 && w_prior.success
-                && w_member_fp.success {
+                && w_member_fp.success
+                && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
                     ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
@@ -141,6 +154,7 @@ func fleet_converge_apply_wet() -> ProcessExit
   let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
   let read_apply = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
   let read_hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+  let read_spark_wire = Filesystem.Read(path: fleet_converge_plan_spark_typed_actions_wire_path)
   if !read_plan.success
     || !read_base.success
     || !read_host.success
@@ -148,7 +162,8 @@ func fleet_converge_apply_wet() -> ProcessExit
     || !read_gen.success
     || !read_member_fp.success
     || !read_apply.success
-    || !read_hash.success {
+    || !read_hash.success
+    || !read_spark_wire.success {
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
     let host_short = observe_host_short_wet()
@@ -189,10 +204,11 @@ func fleet_converge_apply_wet() -> ProcessExit
               } else if !fleet_converge_plan_bundle_matches(
                 plan_body: read_plan.content,
                 apply_shell: read_apply.content,
+                spark_typed_actions_wire: trim(s: read_spark_wire.content),
                 claimed_hex: read_hash.content,
               ) {
                 exit_failure(
-                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — plan.txt + apply.sh bundle does not match plan_content.hex",
+                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — the plan.txt + apply.sh + spark_serving_typed_actions.wire bundle does not match plan_content.hex (a plan artifact minted before the typed-actions wire joined the bundle will not match)",
                 )
               } else {
                 run_shell_commands(

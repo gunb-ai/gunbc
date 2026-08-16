@@ -1,0 +1,88 @@
+module gunbc.spark_serving_converge_realize
+
+data spark_serving_converge_realize_authority_note: std.types.String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to admitted portable remote argv — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Linger slice: [sudo, -n, loginctl, enable-linger, login] with no interpolation."
+
+type SparkServingInstallRemoteArgvVerdict =
+    SparkServingInstallRemoteArgvPresent { argv: std.types.List<std.types.String> }
+  | SparkServingInstallRemoteArgvRefused { reason: std.types.String }
+
+fn spark_serving_admit_portable_remote_argv(raws: std.types.List<std.types.String>) -> SparkServingInstallRemoteArgvVerdict {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raws) {
+    Present { value: words } =>
+      SparkServingInstallRemoteArgvPresent {
+        argv: gunbc.fleet_known_hosts_anchor.portable_remote_words_strings(words: words),
+      }
+    Absent =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: remote argv is not portable — refuse rather than shell-interpolate",
+      }
+  }
+}
+
+fn spark_serving_enable_linger_remote_argv(login: std.types.NonEmptyStr) -> SparkServingInstallRemoteArgvVerdict {
+  spark_serving_admit_portable_remote_argv(
+    raws: ["sudo", "-n", "loginctl", "enable-linger", login as std.types.String],
+  )
+}
+
+fn realize_spark_serving_install_effect_argv(
+  effect: gunbc.spark_serving_realization.ServingInstallEffect,
+  executor_login: std.types.NonEmptyStr,
+) -> SparkServingInstallRemoteArgvVerdict {
+  match effect {
+    gunbc.spark_serving_realization.EnableLingerForOwnAccount =>
+      spark_serving_enable_linger_remote_argv(login: executor_login)
+    _ =>
+      SparkServingInstallRemoteArgvRefused {
+        reason: "spark_serving_converge_realize: only EnableLingerForOwnAccount is implemented in the linger vertical slice",
+      }
+  }
+}
+
+fn realize_spark_serving_install_effects_argv(
+  effects: std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>,
+  executor_login: std.types.NonEmptyStr,
+) -> SparkServingInstallRemoteArgvVerdict {
+  fold(
+    effects,
+    init: SparkServingInstallRemoteArgvPresent { argv: [] },
+    f: fn(acc, effect) {
+      match acc {
+        SparkServingInstallRemoteArgvRefused { reason: _ } => acc
+        SparkServingInstallRemoteArgvPresent { argv: prior } =>
+          match realize_spark_serving_install_effect_argv(
+            effect: effect,
+            executor_login: executor_login,
+          ) {
+            SparkServingInstallRemoteArgvRefused { reason: why } =>
+              SparkServingInstallRemoteArgvRefused { reason: why }
+            SparkServingInstallRemoteArgvPresent { argv: next } =>
+              SparkServingInstallRemoteArgvPresent {
+                argv: concat(prior, next),
+              }
+          }
+      }
+    },
+  )
+}
+
+fn spark_serving_install_remote_argv_refused(v: SparkServingInstallRemoteArgvVerdict) -> std.types.Bool {
+  match v {
+    SparkServingInstallRemoteArgvRefused { reason: _ } => true
+    SparkServingInstallRemoteArgvPresent { argv: _ } => false
+  }
+}
+
+fn spark_serving_default_executor_login() -> std.types.NonEmptyStr {
+  gunbc.spark_serving_desired.spark_serving_automation_principal_login()
+}
+
+fn spark_serving_enable_linger_argv_matches_expected(argv: std.types.List<std.types.String>) -> std.types.Bool {
+  match spark_serving_enable_linger_remote_argv(
+    login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteArgvPresent { argv: expected } =>
+      join(argv, "\0") == join(expected, "\0")
+    SparkServingInstallRemoteArgvRefused { reason: _ } => false
+  }
+}

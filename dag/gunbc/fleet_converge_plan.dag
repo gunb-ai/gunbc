@@ -241,6 +241,11 @@ fn observed_baseline_text(
   )
 }
 
+type FleetConvergeSparkServingTypedAction {
+  action: MemberAction<SparkServingMember>
+  install_effects: List<ServingInstallEffect>
+}
+
 type FleetConvergePlanArtifact {
   subject: FleetConvergePlanSubject
   prior_generation: Int
@@ -248,6 +253,80 @@ type FleetConvergePlanArtifact {
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
+  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
+}
+
+fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> String {
+  match effect {
+    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
+    _ => "UnmodeledServingInstallEffect"
+  }
+}
+
+fn fleet_converge_spark_serving_action_kind(action: MemberAction<SparkServingMember>) -> String {
+  match action {
+    MemberAdded { to: _ } => "ADD"
+    MemberChanged { from: _, to: _ } => "CHANGE"
+    MemberRemoved { from: _ } => "REMOVE"
+    MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
+  }
+}
+
+fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedAction) -> String {
+  let member = match row.action {
+    MemberAdded { to: m } => m
+    MemberChanged { from: _, to: m } => m
+    MemberRemoved { from: m } => m
+    MemberRemovalRefused { from: m, cause: _ } => m
+  }
+  join(
+    [
+      fleet_converge_spark_serving_action_kind(action: row.action),
+      " spark-serving ",
+      spark_serving_member_key(member: member),
+      " effects=",
+      join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+    ],
+    "",
+  )
+}
+
+fn fleet_converge_spark_serving_typed_actions_wire(
+  rows: List<FleetConvergeSparkServingTypedAction>,
+) -> String {
+  join(map(rows, r => fleet_converge_spark_serving_action_line(row: r)), ";")
+}
+
+data fleet_converge_spark_typed_actions_wire_empty_canonical: NonEmptyStr = "spark-serving-typed-actions-wire-empty"
+
+fn fleet_converge_spark_typed_actions_wire_structural_hash(wire: String) -> Fnv1a64Structural? {
+  if wire == "" {
+    match content_hash_of_value(value: fleet_converge_spark_typed_actions_wire_empty_canonical) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  } else {
+    match content_hash_of_value(value: wire as NonEmptyStr) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  }
+}
+
+fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Bool {
+  string_contains(s: plan_body, pattern: "# spark-serving-typed-actions:")
+}
+
+fn fleet_converge_plan_spark_typed_actions_consistency_admits(
+  plan_body: String,
+  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>,
+) -> Bool {
+  let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
+  if length(spark_serving_typed_actions) > 0 && !body_claims {
+    false
+  } else {
+    true
+  }
 }
 
 fn fleet_converge_plan_body_structural_hash(plan_body: String) -> Fnv1a64Structural? {
@@ -264,7 +343,7 @@ fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> Fnv1a
   }
 }
 
-fn fleet_converge_plan_bundle_structural_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
+fn fleet_converge_plan_bundle_v1_structural_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
   match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
     Present { value: plan_struct } =>
       match fleet_converge_plan_apply_shell_structural_hash(apply_shell: apply_shell) {
@@ -278,16 +357,58 @@ fn fleet_converge_plan_bundle_structural_hash(plan_body: String, apply_shell: St
   }
 }
 
-fn fleet_converge_plan_bundle_digest_hex(plan_body: String, apply_shell: String) -> Fnv1a64StructuralDigestHex? {
-  match fleet_converge_plan_bundle_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+fn fleet_converge_plan_bundle_structural_hash(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+) -> Fnv1a64Structural? {
+  match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: bundle_v1 } =>
+      match fleet_converge_spark_typed_actions_wire_structural_hash(wire: spark_typed_actions_wire) {
+        Present { value: spark_struct } =>
+          Present {
+            value: content_hash_combine_structural(left: bundle_v1, right: spark_struct),
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_digest_hex(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+) -> Fnv1a64StructuralDigestHex? {
+  match fleet_converge_plan_bundle_structural_hash(
+    plan_body: plan_body,
+    apply_shell: apply_shell,
+    spark_typed_actions_wire: spark_typed_actions_wire,
+  ) {
     Present { value: bundle } => Present { value: bundle.digest }
     Absent => Absent
   }
 }
 
-fn fleet_converge_plan_bundle_matches(plan_body: String, apply_shell: String, claimed_hex: String) -> Bool {
-  match fleet_converge_plan_bundle_digest_hex(plan_body: plan_body, apply_shell: apply_shell) {
+fn fleet_converge_plan_bundle_matches(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+  claimed_hex: String,
+) -> Bool {
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: plan_body,
+    apply_shell: apply_shell,
+    spark_typed_actions_wire: spark_typed_actions_wire,
+  ) {
     Present { value: computed } => trim(s: claimed_hex) == computed as String
+    Absent => false
+  }
+}
+
+fn fleet_converge_plan_bundle_v1_matches(plan_body: String, apply_shell: String, claimed_hex: String) -> Bool {
+  match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: bundle } => trim(s: claimed_hex) == bundle.digest as String
     Absent => false
   }
 }
@@ -300,7 +421,28 @@ fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDiges
 }
 
 fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex? {
-  fleet_converge_plan_bundle_digest_hex(plan_body: artifact.plan_body, apply_shell: artifact.apply_shell)
+  fleet_converge_plan_bundle_digest_hex(
+    plan_body: artifact.plan_body,
+    apply_shell: artifact.apply_shell,
+    spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+      rows: artifact.spark_serving_typed_actions,
+    ),
+  )
+}
+
+fn fleet_converge_plan_artifact_bundle_admits(artifact: FleetConvergePlanArtifact, claimed_hex: String) -> Bool {
+  fleet_converge_plan_spark_typed_actions_consistency_admits(
+    plan_body: artifact.plan_body,
+    spark_serving_typed_actions: artifact.spark_serving_typed_actions,
+  )
+    && fleet_converge_plan_bundle_matches(
+      plan_body: artifact.plan_body,
+      apply_shell: artifact.apply_shell,
+      spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+        rows: artifact.spark_serving_typed_actions,
+      ),
+      claimed_hex: claimed_hex,
+    )
 }
 
 data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation compare+apply+commit runs under flock in fleet_converge_locked_apply_script; subject-host / member-set / observed-baseline gates live in fleet_converge_apply_wet before the locked transport; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown and lease acquisition without medium-as-string concat")
@@ -503,6 +645,7 @@ fn fleet_converge_plan_artifact(
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
+          spark_serving_typed_actions: [],
         },
       }
     _ => Absent
