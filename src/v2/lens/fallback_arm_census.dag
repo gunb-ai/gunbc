@@ -313,6 +313,7 @@ data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInv
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_runtime_rust.rs", disposition: LegitimateConstant { reason: "runtime host glue; no .dag twin yet" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/std_effects.rs", disposition: ParityWitnessed { precedent: "effect_stream mirror" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/memory_governor.rs", disposition: LegitimateConstant { reason: "host memory policy constants" } },
+  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/derived_realization_schedule.rs", disposition: LegitimateConstant { reason: "derived realization schedule bridge" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_batch.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_executor.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/regen_stage0.rs", disposition: LegitimateConstant { reason: "regen host tool" } },

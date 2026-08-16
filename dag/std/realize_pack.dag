@@ -56,7 +56,7 @@ fn realize_verdict_label(v: RealizeVerdict) -> String {
   }
 }
 
-data realize_advisory_note: String = "P4 advisory-first bridge entry (witness-realization plan): the terminal-kernel executor (claim_executor, hand Rust) consumes the modeled packing law through the interpreter — it extracts the DERIVED per-function space bound (ComplexityReport.function_space_bytes, empty size_env — a closed witness has no free size-vars) and the host budget as plain Int?s, and this wrapper reconstructs the DerivedBound/HostBudget shapes and calls realize_pack_width. The law stays modeled here (§2, no Rust reimplementation); the kernel only marshals scalars and reads back a RealizeAdvisory. Advisory-first (§5): the verdict is LOGGED beside the live MemoryGovernor admission, never yet used to schedule, so the derived bounds are proven sound on the real corpus before the governor is demoted to a safety net. Absent derived_bytes -> BoundUnknown -> MaturationReserve (the fail-closed frontier), never a fabricated width."
+data realize_advisory_note: String = "P4 bridge entry (witness-realization plan): the terminal-kernel executor consumes the modeled packing law through the interpreter — it extracts the DERIVED per-function space bound (ComplexityReport.function_space_bytes, empty size_env) and the host budget as plain Int?s, calls realize_pack_width, and schedules discovery at the returned width. When the bound is BoundUnknown the seed applies a declared worker-share fallback (budget × high-water / measured first-slot share) instead of serializing — the retired AIMD memory_governor is deleted. Absent budget -> BudgetRefused, never a fabricated width."
 
 type RealizeAdvisory {
   width: Int
