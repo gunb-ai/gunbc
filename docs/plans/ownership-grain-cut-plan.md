@@ -148,6 +148,29 @@ src/v1/04_infer.dag       movable: empty_set()
 src/v1/05_emit_rust.dag   movable: empty_set()
 ```
 
+### The obligation — durable home, ruled 2026-08-16
+
+This document is the **primary home** for the obligation below, deliberately: a closing lane
+cannot hold an open obligation, and a PR body evaporates from view the moment the PR merges.
+Ruled: record here at symbol grain; **do not** mint a carrier under a load-bearing module, and
+**do not** spawn a work item yet — the ownership question crosses a lane boundary and is a
+program decision.
+
+```
+owed         a ValueUsage producer over the real emitter graph, so value_site_verdicts has a
+             SUPPLY rather than witness-authored inputs
+blocked on   which emitter exists after v1-cut. src/v1/05_emit_rust.dag — the graph the
+             producer would derive from — is in v1-cut's deletion set, with the emitted .rs
+             frozen. The CAPABILITY is owed by Y and outlives that; only its INPUT SOURCE is
+             undetermined.
+not owed by  any retention roster, and not by the frozen-emitter row. A retention row says
+             someone may still BUILD an artifact; this says someone must still EARN a
+             behaviour somewhere else.
+```
+
+Starting work on it before the emitter has a post-cut home would mean deriving from a graph
+being deleted underneath the work.
+
 **The obligation, stated so it is countable rather than implied:** derive `ValueUsage`
 (per-site `access` + `site`) from the emitter's graph, so `value_site_verdicts` has a real
 producer and the three `empty_set()` constructions are replaced by a derivation rather than by
