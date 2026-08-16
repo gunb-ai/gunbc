@@ -10,14 +10,17 @@ PRE_DIR="/tmp/charat0-main-measure"
 SIZES=(40000 80000)
 TIMEOUT_SEC=600
 
+git fetch origin main --depth=1
+MAIN_REF="origin/main"
+
 echo "# charat0_scaling head=$(git rev-parse HEAD)"
-echo "# charat0_scaling main=$(git rev-parse origin/main)"
+echo "# charat0_scaling main=$(git rev-parse "$MAIN_REF")"
 
 cargo build --release -p v1-compiler --bin json_parse_scaling_probe
 POST_BIN="$ROOT/target/release/json_parse_scaling_probe"
 
 rm -rf "$PRE_DIR"
-git worktree add --detach "$PRE_DIR" origin/main
+git worktree add --detach "$PRE_DIR" "$MAIN_REF"
 PROBE_SRC="$ROOT/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 cp "$PROBE_SRC" "$PRE_DIR/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 if ! grep -q json_parse_scaling_probe "$PRE_DIR/src/v1/stage0/Cargo.toml"; then

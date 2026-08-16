@@ -274,22 +274,16 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
-const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
-const FNV1A64_PRIME: u64 = 0x100000001b3;
-
 /// One-pass ASCII classification + Fnv1a64 content fingerprint (DESIGN §3: cache keys
 /// are content-grounded, not allocation addresses).
 fn ascii_fingerprint(bytes: &[u8]) -> (u64, bool) {
-    let mut hash = FNV1A64_OFFSET;
     let mut is_ascii = true;
     for &b in bytes {
         if b > 0x7f {
             is_ascii = false;
         }
-        hash ^= u64::from(b);
-        hash = hash.wrapping_mul(FNV1A64_PRIME);
     }
-    (hash, is_ascii)
+    (fnv1a64(bytes), is_ascii)
 }
 
 #[derive(Clone, Copy)]
