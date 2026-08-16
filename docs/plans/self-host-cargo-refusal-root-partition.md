@@ -1026,3 +1026,62 @@ session's scratchpad, not committed: a dated snapshot nothing regenerates is the
 names. The two scripts are ~60 lines each and the route is fully specified in 11.1 — re-derive
 rather than trusting the table. Anything above that is not reproducible by that route is a defect
 in this section.
+
+### 11.10 Name-keyed realization, answered against the tail — YES for 253 sites, NO for ~1,500
+
+Asked by `smart-ram-730` (2026-08-16): *would identity-keyed realization have prevented this class,
+or is the root orthogonal to it?* Answered per root, with the strongest specimen executed rather
+than argued.
+
+**YES — and here is the cleanest specimen in the corpus, which is my root T7 (105 sites, 5.6%).**
+`src/v2/std/node.dag:14` declares `type Hash = Fnv1a64Structural`. The emitted crate contains
+
+```
+src/v2_std_node.rs:41   pub type Hash = v1_rt::Hash;          // and v1_rt.rs: pub type Hash = String;
+src/std_content_hash.rs pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural>
+```
+
+The alias's declared right-hand side is **discarded** and replaced by the seed runtime type that
+shares its authored name — `Hash` is the return type of the v1 builtins `atom_identity_hash` /
+`hash_combine` (`src/v1/00_core.dag` `hash_type`, a Node named `"Hash"` carrying a kernel span).
+The mismatch is then visible *inside a single emitted signature*:
+`pub fn bag_hash_digest(empty: Hash, xs: Rc<Vec<v1_rt::Hash>>) -> Hash`. Every one of T7's
+63 `expected Rc<Fnv1a64Structural>, found String` and 39 reverse sites is that one substitution
+read at a use site. The fact that separates the two `Hash`es — which declaration the name denotes —
+is carried on the node and is not consulted. This is `eager-deer-389`'s mechanism exactly, with a
+seed *prelude* homonym rather than two corpus modules, and it means **T7 is not a "ContentHash
+carrier fork" at all; it is a name-collision with the seed runtime.** I am re-labelling it in this
+section rather than in the table above so the table keeps matching its classifier.
+
+**YES — K (132 sites).** `reference_derived_use_lines_note` states the synthesis resolves
+candidates through the **bare-name registry**, describes that registry as last-write-wins, and
+erects an export-proof construction wall specifically against "the `v1_rt::member` fabrication
+class: registry homonym without export proof". A wall against homonyms is the shape of a mechanism
+that has a name where it needed an identity: `Node.inferred = Resolved{…}.ident_span.file` names
+the declaring module, so an identity-keyed emitter derives the use-line directly and neither the
+registry lookup nor its wall is needed.
+
+**YES — R5 (16 sites).** Two modules declaring one concept (`OccurrenceId` in both
+`std_occurrence_identity` and `v2_std_node`) is the same shape as the `Bool` specimen, and the
+diagnostics are literally `expected v2_std_node::OccurrenceId, found std_occurrence_identity::OccurrenceId`.
+
+**PARTLY — T3 (110 sites).** The realization table *is* name-keyed (`rust_seed_host_container_base`
+tests `name == "List" || name == "FreeMonoid"`; `is_host_text_carrier_type` tests
+`nm == "String"` and an element named `"Char"`, both via `authored_name_at`), so it carries the
+same homonym exposure. But T3's actual failures are `.member` / `.lookup` on `OrdSet` /
+`PointwisePower` / `PartialFunction`, and those types are **absent from the table entirely**.
+Identity-keying changes how the row is looked up; it does not author the missing row. Count this
+as exposure, not cause.
+
+**NO — the remaining ~1,500 sites.** A (generic bound), C (Optional→unit), T5 (derives on concrete
+types), R1 (Rc wrap), L, M, N, F, E, T4 and the residue all turn on *shape*, *ownership* or
+*which traits a declaration needs* — questions where the emitter already has the right declaration
+and computes the wrong answer about it. Identity-keying leaves every one of them exactly where it is.
+That bound is the useful half of this answer: name-keying is a real deficit with **253 sites
+(13.5%) directly attributable and 110 more exposed**, and it is not the wall.
+
+**And the masking warning applies here too, so I am budgeting for it in advance:** T7's sites are
+`String`-vs-record errors standing in front of whatever those call sites do with the value. Fixing
+the alias will expose refinement-carrier work (`Fnv1a64StructuralDigestHex = String where lower_hex_16`)
+that the type error is currently firing ahead of. A burn-down of 105 that does not budget for the
+unmasked population will overshoot, exactly as the algebra-carrier fix exposed 125 `Rc<i64>` sites.
