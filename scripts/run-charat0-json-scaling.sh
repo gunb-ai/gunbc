@@ -24,12 +24,13 @@ git worktree add --detach "$PRE_DIR" "$MAIN_REF"
 PROBE_SRC="$ROOT/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 cp "$PROBE_SRC" "$PRE_DIR/src/v1/stage0/src/bin/json_parse_scaling_probe.rs"
 if ! grep -q json_parse_scaling_probe "$PRE_DIR/src/v1/stage0/Cargo.toml"; then
-  sed -i '/name = "claim_executor"/,/path = "src\/bin\/claim_executor.rs"/a\
-\
-# CHARAT-0 measurement scaffold (not floor-enrolled).\
-[[bin]]\
-name = "json_parse_scaling_probe"\
-path = "src/bin/json_parse_scaling_probe.rs"' "$PRE_DIR/src/v1/stage0/Cargo.toml"
+  cat >>"$PRE_DIR/src/v1/stage0/Cargo.toml" <<'EOF'
+
+# CHARAT-0 measurement scaffold (not floor-enrolled).
+[[bin]]
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
+EOF
 fi
 (
   cd "$PRE_DIR"
