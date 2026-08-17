@@ -309,12 +309,29 @@ data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
 // THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A long-home site produces no
 // claim row, so the exclusion happens where the module's own name can be read rather than in a
 // host-side test on its file path.
+//
+// A LIVE-TREE SITE IS EXCLUDED FOR A DIFFERENT REASON, and the difference matters. The long
+// home is a hack. This one is a fact about the witness: a module declaring
+// `LiveTreeDisposition = ReadsLiveTree` reads state outside its resolved closure, so it CANNOT
+// execute in the hermetic frame this floor runs — it does not fail because it is broken, it
+// fails because it was handed the wrong evaluator. Forcing it hermetic produced 172 refusals
+// against missing mocks, and every one of them was the floor asking a live-tree witness to
+// answer without the tree.
+//
+// Excluding them is parity with what the old floor already did: main defers 1,073 rows from
+// per-PR discovery, 613 of them declaring exactly this. These rows were never covered per-PR
+// before this cut and are not covered now — what changes is that the reason is an authored
+// declaration read from the module's own source rather than a deferral nobody could see.
+//
+// This is NOT a disposition in the modelled sense and must not be mistaken for one: it names no
+// executing consumer, so the coverage owed is real and outstanding. It dissolves when a wet
+// lane exists to run them.
 fn scan_site(
   acc: ClaimScanReversed,
   site: WitnessSite,
   mode: ExecutionMode
 ) -> ClaimScanReversed {
-  match module_is_long_home(module_path: site.module_path) {
+  match module_is_long_home(module_path: site.module_path) || site.reads_live_tree {
     true => acc
     false =>
       ClaimScanReversed {

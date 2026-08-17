@@ -41074,6 +41074,12 @@ pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
     pub functions: Vec<String>,
+    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
+    ///
+    /// Read from the module's own source, at column zero, the same way `test fn` is — an
+    /// AUTHORED declaration, not a path or a directory. A witness that declares it reaches the
+    /// live tree, so it cannot execute in the hermetic frame this floor runs.
+    pub reads_live_tree: bool,
 }
 
 /// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
@@ -41088,6 +41094,14 @@ pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWi
     let mut out: Vec<InventoryWitnessFile> = Vec::new();
     for entry in &prepared.inventory {
         let mut functions: Vec<String> = Vec::new();
+        // Same scan, same column-zero rule as `test fn` below: a module-scope `data` whose
+        // value is `ReadsLiveTree`. Indented occurrences are inside bodies and are not
+        // declarations.
+        let reads_live_tree = entry.content.lines().any(|line| {
+            line.starts_with("data ")
+                && line.contains("LiveTreeDisposition")
+                && line.contains("ReadsLiveTree")
+        });
         for line in entry.content.lines() {
             let Some(rest) = line.strip_prefix("test fn ") else {
                 continue;
@@ -41105,6 +41119,7 @@ pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWi
                 path: entry.path.replace('\\', "/"),
                 module_path: entry.module_path.clone(),
                 functions,
+                reads_live_tree,
             });
         }
     }
@@ -41741,6 +41756,10 @@ pub fn run_required_floor(
                     (
                         "module_path",
                         v1_interpreter::str_value(file.module_path.clone()),
+                    ),
+                    (
+                        "reads_live_tree",
+                        v1_interpreter::Value::Bool(file.reads_live_tree),
                     ),
                 ],
             ));

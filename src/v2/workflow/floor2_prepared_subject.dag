@@ -65,6 +65,7 @@ type WitnessSite {
   entry: String
   function: String
   module_path: String
+  reads_live_tree: Bool
 }
 
 // WITNESS IDENTITY IS `module.function`, NEVER the bare function name.
