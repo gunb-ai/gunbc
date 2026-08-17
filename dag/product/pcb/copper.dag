@@ -159,9 +159,10 @@ fn realizations_of_net(rs: List<NetCopperRealization>, net: NetIdentity) -> List
   filter(rs, r => r.net == net)
 }
 
-// A NET REALIZED TWICE IS TWO CONDUCTORS CLAIMING ONE NAME. That is not a redundant route - a real
-// net split across layers is one realization with vias, which this increment does not yet model -
-// so at this grain it is an authority fork in copper and refuses.
+// A NET REALIZED TWICE ON ONE LAYER IS TWO CONDUCTORS CLAIMING ONE NAME, and that is an authority
+// fork in copper rather than a redundant route. A net legitimately present on SEVERAL layers is a
+// different fact, carried by InterlayerConnection below and judged by the connectivity refusal - the
+// two questions were one check until this increment split them.
 // ONE CAUSE PER NET FOR THE NET-GRAIN CAUSES, because those are facts ABOUT A NET rather than about
 // a row: a net on four layers with no via is one problem, not four, and two rows on one layer is one
 // fork however many rows are involved. Deriving them from the realization list emitted one per row,

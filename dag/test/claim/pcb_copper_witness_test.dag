@@ -241,7 +241,6 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
           && count(filter(c, x => match x {
             RealizationNamesNoSuchNet { net: n } => n == absent_net
             NetHasTwoConductorsOnOneLayer { net: _ } => false
-            NetHasTwoConductorsOnOneLayer { net: _ } => false
           NetSplitAcrossLayersWithoutAConnection { net: _ } => false
             InterlayerConnectionNamesNoSuchNet { net: _ } => false
             InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
