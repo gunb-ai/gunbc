@@ -16,8 +16,11 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   membership_reconcile,
+  membership_plan_admitting_outcome,
 }
 import gunbc.ownership { Ownership, Ensured }
+
+type WorkflowFactMemberAt = WorkflowFactKey
 
 type WorkflowFactState
   = WorkflowFactPending
@@ -83,7 +86,7 @@ type WorkflowReconcileReport {
   observed_failure_count: Int
   observed_refusal_count: Int
   plan_refusal_count: Int
-  plan: MembershipPlan<WorkflowFactMember>
+  plan: MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>
   verdict: ReduceVerdict
 }
 
@@ -258,6 +261,10 @@ fn workflow_fact_member_ownership(
   workflow_fact_ownership(fact: member.fact)
 }
 
+fn workflow_fact_member_key(member: WorkflowFactMember) -> WorkflowFactKey {
+  member.fact.key
+}
+
 fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> ReduceVerdict {
   match fact.state {
     WorkflowFactSatisfied => Reduced { last_parts: 1 }
@@ -381,23 +388,25 @@ fn workflow_fact_forest_verdict(
 fn workflow_fact_reconcile(
   desired: List<WorkflowFactTree>,
   observed: List<WorkflowFactTree>,
-) -> MembershipPlan<WorkflowFactMember> {
-  membership_reconcile(
-    desired: workflow_fact_forest_members(forest: desired),
-    observed: workflow_fact_forest_members(forest: observed),
-    key_of: fn(member) { member.fact.key },
-    key_eq: workflow_fact_key_equal,
-    value_eq: workflow_fact_member_value_equal,
-    ownership_of: workflow_fact_member_ownership,
+) -> MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: workflow_fact_forest_members(forest: desired),
+      observed: workflow_fact_forest_members(forest: observed),
+      key_of: workflow_fact_member_key,
+      key_eq: workflow_fact_key_equal,
+      value_eq: workflow_fact_member_value_equal,
+      ownership_of: workflow_fact_member_ownership,
+    )
   )
 }
 
 fn workflow_reconcile_fold_action(
   acc: WorkflowReconcileFold,
-  action: MemberAction<WorkflowFactMember>,
+  action: MemberAction<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   match action {
-    MemberAdded { to: member } =>
+    MemberAdded { at: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -407,7 +416,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberChanged { from: _, to: member } =>
+    MemberChanged { at: _, from: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -417,7 +426,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberRemoved { from: member } =>
+    MemberRemoved { at: _, from: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
@@ -437,11 +446,21 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
+    MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } =>
+      WorkflowReconcileFold {
+        remaining: acc.remaining + 1,
+        plan_refusals: acc.plan_refusals + 1,
+        first_missing: if acc.first_missing == "" {
+          join([workflow_fact_locus(fact: member.fact), ":duplicate-roster-key"], "")
+        } else {
+          acc.first_missing
+        },
+      }
   }
 }
 
 fn workflow_reconcile_fold(
-  plan: MembershipPlan<WorkflowFactMember>,
+  plan: MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   fold(
     plan.actions,
