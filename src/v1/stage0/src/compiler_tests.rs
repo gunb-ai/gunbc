@@ -1889,14 +1889,6 @@ mod compiler_tests {
             coerce_primitive_type(RenderTarget::Rust, "Hash".into()),
             "v1_rt::Hash"
         );
-        assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Witness".into()),
-            "Witness"
-        );
-        assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "witness".into()),
-            "Witness"
-        );
     }
 
     #[test]
@@ -2085,8 +2077,6 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Witness".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "witness".into()), Some(false));
     }
 
     #[test]
