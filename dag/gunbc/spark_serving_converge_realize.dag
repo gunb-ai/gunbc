@@ -10,6 +10,17 @@ import gunbc.spark_serving_realization {
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv }
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite,
+  typed_remote_file_write_seal,
+}
+import gunbc.file_access { FileTreeScope }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 
 data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to admitted portable remote argv — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Realized arms: EnableLingerForOwnAccount [sudo, -n, loginctl, enable-linger, login]; ReloadUserManager [systemctl, --user, daemon-reload]; EnableUserUnit [systemctl, --user, enable, --now, unit] — no interpolation, unit basename from gunbc.spark_serving_unit_identity. Every other effect refuses; a sequence containing one refuses whole."
 
@@ -23,14 +34,14 @@ data spark_serving_converge_realize_authority_note: String = "Seam 2 realization
 // Ordering is load-bearing for these effects (write the unit file, reload the manager, enable the
 // unit), and a fused argv erases it.
 type SparkServingInstallRemoteCommandsVerdict =
-    SparkServingInstallRemoteCommandsPresent { commands: List<List<String>> }
+    SparkServingInstallRemoteCommandsPresent { operations: List<RemoteOperation> }
   | SparkServingInstallRemoteCommandsRefused { reason: String }
 
 fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingInstallRemoteCommandsVerdict {
   match portable_remote_words(raws: raws) {
     Present { value: words } =>
       SparkServingInstallRemoteCommandsPresent {
-        commands: [portable_remote_words_strings(words: words)],
+        operations: [RemoteArgv { argv: portable_remote_words_strings(words: words) }],
       }
     Absent =>
       SparkServingInstallRemoteCommandsRefused {
@@ -70,6 +81,34 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
 // also retires the non_fold_residue roster row this site briefly carried — there is no wildcard
 // left to roster, and a row for a site that no longer exists counts as STALE, which reds the same
 // two witnesses the row was added to green.
+// WRITING THE UNIT IS BYTES, NOT ARGV, so this produces a `RemoteFileBytes` operation. The bytes come
+// from `gunbc.spark_serving_unit_render` -- the single rendering the observe side also reads -- so a
+// delivered unit and an observed unit are compared against the same value rather than two renderings
+// that can drift.
+//
+// The path is ADMITTED, not trusted: the seal checks containment under the executor home and
+// portability under the far-side re-parse allowlist, and its refusal is carried through with its own
+// cause rather than collapsing into a generic not-implemented.
+//
+// Mode is owner-read-write: a user unit is read by that user's own systemd manager and has no reason
+// to be world-readable.
+fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommandsVerdict {
+  match typed_remote_file_write_seal(
+    path: spark_serving_user_unit_path(),
+    content: spark_serving_desired_user_unit_text(),
+    allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", why as String], ""),
+      }
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      SparkServingInstallRemoteCommandsPresent {
+        operations: [RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite }],
+      }
+  }
+}
+
 fn realize_spark_serving_install_effect_command(
   effect: ServingInstallEffect,
   executor_login: NonEmptyStr,
@@ -91,10 +130,7 @@ fn realize_spark_serving_install_effect_command(
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the Spark serving slice",
       }
-    WriteUserUnitFile =>
-      SparkServingInstallRemoteCommandsRefused {
-        reason: "spark_serving_converge_realize: WriteUserUnitFile is not implemented in the Spark serving slice",
-      }
+    WriteUserUnitFile => spark_serving_write_user_unit_operation()
     InstallRuntimePackage =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
@@ -127,20 +163,20 @@ fn realize_spark_serving_install_effect_commands(
 ) -> SparkServingInstallRemoteCommandsVerdict {
   fold(
     effects,
-    init: SparkServingInstallRemoteCommandsPresent { commands: [] },
+    init: SparkServingInstallRemoteCommandsPresent { operations: [] },
     f: fn(acc, effect) {
       match acc {
         SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
-        SparkServingInstallRemoteCommandsPresent { commands: prior } =>
+        SparkServingInstallRemoteCommandsPresent { operations: prior } =>
           match realize_spark_serving_install_effect_command(
             effect: effect,
             executor_login: executor_login,
           ) {
             SparkServingInstallRemoteCommandsRefused { reason: why } =>
               SparkServingInstallRemoteCommandsRefused { reason: why }
-            SparkServingInstallRemoteCommandsPresent { commands: next } =>
+            SparkServingInstallRemoteCommandsPresent { operations: next } =>
               SparkServingInstallRemoteCommandsPresent {
-                commands: concat(prior, next),
+                operations: concat(prior, next),
               }
           }
       }
@@ -151,7 +187,7 @@ fn realize_spark_serving_install_effect_commands(
 fn spark_serving_install_remote_commands_refused(v: SparkServingInstallRemoteCommandsVerdict) -> Bool {
   match v {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { commands: _ } => false
+    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
   }
 }
 
@@ -167,9 +203,12 @@ fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { commands: expected } =>
+    SparkServingInstallRemoteCommandsPresent { operations: expected } =>
       if expected.length() == 1 {
-        join(argv, "\0") == join(expected.first(), "\0")
+        match remote_operation_argv(operation: expected.first()) {
+          Present { value: words } => join(argv, "\0") == join(words, "\0")
+          Absent => false
+        }
       } else {
         false
       }
