@@ -556,3 +556,55 @@ The load-bearing consequence for sequencing: **this branch cannot be finished
 by working the diagnostic classes.** Function-not-found (1170), unresolved type
 (680), undefined variable (483) and no-field (270) are one deficit reported four
 ways, and it is the deficit `namespace-resolution-design.md` exists to close.
+
+### Correction: it is not purely resolver-side — there is a real mis-qualification residue
+
+The section above is right about the dominant cause and overclaims by saying the
+population is resolver-side. A richer dump (205 diagnostics, captured from the
+corpus compile embedded in
+`materialization_provider_resolved_graph_consumer_test`) classifies as:
+
+```
+  74  type mismatch            <- mostly Product(CommutativeSemiring) vs Primitive(Int)
+  31  variant not found        <- Empty/Cons on List, Accepted/Rejected
+  21  field/record
+  16  method unresolved
+  14  function not found
+  12  unresolved type (bare)
+  12  undefined variable
+   9  non-exhaustive match
+  10  MIS-QUALIFICATION introduced by the cut pass
+```
+
+Most of it is still downstream of one cause, and the mechanism is visible in the
+two largest buckets rather than assumed. `Nat` is declared
+`Nat = CommutativeSemiring<Magnitude>`; when the reference to `Nat` does not
+resolve, every integer literal checked against it reports
+`expected 'Product(CommutativeSemiring)', got 'Primitive(Int)'`. Likewise
+`Empty`/`Cons` are `List`'s own variants, so "variant not found in type 'List'"
+is the same unresolved-std-name fact wearing a different diagnostic. These are
+consequences of the missing lookup, not independent defects, which is why
+working the diagnostic classes at class grain would chase symptoms.
+
+But roughly 5% is mine, and it is a genuine defect the cut pass wrote:
+
+```
+undefined variable 'extdeps'                    namespace root parsed as a variable
+no field 'std' on type 'String'                 namespace root inserted as a field access
+variant 'v2.std.collection.Present' not found   qualified name where a bare variant was needed
+if branches ... Primitive(trim) vs Primitive(String)   'trim' treated as a type
+```
+
+These are not resolver deficits — under any resolver, `extdeps` is not a
+variable and `.std` is not a field of a String. The pass qualified inside
+expression positions where the leading segment is not a namespace root. This
+residue is small, mechanically identifiable by its diagnostic signature, and
+must be fixed regardless of what the resolver does.
+
+**A separate finding, filed because it will bite anyone who re-runs the cut:**
+the strip pass edited a `.dag` fixture embedded in a RUST STRING LITERAL, in
+`src/v1/tests/src/materialization_provider_resolved_graph_consumer_test.rs` --
+deleting `import test.common { boxed, unbox }` and `import test.shared1 { val }`
+from a fixture whose subject is materialization, not imports. The pass's file
+filter was extension-based and did not model that `.dag` source also lives
+inside `.rs` strings.
