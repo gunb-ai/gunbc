@@ -42,8 +42,8 @@ fn non_empty_parse_stage_diagnostics_from_overlap_roster(
   roster: List<GrammarChoiceAmbiguityRow>
 ) -> Optional<NonEmptyParseStageDiagnostics> {
   match roster {
-    v2.std.algebra.Empty => optional_absent()
-    v2.std.algebra.Cons { head: first, tail: rest } =>
+    std.algebra.Empty => optional_absent()
+    std.algebra.Cons { head: first, tail: rest } =>
       optional_present(
         value: NonEmptyParseStageDiagnostics {
           head: parse_overlap_residue_stage_diagnostic_at(at: at, row: first),
