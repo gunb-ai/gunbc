@@ -17,8 +17,29 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  FleetSsh,
+  EmitArtifactThenThinRun,
+}
 import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.remote_operation {
+  RemoteOperation,
+  RemoteArgv,
+  RemoteFileBytes,
+  RemoteOperationOutcome,
+  RemoteOperationSucceeded,
+  RemoteOperationRefused,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileConvergence,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  converge_typed_remote_file,
+}
 
 data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and are mapped into one RemoteOperationOutcome vocabulary rather than coercing a file convergence into an argv result, which would require inventing an exit code and stdout it never had."
 

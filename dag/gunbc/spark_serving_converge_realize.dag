@@ -7,6 +7,15 @@ import gunbc.spark_serving_realization {
   EnableLingerForOwnAccount,
   ReloadUserManager,
   EnableUserUnit,
+  WriteUserUnitFile,
+  WriteSystemUnitFile,
+  ReloadSystemManager,
+  EnableSystemUnit,
+  InstallRuntimePackage,
+  InstallOwnedRuntimeClosure,
+  PullModelArtifact,
+  GrantContainerRuntimeAccess,
+  RunContainerAsOwnUser,
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
