@@ -155,3 +155,44 @@ Renaming `type C` remains the wrong repair for the reason already given, and now
 for a second: it would leave a corpus-wide rule ("a bare name is a global
 reference") silently wrong for every generic declaration, with no witness left
 to say so.
+
+## Attempt 1 FAILED (measured), and what it narrowed
+
+Wiring `stamp_type_param_occurrences` into `census_upgrade_type_decl_binding`
+(commit 2be832e6424, reverted at e49ec9eaf44) produced **185 -> 185**, with 21
+`Coproduct(C)` rows still standing against a predicted ~163.
+
+The function IS on the path: `04_infer.dag` routes a binding with
+`connective != NoConnective` to that pass, and `type Witness<C> = Holds {..} |
+Violates {..}` is a Disj. So the stamp ran and the shadowing survived it.
+
+**The most likely reason, narrowed statically afterwards.** The stamp matches by
+NAME: it compares `type_node_label(n)` against the parameter names, and
+`generic_param_name_at` is `authored_name_at` (`src/v1/00_core.dag`), which reads
+the authored spelling at the node's span. This repository already records what
+that returns for a qualified name — the emit construction-wall note in
+`v1_compiler_emit_rust.rs` says a namespace-qualified name in type position
+"arrives from `authored_name_at` as the full dotted spelling, e.g.
+`std.algebra.FreeMonoid`".
+
+So if the `C` occurrence inside `Holds { value: C }` has ALREADY been rewritten
+to `extdeps.languages.c.C` before the census pass runs, `type_node_label`
+returns the dotted spelling, the map lookup against `"C"` misses, and the stamp
+declines silently — no diagnostic, no effect, exactly what was measured.
+
+That makes the ordering question the live one again, but one pass EARLIER than
+the reading refuted before: not "resolution set `inferred` first" but "some
+qualification pass rewrote the occurrence's authored name first". The
+discriminating observation is unchanged in cost and now sharper:
+
+- at the moment `census_upgrade_type_decl_binding` runs, is the `C` occurrence's
+  authored name `C` or `extdeps.languages.c.C`?
+
+If dotted, the repair belongs before that rewrite (or must match on the terminal
+segment, which is exactly the `qualified_last_segment` move the emitter already
+had to make for the same reason). If still bare, this reading dies too and the
+remaining candidate is that resolution re-binds regardless of the stamp.
+
+**Not attempted again without that observation.** Two placements have now been
+tried on reasoning alone, and the second cost a hand-synced twin edit in
+load-bearing inference code for zero behavior change.
