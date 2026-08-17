@@ -25,17 +25,17 @@
 #   When verdicts flip between runs, diff INVOCATION first (shim path, CSSL_STD_SEED_LINK).
 #   FAIL-CLOSED (2026-08-17): HARNESS_REFUSE and EMIT_REFUSE exit non-zero after printing the
 #   TSV row — a recorded refusal must stop the line; exit 0 on harness down zeroed deficit frequency.
-#   STALE-LOG (2026-08-17): PROBE_KEEP_LOG_DIR is not cleared per module — a refusing run must
-#   rm -f the prior <module>.cargo.log or downstream greps read an unstated time (nonzero survives
-#   only when the log was written by THIS invocation). Use a fresh log dir per orchestrated sweep.
+#   STALE-LOG (2026-08-17): clear_probe_keep_log rm -f's <dir>/<module>.cargo.log at invocation
+#   and on harness refuse so a missing log after refuse is observable (not a prior run's file).
+#   Use a fresh PROBE_KEEP_LOG_DIR per orchestrated sweep when switching cohorts.
 #   PAIRED READING: publish a count beside any zero — a bare zero from this instrument is suspect.
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
 #   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
-#   Exit codes: 0 = measurement completed (including EMIT_REFUSE / cargo refuse rows);
-#               1 = instrument down (HARNESS_REFUSE — cssl_assemble or probe Cargo.toml authority
-#                   refused before cargo ran; residual_histogram carries instrument_down:1);
+#   Exit codes: 0 = measurement completed (emit reached cargo — including cargo refuse rows);
+#               1 = line-stop refuse (HARNESS_REFUSE or EMIT_REFUSE; HARNESS_REFUSE sets
+#                   residual_histogram instrument_down:1);
 #               2 = usage error.
 set -euo pipefail
 
