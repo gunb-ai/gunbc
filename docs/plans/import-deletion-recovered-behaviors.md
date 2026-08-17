@@ -659,3 +659,67 @@ compiles.
 Withdrawn with this: the claim that ~5% of the diagnostics are cut-pass defects.
 The one genuine cut-pass defect established so far remains the .dag fixture
 edited inside a Rust string literal.
+
+### Third and final position, this time by execution: qualification is the fix
+
+The two corrections above are both WRONG, and they were wrong the same way --
+each inferred a resolver capability from the shape of diagnostics rather than
+executing the question. Building main's `gunbc` and running an isolated probe
+settles it in the opposite direction.
+
+Probe: a carrier module declaring a coproduct (`Choice = Yes { n: Int } | No`),
+a record (`Rec`), and a function (`helper`), plus one consumer module per
+reference form. Compiled with main's binary at `bbb5213`.
+
+```
+CASE                                              rc
+import + bare (positive control)                   0
+qualified record        probe.carrier.Rec { }      0
+qualified variant       probe.carrier.Yes { }      0
+qualified function      probe.carrier.helper()     0
+qualified variant in MATCH PATTERN                 0
+qualified variant in TYPE ANNOTATION               0
+qualified across TWO SOURCE ROOTS                  0
+qualified under --entry, no import edge to walk    0
+
+NEGATIVE CONTROLS
+probe.carrier.Nonexistent { }                      1
+probe.no_such_module.helper()                      1
+probe.carrier.no_such_fn()                         1
+```
+
+The negative controls refuse, so the green results are discriminating rather
+than fail-open -- which matters here, because this compiler is known to accept
+things it does not check, and a green compile is not evidence on its own.
+
+**Fully-qualified cross-module references resolve in every position and
+configuration tested, including the two the earlier sections claimed were
+broken** (pattern position and module-member functions), including across source
+roots, and including under `--entry` where no import edge exists to walk. The
+only output is an advisory `UnlistedImportUse`, which is enforcement this branch
+already deleted at the root.
+
+So the earlier claim that "neither bare nor qualified resolves, there is no third
+spelling" is false. Qualified resolves. The corpus fails because the cut left
+references BARE:
+
+```
+branch, failing:  fn fixture_slot(host: HostIdentity, index: Int) -> ...
+branch, working:  fn w_host() -> product.placement_supply.HostIdentity { ... }
+```
+
+Both spellings are present in the tree today -- the cut qualified some files and
+left 3,013 with bare references -- and the bare ones are the diagnostics.
+
+**Consequently the withdrawn redrive is reinstated as the correct fix**, and the
+argument that killed it does not survive: it rested on `HostIdentity` being
+unique-declarer yet unresolved, read as proof that lookup was absent. The real
+explanation is simpler -- a bare reference is not looked up globally at all, so
+uniqueness buys nothing, while the qualified form resolves that same name today.
+Qualifying from pre-cut binding identity is not hand-writing a missing
+resolver's job; it is writing the reference form the resolver already supports.
+
+What this does NOT establish: that qualification is the terminal form. DESIGN's
+namespace census intends bare references to resolve by containment for globally
+unique names, and that work remains. Qualification is the form that compiles
+now, and it is compatible with that end state rather than a substitute for it.
