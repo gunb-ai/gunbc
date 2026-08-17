@@ -195,7 +195,7 @@ fn attribute_within(
   children: List<ExtentInFrame>,
 ) -> AttributionResult {
   let ordered = sort_by(children, fn(c) { extent_low_ns(e: c) })
-  let scanned = fold_list(
+  let scanned = v2.std.algebra.fold_list(
     ordered,
     AttributionScan { cursor: extent_low_ns(e: parent), spans: [], refusal: Absent },
     (acc, c) => attribution_step(acc: acc, parent: parent, child: c)
@@ -266,7 +266,7 @@ fn attribute_specs(parent: ExtentSpec, children: List<ExtentSpec>) -> Attributio
   match extent_from_spec(spec: parent) {
     SpecRefused { cause: c } => AttributionRefusedImpossibleInterval { cause: c }
     SpecReady { extent: p } => {
-      let scanned = fold_list(
+      let scanned = v2.std.algebra.fold_list(
         children,
         SpecScan { extents: [], refusal: Absent },
         (acc, spec) => spec_scan_step(acc: acc, spec: spec)

@@ -79,7 +79,7 @@ type WirelessReachStanding
       controller: HostIdentity,
       target: HostIdentity,
       interface: NonEmptyStr,
-      bssid: MacAddress,
+      bssid: extdeps.dhcp.v4.MacAddress,
       signal: SignalStrength?,
     }
   | TargetAssociationObserved {
