@@ -26,9 +26,11 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
   TeardownRefusalCause,
   MemberNotOwned,
   OwnershipUnknown,
+  RosterDuplicateKey,
   membership_reconcile,
   membership_plan_admitting_outcome,
   membership_refusal_count,
@@ -232,6 +234,7 @@ fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {
   match cause {
     MemberNotOwned => "MemberNotOwned"
     OwnershipUnknown => "OwnershipUnknown"
+    RosterDuplicateKey { roster: _ } => "RosterDuplicateKey"
   }
 }
 
@@ -246,6 +249,7 @@ fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirement
         concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -260,6 +264,7 @@ fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -340,6 +345,7 @@ fn fleet_converge_spark_serving_action_kind(action: MemberAction<SparkServingMem
     MemberChanged { at: _, from: _, to: _ } => "CHANGE"
     MemberRemoved { at: _, from: _ } => "REMOVE"
     MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -349,6 +355,7 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
     MemberChanged { at: _, from: _, to: m } => m
     MemberRemoved { at: _, from: m } => m
     MemberRemovalRefused { from: m, cause: _ } => m
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
   }
   join(
     [
@@ -541,6 +548,7 @@ fn cap_apply_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
     MemberChanged { at: _, from: _, to: t } => cap_upsert_script(m: t)
     MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
     MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
 }
 
@@ -552,6 +560,7 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirement
       MemberRemoved { at: _, from: m } =>
         [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
       MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       MemberAdded { at: _, to: _ } => []
       MemberChanged { at: _, from: _, to: _ } => []
     }

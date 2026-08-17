@@ -446,6 +446,16 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
+    MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } =>
+      WorkflowReconcileFold {
+        remaining: acc.remaining + 1,
+        plan_refusals: acc.plan_refusals + 1,
+        first_missing: if acc.first_missing == "" {
+          join([workflow_fact_locus(fact: member.fact), ":duplicate-roster-key"], "")
+        } else {
+          acc.first_missing
+        },
+      }
   }
 }
 

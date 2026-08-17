@@ -11,7 +11,7 @@ import gunbc.roadmap_authority {
 }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
-  MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
+  MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused, MemberRosterDuplicateKeyRefused,
   membership_reconcile,
   membership_plan_admitting_outcome,
 }
@@ -264,6 +264,7 @@ fn belt_plan_upserts(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) -> 
       MemberChanged { at: _, from: _, to: member } => concat(acc, [member])
       MemberRemoved { at: _, from: _ } => acc
       MemberRemovalRefused { from: _, cause: _ } => acc
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
     }
   })
 }
@@ -275,6 +276,7 @@ fn belt_plan_teardowns(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) -
       MemberAdded { at: _, to: _ } => acc
       MemberChanged { at: _, from: _, to: _ } => acc
       MemberRemovalRefused { from: _, cause: _ } => acc
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
     }
   })
 }
@@ -282,6 +284,7 @@ fn belt_plan_teardowns(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) -
 fn belt_plan_refusals(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<MemberAction<DispatchMember, DispatchMemberAt>> {
   plan.actions |> filter(a => match a {
     MemberRemovalRefused { from: _, cause: _ } => true
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
     MemberAdded { at: _, to: _ } => false
     MemberChanged { at: _, from: _, to: _ } => false
     MemberRemoved { at: _, from: _ } => false
@@ -348,6 +351,7 @@ fn belt_member_ids(ms: List<DispatchMember>) -> List<String> {
 fn belt_refusal_member_id(a: MemberAction<DispatchMember, DispatchMemberAt>) -> String {
   match a {
     MemberRemovalRefused { from: member, cause: _ } => dispatch_member_id(m: member)
+    MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } => dispatch_member_id(m: member)
     MemberAdded { at: _, to: member } => dispatch_member_id(m: member)
     MemberChanged { at: _, from: _, to: member } => dispatch_member_id(m: member)
     MemberRemoved { at: _, from: member } => dispatch_member_id(m: member)

@@ -13,7 +13,9 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
   MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
-  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
+  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown, RosterDuplicateKey,
+  MemberRosterDuplicateKeyRefused,
+  MembershipReconcileDuplicateKey, MembershipDesiredRoster,
   membership_reconcile,
   membership_plan_admitting_outcome,
   membership_reconcile_scoped,
@@ -91,7 +93,7 @@ fn plan_has_refused_not_owned(plan: MembershipPlan<TMember, TMemberAt>, mid: Str
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
-        m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false })
+        m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false  RosterDuplicateKey { roster: _ } => false })
       _ => false
     }
   )
@@ -101,7 +103,7 @@ fn plan_has_refused_unknown(plan: MembershipPlan<TMember, TMemberAt>, mid: Strin
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
-        m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false })
+        m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false  RosterDuplicateKey { roster: _ } => false })
       _ => false
     }
   )
@@ -219,7 +221,7 @@ test fn w_effects_refuses_wholesale_on_any_refusal() -> Bool {
       count(rs) == 1
         && any(rs, r =>
              r.member.mid == "e"
-               && (match r.cause { MemberNotOwned => true  OwnershipUnknown => false }))
+               && (match r.cause { MemberNotOwned => true  OwnershipUnknown => false  RosterDuplicateKey { roster: _ } => false }))
     EffectsReady { effects: _ } => false
   }
 }
@@ -316,6 +318,34 @@ test fn w_same_key_different_scope_stays_distinct() -> Bool {
       a: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: a),
       b: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: b),
     )
+}
+
+test fn w_duplicate_plain_key_refuses_with_roster_cause() -> Bool {
+  let plan = membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [tm_owned(mid: "dup", ver: "1"), tm_owned(mid: "dup", ver: "2")],
+      observed: [],
+      key_of: t_key,
+      key_eq: t_key_eq,
+      value_eq: t_val_eq,
+      ownership_of: t_own,
+    ),
+  )
+  any(plan.actions, a =>
+    match a {
+      MemberRosterDuplicateKeyRefused { roster: MembershipDesiredRoster, first: f, duplicate: d } =>
+        f.mid == "dup" && d.mid == "dup" && f.ver == "1" && d.ver == "2"
+      _ => false
+    }
+  )
+    && match membership_effects(plan: plan) {
+      ApplyRefused { refusals: rs } =>
+        count(rs) == 1
+          && any(rs, r =>
+               r.member.mid == "dup"
+                 && (match r.cause { RosterDuplicateKey { roster: MembershipDesiredRoster } => true  _ => false }))
+      EffectsReady { effects: _ } => false
+    }
 }
 
 data w_duplicate_scoped_key_refuses_note: String = "DISCRIMINATING: two desired members sharing one scoped key must refuse at roster build — MembershipReconcileDuplicateScopedKey on the desired roster, never a 1:1 diff."
