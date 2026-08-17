@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this hand-shell M=11 probe loop; until then it
+# projects the curated_cargo_probe_one.sh spine across partition §11.14 modules and banks
+# per-site B1 E0369 classification TSV (probe-only).
+# dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
+# Authority: dag/tools/self_host_curated_probe_cargo.dag via docs/probes/curated_cargo_probe_one.sh
+# (docs/probes/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc);
+# per-site rules via docs/probes/e0369_b1_operator_classify.py; partition bucket definition
+# docs/plans/self-host-cargo-refusal-root-partition.md §18 / §18.4.
+# Frozen output receipt (not authority): docs/probes/e0369_b1_operator_classification_2026-08-17.md.
+#
 # M=11 E0369 B1 operator-on-carrier classification receipt.
 # Route: curated_cargo_probe_one.sh (§11.1 instrument) → cargo.log parse → classify.
 set -euo pipefail
