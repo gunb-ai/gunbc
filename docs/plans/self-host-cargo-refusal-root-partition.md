@@ -844,7 +844,7 @@ rather than joining the nearest root.
 
 | root | sites | % | in floor | in delta |
 |---|---:|---:|---:|---:|
-| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 unclassified) | ~~509~~ | ~~27.2~~ | 80 | 429 |
+| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 repr_fork per §18.4) | ~~509~~ | ~~27.2~~ | 80 | 429 |
 | **C — Optional collapses to `()`** (owner `gentle-dove-833`) | 167 | 8.9 | 136 | 31 |
 | **A — generic Clone bound not emitted** (owner `smart-ram-730`) | 142 | 7.6 | 98 | 44 |
 | **K — unsynthesized use-line** (E0433/E0425/E0422 unresolved names) | 132 | 7.0 | 13 | 119 |
@@ -879,8 +879,8 @@ R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
 > **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and nothing in
 > it directs anyone to do the wrong thing — but it is the list a session greps to learn what the
 > partition contains, and **B1 is no longer one root**: §18 decomposes it into at most 146
-> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 rows
-> deliberately left unclassified. Read §18 before treating "six" as the root count or before
+> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 operator-on-carrier
+> sites (all repr_fork — §18.4). Read §18 before treating "six" as the root count or before
 > re-deriving a mechanism for the algebra carrier.
 
 
