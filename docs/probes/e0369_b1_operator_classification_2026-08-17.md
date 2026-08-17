@@ -78,6 +78,9 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - Fresh M=11 cargo logs were not banked in this receipt. The authoritative count here is the
   **July 7-module instance bank** (112 distinct B1-keyword sites), extended to 191 by mechanism
   argument — not a live `curated_cargo_probe_one.sh` sweep on current main.
+- **CI run 32019076745 @ `42a29aa` (2026-08-17):** `ci` failed on floor job kill/timeout (~95 min),
+  not witness refusal — discovery reported **9948 passed · 0 failed**; batches 1–2 green. Retry via
+  new head, not `gh run rerun` (frozen merge ref).
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
