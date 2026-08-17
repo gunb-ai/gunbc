@@ -54,6 +54,8 @@ import gunbc.codex_supervised_turn {
   CodexRunnerTurnTerminalReceipt,
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
+  CodexSupervisedTurnBindingPrepareRefused,
+  CodexSupervisedTurnBindingPrepared,
   prepare_codex_supervised_turn_binding,
 }
 import gunbc.codex_supervised_turn_run { run_codex_supervised_turn }
@@ -385,24 +387,27 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
               )
               match credential {
                 CodexPressAccountReady { receipt } => {
-                  let binding = prepare_codex_supervised_turn_binding(
+                  match prepare_codex_supervised_turn_binding(
                     turn: turn,
                     credential: receipt.subject.credential,
                     evidence_root: evidence.path,
                     observed: LeaseAbsent,
                     standing_receipt: none,
-                  )
-                  match run_codex_supervised_turn(
-                    bundle: bundle,
-                    credential: receipt.subject.credential,
-                    binding: binding,
-                    cwd: cwd.path,
-                    evidence_root: evidence.path,
                   ) {
-                    CodexSupervisedTurnOk { receipt: terminal } =>
-                      wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
-                    CodexSupervisedTurnRefused { reason: _ } => false
-                    CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                    CodexSupervisedTurnBindingPrepared { binding: binding } =>
+                      match run_codex_supervised_turn(
+                        bundle: bundle,
+                        credential: receipt.subject.credential,
+                        binding: binding,
+                        cwd: cwd.path,
+                        evidence_root: evidence.path,
+                      ) {
+                        CodexSupervisedTurnOk { receipt: terminal } =>
+                          wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
+                        CodexSupervisedTurnRefused { reason: _ } => false
+                        CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                      }
+                    CodexSupervisedTurnBindingPrepareRefused { reason: _ } => false
                   }
                 }
                 CodexPressLoginRequired { reason: _, receipt: _ } => false

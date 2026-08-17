@@ -38,6 +38,7 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
 }
 import extdeps.filesystem.filesystem_io
+import extdeps.shell
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
 }
@@ -102,6 +103,10 @@ type CodexSupervisedTurnBinding {
   standing_receipt: CodexAccountStandingReceipt?
 }
 
+type CodexSupervisedTurnBindingPrepare
+  = CodexSupervisedTurnBindingPrepared { binding: CodexSupervisedTurnBinding }
+  | CodexSupervisedTurnBindingPrepareRefused { reason: NonEmptyStr }
+
 type CodexRunnerTurnTerminalReceipt {
   binding: CodexSupervisedTurnBinding
   native_thread_id: NonEmptyStr?
@@ -115,6 +120,13 @@ type CodexTurnStartAdmission
   = CodexTurnStartAdmitted
   | CodexTurnStartRefusedDuplicateExecution { reason: NonEmptyStr }
   | CodexTurnStartRefusedOutcomeUnobserved { reason: NonEmptyStr }
+
+type CodexSupervisedGenerationRead
+  = GenerationAbsent
+  | GenerationRead { generation: Int }
+  | GenerationStoreUnreadable { reason: NonEmptyStr }
+  | GenerationStoreMalformed { content: String }
+  | GenerationStoreNegative { value: Int }
 
 type CodexSupervisedTurnOutcome
   = CodexSupervisedTurnOk { receipt: CodexRunnerTurnTerminalReceipt }
@@ -219,34 +231,69 @@ fn codex_supervised_turn_generation_store_path(evidence_root: FilePath) -> Strin
   concat(evidence_root as String, codex_supervised_turn_generation_file_name)
 }
 
-fn codex_supervised_parse_nonneg_generation_text(content: String) -> Int? {
+fn codex_supervised_generation_read_from_content(content: String) -> CodexSupervisedGenerationRead {
   let trimmed = trim(s: content)
   if trimmed == "" {
-    none
+    GenerationStoreMalformed { content: content }
   } else {
     match parse_int(s: trimmed) {
+      Absent => GenerationStoreMalformed { content: content }
       Present { value: n } =>
         if n >= 0 {
-          Present { value: n }
+          GenerationRead { generation: n }
         } else {
-          none
+          GenerationStoreNegative { value: n }
         }
-      Absent => none
     }
   }
 }
 
-fn read_codex_supervised_turn_prior_generation(evidence_root: FilePath) -> Int {
+fn codex_supervised_generation_read_from_store(
+  store_present: Bool,
+  read_success: Bool,
+  content: String,
+) -> CodexSupervisedGenerationRead {
+  if store_present == false {
+    GenerationAbsent
+  } else if read_success == false {
+    GenerationStoreUnreadable {
+      reason: "supervised turn generation store unreadable" as NonEmptyStr,
+    }
+  } else {
+    codex_supervised_generation_read_from_content(content: content)
+  }
+}
+
+fn read_codex_supervised_turn_prior_generation(evidence_root: FilePath) -> CodexSupervisedGenerationRead {
   let path = codex_supervised_turn_generation_store_path(evidence_root: evidence_root)
   if shell.Test.IsFile(path: path as FilePath).is_file == false {
-    0
+    GenerationAbsent
   } else {
-    match codex_supervised_parse_nonneg_generation_text(
-      content: filesystem_read(path: path).content,
-    ) {
-      Present { value: n } => n
-      Absent => 0
-    }
+    let read = Filesystem.Read(path: path)
+    codex_supervised_generation_read_from_store(
+      store_present: true,
+      read_success: read.success,
+      content: read.content,
+    )
+  }
+}
+
+fn codex_supervised_turn_generation_admission(
+  read: CodexSupervisedGenerationRead,
+) -> CodexTurnStartAdmission {
+  match read {
+    GenerationAbsent => CodexTurnStartAdmitted
+    GenerationRead { generation: _ } => CodexTurnStartAdmitted
+    GenerationStoreUnreadable { reason: r } =>
+      CodexTurnStartRefusedDuplicateExecution { reason: r }
+    GenerationStoreMalformed { content: c } =>
+      CodexTurnStartRefusedDuplicateExecution {
+        reason: concat("generation store malformed: ", c) as NonEmptyStr,
+      }
+    GenerationStoreNegative { value: v } =>
+      CodexTurnStartRefusedDuplicateExecution {
+        reason: concat("generation store negative: ", to_string(n: v)) as NonEmptyStr,
+      }
   }
 }
 
@@ -276,17 +323,30 @@ fn prepare_codex_supervised_turn_binding(
   evidence_root: FilePath,
   observed: HeldLeaseObservedState,
   standing_receipt: CodexAccountStandingReceipt?,
-) -> CodexSupervisedTurnBinding {
-  let prior_generation = read_codex_supervised_turn_prior_generation(
-    evidence_root: evidence_root,
-  )
-  codex_supervised_turn_binding(
-    turn: turn,
-    credential: credential,
-    prior_generation: prior_generation,
-    observed: observed,
-    standing_receipt: standing_receipt,
-  )
+) -> CodexSupervisedTurnBindingPrepare {
+  let generation_read = read_codex_supervised_turn_prior_generation(evidence_root: evidence_root)
+  match codex_supervised_turn_generation_admission(read: generation_read) {
+    CodexTurnStartAdmitted => {
+      let prior_generation = match generation_read {
+        GenerationAbsent => 0
+        GenerationRead { generation: g } => g
+        _ => 0
+      }
+      CodexSupervisedTurnBindingPrepared {
+        binding: codex_supervised_turn_binding(
+          turn: turn,
+          credential: credential,
+          prior_generation: prior_generation,
+          observed: observed,
+          standing_receipt: standing_receipt,
+        ),
+      }
+    }
+    CodexTurnStartRefusedDuplicateExecution { reason: r } =>
+      CodexSupervisedTurnBindingPrepareRefused { reason: r }
+    CodexTurnStartRefusedOutcomeUnobserved { reason: r } =>
+      CodexSupervisedTurnBindingPrepareRefused { reason: r }
+  }
 }
 
 fn codex_supervised_turn_session_standing_admits(
@@ -667,16 +727,21 @@ fn codex_supervised_turn_outcome_from_capture(
       binding: running_binding,
       observed: LeaseAbsent,
     )
-    persist_codex_supervised_turn_generation(
+    if persist_codex_supervised_turn_generation(
       evidence_root: evidence_root,
       generation: terminal_binding.lease.generation,
-    )
-    let receipt = codex_runner_turn_terminal_receipt(
-      binding: terminal_binding,
-      parse: parse,
-      disposition: disposition,
-      wire: wire,
-    )
-    CodexSupervisedTurnOk { receipt: receipt }
+    ) == false {
+      CodexSupervisedTurnRefused {
+        reason: "failed to persist supervised turn generation fence" as NonEmptyStr,
+      }
+    } else {
+      let receipt = codex_runner_turn_terminal_receipt(
+        binding: terminal_binding,
+        parse: parse,
+        disposition: disposition,
+        wire: wire,
+      )
+      CodexSupervisedTurnOk { receipt: receipt }
+    }
   }
 }

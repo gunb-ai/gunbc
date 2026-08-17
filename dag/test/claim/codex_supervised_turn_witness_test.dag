@@ -16,11 +16,17 @@ import gunbc.codex_supervised_turn {
   CodexTurnStartAdmitted,
   CodexTurnStartRefusedDuplicateExecution,
   CodexTurnStartRefusedOutcomeUnobserved,
+  GenerationAbsent,
+  GenerationStoreMalformed,
+  GenerationStoreNegative,
+  GenerationStoreUnreadable,
   SupervisedRpcOk,
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
   codex_supervised_turn_session_policy,
   codex_supervised_turn_start_line_template,
+  codex_supervised_generation_read_from_store,
+  codex_supervised_turn_generation_admission,
   codex_turn_start_admission,
   codex_runner_turn_terminal_receipt,
   disposition_from_supervised_parse,
@@ -187,6 +193,78 @@ test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
   let parse = empty_supervised_turn_parse_acc()
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
     ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_missing_generation_store_reads_as_zero() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: false,
+    read_success: true,
+    content: "",
+  ) {
+    GenerationAbsent => true
+    _ => false
+  }
+}
+
+test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "garbage",
+  )
+  match read {
+    GenerationStoreMalformed { content: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "-3",
+  )
+  match read {
+    GenerationStoreNegative { value: v } =>
+      v == -3
+        && match codex_supervised_turn_generation_admission(read: read) {
+          CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "   ",
+  ) {
+    GenerationStoreMalformed { content: _ } => true
+    GenerationAbsent => false
+    _ => false
+  }
+}
+
+test fn witness_unreadable_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: false,
+    content: "",
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
     _ => false
   }
 }
