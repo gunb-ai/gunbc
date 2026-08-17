@@ -99,7 +99,6 @@ data gitignore_authority: List<IgnoreGroup> = [
     artifacts: [
       PythonLocalDevScriptFile,
       PythonAuditScriptAllowlisted,
-      DissolutionCensusProjectionScriptAllowlisted,
     ]
   },
   IgnoreGroup {

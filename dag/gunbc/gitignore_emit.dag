@@ -48,7 +48,6 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     GithubCLICacheDir => ".gh-cache/"
     PythonLocalDevScriptFile => "*.py"
     PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
-    DissolutionCensusProjectionScriptAllowlisted => "!docs/probes/dissolution_census_a_ci_layer_roots_project.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"
