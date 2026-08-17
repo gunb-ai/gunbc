@@ -100,6 +100,19 @@ file that cannot run.
 WHAT THE CUT ACTUALLY CHANGED, stated because it is the general fact and not a
 property of this file: an `import` could NAME a module outside the scanned roots;
 a reference closure can only pull files it can SEE. So cross-root dependencies are
-expressible under imports and structurally inexpressible after the cut. Any other
+expressible under imports and structurally inexpressible after the cut.
+
+CORRECTION to that sentence (side chat, 2026-08-17): cross-root references are
+not INHERENTLY impossible. They are impossible when the target root is not part
+of that compilation's declared module universe -- and that is the CORRECT
+fail-closed result, not a capability lost. The rule is simply:
+
+    a compilation can name only modules in its configured module universe.
+
+Under imports, a reference could name a module the compilation had no way to
+read, and the era tolerated the gap. The cut does not remove an ability; it
+stops the tolerance. Adding the target root to a compilation's universe remains
+available and is a configuration decision, which is exactly why the disposition
+for this file was a judgement about its coverage rather than a forced deletion. Any other
 file in this position has the same three dispositions and the same reasoning —
 this is a class, not an incident, even though its current population is one.
