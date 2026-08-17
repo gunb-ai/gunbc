@@ -276,7 +276,7 @@ fn json_bool(value: Bool) -> String {
   if value { "true" } else { "false" }
 }
 
-fn cardinality_name(value: Cardinality) -> String {
+fn cardinality_name(value: v1.std.core.Cardinality) -> String {
   match value {
     Required => "Required"
     CardOptional => "CardOptional"
