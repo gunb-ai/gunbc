@@ -7,8 +7,10 @@ import extdeps.github.pulls {
 }
 import extdeps.github.github { GitHubUser, User }
 import gunbc.digest_render { digest_subject }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_l1_cache_citations, ampere_altra_l1_cache_geometry, ampere_altra_l2_cache_citations, ampere_altra_l2_cache_geometry, ampere_altra_max_l3_cache_citations, ampere_altra_max_l3_cache_geometry, socket_lga4926_citations }
+import extdeps.cpu.ampere {
+  ampere_lga4926_cooling_mount, altra_max_m12830_catalog, ampere_altra_l1_cache_citations, ampere_altra_l1_cache_geometry, ampere_altra_l2_cache_citations, ampere_altra_l2_cache_geometry, ampere_altra_max_l3_cache_citations, ampere_altra_max_l3_cache_geometry, socket_lga4926_citations }
 import extdeps.cpu.types {
+  SocketedLandGrid,
   CpuModelCatalogRow, CpuSocket, LandGridArray,
 }
 import extdeps.toolchain.types { Aarch64 }
@@ -105,7 +107,7 @@ test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
     cores: 1,
     threads: hardware_thread_count(1),
     nominal_sustained_per_thread_hz: hertz(1000000000),
-    socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
+    socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount },
     socket_citations: socket_lga4926_citations,
     tdp_watts: watt(99),
     l1_cache: ampere_altra_l1_cache_geometry,
