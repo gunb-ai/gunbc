@@ -55,6 +55,19 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
 }
 
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
+// `is-enabled` answers the INSTALL state (whether the unit is wanted by a target), which is a
+// different question from `is-active` (whether it is running now) and from LoadState (whether the
+// manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
+// would then not come back after a reboot -- so a convergence claim that reads only is-active is
+// answering a question it was not asked.
+fn systemctl_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "is-enabled", unit as String]
+}
+
+fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "is-enabled", unit as String]
+}
+
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }

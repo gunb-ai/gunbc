@@ -1,7 +1,7 @@
 module gunbc.spark_serving_observed_members
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { serialize_content_hash }
+import std.content_hash { serialize_content_hash, content_hash_of_value }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Owned, Ensured }
 import gunbc.spark_serving_release {
@@ -11,6 +11,10 @@ import gunbc.spark_serving_release {
   SparkServingObservationRefused,
   SparkServingRelease,
 }
+import extdeps.systemd.systemctl { systemctl_user_is_enabled_argv }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingRuntimeRootAddress,
@@ -21,6 +25,7 @@ import gunbc.spark_serving_membership {
   spark_serving_primary_model_slot,
   spark_serving_serving_principal,
   spark_serving_executor_linger_state_digest,
+  spark_serving_user_unit_state_digest,
 }
 
 // THE OBSERVED SIDE OF THE FOUR-MEMBER POPULATION.
@@ -193,5 +198,51 @@ fn spark_serving_projection_supports_empty_replan(
   match projection {
     SparkServingObservedMembersRefused { cause: _ } => false
     SparkServingObservedMembers { members: _, unit_observed: observed } => observed
+  }
+}
+
+// ── Observing the unit, so `unit_observed` can stop being false ─────────────────────────────────
+
+// THE PROBE READS THE FILE'S BYTES, because the member's state IS the unit's content. The live
+// observer reads LoadState and is-active, and neither answers what this member is keyed on: a unit
+// can be loaded and active while its file on disk differs from the desired spec, which is precisely
+// the drift the member exists to catch.
+fn spark_serving_user_unit_read_argv() -> List<String> {
+  ["cat", spark_serving_user_unit_path() as String]
+}
+
+fn spark_serving_user_unit_is_enabled_argv() -> List<String> {
+  systemctl_user_is_enabled_argv(unit: spark_serving_unit_name as NonEmptyStr)
+}
+
+// CLASSIFYING THE READ, without ever deriving the answer from the desired state.
+//
+// The comparison is against the rendered desired text, and that is legitimate rather than circular:
+// the digest is NOT copied from the desired member. What is observed is a byte equality, which is a
+// real measurement of the file on disk. Equal bytes establish that the address holds the desired
+// spec, so the observed member carries the same digest and reconciles as converged; different bytes
+// carry a digest OF THE OBSERVED CONTENT, which differs and reconciles as a change.
+//
+// The distinction that matters: a failed read is NOT absence. `cat` exits non-zero both when the
+// file is missing and when it cannot be read, and only the first means the member is absent. Since
+// the two have different remedies -- write the unit, versus fix why it is unreadable -- a failed
+// read stays `UserUnitStateUnobserved` and never collapses into `UserUnitStateAbsent`.
+fn classify_observed_user_unit(
+  read_succeeded: Bool,
+  read_stdout: String,
+  file_absent: Bool,
+) -> SparkServingObservedUnitState {
+  if read_succeeded {
+    if read_stdout == spark_serving_desired_user_unit_text() {
+      UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() }
+    } else {
+      UserUnitStateObserved {
+        unit_state_digest: serialize_content_hash(
+          hash: content_hash_of_value(value: read_stdout as NonEmptyStr),
+        ) as NonEmptyStr,
+      }
+    }
+  } else {
+    if file_absent { UserUnitStateAbsent } else { UserUnitStateUnobserved }
   }
 }

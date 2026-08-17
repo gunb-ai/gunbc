@@ -1,0 +1,133 @@
+module test.claim.spark_serving_unit_observation_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.spark_serving_observed_members {
+  SparkServingObservedUnitState,
+  UserUnitStateObserved,
+  UserUnitStateAbsent,
+  UserUnitStateUnobserved,
+  classify_observed_user_unit,
+  spark_serving_user_unit_read_argv,
+  spark_serving_user_unit_is_enabled_argv,
+  spark_serving_unit_state_was_observed,
+}
+import gunbc.spark_serving_membership { spark_serving_user_unit_state_digest }
+import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+
+fn digest_of(state: SparkServingObservedUnitState) -> String {
+  match state {
+    UserUnitStateObserved { unit_state_digest: d } => d as String
+    UserUnitStateAbsent => "<absent>"
+    UserUnitStateUnobserved => "<unobserved>"
+  }
+}
+
+// ── Converged: the file on disk IS the desired spec ─────────────────────────────────────────────
+
+// A unit whose bytes equal the rendering carries the SAME digest as the desired member, so the
+// reconcile sees no change. This is what finally lets a second plan be empty.
+//
+// The digest is not COPIED from the desired state -- what was measured is a byte equality, which is
+// a real observation of the file. Equal bytes are what establish that the address holds the spec.
+test fn a_unit_matching_the_rendering_observes_the_desired_digest() -> Bool {
+  digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_desired_user_unit_text(),
+      file_absent: false,
+    ),
+  ) == (spark_serving_user_unit_state_digest() as String)
+}
+
+// ── Drifted: present, but not what was asked for ────────────────────────────────────────────────
+
+// THE KEYSTONE. A unit file that exists but differs must NOT observe the desired digest, or a
+// drifted host would report converged forever and the member would be unable to detect the one
+// thing it exists to detect. The two digests must be distinct constants, not merely "some digest".
+test fn a_drifted_unit_does_not_observe_the_desired_digest() -> Bool {
+  digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: "[Unit]\nDescription=something else\n",
+      file_absent: false,
+    ),
+  ) != (spark_serving_user_unit_state_digest() as String)
+}
+
+// A drifted unit is still OBSERVED -- we read it and know what it holds. Rendering drift as
+// unobserved would lose the fact that we successfully looked.
+test fn a_drifted_unit_is_still_observed() -> Bool {
+  spark_serving_unit_state_was_observed(
+    unit: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: "[Unit]\nDescription=something else\n",
+      file_absent: false,
+    ),
+  )
+}
+
+// Whitespace is not a free pass: a byte difference is a difference. The convergence comparison is
+// exact, so a trailing-newline change is drift, which is the same reason the renderer's trailing
+// newline is load-bearing.
+test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
+  digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: "[Unit]\nDescription=x",
+      file_absent: false,
+    ),
+  ) != (spark_serving_user_unit_state_digest() as String)
+}
+
+// ── Absent is not unobserved, and a failed read is not absence ──────────────────────────────────
+
+// `cat` exits non-zero both when the file is missing and when it cannot be read, and only the first
+// means the member is absent. The remedies differ -- write the unit, versus fix why it is unreadable
+// -- so a failed read that did not establish absence stays unobserved.
+test fn a_failed_read_that_did_not_establish_absence_stays_unobserved() -> Bool {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false) {
+    UserUnitStateUnobserved => true
+    UserUnitStateAbsent => false
+    UserUnitStateObserved { unit_state_digest: _ } => false
+  }
+}
+
+test fn a_read_that_established_absence_observes_absence() -> Bool {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true) {
+    UserUnitStateAbsent => true
+    UserUnitStateUnobserved => false
+    UserUnitStateObserved { unit_state_digest: _ } => false
+  }
+}
+
+// The two failure arms must not collapse: this asserts they are DIFFERENT, which is the property a
+// single "not found" arm would silently destroy.
+test fn a_failed_read_and_an_established_absence_are_different_states() -> Bool {
+  digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false))
+    != digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true))
+}
+
+// An empty successful read is NOT absence either -- an empty file is a file, and it is drift.
+test fn an_empty_successful_read_is_drift_not_absence() -> Bool {
+  match classify_observed_user_unit(read_succeeded: true, read_stdout: "", file_absent: false) {
+    UserUnitStateObserved { unit_state_digest: _ } => true
+    UserUnitStateAbsent => false
+    UserUnitStateUnobserved => false
+  }
+}
+
+// ── The probes read what they claim to read ─────────────────────────────────────────────────────
+
+test fn the_unit_read_probe_reads_the_modeled_unit_path() -> Bool {
+  spark_serving_user_unit_read_argv()
+    == ["cat", spark_serving_user_unit_path() as String]
+}
+
+// `is-enabled` is the INSTALL state, a different question from is-active. It is asked of the USER
+// manager, because this is a user unit and a system-manager query would answer about a different
+// unit namespace entirely.
+test fn the_enabled_probe_asks_the_user_manager() -> Bool {
+  spark_serving_user_unit_is_enabled_argv()
+    == ["systemctl", "--user", "is-enabled", "gunbc-spark-serving.service"]
+}
