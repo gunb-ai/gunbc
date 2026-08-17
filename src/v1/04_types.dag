@@ -14,12 +14,12 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn resolved_type(n: Node) -> Node {
   match n.inferred {
-    Present { value: Resolved { node: rt } } => rt
+    Present { value: v1.std.core.Resolved { node: rt } } => rt
     _ => error_type
   }
 }
@@ -116,7 +116,7 @@ fn kernel_profile_lookup(name: String) -> AlgebraProfile? {
 fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   if n.name != "" && n.name != authored_name_at(source_indices: source_indices, node: n) && is_declared_container_alias_spelling(name: n.name) {
     Node {
-      name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
+      name: n.name, span: n.span, ident_span: Present { value: v1.std.core.kernel_span(name: n.name) },
       children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
       properties: n.properties, type_annotation: n.type_annotation,
@@ -131,7 +131,7 @@ fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineI
 fn structural_carrier_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   if n.name != "" {
     canonical_template_name(n: Node {
-      name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
+      name: n.name, span: n.span, ident_span: Present { value: v1.std.core.kernel_span(name: n.name) },
       children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
       return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
       properties: n.properties, type_annotation: n.type_annotation,
@@ -168,9 +168,9 @@ fn bare_map_node() -> Node? {
         Present { value: val_id } =>
           Present {
             value: Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [
-              Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-              Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-            ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+              Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+              Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+            ], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
           }
         Absent => none
       }
@@ -183,8 +183,8 @@ fn bare_set_node() -> Node? {
     Present { value: elem_id } =>
       Present {
         value: Node { name: "Set", span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [
-          Node { name: elem_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+          Node { name: elem_id, span: make_span(start: 0, end: 0), ident_span: Present { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        ], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       }
     Absent => none
   }
@@ -208,7 +208,7 @@ fn missing_kernel_container_profile_type(kind_name: String) -> Node {
     connective: NoConnective,
     params: [],
     inferred: Present { value: CompilerError { message: msg, span: make_span(start: 0, end: 0) } },
-    return_cardinality: Required,
+    return_cardinality: v1.std.core.Required,
     uses: [], body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
     match_pattern: none,
@@ -225,11 +225,11 @@ data kernel_record_type_note: String = "A builtin whose return type is registere
 
 fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
   Node {
-    name: field_name, span: kernel_span(name: field_name),
-    ident_span: Present { value: kernel_span(name: field_name) },
+    name: field_name, span: v1.std.core.kernel_span(name: field_name),
+    ident_span: Present { value: v1.std.core.kernel_span(name: field_name) },
     children: [], connective: NoConnective, params: [],
-    inferred: Present { value: Resolved { node: field_type } },
-    return_cardinality: Required, uses: [], body: none, transport: none,
+    inferred: Present { value: v1.std.core.Resolved { node: field_type } },
+    return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
@@ -237,10 +237,10 @@ fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
 
 fn make_kernel_record_type(type_name: String, fields: List<Node>) -> Node {
   Node {
-    name: type_name, span: kernel_span(name: type_name),
-    ident_span: Present { value: kernel_span(name: type_name) },
+    name: type_name, span: v1.std.core.kernel_span(name: type_name),
+    ident_span: Present { value: v1.std.core.kernel_span(name: type_name) },
     children: fields, connective: Conj, params: [], inferred: none,
-    return_cardinality: Required, uses: [], body: none, transport: none,
+    return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
@@ -250,9 +250,9 @@ fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
   match container_param_name(kind_name: kind_name, index: 0) {
     Present { value: param_name } =>
       KernelTypeBuild {
-        ty: Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [
-          Node { name: param_name, span: kernel_span(name: param_name), ident_span: Present { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        ty: Node { name: kind_name, span: v1.std.core.kernel_span(name: kind_name), ident_span: Present { value: v1.std.core.kernel_span(name: kind_name) }, children: [
+          Node { name: param_name, span: v1.std.core.kernel_span(name: param_name), ident_span: Present { value: v1.std.core.kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: element } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        ], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         diagnostics: []
       }
     Absent =>
@@ -269,10 +269,10 @@ fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
       match container_param_name(kind_name: "Map", index: 1) {
         Present { value: val_name } =>
           KernelTypeBuild {
-            ty: Node { name: "Map", span: kernel_span(name: "Map"), ident_span: Present { value: kernel_span(name: "Map") }, children: [
-              Node { name: key_name, span: kernel_span(name: key_name), ident_span: Present { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-              Node { name: val_name, span: kernel_span(name: val_name), ident_span: Present { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-            ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+            ty: Node { name: "Map", span: v1.std.core.kernel_span(name: "Map"), ident_span: Present { value: v1.std.core.kernel_span(name: "Map") }, children: [
+              Node { name: key_name, span: v1.std.core.kernel_span(name: key_name), ident_span: Present { value: v1.std.core.kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: key } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+              Node { name: val_name, span: v1.std.core.kernel_span(name: val_name), ident_span: Present { value: v1.std.core.kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: value } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+            ], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
             diagnostics: []
           }
         Absent =>
@@ -290,24 +290,24 @@ fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
 }
 
 fn make_callable_type(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: kernel_span(name: "Callable"), ident_span: Present { value: kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Present { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: v1.std.core.kernel_span(name: "Callable"), ident_span: Present { value: v1.std.core.kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Present { value: v1.std.core.Resolved { node: ret } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn make_tuple_type(first: Node, second: Node) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "first", span: kernel_span(name: "first"), ident_span: Present { value: kernel_span(name: "first") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: kernel_span(name: "second"), ident_span: Present { value: kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: "first", span: v1.std.core.kernel_span(name: "first"), ident_span: Present { value: v1.std.core.kernel_span(name: "first") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: first } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: v1.std.core.kernel_span(name: "second"), ident_span: Present { value: v1.std.core.kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: second } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn algebra_value_field(name: String, type_node: Node) -> Node {
-  Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: v1.std.core.kernel_span(name: name), ident_span: Present { value: v1.std.core.kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: type_node } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
   let callable = make_callable_type(func_params: params, ret: return_type)
-  Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: v1.std.core.kernel_span(name: name), ident_span: Present { value: v1.std.core.kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: callable } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn enrich_base_with_fields(name: String, base: Node, fields: List<Node>) -> Node {
@@ -319,7 +319,7 @@ fn placeholder_type_node(name: String) -> Node {
 }
 
 fn nominal_type_ref(name: String) -> Node {
-  leaf_node_with_span(name: name, span: kernel_span(name: name))
+  leaf_node_with_span(name: name, span: v1.std.core.kernel_span(name: name))
 }
 
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
@@ -622,7 +622,7 @@ fn callable_inferred(n: Node) -> Node {
   let is_callable = n.params |> count > 0
   if is_callable {
     match n.inferred {
-      Present { value: Resolved { node: ret } } =>
+      Present { value: v1.std.core.Resolved { node: ret } } =>
         if (ret.connective == Arrow) { ret } else { make_callable_type(func_params: n.params, ret: ret) }
       Absent => error_type
       _ => error_type
@@ -633,14 +633,14 @@ fn callable_inferred(n: Node) -> Node {
 fn callable_return_type(n: Node) -> Node {
   if n.params |> count == 0 {
     match n.inferred {
-      Present { value: Resolved { node: ret } } => ret
+      Present { value: v1.std.core.Resolved { node: ret } } => ret
       _ => error_type
     }
   } else {
     match callable_inferred(n: n).inferred {
-      Present { value: Resolved { node: callable } } =>
+      Present { value: v1.std.core.Resolved { node: callable } } =>
         match callable.inferred {
-          Present { value: Resolved { node: ret } } => ret
+          Present { value: v1.std.core.Resolved { node: ret } } => ret
           _ => error_type
         }
       _ => error_type
@@ -659,7 +659,7 @@ fn global_bare_callable_binding(binding: TypeBinding) -> Bool {
 
 fn value_binding_expr_type_node(resolved: Node) -> Node {
   match resolved.inferred {
-    Present { value: Resolved { node: ty } } => ty
+    Present { value: v1.std.core.Resolved { node: ty } } => ty
     _ => resolved
   }
 }
@@ -680,7 +680,7 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
   let n_name = authored_name_at(source_indices: source_indices, node: n)
   if __is_leaf {
     let __is_named_ref = match n.inferred {
-      Present { value: Resolved { node: rt } } =>
+      Present { value: v1.std.core.Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
           && rt.ident_span != none && authored_name_at(source_indices: source_indices, node: rt) != "None"
           && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: rt)) == false
@@ -924,9 +924,9 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
           if params_eq == false { false }
           else {
             match left.inferred {
-              Present { value: Resolved { node: left_ret } } =>
+              Present { value: v1.std.core.Resolved { node: left_ret } } =>
                 match right.inferred {
-                  Present { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret, source_indices: source_indices)
+                  Present { value: v1.std.core.Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret, source_indices: source_indices)
                   Absent => false
                   _ => false
                 }
@@ -949,7 +949,7 @@ fn node_type_deps(n: Node, source_indices: Map<String, NewlineIndex>) -> List<St
   let __is_named_ref = if n.inferred == none { false }
   else {
     match n.inferred {
-      Present { value: Resolved { node: rt } } =>
+      Present { value: v1.std.core.Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
           && rt.ident_span != none && authored_name_at(source_indices: source_indices, node: rt) != "None"
           && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: rt)) == false
@@ -959,16 +959,16 @@ fn node_type_deps(n: Node, source_indices: Map<String, NewlineIndex>) -> List<St
   let has_structure = n.connective != NoConnective
   let n_name = authored_name_at(source_indices: source_indices, node: n)
   if __is_named_ref {
-    match n.inferred { Present { value: Resolved { node: rt } } => [authored_name_at(source_indices: source_indices, node: rt)]  _ => [] }
+    match n.inferred { Present { value: v1.std.core.Resolved { node: rt } } => [authored_name_at(source_indices: source_indices, node: rt)]  _ => [] }
   } else if has_structure {
     flat_map(n.children, child =>
       match child.inferred {
-        Present { value: Resolved { node: rt } } => node_type_deps(n: rt, source_indices: source_indices)
+        Present { value: v1.std.core.Resolved { node: rt } } => node_type_deps(n: rt, source_indices: source_indices)
         _ => if child.inferred == none { node_type_deps(n: child, source_indices: source_indices) } else { [] }
       }
     )
   } else if n.inferred != none {
-    match n.inferred { Present { value: Resolved { node: rt } } => node_type_deps(n: rt, source_indices: source_indices)  _ => [] }
+    match n.inferred { Present { value: v1.std.core.Resolved { node: rt } } => node_type_deps(n: rt, source_indices: source_indices)  _ => [] }
   } else if n.children |> count > 0 {
     let child_deps = flat_map(n.children, child => node_type_deps(n: child, source_indices: source_indices))
     if n.ident_span != none && is_kernel_type(name: n_name) == false {
@@ -1098,10 +1098,10 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String,
         match first_matching_algebra_field(n: left_type, candidates: candidates, source_indices: source_indices) {
           Present { value: m } =>
             match m.field_node.inferred {
-              Present { value: Resolved { node: rt } } =>
+              Present { value: v1.std.core.Resolved { node: rt } } =>
                 if rt.params |> count > 0 {
                   match rt.inferred {
-                    Present { value: Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Present { value: m.field_kind } }
+                    Present { value: v1.std.core.Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Present { value: m.field_kind } }
                     _ => BinOpInferred { result_type: left_type, algebra_field: Present { value: m.field_kind } }
                   }
                 } else { BinOpInferred { result_type: rt, algebra_field: Present { value: m.field_kind } } }
