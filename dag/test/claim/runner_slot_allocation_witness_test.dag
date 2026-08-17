@@ -18,9 +18,9 @@ import gunbc.runner_slot_allocation {
   runner_slot_effective_memory_max_drifts_from_declaration,
   runner_slot_effective_memory_high_drifts_from_declaration,
   gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation,
-  srv2_03_effective_envelope_drifts_two_gib_above_declaration,
   srv2_03_floor_leaf_cgroup_events_at_entry_are_zero,
-  srv2_03_converge_would_first_enforce_modeled_envelope,
+  gunbc_readback_refusal_stays_witnessed_by_synthetic_drift,
+  gunbc_floor_measured_peak_observation,
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
@@ -127,39 +127,34 @@ data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_
 
 data srv2_03_converge_floor_fit_note: String = "SUBJECT D (converge consequence): enforcement envelope is 2GiB above declaration; floor cgroup leaf events at T5 entry are zero; modeled-budget compliance is UNMEASURED — converge would first enforce the modeled envelope against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no floor byte figure are asserted."
 
-test fn witness_declared_row_pins_14_13_gib_from_floor_peak_calibration() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(15032385536))
-    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(13958643712))
+test fn witness_declared_row_pins_16_15_gib_from_floor_peak_ruling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(17179869184))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(16106127360))
 }
 
-test fn witness_srv2_03_effective_cap_pins_16_15_gib_and_drifts() -> Bool {
+test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+    >= byte_size_count(b: gunbc_floor_measured_peak_observation)
+}
+
+test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
   match gunbc_srv2_03_effective_cap_observation {
     RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
       unit == "actions-runner@srv2-03.service"
         && byte_size_count(b: max) == byte_size_count(b: byte_size(17179869184))
         && byte_size_count(b: high) == byte_size_count(b: byte_size(16106127360))
-        && runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
-        && runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+        && !runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        && !runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
     _ => false
   }
 }
 
-test fn witness_srv2_03_refuses_effective_readback_as_declaration_authority() -> Bool {
-  gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(
-    obs: gunbc_srv2_03_effective_cap_observation
-  )
-}
-
-test fn witness_srv2_03_enforcement_envelope_drifts_two_gib_above_declaration() -> Bool {
-  srv2_03_effective_envelope_drifts_two_gib_above_declaration()
+test fn witness_readback_refusal_stays_witnessed_by_synthetic_drift() -> Bool {
+  gunbc_readback_refusal_stays_witnessed_by_synthetic_drift()
 }
 
 test fn witness_srv2_03_floor_leaf_cgroup_events_at_entry_are_zero() -> Bool {
   srv2_03_floor_leaf_cgroup_events_at_entry_are_zero()
-}
-
-test fn witness_srv2_03_converge_would_first_enforce_modeled_envelope() -> Bool {
-  srv2_03_converge_would_first_enforce_modeled_envelope()
 }
 
 test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliation() -> Bool {
