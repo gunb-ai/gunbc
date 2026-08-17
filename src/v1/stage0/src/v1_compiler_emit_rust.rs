@@ -6754,7 +6754,7 @@ pub fn expand_variant_payload_struct_imports(
 pub fn reference_derived_authored_source_gate_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "reference_derived_use_lines synthesizes a use-line only when the candidate name appears in this module's authored source text (NewlineIndex char_codes). A name that enters the candidate set only via inferred/type-summary over-collection — never spelled in the module — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable; variant-parent enums that appear only via from_variant still require their parent spelling OR an authored variant ctor whose parent is harvested — parent-only imports without any authored spelling of parent or variant remain a separate gap, not this gate's subject. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-presence gate is the conservative interim, not the destination.".to_string()
+            "reference_derived_use_lines synthesizes a use-line only for a candidate the module's authored source text ATTESTS (NewlineIndex char_codes), and there are exactly two attesting forms, both decided by reference_derived_candidate_authored. Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -6777,6 +6777,57 @@ pub fn module_authored_source_text(
 pub fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> bool {
     ((module_source.clone() != "".to_string())
         && v1_rt::string_contains(&module_source, name.clone()))
+}
+
+pub fn reference_derived_variant_induced_parent_spelled(
+    module_source: String,
+    enum_name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> bool {
+    match v1_rt::map_get(&type_summaries, enum_name.clone()) {
+        Some(summary) => match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { unit_only: _, .. } => {
+                let mut __found = false;
+                for vn in Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
+                    .iter()
+                    .cloned()
+                {
+                    if match v1_rt::map_get(&variant_to_enum, vn.clone()) {
+                        Some(parent) => {
+                            ((parent.clone() == enum_name.clone())
+                                && reference_derived_candidate_spelled_in_module(
+                                    module_source.clone(),
+                                    vn.clone(),
+                                ))
+                        }
+                        None => false,
+                    } {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn reference_derived_candidate_authored(
+    module_source: String,
+    name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> bool {
+    (reference_derived_candidate_spelled_in_module(module_source.clone(), name.clone())
+        || reference_derived_variant_induced_parent_spelled(
+            module_source.clone(),
+            name.clone(),
+            type_summaries.clone(),
+            variant_to_enum.clone(),
+        ))
 }
 
 pub fn reference_derived_use_lines(
@@ -6866,9 +6917,11 @@ pub fn reference_derived_use_lines(
             .iter()
             .cloned()
             {
-                if reference_derived_candidate_spelled_in_module(
+                if reference_derived_candidate_authored(
                     module_source.clone(),
                     name.clone(),
+                    emit_info.type_summaries.clone(),
+                    emit_info.variant_to_enum.clone(),
                 ) {
                     __result.push(name);
                 }

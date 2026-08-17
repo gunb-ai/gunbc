@@ -2932,7 +2932,7 @@ fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Ma
   )
 }
 
-data reference_derived_authored_source_gate_note: String = "reference_derived_use_lines synthesizes a use-line only when the candidate name appears in this module's authored source text (NewlineIndex char_codes). A name that enters the candidate set only via inferred/type-summary over-collection — never spelled in the module — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable; variant-parent enums that appear only via from_variant still require their parent spelling OR an authored variant ctor whose parent is harvested — parent-only imports without any authored spelling of parent or variant remain a separate gap, not this gate's subject. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-presence gate is the conservative interim, not the destination."
+data reference_derived_authored_source_gate_note: String = "reference_derived_use_lines synthesizes a use-line only for a candidate the module's authored source text ATTESTS (NewlineIndex char_codes), and there are exactly two attesting forms, both decided by reference_derived_candidate_authored. Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination."
 
 fn module_authored_source_text(module: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match map_get(source_indices, module.span.file) {
@@ -2943,6 +2943,48 @@ fn module_authored_source_text(module: Node, source_indices: Map<String, Newline
 
 fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> Bool {
   module_source != "" && string_contains(s: module_source, pattern: name)
+}
+
+// WHY the authored-source gate has a second arm for parent enums.
+//
+// The gate asks whether a candidate name is spelled in the module. For a PARENT ENUM that is the
+// wrong question: the emitter qualifies a variant by its parent (Parent::Variant, via
+// variant_pattern_qualified_path and the variant-ctor emit path) at sites where the .dag source
+// spells only the VARIANT — a bare match arm on Accepted, a nested construction of Unavailable.
+// The parent is then never in the module text, so its use-line was refused and the emitted
+// Parent::Variant had no import.
+//
+// The gate is therefore not relaxed; the question is corrected. A parent-enum candidate is admitted
+// when an authored VARIANT of that same enum is spelled, and only on the UNAMBIGUOUS binding:
+// derive_variant_to_enum maps a variant name shared by two enums to the empty string, so a homonym
+// variant admits NEITHER enum rather than picking one — fail-closed, no plausible guess.
+//
+// Residue, declared not hidden: a corpus-wide ambiguous variant leaves its parent unimported even
+// where the emitter qualifies it from the scrutinee type, and a parent reached by neither its own
+// spelling nor an unambiguous authored variant stays unsynthesized. Both refuse rather than
+// fabricate. This arm carries no dissolution condition of its own — it dissolves with the text gate
+// it corrects, on the trigger reference_derived_authored_source_gate_note already declares.
+
+fn reference_derived_variant_induced_parent_spelled(module_source: String, enum_name: String, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> Bool {
+  match map_get(type_summaries, enum_name) {
+    Present { value: summary } =>
+      match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          sorted_map_keys(summary.variant_name_set) |> any(vn =>
+            match map_get(variant_to_enum, vn) {
+              Present { value: parent } => parent == enum_name && reference_derived_candidate_spelled_in_module(module_source: module_source, name: vn)
+              Absent => false
+            }
+          )
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn reference_derived_candidate_authored(module_source: String, name: String, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> Bool {
+  reference_derived_candidate_spelled_in_module(module_source: module_source, name: name)
+    || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
 }
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
@@ -2956,7 +2998,7 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
     let field_surface_names = collect_items_field_import_surface_names(items: items, emit_info: emit_info, source_indices: source_indices)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let candidates = unique_strings(items: concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs))
-      |> filter(name => reference_derived_candidate_spelled_in_module(module_source: module_source, name: name))
+      |> filter(name => reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
