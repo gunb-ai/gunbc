@@ -14,10 +14,12 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
+use crate::std_occurrence_identity::OccurrenceRole::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
 };
+pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
@@ -36,6 +38,7 @@ pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};

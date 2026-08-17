@@ -3,6 +3,7 @@
 
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
 pub use crate::std_types::kernel_type_set;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{

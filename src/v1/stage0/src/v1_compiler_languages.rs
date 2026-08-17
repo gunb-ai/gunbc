@@ -58,6 +58,7 @@ use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::ItemFormKind::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, OperatorSpec};
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;

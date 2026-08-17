@@ -24,6 +24,7 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+use crate::std_occurrence_identity::OccurrenceRole::*;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
     InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
@@ -33,6 +34,7 @@ pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
+pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceId, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
@@ -54,6 +56,8 @@ pub use crate::std_types::{
     kernel_type_set,
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
+pub use crate::std_types::{List, Map};
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

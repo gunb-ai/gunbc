@@ -90,13 +90,12 @@ import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
-  corpus_has_v1_seed_source_indices,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access
 }
 import v1.compiler.infer_emit_info {
-  EmitGraphInfo, RustCorpusRepr, HostNative, FaithfulFreeMonoid, TypeSummary, StructRepr, EnumRepr,
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
   emit_info_with_fn_type_context, emit_info_with_fn_return,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
@@ -146,14 +145,14 @@ import v1.compiler.emit_core_support {
   is_bare_leaf_item
 }
 
-fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
-fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
-    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
@@ -165,25 +164,25 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
           if applied.children |> count > 0 {
-            render_rust_applied_via_emit_info(n: applied, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+            render_rust_applied_via_emit_info(n: applied, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
           } else {
-            render_rust_type_without_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+            render_rust_type_without_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
           }
-        Absent => render_rust_type_without_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+        Absent => render_rust_type_without_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       }
   }
 }
 
-fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
-    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
-    render_rust_applied_via_emit_info(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+    render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
@@ -207,8 +206,8 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           Present { value: val_child } => child_type_node(ch: val_child)
           Absent => type_variable_node(id: "map_value")
         }
-        let key_str = render_rust_type(n: key_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
-        let val_str = render_rust_type(n: val_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+        let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        let val_str = render_rust_type(n: val_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_map_type(key_type: key_str, val_type: val_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
@@ -218,7 +217,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     match n.children |> first {
       Present { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
-        let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info)
+        let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(kind: to_snake(name: tn), inner: inner_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
@@ -228,7 +227,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     let tn = authored_name_at(source_indices: source_indices, node: n)
     if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
       "_"
-    } else if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
+    } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -256,12 +255,6 @@ fn rust_shared_wrap_ctor_suffix() -> String {
   sharing_wrap_ctor_close_for_target(target: Rust)
 }
 
-fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
-  match corpus_repr { FaithfulFreeMonoid => true  HostNative => false }
-}
-fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
-  match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
-}
 fn is_host_freemonoid_vec_alias(name: String) -> Bool {
   name == "FreeMonoid"
 }
@@ -292,16 +285,16 @@ fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String 
   concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", shared_types: shared_types), ">")
 }
 
-fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.children |> first {
     Present { value: elem } =>
-      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     Absent => "()"
   }
 }
 
-fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
+fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
@@ -311,18 +304,18 @@ fn rust_string_grounded_type_alias_decl_line() -> String {
   concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
 }
 
-fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
+fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
   host_expr
 }
 
-fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool, corpus_repr: RustCorpusRepr) -> String {
+fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool) -> String {
   let key_literal = concat("\"", field_name, "\"")
   let host_expr = if key_is_string {
     concat(key_literal, ".to_string()")
   } else {
     key_literal
   }
-  emit_rust_host_to_dag_string_via_seam(host_expr: host_expr, corpus_repr: corpus_repr)
+  emit_rust_host_to_dag_string_via_seam(host_expr: host_expr)
 }
 
 fn map_literal_key_is_string(map_type_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -340,7 +333,7 @@ fn map_literal_key_is_string(map_type_node: Node, source_indices: Map<String, Ne
   }
 }
 
-fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, corpus_repr: RustCorpusRepr) -> String {
+fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
   dag_expr
 }
 
@@ -434,19 +427,51 @@ fn rust_ground_opaque_kernel_type_name(name: String) -> String {
   }
 }
 
-fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if (name == "Nat" || name == "Int") && corpus_repr_is_host(corpus_repr: corpus_repr) {
+data reference_use_lines_representation_invariant_note: String = "Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. This was formerly gated on corpus_repr_is_faithful, with import-bearing HostNative modules receiving an empty list -- which made import synthesis a function of WHICH SOURCES SHARED THE CLOSURE rather than of what the module actually references. That gate is deleted with the rest of the closure-provenance switch: what a module must import is a derivation from its own resolved reference graph. The former import-free and import-bearing arms called reference_derived_use_lines with byte-identical arguments once the gate was removed, so the conditional collapsed to one call -- the branch existed only to serve the distinction being deleted."
+
+fn decl_identity_file(item: Node) -> String {
+  match item.ident_span {
+    Present { value: sp } => sp.file
+    Absent => ""
+  }
+}
+
+fn type_reference_decl_file(n: Node) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
+    _ => decl_identity_file(item: n)
+  }
+}
+
+data type_reference_identity_note: String = "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity."
+
+data numeric_realization_identity_note: String = "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure."
+
+fn numeric_realization_declaring_modules() -> List<String> {
+  ["dag/std/nat.dag", "dag/std/integer.dag", "<kernel:"]
+}
+
+fn decl_file_realizes_natively(decl_file: String) -> Bool {
+  if decl_file == "" {
+    false
+  } else {
+    numeric_realization_declaring_modules() |> any(m => contains(decl_file, m))
+  }
+}
+
+fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
+  if (name == "Nat" || name == "Int") && decl_file_realizes_natively(decl_file: decl_file) {
     Present { value: "i64" }
   } else {
     none
   }
 }
 
-fn rust_scalar_checkpoint_render_base(dag_name: String, corpus_repr: RustCorpusRepr) -> String? {
+fn rust_scalar_checkpoint_render_base(dag_name: String, decl_file: String) -> String? {
   match lookup_checkpoint(target: Rust, dag_name: dag_name) {
     Present { value: cp } => Present { value: cp.target_type }
     Absent =>
-      match rust_seed_host_numeric_alias(name: dag_name, corpus_repr: corpus_repr) {
+      match rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) {
         Present { value: host } => Present { value: host }
         Absent => none
       }
@@ -455,11 +480,11 @@ fn rust_scalar_checkpoint_render_base(dag_name: String, corpus_repr: RustCorpusR
 
 data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for E0109 (type arguments are not allowed on builtin type i64). A checkpoint scalar (lookup_checkpoint / rust_seed_host_numeric_alias — Int, Nat, i64, etc.) has arity 0 in Rust; DAG phantom params from GroupCompletion<Nat> or Compose<Int, MachineWidth<>> must not surface as i64<T>. Root fix: refuse phantom arg emission at the type-node renderer when the leaf is a checkpoint scalar and children > 0 — not a post-hoc string strip on the rendered output (DESIGN section 5: widening instead of refusing)."
 
-fn rust_render_checkpoint_scalar_bare(n: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>) -> String? {
+fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>) -> String? {
   if n.children |> count == 0 { none }
   else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-    match rust_scalar_checkpoint_render_base(dag_name: leaf, corpus_repr: corpus_repr) {
+    match rust_scalar_checkpoint_render_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
       Present { value: scalar } =>
         if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
           Present { value: wrap_shared_type(target: Rust, inner: scalar) }
@@ -471,7 +496,7 @@ fn rust_render_checkpoint_scalar_bare(n: Node, corpus_repr: RustCorpusRepr, sour
   }
 }
 
-fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
+fn rust_seed_host_container_base(name: String) -> String? {
   if name == "List" || name == "FreeMonoid" {
     Present { value: "Vec" }
   } else {
@@ -494,7 +519,7 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
   }
 }
 
-fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
+fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
     true
@@ -505,14 +530,14 @@ fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>,
   }
 }
 
-fn rust_seed_host_freemonoid_empty(carrier_name: String, corpus_repr: RustCorpusRepr) -> String? {
-  match rust_seed_host_container_base(name: carrier_name, corpus_repr: corpus_repr) {
+fn rust_seed_host_freemonoid_empty(carrier_name: String) -> String? {
+  match rust_seed_host_container_base(name: carrier_name) {
     Present { value: _ } => Present { value: rust_shared_wrap_ctor(inner_expr: "vec![]") }
     Absent => none
   }
 }
 
-fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
+fn rust_named_type_base(name: String) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
   } else {
@@ -520,8 +545,8 @@ fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   }
 }
 
-fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
-  rust_named_type_base(name: name, corpus_repr: corpus_repr)
+fn rust_applied_type_base(name: String) -> String {
+  rust_named_type_base(name: name)
 }
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
@@ -592,14 +617,14 @@ fn rust_witness_carrier_from_type_node(type_node: Node, shared_types: Set<String
     match rust_witness_applied_type_arg_node(type_node: peeled, source_indices: source_indices) {
       Present { value: arg_node } =>
         rust_witness_type_arg_admit_rendered(
-          rendered: render_rust_type(n: arg_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+          rendered: render_rust_type(n: arg_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info),
           emit_info: emit_info
         )
       Absent => none
     }
   } else {
     rust_witness_type_arg_admit_rendered(
-      rendered: render_rust_type(n: peeled, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info),
+      rendered: render_rust_type(n: peeled, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info),
       emit_info: emit_info
     )
   }
@@ -732,23 +757,23 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   }
 }
 
-fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else {
-    render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+    render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
 }
 
-fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else {
-    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
@@ -758,18 +783,18 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
       Present { value: TypeVariable { id: tv } } =>
         if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
       _ =>
-        match rust_render_checkpoint_scalar_bare(n: n, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
           Present { value: scalar } => scalar
-          Absent => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          Absent => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
         }
     }
   }
 }
 
-fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
-    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
@@ -777,32 +802,32 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   let base_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   if n.children |> count == 0 {
 
-    match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+    match rust_seed_host_container_base(name: base_name) {
       Present { value: host } => host
-      Absent => rust_named_type_base(name: base_name, corpus_repr: corpus_repr)
+      Absent => rust_named_type_base(name: base_name)
     }
   } else {
 
-    match rust_scalar_checkpoint_render_base(dag_name: base_name, corpus_repr: corpus_repr) {
+    match rust_scalar_checkpoint_render_base(dag_name: base_name, decl_file: type_reference_decl_file(n: n)) {
       Present { value: scalar } => scalar
       Absent =>
     if rust_fn_sig_peel_closed_alias(env: env, n: n) {
-      let bare = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+      let bare = match rust_seed_host_container_base(name: base_name) {
         Present { value: host } => host
-        Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
+        Absent => rust_applied_type_base(name: base_name)
       }
       render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
     } else {
-    let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+    let base = match rust_seed_host_container_base(name: base_name) {
       Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
+      Absent => rust_applied_type_base(name: base_name)
     }
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
@@ -821,16 +846,16 @@ fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: S
   rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types))
 }
 
-fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
-fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
-    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
@@ -844,39 +869,39 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   match applied_overlay {
     Present { value: applied } =>
       let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-      if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
+      if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decl_file: type_reference_decl_file(n: n)) {
         render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
       } else {
-        render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       }
     Absent =>
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
-      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
-        match rust_render_checkpoint_scalar_bare(n: n, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
           Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types)
           Absent =>
         if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
           render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
         } else {
-        let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
+        let base = rust_applied_type_base(name: name)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
         let arg_list = n.children |> map(arg =>
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
           if peel {
-            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
           } else if rust_type_arg_renders_as_unit(n: typed_arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
             "()"
           } else {
-            match rust_render_checkpoint_scalar_bare(n: typed_arg, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
+            match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types) {
               Present { value: scalar } => scalar
-              Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+              Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
             }
           }
         )
@@ -904,7 +929,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
         "_"
       } else {
-        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
       }
   }
 }
@@ -926,7 +951,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
   (binding.params |> count) == 0
 }
 
-fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorpusRepr) -> Bool {
+fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String) -> Bool {
   if is_kernel_type(name: name) {
     false
   } else if rust_opaque_kernel_alias_type_eligible(name: name) {
@@ -934,7 +959,7 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorp
   } else if name == "Nat" {
     true
   } else {
-    rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) == none
+    rust_seed_host_numeric_alias(name: name, decl_file: decl_file) == none
   }
 }
 
@@ -947,45 +972,45 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
   }
 }
 
-fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
-    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
-    return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
+  if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
+  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
-    render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+    render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }
 }
 
-fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
         let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-        if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
+        if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decl_file: type_reference_decl_file(n: n)) {
           render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {
-          render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+          render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
         }
       } else {
-        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
       }
-    Absent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    Absent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -1042,16 +1067,16 @@ Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the 
 
 The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
 
-fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   match n.type_annotation {
     Present { value: _ } =>
       if n.connective == Conj && (n.children |> count) == 1 {
         match n.children |> first {
           Present { value: base_te } =>
-            if rust_seed_host_numeric_alias(name: authored_name_at(source_indices: source_indices, node: base_te), corpus_repr: corpus_repr) != none {
-              return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+            if rust_seed_host_numeric_alias(name: authored_name_at(source_indices: source_indices, node: base_te), decl_file: type_reference_decl_file(n: base_te)) != none {
+              return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
             } else {
-              return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+              return render_rust_type(n: base_te, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
             }
           Absent => {}
         }
@@ -1062,7 +1087,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
+    match rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file(n: n)) {
       Present { value: host } => host
       Absent =>
       match rust_opaque_kernel_alias_carrier(name: name) {
@@ -1075,16 +1100,16 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)
-    let numeric_host_alias = match rust_scalar_checkpoint_render_base(dag_name: leaf, corpus_repr: corpus_repr) {
+    let numeric_host_alias = match rust_scalar_checkpoint_render_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
       Present { value: scalar } => Present { value: scalar }
-      Absent => rust_seed_host_numeric_alias(name: leaf, corpus_repr: corpus_repr)
+      Absent => rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n))
     }
     if numeric_host_alias != none {
       return match numeric_host_alias { Present { value: host } => host  Absent => "" }
     }
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: leaf, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let base = match rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) {
+    let base = match rust_seed_host_container_base(name: leaf) {
       Present { value: host } => host
       Absent => if def_mod != local_mod {
         concat("crate::", def_mod, "::", leaf)
@@ -1092,16 +1117,16 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         leaf
       }
     }
-    let base_is_zero_param = rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let base_is_zero_param = rust_seed_host_container_base(name: leaf) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     if base_is_zero_param {
       return if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
     }
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
-        render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
@@ -1111,7 +1136,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       applied_ty
     }
   } else {
-    render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
   }
 }
 
@@ -2213,8 +2238,7 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 }
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let has_v1_seed = corpus_has_v1_seed_source_indices(modules: typed.modules)
-  let base_info = build_emit_graph_info(modules: typed.modules, has_v1_seed: has_v1_seed)
+  let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
@@ -2235,7 +2259,6 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
-    corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none
@@ -2266,8 +2289,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
-      projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)),
-      corpus_repr: emit_info.corpus_repr))
+      projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
     |> filter(f => string_length(s: f.content) > 0)
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
@@ -2282,15 +2304,13 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     []
   }
 
-  let v2_std_text_stub = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr)
-    && module_files_reference_v2_std_text(files: module_files)
+  let v2_std_text_stub = if module_files_reference_v2_std_text(files: module_files)
     && !module_files_include_v2_std_text(files: module_files) {
     [emit_v2_std_text_closure_stub_module()]
   } else {
     []
   }
-  let v2_std_integer_stub = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr)
-    && module_files_reference_v2_std_integer(files: module_files)
+  let v2_std_integer_stub = if module_files_reference_v2_std_integer(files: module_files)
     && !module_files_include_v2_std_integer(files: module_files) {
     [emit_v2_std_integer_closure_stub_module()]
   } else {
@@ -2310,12 +2330,18 @@ fn emit_compiler_tests_module() -> TextFile {
   TextFile { path: concat(rust_source_root(), "compiler_tests", rust_source_ext()), content: compiler_tests_source() }
 }
 
+data closure_stub_reference_self_match_note: String = "The v2 closure-stub triggers scan EMITTED TEXT for a module reference, and the emitter's own emitted file contains every such pattern as a STRING LITERAL -- both the pattern being searched for and the use line being generated. So the predicate matched itself, and any crate containing the emitter emitted stubs for modules nothing actually used. This was latent, not new: the deleted corpus_repr_is_faithful conjunct happened to be false on the seed regen closure and suppressed the self-match there, so removing the corpus mode surfaced it as a fail-closed emission-plan refusal rather than as wrong output. Anchoring on a leading newline discriminates a real emitted use line (line start) from the emitter's literal (always preceded by a quote). WHAT THIS DOES NOT DO: it does not climb the rung. The grain is still a text scan over emitted content, which cannot in general distinguish a program from the compiler that writes it; it only removes the one false-positive class that is decidable by anchoring. The stub's own dissolve-on stands unchanged -- derive the condition from the emitted reference SET, a produced structural fact, rather than re-scanning the output for it."
+
+fn emitted_files_carry_use_line(files: List<TextFile>, line: String) -> Bool {
+  files |> any(f => string_contains(s: f.content, pattern: concat("\n", line)))
+}
+
 fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
-  files |> any(f => string_contains(s: f.content, pattern: "crate::v2_std_text::"))
+  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_text::"))
 }
 
 fn module_files_reference_v2_std_integer(files: List<TextFile>) -> Bool {
-  files |> any(f => string_contains(s: f.content, pattern: "v2_std_integer::"))
+  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_integer::"))
 }
 
 fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
@@ -2430,8 +2456,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
 }
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
-  let has_v1_seed = corpus_has_v1_seed_source_indices(modules: [typed_module])
-  let base_info = build_emit_graph_info(modules: [typed_module], has_v1_seed: has_v1_seed)
+  let base_info = build_emit_graph_info(modules: [typed_module])
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -2451,7 +2476,6 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
-    corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none
@@ -2993,7 +3017,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
-    corpus_repr: emit_info.corpus_repr,
     source_indices: scope.type_env.source_indices
   ) {
     emit_faithful_text_carrier_import_lines(
@@ -3001,7 +3024,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       local_type_names: local_type_names,
       items: typed_module.items,
       source_indices: scope.type_env.source_indices,
-      corpus_repr: emit_info.corpus_repr,
       shared_types: shared_types,
       typed_modules: typed_modules
     )
@@ -3012,8 +3034,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     prelude_imported_names,
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
-  let reference_use_lines = if module_imports(n: m) |> count == 0 {
-    reference_derived_use_lines(
+  let reference_use_lines = reference_derived_use_lines(
       items: typed_module.items,
       unlisted_type_names: unlisted_type_names,
       this_module_name: authored_name(env: scope.type_env, node: m),
@@ -3026,23 +3047,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       source_indices: scope.type_env.source_indices,
       module_index: module_index
     )
-  } else if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) {
-    reference_derived_use_lines(
-      items: typed_module.items,
-      unlisted_type_names: unlisted_type_names,
-      this_module_name: authored_name(env: scope.type_env, node: m),
-      registry: registry,
-      emit_info: emit_info,
-      local_type_names: local_type_names,
-      already_imported_names: already_imported_names,
-      export_sets: export_sets,
-      typed_modules: typed_modules,
-      source_indices: scope.type_env.source_indices,
-      module_index: module_index
-    )
-  } else {
-    []
-  }
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
@@ -4376,22 +4380,23 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
   }
 }
 
-fn type_node_is_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
-  corpus_repr_is_faithful(corpus_repr: corpus_repr)
-    && is_rust_string_like(n: n, source_indices: source_indices)
+fn type_node_is_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let _n = n
+  let _si = source_indices
+  false
 }
 
-fn node_tree_has_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
-  if type_node_is_faithful_string_leaf(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
+fn node_tree_has_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_faithful_string_leaf(n: n, source_indices: source_indices) {
     true
   } else {
-    let child_hit = n.children |> any(child => node_tree_has_faithful_string_leaf(n: child, source_indices: source_indices, corpus_repr: corpus_repr))
+    let child_hit = n.children |> any(child => node_tree_has_faithful_string_leaf(n: child, source_indices: source_indices))
     let annotation_hit = match n.type_annotation {
-      Present { value: ta } => node_tree_has_faithful_string_leaf(n: ta, source_indices: source_indices, corpus_repr: corpus_repr)
+      Present { value: ta } => node_tree_has_faithful_string_leaf(n: ta, source_indices: source_indices)
       Absent => false
     }
     let inferred_hit = match n.inferred {
-      Present { value: Resolved { node: rt } } => node_tree_has_faithful_string_leaf(n: rt, source_indices: source_indices, corpus_repr: corpus_repr)
+      Present { value: Resolved { node: rt } } => node_tree_has_faithful_string_leaf(n: rt, source_indices: source_indices)
       _ => false
     }
     child_hit || annotation_hit || inferred_hit
@@ -4458,11 +4463,11 @@ fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, file
   typed_modules |> any(tm => module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == filename)
 }
 
-fn module_item_has_faithful_string_leaf(item: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
-  node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
-    || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices, corpus_repr: corpus_repr))
+fn module_item_has_faithful_string_leaf(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices)
+    || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices))
     || match item.body {
-      Present { value: body } => node_tree_has_faithful_string_leaf(n: body, source_indices: source_indices, corpus_repr: corpus_repr)
+      Present { value: body } => node_tree_has_faithful_string_leaf(n: body, source_indices: source_indices)
       Absent => false
     }
 }
@@ -4486,11 +4491,11 @@ fn module_item_references_faithful_expanded_type(item: Node, source_indices: Map
     || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
 }
 
-fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+fn module_needs_faithful_carrier_imports(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if true {
     false
   } else {
-    module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, source_indices: source_indices)
+    module_renders_faithful_text_carrier(items: items, source_indices: source_indices)
     || items |> any(item =>
       module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
       || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
@@ -4503,11 +4508,11 @@ fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCor
   }
 }
 
-fn module_renders_faithful_text_carrier(items: List<Node>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+fn module_renders_faithful_text_carrier(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if true {
     false
   } else {
-    items |> any(item => module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr))
+    items |> any(item => module_item_has_faithful_string_leaf(item: item, source_indices: source_indices))
   }
 }
 
@@ -4515,14 +4520,14 @@ fn rust_import_name_already_resolved(imported_names: List<String>, local_type_na
   imported_names |> any(n => n == name) || local_type_names |> any(n => n == name)
 }
 
-fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>, typed_modules: List<TypedModule>) -> List<String> {
+fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, typed_modules: List<TypedModule>) -> List<String> {
   let closure_has_std_measure = typed_closure_includes_module_filename(typed_modules: typed_modules, filename: "std_measure", source_indices: source_indices)
   let needs_free_monoid = items |> any(item =>
-    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices)
     || module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
   )
   let needs_char = items |> any(item =>
-    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices)
     || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
   )
   let needs_non_empty_str = items |> any(item => module_item_references_type_name(item: item, type_name: "NonEmptyStr", source_indices: source_indices))
@@ -4650,7 +4655,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      match rust_scalar_checkpoint_render_base(dag_name: item_text, corpus_repr: emit_info.corpus_repr) {
+      match rust_scalar_checkpoint_render_base(dag_name: item_text, decl_file: decl_identity_file(item: item)) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
@@ -4658,7 +4663,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             n: resolved_type(n: item),
             generic_param_names: [],
             shared_types: shared_types,
-            corpus_repr: emit_info.corpus_repr,
             source_indices: env.source_indices,
             scope: scope,
             imports: imports,
@@ -4677,7 +4681,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       rust_nominal_identity_carrier_def(name: item_text)
     } else {
 
-      match rust_seed_host_container_base(name: item_text, corpus_repr: emit_info.corpus_repr) {
+      match rust_seed_host_container_base(name: item_text) {
         Present { value: host } =>
           let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
           let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
@@ -4706,7 +4710,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                 n: alias_rhs,
                 generic_param_names: generic_names,
                 shared_types: shared_types,
-                corpus_repr: emit_info.corpus_repr,
                 source_indices: env.source_indices,
                 scope: scope,
                 imports: imports,
@@ -4760,7 +4763,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only,
       clone_bounded_type_params: emit_info.clone_bounded_type_params,
-      corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
       fn_return_type: emit_info.fn_return_type
@@ -4778,9 +4780,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_data_def_item(item: item) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
   } else if is_service_def_item(item: item) {
-    emit_service_def(item: item, registry: registry, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, env: env)
+    emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
   } else if is_resource_def_item(item: item) {
-    emit_resource_def(item: item, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, env: env)
+    emit_resource_def(item: item, shared_types: shared_types, env: env)
   } else {
     concat("compile_error!(\"unhandled item: ", item_text, "\");")
   }
@@ -5030,8 +5032,8 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
 }
 
-fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
@@ -5041,30 +5043,30 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
           if outer_name != applied_name {
             render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
           }
         } else {
-          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
         }
       } else {
-        render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
       }
-    Absent => render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    Absent => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
   }
 }
 
-fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored_type = field_node_type_expr(n: field)
   if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: resolved_type(n: field), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_decl_type(n: resolved_type(n: field), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else if find_property(props: field.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, source_indices: source_indices)
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
   } else {
-    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -5072,13 +5074,13 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+    render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
   } else if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, source_indices: env.source_indices)
   } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
   } else if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   } else if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     let rt_child_name = authored_name_at(source_indices: env.source_indices, node: rt_child)
     match lookup_type_by_name(env: env, name: rt_child_name) {
@@ -5089,12 +5091,12 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
           render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, shared_types: shared_types)
         } else {
-          render_rust_type(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
+          render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
         }
-      Absent => render_rust_type(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
+      Absent => render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
     }
   } else {
-    render_rust_type(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
+    render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
   let generic_ty = if struct_name == "PartialFunction" {
     rust_normalize_partial_function_field_type_text(rendered: rust_normalize_witness_type_text(rendered: ty))
@@ -5176,7 +5178,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-        Present { value: f } => render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+        Present { value: f } => render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
         Absent => ""
       }
     )
@@ -5189,7 +5191,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   if shared |> count == 0 { return "" }
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Present { value: f } => render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+      Present { value: f } => render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
       Absent => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     let arms = children |> map(child =>
@@ -5371,14 +5373,14 @@ fn enum_variant_field_type_node(env: TypeEnv, enum_name: String, variant_name: S
   }
 }
 
-fn render_variant_payload_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if n.connective == NoConnective && n.children |> count > 0 {
     let tn = authored_name_at(source_indices: source_indices, node: n)
-    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()))
+    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
     let spec = language_spec(target: Rust)
     concat(coerce_primitive_type(target: Rust, dag_name: tn), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
   } else {
-    render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
   }
 }
 
@@ -5409,11 +5411,11 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
             enum_variant_field_type_node(env: env, enum_name: enum_name, variant_name: child_text, field_name: "0", fallback: fallback, source_indices: env.source_indices)
           } else { fallback }
           let raw_ty = if positional_payload {
-            render_variant_payload_type(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+            render_variant_payload_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
           } else {
-            render_rust_type(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
+            render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
           }
-          let ty = if find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices) } else { raw_ty }
+          let ty = if find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, source_indices: env.source_indices) } else { raw_ty }
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
@@ -5423,7 +5425,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
     } else {
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
-        let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+        let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
@@ -5435,7 +5437,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
   } else {
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
-      let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+      let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
@@ -5448,9 +5450,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let host_text_op = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
-    rust_host_string_op_fn_emit(name: name)
-  } else { none }
+  let host_text_op = rust_host_string_op_fn_emit(name: name)
   if host_text_op != none {
     return match host_text_op {
       Present { value: op_fn } => op_fn
@@ -5458,8 +5458,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     }
   }
   match rust_host_string_seam_fn_emit(name: name) {
-    Present { value: seam_fn } =>
-      if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) { seam_fn } else { "" }
+    Present { value: seam_fn } => { let _unused = seam_fn
+      "" }
     Absent => {
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
@@ -5501,14 +5501,14 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
-  let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+  let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
   if use_tco {
-    let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+    let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: body_emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
@@ -5659,8 +5659,8 @@ fn emit_func_def(
     Present { value: info } => info.service_names
     Absent => []
   }
-  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
-  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_indices: scope.type_env.source_indices, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let body_scope = build_params_scope(scope: scope, params: params)
   let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
@@ -5713,25 +5713,25 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
   }
 }
 
-fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let strs = params |> map(p => emit_tco_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
+fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let strs = params |> map(p => emit_tco_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
   strs |> join(separator: ", ")
 }
 
-fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
-    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
 
-fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
+fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()))
+    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -5740,47 +5740,47 @@ fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<St
   all_params |> join(separator: ", ")
 }
 
-fn emit_func_inferred(inferred: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
+fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
 }
 
-fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
   strs |> join(separator: ", ")
 }
 
-fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let type_node = resolved_type(n: param)
-  render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
 }
 
-fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if n.params |> count > 0 {
-    let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
+    let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
-      Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       _ => "()"
     }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
-    render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
-    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
 
-fn emit_inferred(inferred: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  concat(rust_items().return_arrow, render_rust_fn_sig_type(n: inferred, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
+fn emit_inferred(inferred: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  concat(rust_items().return_arrow, render_rust_fn_sig_type(n: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
 }
 
 fn needs_reference_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -6240,7 +6240,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     Present { value: Resolved { node: rt } } =>
       is_optional_like_parent_name(name: authored_name_at(source_indices: source_indices, node: rt))
         && rt.return_cardinality != CardOptional
-        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info))
+        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
     _ => false
   }
 
@@ -6531,7 +6531,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
   }
 }
 
-fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
+fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>) -> Bool {
   freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) || set_contains(shared_types, enum_name)
 }
 
@@ -6596,7 +6596,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         } else {
           concat(enum_name, "::", leaf_name)
         }
-        if variant_ref_self_wraps(name: leaf_name, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr) {
+        if variant_ref_self_wraps(name: leaf_name, enum_name: enum_name, shared_types: shared_types) {
           rust_shared_wrap_ctor(inner_expr: body)
         } else { body }
       Absent =>
@@ -6691,11 +6691,10 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
     Present { value: field_child } =>
       let field_ty = resolved_type(n: field_child)
       let field_ty_name = authored_name_at(source_indices: scope.type_env.source_indices, node: field_ty)
-      let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, corpus_repr: emit_info.corpus_repr) != none
+      let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, decl_file: type_reference_decl_file(n: field_ty)) != none
       if grounds_to_host_scalar { false }
       else {
-        let faithful_nat_field = emit_info.corpus_repr == FaithfulFreeMonoid && (field_ty_name == "Nat" || substring(s: field_ty_name, start: 0, end: 4) == "Nat<")
-        faithful_nat_field || needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+        needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
       }
     Absent => false
   }
@@ -6794,22 +6793,22 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -7176,7 +7175,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()"), corpus_repr: emit_info.corpus_repr), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\".to_string()")), ",")
         )
 
         let scrut_ref = if set_contains(shared_types, ty_name) {
@@ -7187,9 +7186,9 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
 
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), corpus_repr: emit_info.corpus_repr)
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
       }
-    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), corpus_repr: emit_info.corpus_repr)
+    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
   }
 }
 
@@ -7197,7 +7196,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   let call_str = if func == "empty_map" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
-        let kv_type_str = rust_empty_map_kv_type_str(map_type: ret_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+        let kv_type_str = rust_empty_map_kv_type_str(map_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
         if kv_type_str != "" {
           concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
         } else {
@@ -7285,7 +7284,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"), corpus_repr: emit_info.corpus_repr)
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -7478,7 +7477,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   }
 }
 
-fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, type_env: TypeEnv) -> String {
+fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, type_env: TypeEnv) -> String {
   match receiver_type {
     Present { value: Resolved { node: rt } } =>
       let __rt_is_container = node_is_element_collection(n: rt, source_indices: source_indices)
@@ -7488,7 +7487,7 @@ fn collection_element_type(receiver_type: InferredNode?, shared_types: Set<Strin
             let elem_node = child_type_node(ch: elem_child)
             let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
             let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
-            if elem_is_error || elem_is_type_var || type_node_has_closure_unbound_generic_atom(n: elem_node, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
+            if elem_is_error || elem_is_type_var || type_node_has_closure_unbound_generic_atom(n: elem_node, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) }
           Absent => "_"
         }
       } else { "_" }
@@ -7512,7 +7511,7 @@ fn lambda_scope_from_children(scope: InferScope, params: List<String>, param_nod
   )
 }
 
-fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool, type_env: TypeEnv) -> List<String> {
+fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool, type_env: TypeEnv) -> List<String> {
   params |> enumerate |> map(pair =>
     let idx = pair.first
     let param_name = pair.second
@@ -7530,7 +7529,7 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) {
                 none
               } else {
-                Present { value: render_rust_type(n: param_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info) }
+                Present { value: render_rust_type(n: param_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) }
               }
             _ => none
           }
@@ -7556,7 +7555,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: false, type_env: scope.type_env)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: false, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -7576,7 +7575,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -7595,7 +7594,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
+  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
   let contextual_acc_type = match result_type {
     Present { value: Resolved { node: method_result_type } } => Present { value: method_result_type }
     _ => none
@@ -7662,7 +7661,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
-              corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type
@@ -7691,7 +7689,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
-              corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type
@@ -7701,7 +7698,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       _ => emit_info
     }
   } else { emit_info }
-  let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
+  let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
   let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
@@ -7718,7 +7715,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let init_func = expr_call_func_at(texpr: arg_value(n: init_arg), source_indices: scope.type_env.source_indices)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
-            let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+            let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
             if kv_type_str != "" {
               concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
@@ -7771,7 +7768,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       let elem = for_each_element_type_node(n: resolved, source_indices: scope.type_env.source_indices)
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
-        render_rust_type(n: elem, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info)
+        render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
       } else { "_" }
     _ => "_"
   }
@@ -8735,7 +8732,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
       } else if fields |> count == 0 {
         let host_freemonoid_carrier = authored_name_at(source_indices: si, node: resolved_type)
-        match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier, corpus_repr: emit_info.corpus_repr) {
+        match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier) {
           Present { value: grounded } => grounded
           Absent => concat(display_tn, " {}")
         }
@@ -8784,7 +8781,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             let missing = sorted_map_keys(fs) |> filter(k => !emit_map_has(m: provided_set, key: k))
             let all_defaultable = missing |> all(fname =>
               let has_zv = match map_get(ftm, fname) {
-                Present { value: ft } => match rust_zero_value(type_name: ft, corpus_repr: emit_info.corpus_repr) { Present { value: _ } => true, Absent => false }
+                Present { value: ft } => match rust_zero_value(type_name: ft) { Present { value: _ } => true, Absent => false }
                 Absent => false
               }
               has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname)
@@ -8797,7 +8794,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 } else {
                   match map_get(ftm, fname) {
                     Present { value: ft } =>
-                      match rust_zero_value(type_name: ft, corpus_repr: emit_info.corpus_repr) {
+                      match rust_zero_value(type_name: ft) {
                         Present { value: zv } => [concat("    ", emit_ident(name: fname, target: Rust), ": ", zv, ",")]
                         Absent => []
                       }
@@ -8831,15 +8828,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   }
 }
 
-fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> String? {
+fn rust_zero_value(type_name: String) -> String? {
   if type_name == "Int" { Present { value: "0" } }
   else if type_name == "Bool" { Present { value: "false" } }
   else if type_name == "String" {
-    if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-      Present { value: "v1_rt::freemonoid_empty::<i64>()" }
-    } else {
-      Present { value: "\"\".to_string()" }
-    }
+    Present { value: "\"\".to_string()" }
   }
   else { none }
 }
@@ -8855,11 +8848,11 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), ").as_deref()") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ").as_deref()") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
-        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")")
+        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")")
       }
     } else {
       let both_string = is_string_typed_expr(e: left, source_indices: scope.type_env.source_indices) && is_string_typed_expr(e: right, source_indices: scope.type_env.source_indices)
@@ -8906,10 +8899,10 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
     |> map(p => p.arg_expr)
     |> filter(a => a != "")
   if args |> count == 0 {
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""), corpus_repr: emit_info.corpus_repr)
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""))
   } else {
     let args_str = args |> join(separator: ", ")
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"), corpus_repr: emit_info.corpus_repr)
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"))
   }
 }
 
@@ -9214,14 +9207,13 @@ fn emit_service_def(
   item: Node,
   registry: Map<String, ItemInfo>,
   shared_types: Set<String>,
-  corpus_repr: RustCorpusRepr,
   env: TypeEnv
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item, source_indices: env.source_indices)
-  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, corpus_repr: corpus_repr, env: env, service_item: item)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item)
   concat(struct_def, "\n\n", impl_block)
 }
 
@@ -9242,11 +9234,11 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>,
   else { decls |> join(separator: "") }
 }
 
-fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv, service_item: Node) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
   let depth = 0
   let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_indices: env.source_indices)
   let method_strs = op_children |> map(op_node =>
-    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, corpus_repr: corpus_repr, env: env, service_item: service_item)
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item)
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
@@ -9329,10 +9321,10 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
   }
 }
 
-fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv, service_item: Node) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -9340,12 +9332,12 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
+  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, corpus_repr: corpus_repr)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -9359,7 +9351,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 1),body, "\n}")
 }
 
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
@@ -9389,7 +9381,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                     Present { value: Resolved { node: rt } } => rt
                     _ => tn
                   }
-                  concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                  concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
                 }
               Absent => concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
             }
@@ -9408,7 +9400,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                       Absent => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
                     }
                   } else {
-                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), corpus_repr: corpus_repr, source_indices: source_indices)
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
                   }
                 _ =>
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
@@ -9436,14 +9428,14 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env) }
-  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, corpus_repr: corpus_repr, source_indices: source_indices) }
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
+  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
   else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let has_config_auth = match service_config_auth(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   let has_basic_auth = match transport_auth_basic(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   if has_config_auth && has_basic_auth {
@@ -9454,7 +9446,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_indices: source_indices)
   let basic_auth_line = emit_rest_basic_auth_line(transport: transport, source_indices: source_indices)
-  let query_line = emit_rest_query_line(transport: transport, corpus_repr: corpus_repr, source_indices: source_indices)
+  let query_line = emit_rest_query_line(transport: transport, source_indices: source_indices)
   let body_line = emit_rest_body_line(transport: transport, source_indices: source_indices)
   let headers = transport_headers(t: transport, source_indices: source_indices)
   let header_lines = headers |> map(h =>
@@ -9463,7 +9455,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     concat("let request = request.header(\"", field_init_node_name_at(n: h, source_indices: source_indices), "\", ", val_str, ");")
   )
   let send_line = "let response = request.send().await?;"
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env)
+  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line, basic_auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -9611,12 +9603,12 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   }
 }
 
-fn emit_rest_query_line(transport: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_query(t: transport, source_indices: source_indices) {
     Present { value: q } => {
       let pairs = q.children |> map(fi =>
         concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
-          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices), corpus_repr: corpus_repr),
+          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices)),
           ")")
       )
       if pairs |> count > 0 {
@@ -9788,12 +9780,12 @@ fn escape_json_pointer_segment(seg: String) -> String {
   seg |> replace("~", "~0") |> replace("/", "~1")
 }
 
-fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, source_indices: Map<String, NewlineIndex>) -> String {
   let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
   let pointer = concat("/", escaped_path)
   let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
   let accessor = if dag_type_name == "String" {
-    concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()", corpus_repr: corpus_repr), ").ok_or(\"missing field: ", from_path, "\")?")
+    concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()"), ").ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "i64" {
     concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "f64" {
@@ -9806,7 +9798,7 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
   concat("let ", var_name, " = json_body.pointer(\"", pointer, "\")", accessor, ";")
 }
 
-fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
   let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
@@ -9829,7 +9821,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
           Present { value: Resolved { node: rt } } => rt
           _ => tn
         }
-        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = response.json().await?;\n")
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = response.json().await?;\n")
       }
     Absent => "let json_body: serde_json::Value = response.json().await?;\n"
   }
@@ -9848,7 +9840,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
             Absent => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
           }
         } else {
-          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), corpus_repr: corpus_repr, source_indices: source_indices)
+          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
         }
       _ =>
         concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch_name, "\");")
@@ -9876,17 +9868,17 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if response_props |> count == 0 {
     if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env)
+      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
     } else {
       emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -9896,7 +9888,7 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   let is_success = if string_length(s: code_str) >= 1 {
@@ -9910,7 +9902,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
     } else {
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
@@ -9924,15 +9916,15 @@ fn has_exit_prefix(name: String) -> Bool {
   else { substring(s: name, start: 0, end: 5) == "exit_" }
 }
 
-fn emit_exit_code_handling(op_node: Node, inferred: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_exit_code_handling(op_node: Node, inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if exit_props |> count == 0 {
     emit_shell_return(inferred: inferred, source_indices: source_indices)
   } else {
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
-    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices))
+    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", corpus_repr: corpus_repr), ") },") }
+      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ") },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -9942,7 +9934,7 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node, corpus_repr: RustCorpu
   }
 }
 
-fn emit_exit_arm(prop: Node, inferred: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_exit_arm(prop: Node, inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
   let pattern = if code_str == "nonzero" { "_" }
@@ -9951,11 +9943,11 @@ fn emit_exit_arm(prop: Node, inferred: Node, corpus_repr: RustCorpusRepr, source
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_indices: source_indices), " },")
   } else {
-    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", corpus_repr: corpus_repr), ") },")
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr"), ") },")
   }
 }
 
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let argv = transport.children
   let optional_params = op_node.params
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
@@ -9968,7 +9960,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
       Present { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, corpus_repr: corpus_repr, source_indices: source_indices), ")")
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, source_indices: source_indices), ")")
       Absent => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
@@ -9978,7 +9970,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, corpus_repr: corpus_repr, source_indices: source_indices), ")")
+      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_indices: source_indices), ")")
     )
   } else { [] }
   let env_entries = transport_env(t: transport, source_indices: source_indices)
@@ -9997,19 +9989,19 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     let write_block = concat("{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(", stdin_var, ".as_bytes())?;\n    }\n}")
     let wait_line = "let output = output.wait_with_output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_indices: source_indices)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, spawn_line, spawn_exec, write_block, wait_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   } else {
     let output_line = "    .output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_indices: source_indices)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, output_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   }
 }
 
-fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
@@ -10050,9 +10042,9 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, corpus
         Absent => false
       }
       if is_opt {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"), corpus_repr: corpus_repr)
+        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"))
       } else {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name, corpus_repr: corpus_repr)
+        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name)
       }
     }
     _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
@@ -10138,23 +10130,23 @@ fn emit_local_call(op_name: String) -> String {
     "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
-fn emit_resource_def(item: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let cap_children = item.children
   if cap_children |> count == 0 {
     concat("#[derive(Debug, Clone)]\npub struct ", item_text, ";")
   } else {
     let depth = 0
-    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c, shared_types: shared_types, corpus_repr: corpus_repr, env: env))
+    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c, shared_types: shared_types, env: env))
     let methods_str = cap_methods |> join(separator: "\n\n")
     concat("#[async_trait::async_trait]\npub trait ", item_text, " {\n",
       make_indent(level: depth + 1),methods_str, "\n}")
   }
 }
 
-fn emit_capability_method(cap_node: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -10162,7 +10154,7 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, corpus_repr
   } else {
     concat("&self, ", params_str)
   }
-  let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
+  let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let items = rust_items()
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
@@ -10179,7 +10171,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 
 fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let ann_name = authored_name_at(source_indices: source_indices, node: annotation)
-  ann_name != "" && annotation.type_annotation != none && !is_container_type(name: ann_name) && !is_host_text_carrier_type(n: annotation, source_indices: source_indices, corpus_repr: FaithfulFreeMonoid)
+  ann_name != "" && annotation.type_annotation != none && !is_container_type(name: ann_name) && !is_host_text_carrier_type(n: annotation, source_indices: source_indices)
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -10201,7 +10193,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
-    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   }
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
@@ -10260,13 +10252,13 @@ fn rust_nominal_identity_data_expr(type_node: Node, value: Node, source_indices:
 fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
   match value.inferred {
     Present { value: Resolved { node: rt } } =>
-      rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info))
+      rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info))
     _ => false
   }
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
-  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info)
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
   if type_name == "BoundedLattice" {
     match value.expr_data {
@@ -10332,7 +10324,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           let key_is_string = map_literal_key_is_string(map_type_node: type_node, source_indices: scope.type_env.source_indices)
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(", emit_rust_map_literal_key(field_name: field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), key_is_string: key_is_string, corpus_repr: emit_info.corpus_repr), ", ", val_str, ");")
+            concat("            __m.insert(", emit_rust_map_literal_key(field_name: field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), key_is_string: key_is_string), ", ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
@@ -10350,7 +10342,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         ExprVar { binding_kind: bk } =>
           let vname = expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
           match effective_variant_parent(name: vname, binding_kind: bk, resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
-            Present { value: enum_name } => variant_ref_self_wraps(name: vname, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr)
+            Present { value: enum_name } => variant_ref_self_wraps(name: vname, enum_name: enum_name, shared_types: shared_types)
             Absent => value_inferred_type_is_rc_wrapped(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
           }
         _ => value_inferred_type_is_rc_wrapped(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
@@ -10362,10 +10354,10 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   }
 }
 
-fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus_repr: RustCorpusRepr) -> TextFile {
+fn emit_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
   let depth = 0
   let test_fns = projections
-    |> map(p => emit_operation_test(projection: p, depth: depth + 1, corpus_repr: corpus_repr))
+    |> map(p => emit_operation_test(projection: p, depth: depth + 1))
   if test_fns |> count == 0 {
     TextFile { path: "<none>", content: "" }
   } else {
@@ -10381,10 +10373,10 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus
   }
 }
 
-fn rust_test_signature_comment(projection: TestProjection, corpus_repr: RustCorpusRepr) -> String {
+fn rust_test_signature_comment(projection: TestProjection) -> String {
   let stub_env = TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), corpus_repr: corpus_repr, source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
@@ -10396,7 +10388,7 @@ fn rust_test_signature_comment(projection: TestProjection, corpus_repr: RustCorp
     emit_node_type(n: projection.inferred, target: Rust, source_indices: projection.source_indices))
 }
 
-fn emit_operation_test(projection: TestProjection, depth: Int, corpus_repr: RustCorpusRepr) -> String {
+fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = rust_test_name(projection: projection)
   let struct_name = sanitize_service_name(name: projection.service_name)
   let op_method = to_snake(name: projection.operation_name)
@@ -10407,7 +10399,7 @@ fn emit_operation_test(projection: TestProjection, depth: Int, corpus_repr: Rust
   let args_str = param_args |> join(separator: ", ")
   let call_args = if args_str == "" { "" } else { args_str }
   concat(rust_async_test_decorator(), "\nasync fn ", test_name, "() {\n",
-    indent, rust_test_signature_comment(projection: projection, corpus_repr: corpus_repr), "\n",
+    indent, rust_test_signature_comment(projection: projection), "\n",
     indent, "let service = ", struct_name, "::new(crate::dry_run::DryRunMode(true));\n",
     indent, "let result = service.", emit_ident(name: op_method, target: Rust), "(", call_args, ").await;\n",
     indent, "assert!(result.is_ok(), \"", struct_name, ".", projection.operation_name, " should succeed in dry-run mode: {:?}\", result.err());\n",

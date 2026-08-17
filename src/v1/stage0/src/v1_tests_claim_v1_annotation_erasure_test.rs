@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.v1_annotation_erasure_test
 
 pub use crate::std_occurrence_identity::occurrence_id_allocator_initial;
+pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndex};
 pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocator, OccurrenceIndexEntry, OccurrenceTransport,
 };
@@ -12,11 +13,13 @@ use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_annotation_bind::bind_annotations;
 pub use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
+pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_parse::parse_with_table_in_occurrence_scope;
 pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::Node;
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 pub use crate::v1_std_core::{InternTable, NewlineIndex};
 use crate::NonEmptyBTreeSet;

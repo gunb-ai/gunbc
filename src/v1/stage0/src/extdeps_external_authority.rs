@@ -7,6 +7,7 @@ use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_roster_frontier::declaration_ref_eq;
+pub use crate::std_types::List;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

@@ -2285,7 +2285,6 @@ mod compiler_tests {
             crate::v1_compiler_emit_rust::render_rust_type(
                 diagnostics_node,
                 empty_shared,
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative,
                 source_indices,
                 empty_emit
             ),
@@ -2294,37 +2293,51 @@ mod compiler_tests {
     }
 
     #[test]
-    fn groupcompletion_int_checkpoint_fires_under_faithful_corpus() {
+    fn groupcompletion_int_checkpoint_fires_for_std_declaration() {
         // Discriminating witness for the (b) checkpoint-order fix (sharp-bee-290 sign-off,
         // msg_6fc2ba88-549b-491e-9b6f-ab949539d682): emit_typed_item's zero-param alias-decl
         // branch calls rust_scalar_checkpoint_render_base (the single-authority checkpoint
-        // lookup), not the HostNative-only rust_seed_host_numeric_alias, so the Int -> i64
-        // checkpoint row (dag/extdeps/languages/rust/types.dag) fires BEFORE the RHS
-        // (GroupCompletion<Nat>) is unfolded — under BOTH corpus representations. A
-        // regression that narrows this back to the HostNative-only alias makes the
-        // FaithfulFreeMonoid arm return None, which is what this witness guards.
+        // lookup), so the Int -> i64 checkpoint row (dag/extdeps/languages/rust/types.dag)
+        // fires BEFORE the RHS (GroupCompletion<Nat>) is unfolded.
+        //
+        // MIGRATED off RustCorpusRepr (eager-deer-389): the claim that the checkpoint fires
+        // regardless of closure provenance survives, but provenance is no longer the key --
+        // realization is keyed on the DECLARING MODULE. The old both-arms assertion is
+        // therefore replaced by a strictly more discriminating pair: it fires for the std
+        // declaration and DECLINES for a same-spelled declaration from anywhere else, which
+        // the deleted corpus-mode switch could not express at all.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+                "dag/std/integer.dag".to_string()
             ),
             Some("i64".to_string())
         );
+        // RED control: the same spelling declared elsewhere (e.g. the v2 Peano coproduct)
+        // must NOT realize natively. A regression back to a bare-name rule greens this.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative
+                "src/v2/std/integer.dag".to_string()
             ),
-            Some("i64".to_string())
+            None
+        );
+        // Unknown identity yields NO realization rather than a guess (fail-closed).
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Int".to_string(),
+                "".to_string()
+            ),
+            None
         );
         // GroupCompletion itself has no checkpoint row and is not the seed host numeric
         // alias, so the checkpoint correctly declines to render it directly (the RHS
-        // unfolding path handles it as a real 2-field struct) — the checkpoint fires ONLY
+        // unfolding path handles it as a real 2-field struct) -- the checkpoint fires ONLY
         // for the Int/Nat leaf name, never widening to the container type.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "GroupCompletion".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+                "dag/std/algebra.dag".to_string()
             ),
             None
         );
@@ -2347,7 +2360,6 @@ mod compiler_tests {
             applied,
             generics,
             shared,
-            crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid,
             source_indices,
             variant_to_enum,
             env,

@@ -10,6 +10,7 @@ pub use crate::std_interface_summary::{interface_summary_rollup, signature_contr
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_occurrence_identity::OccurrenceTransport;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};

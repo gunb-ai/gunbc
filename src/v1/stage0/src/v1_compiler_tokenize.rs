@@ -13,6 +13,7 @@ pub use crate::std_source_annotation::{
 };
 pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;

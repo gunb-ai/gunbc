@@ -41,6 +41,7 @@ pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
 };
+pub use crate::std_occurrence_binding::{BindingCandidate, ContainmentPath, OccurrenceBinding};
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
@@ -70,6 +71,7 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_roster_frontier::declaration_ref_eq;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
+pub use crate::std_types::{Map, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

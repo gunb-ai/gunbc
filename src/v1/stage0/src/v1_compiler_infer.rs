@@ -5,6 +5,7 @@ use self::DescentSizeExpr::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
+pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
@@ -35,6 +36,7 @@ use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportServi
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
+pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::LitStr;
@@ -46,11 +48,11 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
+pub use crate::std_types::{List, Map, Set};
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
-use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
@@ -58,7 +60,7 @@ pub use crate::v1_compiler_infer_emit_info::{
     lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
+    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -143,6 +145,7 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
+pub use crate::v1_compiler_resolve::map_has;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -20037,45 +20040,7 @@ pub fn build_enum_variant_shape_sets(
     )
 }
 
-pub fn corpus_has_v1_seed_source_indices(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
-    {
-        let mut __found = false;
-        for m in modules.clone().iter().cloned() {
-            if {
-                let mut __found = false;
-                for k in Rc::new(v1_rt::map_keys(&m.type_env.clone().source_indices.clone()))
-                    .iter()
-                    .cloned()
-                {
-                    if (v1_rt::contains(k.clone(), "/v1/".to_string())
-                        || v1_rt::contains(k.clone(), "src/v1".to_string()))
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            } {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn rust_corpus_repr(has_v1_seed: bool) -> RustCorpusRepr {
-    if has_v1_seed.clone() {
-        RustCorpusRepr::HostNative
-    } else {
-        RustCorpusRepr::FaithfulFreeMonoid
-    }
-}
-
-pub fn build_emit_graph_info(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    has_v1_seed: bool,
-) -> Rc<EmitGraphInfo> {
+pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
@@ -20133,7 +20098,6 @@ pub fn build_emit_graph_info(
             read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-            corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: empty_type_env(),
             fn_return_type: None,
@@ -21093,8 +21057,7 @@ pub fn reconcile_with_census_extra(
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-        let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
-        let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
+        let emit_info = build_emit_graph_info(modules.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

@@ -20,6 +20,7 @@ pub use crate::std_trait_derive_shape::{
     repr_grounding_supplemental_bool_host_bridge_target, symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::std_types::is_container_type;
+pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_emit::to_pascal;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;

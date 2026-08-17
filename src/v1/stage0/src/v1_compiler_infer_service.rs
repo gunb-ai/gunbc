@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_service
 
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_items::inferred_to_outputs;
 use crate::v1_compiler_infer_items::ItemKind::FuncItem;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};

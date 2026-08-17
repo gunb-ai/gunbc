@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.dag_parse_continuation_operator_witness_test
 
 pub use crate::extdeps_languages_dag_syntax::dag_operators;
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_dag_collect_support::expr_data_variant;
 pub use crate::v1_compiler_parse::{
     find_operator_bp, operator_continuation_dual_role_excluded_symbols, parse_module,
@@ -12,6 +13,7 @@ pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{ExprBlock, ExprLet, ExprUnaryOp, ExprVar};
+pub use crate::v1_std_core::Token;
 use crate::v1_std_core::UnaryOpKind::Neg;
 pub use crate::v1_std_core::{
     build_newline_index, empty_intern_table, expr_call_func_at, expr_var_name_at,
