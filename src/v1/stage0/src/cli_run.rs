@@ -41822,6 +41822,28 @@ pub fn run_required_floor(
         claims.len()
     );
 
+    // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
+    //
+    // `hermetic` is the frame the manifest was folded in. It owns a scope AND the mutable
+    // evaluation caches that scope accumulated while folding 10,114 sites — call memo, data
+    // cache, name caches — and `admission` is the decoded Value it produced. Neither is read
+    // again: `claims` is the projection of both, and the fold consumes only `claims`.
+    //
+    // Left to ordinary scope they live until the function returns, which is to say through the
+    // entire fold, and every byte they hold is a byte the fold does not have. That matters more
+    // than it looks: the runner throttles at `memory.high` and the last run sat within ~1MB of
+    // the watermark, so retained-but-unread state is not slack — it is wall time, because under
+    // throttling the kernel reclaims continuously and every task in the cgroup stalls.
+    //
+    // Measured before this change, published-mock-projection stepped the resident set 6.58GB ->
+    // 9.15GB and it stayed there for the run. 90 mock keys do not cost 2.6GB; a retained frame
+    // over a folded manifest plausibly does. Whether that is what this recovers is exactly what
+    // the next run says, and if the step survives then the cost is elsewhere and this was still
+    // correct — an unread value held across the longest phase of the program has no defence.
+    drop(hermetic);
+    drop(admission);
+    drop(manifest_scope);
+
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
     let claims_planned = claims.len();
