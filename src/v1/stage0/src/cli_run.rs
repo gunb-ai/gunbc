@@ -14660,6 +14660,48 @@ fn render_batch_summary_line(
     }
 }
 
+/// Render one per-witness claim-result line through the `.dag` authority. Every choice about
+/// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
+/// seed transports subject, function, verdict and wall time only.
+fn render_witness_claim_result_text(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> Option<String> {
+    use v1_interpreter::Value;
+    let roots = OBSERVATION_SOURCE_ROOTS.get()?;
+    let entry = "dag/gunbc/observation_ci_render.dag";
+    let (graph, indices) = resolve_entry_graph_shared(roots, entry).ok()?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let wall = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "nanosecond",
+        &[(Some("count".to_string()), Value::Int(wall_nanos as i64))],
+        false,
+    )
+    .ok()?;
+    let out = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "ci_witness_claim_result_text",
+        &[
+            (Some("subject".to_string()), str_value(subject.to_string())),
+            (
+                Some("function".to_string()),
+                str_value(function.to_string()),
+            ),
+            (Some("passed".to_string()), Value::Bool(passed)),
+            (Some("wall".to_string()), wall),
+        ],
+        false,
+    )
+    .ok()?;
+    match out {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
@@ -23426,8 +23468,8 @@ impl ShardStyle {
     fn stream_witness(
         self,
         function: &str,
-        entry: &str,
-        execution_leg: &str,
+        subject: &str,
+        _execution_leg: &str,
         wall_nanos: u128,
         passed: bool,
     ) {
@@ -23442,9 +23484,23 @@ impl ShardStyle {
         if routine_rollup_folds() && concluded_outcome_folds(passed) {
             return;
         }
-        let ms = wall_nanos as f64 / 1.0e6;
         let ts = floor_ts();
         let tag = self.shard_tag();
+        if let Some(line) = render_witness_claim_result_text(subject, function, wall_nanos, passed)
+        {
+            if self.color {
+                eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
+            } else {
+                eprintln!("{ts} {tag}{line}");
+            }
+            return;
+        }
+        eprintln!(
+            "::warning::witness presentation drift: gunbc.observation_ci_render \
+             `ci_witness_claim_result_text` did not return a line; falling back to legacy \
+             formatting for {subject}:{function}"
+        );
+        let ms = wall_nanos as f64 / 1.0e6;
         if self.color {
             let glyph = if passed {
                 "\x1b[32m✓\x1b[0m"
@@ -23452,11 +23508,11 @@ impl ShardStyle {
                 "\x1b[31m✗\x1b[0m"
             };
             eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry} leg={execution_leg})\x1b[0m {ms:.1}ms"
+                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({subject})\x1b[0m {ms:.1}ms"
             );
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({entry} leg={execution_leg}) {ms:.1}ms");
+            eprintln!("{ts} {tag}{glyph} {function} ({subject}) {ms:.1}ms");
         }
     }
 }
@@ -23603,14 +23659,14 @@ fn run_discovery_rows(
             })?;
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
-            module_path,
+            module_path: module_path.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
             execution_leg: execution_leg.clone(),
         });
         style.stream_witness(
             &row.function,
-            &row.entry,
+            &module_path,
             &execution_leg,
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
