@@ -11557,7 +11557,10 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.length" { "length" } => match $positional.first() {
-                Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+                Some(Value::Str(s)) => Ok(Some(Value::Int(v1_rt::string_length_ascii_aware(
+                    s.as_str(),
+                    s.is_ascii(),
+                )))),
                 Some(v) => match native_len(v) {
                     Some(n) => Ok(Some(Value::Int(n))),
                     None => match free_monoid_to_vec(v) {
