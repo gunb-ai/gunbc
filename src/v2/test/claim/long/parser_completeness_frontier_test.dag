@@ -23,7 +23,7 @@ fn parser_frontier_ingest_for(src: String) -> SourceRootIngest {
 fn parser_frontier_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: Cons { head: ^parser_frontier_pilot, tail: Empty }
+      name: Cons { head: ^parser_frontier_pilot, tail: std.algebra.Empty }
     },
     imports: Empty
   }

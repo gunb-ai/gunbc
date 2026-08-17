@@ -2,7 +2,7 @@ module gunbc.accelerator_demo_eval
 
 
 fn int_relu(x: Int) -> Int {
-  int_max(a: 0, b: x)
+  std.realization_width.int_max(a: 0, b: x)
 }
 
 fn eval_relu_mul_add_elem_at_index(ai: Int, bi: Int, ci: Int) -> Int {

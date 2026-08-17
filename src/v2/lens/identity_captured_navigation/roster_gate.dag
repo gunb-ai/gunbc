@@ -69,10 +69,10 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
   match ingest_findings(path: path) {
     Absent => RosterIngestRegressed
     Present { value: fs } =>
-      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+      if count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0 {
         RosterSuspectFound
       } else {
-        let refusals = count_matching(fs: fs, pred: finding_is_refusal)
+        let refusals = count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
         if refusals > refusal_ceiling {
           RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
         } else {
@@ -85,14 +85,14 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
 fn file_suspect_count(path: String) -> Int {
   match ingest_findings(path: path) {
     Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect)
+    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
   }
 }
 
 fn file_refusal_count(path: String) -> Int {
   match ingest_findings(path: path) {
     Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: finding_is_refusal)
+    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
   }
 }
 
@@ -108,6 +108,6 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
 fn source_has_suspect(source_text: String) -> Bool {
   match source_findings(source_text: source_text) {
     Absent => false
-    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect) > 0
+    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0
   }
 }

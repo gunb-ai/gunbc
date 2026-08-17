@@ -162,7 +162,7 @@ fn list_length_nat<T>(xs: List<T>) -> v2.std.nat.Nat {
 }
 
 fn nat_eq(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
-  match nat_compare(a: a, b: b) {
+  match v2.std.nat.nat_compare(a: a, b: b) {
     Equal => true
     Less => false
     Greater => false

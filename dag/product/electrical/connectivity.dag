@@ -1,0 +1,50 @@
+module product.electrical.connectivity
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+
+// ELECTRICAL CONNECTIVITY IS NOT A PROPERTY OF ONE PRODUCT'S CIRCUIT. These identities and the net
+// relation over them were first written inside product.compute_board.analog, the little RC specimen
+// that emits a SPICE deck, because that is where the first consumer happened to be. The copper
+// carrier then had to import them from there — so a generic PCB authority depended on one product's
+// analog article, and a motherboard could only acquire copper by impersonating that specimen.
+//
+// That is not a layering nicety. AnalogCircuitIntent's component universe is a CLOSED coproduct of
+// resistor, capacitor and independent voltage source: a CPU, a BMC, a DDR slot, a regulator or a
+// connector has no variant there, so the dependency was not merely awkward, it was unsatisfiable.
+// What copper is genuinely about is connectivity — which terminals are the same node — and that
+// question is identical for an RC divider and for an Altra motherboard.
+//
+// So the general grain lives here and the specimen consumes it, rather than the reverse. Nothing in
+// this module names a component KIND, a value, a package, a simulator or a target: a terminal is a
+// component identity plus a terminal identity, and a net is a set of them.
+type ComponentInstanceIdentity = NonEmptyStr where brand("ComponentInstanceIdentity")
+
+type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
+
+type NetIdentity = NonEmptyStr where brand("NetIdentity")
+
+// A TERMINAL IS REFERENCED BY IDENTITY, NOT BY SPELLING. Naming the component and the terminal
+// separately is what makes "is this terminal on that net" a decidable join rather than a coincidence
+// between two prose fields.
+type ElectricalTerminalRef {
+  component: ComponentInstanceIdentity
+  terminal: TerminalIdentity
+}
+
+type ElectricalNet {
+  identity: NetIdentity
+  members: List<ElectricalTerminalRef>
+}
+
+fn terminal_ref(component: ComponentInstanceIdentity, terminal: TerminalIdentity) -> ElectricalTerminalRef {
+  ElectricalTerminalRef { component: component, terminal: terminal }
+}
+
+fn terminal_ref_equal(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (a.component as String) == (b.component as String) && (a.terminal as String) == (b.terminal as String)
+}
+
+fn net_contains_terminal(net: ElectricalNet, t: ElectricalTerminalRef) -> Bool {
+  fold(net.members, init: false, f: fn(acc, m) { acc || terminal_ref_equal(a: m, b: t) })
+}

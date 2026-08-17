@@ -1,5 +1,7 @@
 module v2.test.manual.infer_algebra_ref_grounding_anchor
 
+import v2.std.witness { Holds, Violates, Witness }
+
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },

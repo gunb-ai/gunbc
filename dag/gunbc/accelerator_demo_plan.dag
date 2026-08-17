@@ -31,7 +31,7 @@ data demo_accelerator_device: extdeps.gpu.types.AcceleratorFacts = extdeps.gpu.t
   model: "A100"
 }
 
-fn demo_accelerator_placement() -> Placement {
+fn demo_accelerator_placement() -> std.realization.Placement {
   LocalAccelerator
 }
 
@@ -39,7 +39,7 @@ fn demo_plan_total() -> CostAccount<Nano> {
   cost_account_predicted_zero()
 }
 
-fn demo_kernel_step(placement: Placement) -> RealizedStep<Nano> {
+fn demo_kernel_step(placement: std.realization.Placement) -> RealizedStep<Nano> {
   RealizedStep {
     shape: ReadEffect
     placement: placement
@@ -137,8 +137,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
     Present { value: runnable } => match runnable {
       RunnableKernelWorkload { fused_op_count: count } => count
       RunnableSingleClaim { entry: _, function: _, profile: _ } => 0
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => 0
-      RunnableScopedWitnessBatch { batch: _ } => 0
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => 0
     }
   }
 }

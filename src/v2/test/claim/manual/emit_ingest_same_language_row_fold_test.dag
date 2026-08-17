@@ -47,7 +47,7 @@ fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> 
         f: fn(tokens) {
           let classes = fold(
             tokens,
-            init: Empty,
+            init: std.algebra.Empty,
             f: fn(acc, t) {
               list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
             }

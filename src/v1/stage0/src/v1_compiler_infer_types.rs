@@ -38,6 +38,8 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+pub use crate::v1_std_core::MatchPattern;
+use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,

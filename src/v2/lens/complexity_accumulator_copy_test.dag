@@ -15,33 +15,33 @@ fn bare(s: Symbol) -> PortReading {
   PortBareName { name: s }
 }
 
-fn classify(combiner: Symbol, ports: List<PortReading>, carriers: List<Symbol>) -> Optional<Finding> {
+fn classify(combiner: Symbol, ports: List<PortReading>, carriers: List<Symbol>) -> Optional<v2.lens.complexity_accumulator_copy.Finding> {
   classify_call(at: dummy_site(), combiner: combiner, ports: ports, carriers: carriers)
 }
 
-fn is_suspect(o: Optional<Finding>) -> Bool {
+fn is_suspect(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
   match o {
     Present { value: f } =>
       match f {
         Poly2Suspect { at: _, cost: _ } => true
-        Unclassifiable { at: _, cause: _ } => false
+        v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => false
       }
     Absent => false
   }
 }
 
-fn refuses_with(o: Optional<Finding>, cause: Symbol) -> Bool {
+fn refuses_with(o: Optional<v2.lens.complexity_accumulator_copy.Finding>, cause: Symbol) -> Bool {
   match o {
     Present { value: f } =>
       match f {
         Poly2Suspect { at: _, cost: _ } => false
-        Unclassifiable { at: _, cause: c } => c == cause
+        v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: c } => c == cause
       }
     Absent => false
   }
 }
 
-fn is_absent(o: Optional<Finding>) -> Bool {
+fn is_absent(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
   match o {
     Present { value: _ } => false
     Absent => true

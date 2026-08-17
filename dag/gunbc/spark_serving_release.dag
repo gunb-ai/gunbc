@@ -205,7 +205,7 @@ type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 // between refusal and drift, one position over -- and it was load-bearing rather than cosmetic,
 // because it is precisely the state both Sparks are in today.
 type SparkServingObservation
-  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingReleaseIdentity }
+  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingRelease }
   | SparkServingAbsent { host: HostIdentity }
   | SparkServingObservationRefused { host: HostIdentity, cause: NonEmptyStr }
 
@@ -319,8 +319,11 @@ fn reconcile_spark_serving(
               if host_matches(a: seen, b: desired.host) == false {
                 SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
               } else {
-                if (loaded.digest.digest as String) == (desired.release_identity.digest.digest as String) {
-                  SparkServingAlreadyConverged { converged_release: loaded }
+                if (spark_serving_release_identity(spec: loaded).digest.digest as String)
+                  == (desired.release_identity.digest.digest as String) {
+                  SparkServingAlreadyConverged {
+                    converged_release: spark_serving_release_identity(spec: loaded),
+                  }
                 } else {
                   SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
                 }

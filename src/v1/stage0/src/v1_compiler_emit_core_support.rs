@@ -3,9 +3,12 @@
 
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
+pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
+pub use crate::v1_compiler_languages::NamingCase;
+use crate::v1_compiler_languages::NamingCase::*;
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
@@ -34,6 +37,7 @@ pub struct TestProjection {
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub type_env: Rc<TypeEnv>,
 }
 
 pub fn escape_json_string(s: String) -> String {
@@ -658,6 +662,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             __result
                                         }),
                                         source_indices: tm.type_env.clone().source_indices.clone(),
+                                        type_env: tm.type_env.clone(),
                                     }));
                                 }
                                 __result
