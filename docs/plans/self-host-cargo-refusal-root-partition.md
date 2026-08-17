@@ -1916,6 +1916,45 @@ that is uniformly shared and yet splits by sign. The premise is neither confirme
 refuted as a description; it is **not discriminating**, which is a third outcome and the one that
 actually occurred.
 
+**AMENDED 2026-08-17, and the amendment is the point: the paragraph below WAS WRONG and its error is
+instructive.** I attached `bold-lark-722`'s v2 catalog read to this v1-produced census because the two
+had the same shape, without checking that the emitter being described was the emitter that produced
+the corpus. It was not. `bold-lark-722` established, three ways, that `gunbc compile --target rust`
+is the **v1 seed emitter end to end** — there is no `v2_compiler_translate.rs` in stage0,
+`build_shared_types` appears only in `v1_compiler_emit_rust.rs` and `v1_compiler_infer_emit_info.rs`,
+and `cli_run.rs` imports `crate::v1_compiler_emit_rust` directly — so `rust_sg_rc_use_site_ownership_catalog`,
+`TargetOwnershipUseSite` and `translate_coerced_with_atom_realization` were **dormant** while these 55
+sites were emitted. The catalog fork is real and is a fact about the v2 path; it is not the cause of
+anything measured here. *A fact that fits is not a fact that applies* — the same error as the 28/27
+aggregate one section earlier, made in the opposite direction (there I over-generalized my own data;
+here I under-checked someone else's).
+
+**What replaced it, confirmed by inspection rather than by reading either emitter.** The discriminator
+is *which renderer a position is wired to*, not membership. From the emitted `03_ingest` tree:
+
+```
+v2_compiler_parse.rs:78   pub struct ParseProvenanceState { pub alloc: OccurrenceIdAllocator, pub index: SpanIndex }
+v2_std_provenance.rs:61   pub fn span_index_empty() -> Rc<SpanIndex>
+v2_std_provenance.rs:87   pub fn span_index_merge(base: Rc<SpanIndex>, incoming: Rc<SpanIndex>) -> Rc<SpanIndex>
+
+:575  index: span_index_empty(),                                           OVER
+:582  index: span_index_merge(base.index.clone(), incoming.index.clone()), BOTH SIGNS
+```
+
+`base.index` is a field, emitted **bare**, passed to a parameter emitted **`Rc<`-wrapped** (the
+under-wrap); the call's wrapped result is assigned into the bare field (the over-wrap). One
+expression, one type, both signs — which is the only way a single file:line:column carries both.
+
+Measured across the whole emitted tree, signature position is wrapped for **every** shared type
+(`SpanIndex` 10, `ParseProvenanceState` 22, `ScopeRoster` 4, `SubjectRoster` 2, `ConsumerRequirement` 1,
+`DecimalDigitsStep` 2) while field position is bare for four of five. **The wrinkle, stated because a
+fix predicated on a clean split will leave a residue:** `ParseProvenanceState` is wrapped in all four
+of its field occurrences and `SpanIndex` in one of three, so some second axis also wraps fields.
+`OccurrenceIdAllocator` is the negative control — bare in both positions, not shared, and zero R1
+sites.
+
+The superseded reading follows, kept because the retraction is more useful than the deletion:
+
 What this leaves standing is `bold-lark-722`'s catalog read (reported to me, not verified here):
 `rust_sg_rc_use_site_ownership_catalog` rows disagree *by position* for the same carrier —
 `BindingProjection → ReferenceLayerRc` while `FunctionParameter → ReferenceLayerOwned` — and
