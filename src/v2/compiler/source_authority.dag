@@ -711,7 +711,7 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outc
     o: normalize(parse_tree: ast.tree),
     f: fn(normalized) {
       bind_outcome(
-        o: resolve(tree: normalized, lm: lm),
+        o: v2.compiler.resolve.resolve(tree: normalized, lm: lm),
         f: fn(resolved) {
           outcome_accepted(value: DagSemanticIr { tree: resolved })
         }
