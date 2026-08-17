@@ -1,0 +1,223 @@
+module test.claim.spark_serving_full_plan_witness_test
+
+
+data subject_host: product.placement_supply.HostIdentity = "srv6" as product.placement_supply.HostIdentity
+
+// The subject is the DECLARED release, so these claims move with the real authority rather than a
+// fixture that could drift from it. A refused admission has no release to plan against, and the
+// witness says so rather than substituting one.
+fn subject_release() -> gunbc.spark_serving_release.SparkServingRelease? {
+  match gunbc.spark_serving_desired.spark_serving_desired_admission {
+    gunbc.spark_serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    gunbc.spark_serving_desired.SparkServingDesiredRefused { cause: _ } => none
+  }
+}
+
+fn project(
+  obs: gunbc.spark_serving_release.SparkServingObservation,
+  unit: gunbc.spark_serving_observed_members.SparkServingObservedUnitState,
+  linger: gunbc.spark_serving_observed_members.SparkServingObservedLingerState,
+) -> gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection {
+  gunbc.spark_serving_observed_members.spark_serving_observed_members(observation: obs, unit: unit, linger: linger)
+}
+
+fn observed_count(p: gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection) -> Int {
+  match p {
+    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: _ } => 0 - 1
+    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: ms, unit_observed: _ } => length(ms)
+  }
+}
+
+fn plan_writes(p: gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
+  match p {
+    gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
+    gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+      gunbc.membership_reconcile.membership_write_count(plan: plan)
+  }
+}
+
+fn full_plan_writes(
+  obs: gunbc.spark_serving_release.SparkServingObservation,
+  unit: gunbc.spark_serving_observed_members.SparkServingObservedUnitState,
+  linger: gunbc.spark_serving_observed_members.SparkServingObservedLingerState,
+) -> Int {
+  match subject_release() {
+    Absent => 0 - 2
+    Present { value: r } =>
+      plan_writes(
+        p: gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
+          occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+          projection: project(obs: obs, unit: unit, linger: linger),
+        ),
+      )
+  }
+}
+
+fn full_plan_refuses(
+  obs: gunbc.spark_serving_release.SparkServingObservation,
+  unit: gunbc.spark_serving_observed_members.SparkServingObservedUnitState,
+  linger: gunbc.spark_serving_observed_members.SparkServingObservedLingerState,
+) -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
+        occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
+        serving_release: r,
+        projection: project(obs: obs, unit: unit, linger: linger),
+      ) {
+        gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
+        gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
+      }
+  }
+}
+
+// ── The defect this closes ──────────────────────────────────────────────────────────────────────
+
+// The declared desired population is four members. This is the denominator every claim below divides
+// by, asserted rather than assumed.
+test fn the_declared_desired_population_is_four_members() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      length(gunbc.spark_serving_membership.spark_serving_desired_members(
+        occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
+        serving_release: r,
+      )) == 4
+  }
+}
+
+// THE KEYSTONE. On a bare host the production plan planned ONE member; the full plan plans four.
+// Without this the three unrealized install effects could never be selected however well implemented.
+test fn a_bare_host_plans_all_four_members_not_only_linger() -> Bool {
+  full_plan_writes(
+    obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent,
+    linger: gunbc.spark_serving_observed_members.LingerObservedDisabled,
+  ) == 4
+}
+
+// The contrast, executed rather than asserted in prose: the superseded plan writes exactly one.
+test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
+  gunbc.membership_reconcile.membership_write_count(
+    plan: gunbc.spark_serving_converge_plan.spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
+  ) == 1
+}
+
+// ── Observation, never the desired state ────────────────────────────────────────────────────────
+
+// A bare host observes no runtime, unit or model member. If the projection derived observed state
+// from the desired release, this would be four and the plan would be empty on a bare machine.
+test fn a_bare_host_observes_no_serving_members() -> Bool {
+  observed_count(p: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedDisabled)) == 0
+}
+
+// Linger is observed independently, so it is carried even when serving is absent.
+test fn linger_is_carried_on_a_bare_host_when_it_is_enabled() -> Bool {
+  observed_count(p: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled)) == 1
+}
+
+// With linger already enabled a bare host needs three writes, not four.
+test fn a_bare_host_with_linger_already_enabled_plans_three() -> Bool {
+  full_plan_writes(
+    obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent,
+    linger: gunbc.spark_serving_observed_members.LingerObservedEnabled,
+  ) == 3
+}
+
+// ── The refusal that must not narrow ────────────────────────────────────────────────────────────
+
+// A refused observation may NOT be rendered as an empty observed population: that would plan every
+// member as an addition against a host nobody saw. It refuses, and the plan refuses with it.
+test fn a_refused_observation_refuses_the_projection() -> Bool {
+  match project(
+    obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as std.types.NonEmptyStr },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
+    linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
+  ) {
+    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: _ } => true
+    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: _ } => false
+  }
+}
+
+test fn a_refused_observation_refuses_the_plan_rather_than_planning_four_writes() -> Bool {
+  full_plan_refuses(
+    obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as std.types.NonEmptyStr },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
+    linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
+  )
+}
+
+// The refusal names the host, so a fleet-wide run says WHICH host was not seen.
+test fn the_projection_refusal_names_the_host() -> Bool {
+  match project(
+    obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as std.types.NonEmptyStr },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
+    linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
+  ) {
+    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: c } =>
+      string_contains(c, "srv6") && string_contains(c, "ssh unreachable")
+    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: _ } => false
+  }
+}
+
+// ── Unobserved is not absent ────────────────────────────────────────────────────────────────────
+
+// An unobserved unit is not listed, so it plans as an addition — the same OUTCOME as absent, but the
+// two must remain distinguishable because only one of them supports an empty replan.
+test fn an_unobserved_unit_does_not_support_an_empty_replan() -> Bool {
+  !gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
+    projection: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
+  )
+}
+
+test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
+  gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
+    projection: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
+  )
+}
+
+test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
+  !gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
+    projection: project(
+      obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "x" as std.types.NonEmptyStr },
+      unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
+      linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
+    ),
+  )
+}
+
+// ── The typed-action projection refuses rather than dropping ────────────────────────────────────
+
+// Removing an `Ensured` member is refused by the reconcile, and that refusal used to be ERASED: the
+// projection was a flat_map whose `Absent` arm returned the empty list, so the artifact froze fewer
+// typed rows than its own plan had actions and reported no diagnostic. Its frequency was zero by
+// construction because the only live plan is linger-only and linger always translates -- which is
+// exactly why it is worth an executed witness rather than a reading of the code.
+fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt> {
+  gunbc.spark_serving_membership.spark_serving_membership_reconcile(
+    desired: [],
+    observed: [gunbc.spark_serving_converge_plan.spark_serving_desired_linger_member(host: subject_host)],
+  )
+}
+
+test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
+  match gunbc.spark_serving_converge_plan.fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan()) {
+    gunbc.spark_serving_converge_plan.SparkServingTypedActionsRefused { cause: c } =>
+      string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
+    gunbc.spark_serving_converge_plan.SparkServingTypedActionsProjected { rows: _ } => false
+  }
+}
+
+// The positive control: the ordinary bare-host linger plan still projects, so the refusal above is a
+// property of the untranslatable action and not of the projection refusing everything.
+test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
+  match gunbc.spark_serving_converge_plan.fleet_converge_spark_serving_typed_actions(
+    plan: gunbc.spark_serving_converge_plan.spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
+  ) {
+    gunbc.spark_serving_converge_plan.SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
+    gunbc.spark_serving_converge_plan.SparkServingTypedActionsRefused { cause: _ } => false
+  }
+}

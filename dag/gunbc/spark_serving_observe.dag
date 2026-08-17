@@ -51,13 +51,13 @@ type SparkServingObservationReport
 // rather than collapsing to `none`, so an unreachable host and an unportable word list do not
 // arrive at the caller as the same value.
 fn spark_serving_probe_leg_via_locus(
-  locus: SparkServingSliceCredentialLocus,
+  context: FleetSshExecutionContext,
   host: HostIdentity,
   raw_words: List<String>,
 ) -> SshSessionExecResult? {
   match run_typed_argv_transport(
     argv: raw_words,
-    transport: spark_serving_slice_transport(locus: locus, host: host),
+    transport: spark_serving_slice_transport(context: context, host: host),
   ) {
     TypedArgvExecConverged { result: r } => Present { value: r }
     TypedArgvExecRefused { reason: _ } => none
@@ -65,17 +65,17 @@ fn spark_serving_probe_leg_via_locus(
 }
 
 fn spark_serving_observe_host_via_locus(
-  locus: SparkServingSliceCredentialLocus,
+  context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkServingObservation {
   let readback = spark_serving_readback_from_probe_results(
     host: host,
-    load_state: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_load_state_probe_words()),
-    is_active: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_active_probe_words()),
-    version: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_version_probe_words),
-    tags: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_tags_probe_words),
-    nvidia_driver: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
-    runtime_receipt: spark_serving_probe_leg_via_locus(locus: locus, host: host, raw_words: spark_serving_runtime_receipt_probe_words()),
+    load_state: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_load_state_probe_words()),
+    is_active: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_probe_words()),
+    version: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_version_probe_words),
+    tags: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_tags_probe_words),
+    nvidia_driver: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
+    runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_receipt_probe_words()),
   )
   derive_spark_serving_observation(readback: readback)
 }
@@ -506,20 +506,32 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
 // through the in-run ssh-agent the job already materialized, so the same probe legs run where
 // the fleet actually is. It is READ-ONLY: every word list here is a query.
 func spark_serving_observe_ci_wet() -> ProcessExit {
+  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
+    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
+    SparkServingContextReady { context: context, receipt: context_receipt } =>
+      spark_serving_observe_ci_with_context(context: context, context_receipt: context_receipt)
+  }
+}
+
+// The attempt this entry owns. It names the entry rather than a run, because the anchor and selector
+// paths it scopes live under target/ in a workspace one job owns.
+data spark_serving_observe_ci_attempt_raw: String = "spark-serving-observe-ci"
+
+func spark_serving_observe_ci_with_context(
+  context: FleetSshExecutionContext,
+  context_receipt: String,
+) -> ProcessExit {
   let now = clock_now_probed_at()
   let observations = map(
     spark_serving_desired_hosts,
-    h => spark_serving_observe_host_via_locus(locus: SparkServingSliceRunnerAgent, host: h),
+    h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
   let body = join(
     concat(
       [
         join(["spark_serving_observe_ci_wet probed_at=", now as String, "\n"], ""),
-        join([
-          "credential_locus=",
-          spark_serving_slice_locus_label(locus: SparkServingSliceRunnerAgent),
-          " trust=in-run ssh-agent + job-materialized known_hosts anchor (established by the runner job, not by this entry)\n",
-        ], ""),
+        join(["credential_locus=", spark_serving_slice_locus_label(context: context), "\n"], ""),
+        context_receipt,
       ],
       map(observations, o => spark_serving_observation_line(observation: o)),
     ),

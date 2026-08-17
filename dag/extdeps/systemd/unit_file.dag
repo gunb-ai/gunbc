@@ -1,0 +1,143 @@
+module extdeps.systemd.unit_file
+
+
+// THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
+//
+// `extdeps.systemd` models a unit's observable PROPERTIES (LoadState, ActiveState, MemoryMax) and
+// `extdeps.systemd.systemctl` models the manager INVOCATIONS. Neither models the on-disk file, so a
+// consumer that needs to WRITE a unit had no authority to render one and would have had to spell
+// systemd's INI syntax itself -- a second systemd authority living inside a product module, which is
+// exactly the §3 nicknaming this module exists to prevent.
+//
+// The subject is the unit file format as specified by systemd.unit(5) and systemd.service(5). Those
+// are two citations of ONE subject, which is what `further_citations` is for.
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.unit.html"
+  }
+}
+
+data systemd_service_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.service.html"
+  }
+}
+
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
+      module_path: "extdeps.systemd.unit_file",
+      decl_name: "SystemdUnitFile",
+      field: std.decl_ref.WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [systemd_service_directive_authority]
+}
+
+// ONE DIRECTIVE TYPE PER SECTION, SO A MISPLACED DIRECTIVE HAS NO REPRESENTATION.
+//
+// systemd rejects `ExecStart=` in `[Unit]` and `WantedBy=` in `[Service]`, and a renderer carrying one
+// flat directive name would make both writable -- caught, at best, by a remote systemd refusing to
+// load the file long after it was delivered. Three disjoint types put that class at the top of the
+// §4b ladder instead: the invalid file has no constructor, so no validation of section placement is
+// needed anywhere downstream.
+//
+// These are deliberately NOT the full directive vocabulary. systemd specifies hundreds; enumerating
+// them speculatively would be a large closed set that is still incomplete, which is worse than a
+// small one, because incompleteness in a closed enum reads as "this directive is not permitted"
+// rather than "this directive is not modeled yet". Each is a §2-horizontal row: a consumer needing
+// `RestartSec=` adds one variant and one wire row, and nothing else changes.
+
+type SystemdUnitDirective
+  = Description { text: std.types.NonEmptyStr }
+  | After { target: std.types.NonEmptyStr }
+  | Wants { target: std.types.NonEmptyStr }
+
+type SystemdServiceDirective
+  = ServiceType { mode: std.types.NonEmptyStr }
+  | ExecStart { command: std.types.NonEmptyStr }
+  | Restart { policy: std.types.NonEmptyStr }
+  | Environment { assignment: std.types.NonEmptyStr }
+  | WorkingDirectory { path: std.types.NonEmptyStr }
+
+type SystemdInstallDirective
+  = WantedBy { target: std.types.NonEmptyStr }
+  | RequiredBy { target: std.types.NonEmptyStr }
+
+// The directive names are systemd's, spelled once here. A consumer never writes the literal
+// "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
+
+fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
+  match directive {
+    Description { text: v } => join(["Description=", v as String], "")
+    After { target: v } => join(["After=", v as String], "")
+    Wants { target: v } => join(["Wants=", v as String], "")
+  }
+}
+
+fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
+  match directive {
+    ServiceType { mode: v } => join(["Type=", v as String], "")
+    ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    Restart { policy: v } => join(["Restart=", v as String], "")
+    Environment { assignment: v } => join(["Environment=", v as String], "")
+    WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
+  }
+}
+
+fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String {
+  match directive {
+    WantedBy { target: v } => join(["WantedBy=", v as String], "")
+    RequiredBy { target: v } => join(["RequiredBy=", v as String], "")
+  }
+}
+
+// A unit file is exactly three sections in systemd's order. Modeling it as a record rather than a
+// list of (section, directives) pairs means a file with two `[Service]` sections, or with its
+// sections transposed, is likewise unwritable rather than merely discouraged.
+
+type SystemdUnitFile {
+  unit: List<SystemdUnitDirective>
+  service: List<SystemdServiceDirective>
+  install: List<SystemdInstallDirective>
+}
+
+data systemd_unit_section_header: String = "[Unit]"
+
+data systemd_service_section_header: String = "[Service]"
+
+data systemd_install_section_header: String = "[Install]"
+
+// SERIALIZATION IS TOTAL, and every unit file ends with a trailing newline: systemd's parser is
+// line-oriented and a final directive without one is the classic silently-truncated last line.
+// Because the byte comparison that observes an already-delivered unit compares against exactly this
+// output, the trailing newline is load-bearing for convergence and not cosmetic -- a renderer that
+// omitted it would diff against every correctly-written file on disk forever.
+fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
+  join(
+    concat(
+      concat(
+        concat(
+          [systemd_unit_section_header],
+          map(file.unit, d => systemd_unit_directive_line(directive: d)),
+        ),
+        concat(
+          [systemd_service_section_header],
+          map(file.service, d => systemd_service_directive_line(directive: d)),
+        ),
+      ),
+      concat(
+        [systemd_install_section_header],
+        concat(
+          map(file.install, d => systemd_install_directive_line(directive: d)),
+          [""],
+        ),
+      ),
+    ),
+    "\n",
+  )
+}
