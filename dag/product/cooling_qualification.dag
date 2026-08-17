@@ -4,7 +4,7 @@ import std.types { Bool, List, String, Int }
 import std.measure { Watt, measure_le }
 import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, cpu_socket_eq }
+import extdeps.cpu.types { CpuModelCatalogRow, ProcessorCoolingMount, cooling_mount_eq }
 import extdeps.boards.types { BaseboardModel }
 
 // A CPU cooler is the heat-pickup realization of an installed processor. WHICH cooler is
@@ -16,7 +16,7 @@ import extdeps.boards.types { BaseboardModel }
 //
 // The verdict this module reaches is deliberately narrow, and its name says so:
 // CoolingCatalogCompatible is a CATALOG preflight, never a thermal outcome. The catalog can
-// establish exactly three things — the cooler's socket matches the processor's socket, the
+// establish exactly three things — the cooler's retention mount matches the processor's mount, the
 // cooler vendor's declared supported-board population contains the installed baseboard, and
 // the cooler's maximum design power covers the processor's TDP. What it CANNOT establish, and
 // what therefore stays a live observation on the BMC path: installed mounting quality,
