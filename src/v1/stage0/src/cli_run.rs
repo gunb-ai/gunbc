@@ -40897,11 +40897,39 @@ pub fn claim_scope_for(
     // come from `fn_nodes`, built off the module list — so a function-only control would have
     // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
     // no name comparison to be correct, which is why it is the projection used.
+    // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
+    // write wins.
+    //
+    // `item_registry` is keyed by BARE leaf name and the corpus does collide on leaves (the
+    // #7685 class the emitter carries its own wall for). So the union is not a merge of disjoint
+    // maps; it is a resolution, and something has to decide it. `order` is that decision: own
+    // module first, then the compiler's precedence-ordered import closure, then the reference
+    // closure. It is already the authority the line below folds `scope_identity` over, on the
+    // stated ground that "order is exactly what decides which declaration wins a colliding bare
+    // name."
+    //
+    // Iterating `modules` instead handed the decision to `prepared.graph.modules` — the order
+    // modules happen to sit in the prepared subject, which is a fact about the corpus and not
+    // about this scope. Two scopes with identical members and different precedence would then
+    // resolve a collision identically, which is the thing `scope_identity` exists to deny, and a
+    // module's own declaration could lose its own bare name to an unrelated module that merely
+    // sorted later.
     let mut item_registry: HashMap<String, Rc<crate::v1_compiler_infer_items::ItemInfo>> =
         HashMap::new();
-    for module in &modules {
-        for (name, info) in module.item_registry.iter() {
-            item_registry.insert(name.clone(), info.clone());
+    {
+        let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
+            .iter()
+            .map(|m| (m.func_env.name.as_str(), m))
+            .collect();
+        for module_name in &order {
+            let Some(module) = module_by_name.get(module_name.as_str()) else {
+                continue;
+            };
+            for (name, info) in module.item_registry.iter() {
+                item_registry
+                    .entry(name.clone())
+                    .or_insert_with(|| info.clone());
+            }
         }
     }
     // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
