@@ -130,3 +130,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
 /.github/fleet-runner-deploy.manifest
 /provisioning/srv3/user-data
+
+# tools/ carries executable instruments that MUST be reviewable; the blanket
+# *.py above silently swallowed one and a commit shipped claiming it existed.
+!tools/**/*.py

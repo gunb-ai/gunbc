@@ -1,6 +1,18 @@
-# A binding-identity oracle for the namespace cut
+# A binding RISK CENSUS for the namespace cut
 
-**Status:** built and run, 2026-08-17. Tool: `tools/namespace_cut/binding_identity_oracle.py`.
+> **This is not the terminal oracle, and must not be read as licensing merge.**
+> It classifies GLOBAL DECLARER UNIQUENESS. The terminal oracle is
+> `pre-cut resolved binding identity == post-cut resolved binding identity`
+> per retained occurrence, which requires running both resolvers. See
+> "Honest limits" below.
+
+**Status:** built and run, 2026-08-17.
+**Tool:** `tools/namespace_cut/binding_identity_oracle.py` (materializes both trees from git refs itself).
+**Receipt:** `tools/namespace_cut/binding_risk_census_receipt.json` — every row, plus pinned provenance.
+**Reproduce:** `python3 tools/namespace_cut/binding_identity_oracle.py e095c27543a HEAD out.json`
+
+Numbers below are from an earlier tree and are superseded by the receipt; the
+receipt is the authority, this prose is a reading of it.
 
 ## Why a count of diagnostics is the wrong instrument
 
