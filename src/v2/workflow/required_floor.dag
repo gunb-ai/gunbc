@@ -1,7 +1,7 @@
 module v2.workflow.required_floor
 
 import v2.std.algebra { contains, fold_list, length, list_append, list_map, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_get, map_insert }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
@@ -143,8 +143,6 @@ data no_manifest_refusals: List<ManifestRefusal> = []
 
 data no_seen_qualified_names: List<String> = []
 
-data no_module_paths: List<String> = []
-
 // The evaluation deadline for one claim, at ONE authority for the whole manifest.
 //
 // It is stated here rather than imported from the fast-lane rule because the fast lane is a
@@ -176,59 +174,65 @@ fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
 // spelling of one relation with no caller, and the next reader would have to prove which one
 // production uses before touching either.
 //
-// The grouped value stays a LIST rather than collapsing to a single path, because the arity is
-// the verdict: `resolve_site` identifies on exactly one and refuses on zero AND on many
-// through one arm. Collapsing here would discard the ambiguity that refusal exists to catch,
-// which is the failure `WitnessIdentity` is built to make unwritable.
+// The grouped value models the ARITY, not the population, because arity is the entire verdict:
+// `resolve_site` identifies on exactly one binding and refuses on zero and on many. Nothing
+// downstream ever consumes the ordered list of a contested entry's paths.
 //
-// Ordering within a group is preserved by appending, so a group's members appear in binding
-// order exactly as the per-site fold produced them. Nothing reads the map's own traversal
-// order — no `map_keys`, no `map_values` — so this introduces no order-exposing operation
-// (`v2.lens.determinism` refuses those, and correctly).
-fn build_entry_module_index(bindings: List<ModulePathBinding>) -> Map<String, List<String>> {
+// Retaining the list instead would make the relation quadratic in an entry's own multiplicity —
+// each additional binding re-walks and re-copies everything already grouped under that entry —
+// to build a population whose only use is `length(..) == 1`. Modelling the arity makes the
+// grouping linear in the bindings regardless of how contested any single entry is, and it makes
+// the discarded ordering unwritable rather than merely unused.
+//
+// A repeated IDENTICAL path is still ambiguity. Two bindings claiming one entry means the
+// observation does not name one module, and deduplicating here would answer a question about
+// the observation with an assumption about it.
+type EntryModuleBinding
+  = EntryModuleUnique { module_path: String }
+  | EntryModuleAmbiguous
+
+// Nothing reads the map's own traversal order — no `map_keys`, no `map_values` — so this
+// introduces no order-exposing operation (`v2.lens.determinism` refuses those, and correctly).
+fn build_entry_module_index(bindings: List<ModulePathBinding>) -> Map<String, EntryModuleBinding> {
   fold_list(xs: bindings, empty: empty_map(), cons: fn(acc, b) {
     map_insert(
       m: acc,
       key: b.entry,
-      value: list_snoc_item(xs: entry_module_paths(index: acc, entry: b.entry), item: b.module_path)
+      value: match map_lookup(m: acc, key: b.entry) {
+        Absent => EntryModuleUnique { module_path: b.module_path }
+        Present { value: _ } => EntryModuleAmbiguous
+      }
     )
   })
 }
 
-// Absent means no binding named this entry — the zero case, which refuses exactly as the
-// unindexed fold's empty result did. It is not a miss to be papered over.
-fn entry_module_paths(index: Map<String, List<String>>, entry: String) -> List<String> {
-  match map_get(index, entry) {
-    Accepted { value: opt, diagnostics: _ } =>
-      match opt {
-        Present { value: paths } => paths
-        Absent => no_module_paths
-      }
-    _ => no_module_paths
-  }
-}
-
 // Exactly one binding identifies; zero and many both refuse, and they refuse through the same
 // arm because both mean the same thing to a consumer: this entry does not name one module.
-fn resolve_site(index: Map<String, List<String>>, site: WitnessSite) -> ResolvedWitness {
-  let paths = entry_module_paths(index: index, entry: site.entry)
-  if length(xs: paths) == 1 {
-    WitnessIdentified {
-      identity: WitnessIdentity { module_path: paths.first(), function: site.function },
-      site: site
-    }
-  } else {
-    WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
+//
+// The lookup is total, so absence is the zero case and not a miss to be papered over. There is
+// no substrate-failure arm to dispose of here precisely because `map_lookup` has none to give.
+fn resolve_site(index: Map<String, EntryModuleBinding>, site: WitnessSite) -> ResolvedWitness {
+  match map_lookup(m: index, key: site.entry) {
+    Present { value: EntryModuleUnique { module_path: path } } =>
+      WitnessIdentified {
+        identity: WitnessIdentity { module_path: path, function: site.function },
+        site: site
+      }
+    Present { value: EntryModuleAmbiguous } =>
+      WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
+    Absent =>
+      WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
   }
 }
 
-// The index is built ONCE here and read per site, which is the whole point: building it inside
-// `resolve_site` would restore the per-site cost this replaces, one level down and harder to see.
+// The index is a parameter rather than built here, so the ONE observed relation is constructed
+// once per manifest and read by every site class. Building it per call would rebuild the same
+// relation once per site population — smaller than the per-site rebuild this replaced, and the
+// same mistake one level up.
 fn resolve_sites(
-  bindings: List<ModulePathBinding>,
+  index: Map<String, EntryModuleBinding>,
   sites: List<WitnessSite>
 ) -> List<ResolvedWitness> {
-  let index = build_entry_module_index(bindings: bindings)
   list_map(xs: sites, f: fn(s) { resolve_site(index: index, site: s) })
 }
 
@@ -375,14 +379,15 @@ fn required_floor_manifest(
   hermetic_sites: List<WitnessSite>,
   wet_sites: List<WitnessSite>
 ) -> ClaimScan {
+  let index = build_entry_module_index(bindings: bindings)
   let after_hermetic = scan_resolved_list(
     acc: claim_scan_empty,
-    resolved: resolve_sites(bindings: bindings, sites: hermetic_sites),
+    resolved: resolve_sites(index: index, sites: hermetic_sites),
     mode: Hermetic
   )
   let after_wet = scan_resolved_list(
     acc: after_hermetic,
-    resolved: resolve_sites(bindings: bindings, sites: wet_sites),
+    resolved: resolve_sites(index: index, sites: wet_sites),
     mode: Wet
   )
   ClaimScan {
