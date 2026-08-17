@@ -163,6 +163,63 @@ back, or losing its own controls, BEFORE using breakage as an exhaustive
 measurement. Where that is unproven, deletion remains the right discovery
 instrument -- it just yields a lower bound, and must say so.
 
+## Every instrument in this lane is blind to the same class, including the borrowed one
+
+`global_bare_lookup` consults containment ONLY on the ambiguous arm. The unique
+arm binds and discards the candidate. So when exactly one declarer is resident in
+the assembled pool, NO VISIBILITY CHECK RUNS AT ALL — pool-uniqueness is not an
+answer produced by the visibility relation, it is a BYPASS of it.
+
+That single fact bounds every number this lane has produced:
+
+    diagnostic counts (196 -> 182, 17 -> 30)
+        see only sites that ALSO happened to red
+
+    the (file,name) census and its occurrence expansion
+        see only names with 2+ declarers CORPUS-wide
+
+    the peer's [floor-bare-name-ambiguity] counter (96,481)
+        sees only picks-among-many; a name with one declarer in scope is
+        not counted at all — a LOWER BOUND on unsafe binding, never a
+        measure of it (characterised by its own author, after handing it over)
+
+    SilentPickTelemetry (GlobalBareLcpPickSite / GlobalBareLcpTieSite /
+    FnParentFirstHitSite)
+        all three guard on candidate_count < 2. Coherent for their subject,
+        but the family has NO member for the unique arm, so no acceptance
+        argument may cite it as silent-pick evidence for this class.
+
+So "picks among many" is measured and "bound without checking" is not — and the
+second is the larger and quieter class. If the peer counter is enrolled against
+this branch, zero means "no ambiguous bindings remain", NOT "all bindings were
+checked".
+
+## The measurement that would not be blind, and needs no semantic change
+
+Count the bare references that bind through the UNIQUE arm and would FAIL the
+chain filter. `global_bare_chain_candidates` is already a total filter with no
+fallback (keep a candidate iff its module path is an ancestor of the referencing
+module; empty -> ModulePathBindingMiss -> refuse), and
+NAME_RESOLUTION_POLICY_NAMESPACE_ONLY already defaults true in production, so the
+ambiguous arm is containment-checked TODAY and the asymmetry is real rather than
+a policy artifact.
+
+The arm-compile-count-discard pattern already exists in this tree:
+`compile_dag_diagnostic_census` arms `TYPE_REF_HIT_NE_BIND_MEASURE` host-side for
+a nested synthetic compile. Nothing needs to land to take the reading.
+
+Why this number outranks every other one here: failing the chain filter is a
+property of EVERY bare reference, red or green, so the refusal count is the
+COMPLETE population at that grain rather than a diagnostic-conditioned sample.
+
+WARNING THAT TRAVELS WITH IT: the construction is small and the blast radius may
+not be. `GlobalBareCandidate` and `GlobalBareUniqueBinding` carry identical fields
+and 04_env.dag already converts between them, so routing the unique arm through
+the same relation introduces no new type or helper. But DESIGN's own census says
+~98% of names are globally unique and therefore always written bare, so enabling
+the filter there would refuse every bare cross-module reference whose declarer is
+not an ancestor of the referencing module. MEASURE BEFORE SCOPING.
+
 ## The oracle that does hold
 
 For each authored occurrence o:
