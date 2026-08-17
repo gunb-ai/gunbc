@@ -508,3 +508,51 @@ number for the corpus requires a reference closure — the edges the compiler
 actually resolved — which is the authority `sleek-moth-351` is building for the
 floor's scope derivation. That is one authority, not two, and this lane should
 consume theirs rather than fork a second.
+
+## The diagnostics are resolver-side, not corpus-side
+
+A redrive of the qualification pass was proposed here and is WITHDRAWN. It
+would have been the wrong fix, and one measurement kills it.
+
+The observed diagnostics concentrate hard. In a 966-diagnostic sample spanning
+213 files there are only **51 distinct symbols**, and six carry 79% of the
+population:
+
+```
+FilePath 204   Nat 163   HostIdentity 138   Accepted 112   None 79   Rejected 65
+```
+
+That concentration invites the conclusion that one bad qualification rule
+produced them, and that re-qualifying the corpus from pre-cut binding identity
+would collapse the population. The corpus-wide obligation under that reading is
+large but finite: 3,013 files, 62,901 (file, name) pairs, only 63 files clean.
+
+**The discriminator is declarer count.** `HostIdentity` is declared in exactly
+ONE module in the whole corpus (`dag/product/placement_supply.dag`) and yields
+138 `unresolved type` diagnostics. A globally unique name that a bare reference
+cannot find is not an under-qualified reference. There is no second candidate
+for it to be confused with and no ambiguity to resolve — the name simply is not
+being looked up. The remaining top offenders behave the same way: `Nat`, `FilePath`
+and `SourceSpan` each have two declarers, and in every case the pair is the
+v1/v2 seed fork that DESIGN's namespace census already dispositions as
+"resolve by subtree, free", not a genuine collision.
+
+So the 3,096 diagnostics are not evidence that the cut qualified references
+wrongly. They are evidence that resolution still binds through the import list,
+which this branch deleted. The corpus is in the shape the terminal design
+wants — DESIGN's census puts 98% of names globally unique and therefore
+"always bare" — and what is missing is the containment-tree lookup that makes a
+bare reference resolve.
+
+**Why the withdrawn redrive would have been actively harmful.** Qualifying
+62,901 references would have greened the tree by writing the missing resolver's
+job into the corpus by hand, at every call site, permanently. That is the
+workaround class in DESIGN §5 at corpus scale: the deficit's frequency driven to
+zero by construction, so the absent resolver never ranks for building, and
+62,901 hand-authored qualifications left behind as the artifact that has to be
+un-done when it lands. The cheap-looking fix cements the wrong authority.
+
+The load-bearing consequence for sequencing: **this branch cannot be finished
+by working the diagnostic classes.** Function-not-found (1170), unresolved type
+(680), undefined variable (483) and no-field (270) are one deficit reported four
+ways, and it is the deficit `namespace-resolution-design.md` exists to close.
