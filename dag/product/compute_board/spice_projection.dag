@@ -30,25 +30,27 @@ import v2.extdeps.formats.spice {
 import product.compute_board.analog {
   AnalogCircuitIntent,
   CapacitorInstance,
-  ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
-  ElectricalTerminalRef,
-  component_terminals,
   ElectricalModelAbsent,
   ElectricalModelCited,
   ElectricalModelStanding,
   IdealLumped,
   IndependentVoltageSourceInstance,
   ResistorInstance,
+  VendorSubcircuit,
   component_identity,
   component_negative_terminal,
   component_part,
   component_positive_terminal,
-  VendorSubcircuit,
-  NetIdentity,
+  component_terminals,
   net_membership_count,
   net_of_terminal,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalTerminalRef,
+  NetIdentity,
   terminal_ref,
 }
 import product.compute_board.admission {

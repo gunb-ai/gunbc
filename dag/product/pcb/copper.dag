@@ -3,7 +3,10 @@ module product.pcb.copper
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import product.compute_board.analog { ElectricalNet, NetIdentity }
+import product.electrical.connectivity {
+  ElectricalNet,
+  NetIdentity,
+}
 import v2.std.algebra { fold_list }
 import product.pcb.stackup {
   AdmittedStackup,
