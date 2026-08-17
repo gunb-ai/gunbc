@@ -12,6 +12,7 @@ import std.trait_derive_shape {
   ReprDeriveEq,
   ReprDerivePartialOrd,
   ReprDeriveOrd,
+  ReprDeriveHash,
   ReprDeriveSerialize,
   ReprDeriveDeserialize,
   ReprDeriveAdd,
@@ -118,6 +119,7 @@ fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String 
     ReprDeriveEq => "Eq"
     ReprDerivePartialOrd => "PartialOrd"
     ReprDeriveOrd => "Ord"
+    ReprDeriveHash => "std::hash::Hash"
     ReprDeriveSerialize => "serde::Serialize"
     ReprDeriveDeserialize => "serde::Deserialize"
     ReprDeriveAdd => "std::ops::Add"
@@ -345,6 +347,7 @@ fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
     ReprDeriveEq => "eq"
     ReprDerivePartialOrd => "partial_ord"
     ReprDeriveOrd => "ord"
+    ReprDeriveHash => "hash"
     ReprDeriveSerialize => "serialize"
     ReprDeriveDeserialize => "deserialize"
   }

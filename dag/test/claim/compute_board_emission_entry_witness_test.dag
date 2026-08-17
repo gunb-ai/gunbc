@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import product.compute_board.analog {
   AnalogCircuitIntent,
+}
+import product.electrical.connectivity {
   ElectricalNet,
 }
 import product.compute_board.digital_control {

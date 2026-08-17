@@ -1,0 +1,80 @@
+module gunbc.remote_operation
+
+import std.types { String, List, NonEmptyStr, Bool, Int }
+import gunbc.typed_remote_file_write { TypedRemoteFileWrite, RemoteFileMode }
+
+// WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
+//
+// The Spark install realizer produced `List<List<String>>` -- argv and nothing else. That shape
+// cannot express `WriteUserUnitFile`, because a file write is BYTES, and `gunbc.typed_remote_file_write`
+// is deliberate that bytes ride stdin and never argv: there is no `sh -c` arm, so file content can
+// never be re-parsed as shell on the far side. An argv-only representation therefore left that effect
+// permanently UNREALIZABLE rather than merely unimplemented -- the realizer's refusal was reporting a
+// missing type, not missing work.
+//
+// This is the smallest widening that admits the second kind without weakening the first. There is
+// deliberately NO arm carrying a command string, a script body, or a shell fragment; adding one
+// would reopen exactly what the typed-write module closed, and the absence of that constructor is
+// what keeps it shut rather than a review habit.
+//
+// THE TWO ARMS ARE NOT EQUALLY SEALED, and saying so matters because the difference is exactly where
+// the guarantee stops. `RemoteFileBytes` carries a `TypedRemoteFileWrite`, whose sole mint checks
+// path containment and far-side portability, so its payload cannot be forged. `RemoteArgv` carries a
+// bare `List<String>`: this type does NOT make an arbitrary argv unwritable. What holds there is
+// upstream and downstream instead -- the realizer admits words through `portable_remote_words`, and
+// both SSH execution seams re-check them -- so the property is a fact about those paths, not about
+// this constructor.
+type RemoteOperation
+  = RemoteArgv { argv: List<String> }
+  | RemoteFileBytes { write: TypedRemoteFileWrite, mode: RemoteFileMode }
+
+// ONE OUTCOME VOCABULARY FOR BOTH KINDS, because the two executions answer in different types and
+// neither should be forced into the other's shape. Coercing a file convergence into an argv result
+// would require inventing an exit code and a stdout it never had -- a fabricated plausible output at
+// exactly the seam where the sequence decides whether to keep going.
+type RemoteOperationOutcome
+  = RemoteOperationSucceeded { label: String }
+  | RemoteOperationRefused { reason: String }
+
+// A file write has NO single argv on purpose: its realization is four invocations (stage, mode,
+// rename, read-back), so exposing one command for it would be a fiction a reader could mistake for
+// the whole operation.
+fn remote_operation_argv(operation: RemoteOperation) -> List<String>? {
+  match operation {
+    RemoteArgv { argv: words } => Present { value: words }
+    RemoteFileBytes { write: _, mode: _ } => none
+  }
+}
+
+fn remote_operation_label(operation: RemoteOperation) -> String {
+  match operation {
+    RemoteArgv { argv: words } => join(words, " ")
+    RemoteFileBytes { write: w, mode: _ } => join(["write-file ", w.path as String], "")
+  }
+}
+
+// A COUNT THAT CANNOT SILENTLY UNDER-REPORT. The argv projection drops file writes by construction,
+// so a consumer counting ITS length is counting a different population than the one it was handed.
+// Callers wanting "how many operations" ask here; callers genuinely wanting the argv subset ask
+// below and are naming that choice.
+fn remote_operation_count(operations: List<RemoteOperation>) -> Int {
+  length(operations)
+}
+
+fn remote_operations_argv_only(operations: List<RemoteOperation>) -> List<List<String>> {
+  flat_map(operations, o =>
+    match remote_operation_argv(operation: o) {
+      Present { value: words } => [words]
+      Absent => []
+    }
+  )
+}
+
+fn remote_operation_file_write_count(operations: List<RemoteOperation>) -> Int {
+  length(flat_map(operations, o =>
+    match o {
+      RemoteFileBytes { write: _, mode: _ } => [o]
+      RemoteArgv { argv: _ } => []
+    }
+  ))
+}

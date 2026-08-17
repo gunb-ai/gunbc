@@ -844,7 +844,7 @@ rather than joining the nearest root.
 
 | root | sites | % | in floor | in delta |
 |---|---:|---:|---:|---:|
-| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 unclassified) | ~~509~~ | ~~27.2~~ | 80 | 429 |
+| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 repr_fork per §18.4) | ~~509~~ | ~~27.2~~ | 80 | 429 |
 | **C — Optional collapses to `()`** (owner `gentle-dove-833`) | 167 | 8.9 | 136 | 31 |
 | **A — generic Clone bound not emitted** (owner `smart-ram-730`) | 142 | 7.6 | 98 | 44 |
 | **K — unsynthesized use-line** (E0433/E0425/E0422 unresolved names) | 132 | 7.0 | 13 | 119 |
@@ -879,8 +879,8 @@ R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
 > **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and nothing in
 > it directs anyone to do the wrong thing — but it is the list a session greps to learn what the
 > partition contains, and **B1 is no longer one root**: §18 decomposes it into at most 146
-> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 rows
-> deliberately left unclassified. Read §18 before treating "six" as the root count or before
+> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 operator-on-carrier
+> sites (all repr_fork — §18.4). Read §18 before treating "six" as the root count or before
 > re-deriving a mechanism for the algebra carrier.
 
 
@@ -2288,16 +2288,17 @@ Re-decomposed by mechanism, over the same M=11 census:
 
 | mechanism | sites | share | moved by a repr flag? |
 |---|---:|---:|---|
-| operator on carrier (E0369) | 191 | 37.5% | **undetermined — not classified** |
+| operator on carrier (E0369) | 191 | 37.5% | **repr_fork: 191 / missing_trait_impl: 0** (§18.4) |
 | derive: serde Serialize/Deserialize | 132 | 25.9% | no |
 | REPR: carrier expected, integer literal found | 92 | 18.1% | yes |
 | REPR: carrier vs another named type | 54 | 10.6% | yes |
 | derive: Debug | 35 | 6.9% | no |
 | other | 5 | 1.0% | — |
 
-**At most 146 sites are the repr mechanism I named.** The 191 E0369 rows are deliberately left
-unclassified: E0369 on a carrier is ambiguous between a missing trait impl and the repr fork, and
-guessing would repeat the error this section reports.
+**At most 146 sites are the repr mechanism I named.** The 191 E0369 rows are classified in
+§18.4: **all repr_fork, zero missing_trait_impl** within the B1 keyword filter — the
+apparent ambiguity applies only to unfiltered E0369 (R1 `im::Vector` / `dyn Fn` sites are
+missing_trait_impl but excluded from this bucket).
 
 ### 18.1 The 167 derive-shaped sites are ONE declaration, and it is underivable
 
@@ -2359,3 +2360,24 @@ pools.** That is §18.2's failure one level deeper: grouping by a type name is u
 because a name says involvement rather than mechanism, but because the same name may not denote one
 type at all. Key on resolved type identity per artifact, never on the printed name, and allow a site
 to carry more than one root.
+
+### 18.4 E0369 operator-on-carrier — classified (`lively-ibex-709`, 2026-08-17)
+
+Receipt: [`docs/probes/e0369_b1_operator_classification_2026-08-17.md`](../probes/e0369_b1_operator_classification_2026-08-17.md)
+
+| classification | sites (M=11 §18) | sites (July 7-module bank, measured) |
+|---|---:|---:|
+| repr_fork | 191 | 112 distinct |
+| missing_trait_impl | 0 | 0 |
+
+**Mechanism, stated once:** every B1-keyword E0369 site is an operator or `PartialEq` derive
+expansion on `CommutativeSemiring<Magnitude>` / `Measure<…>` emitted under
+`FaithfulFreeMonoid`. Fixing it requires grounding the numeric tower (`RustCorpusRepr` /
+identity-keyed checkpoint rows), not adding `Add`/`PartialEq` impls to the algebra stub.
+
+The R1 E0369 population (`im::Vector`, `dyn Fn`, `*Interpreter` — 116 instances in the July
+census) is **missing_trait_impl** but **outside** the B1 keyword filter and therefore outside
+the 191. That is why the bucket-wide ambiguity does not survive filtering.
+
+Per-site TSV (July bank): `docs/probes/e0369_b1_classification_2026-08-17/sites_classified_july_bank.tsv`
+Repro script (M=11): `docs/probes/run_e0369_b1_classification.sh`

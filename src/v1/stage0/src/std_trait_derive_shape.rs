@@ -52,6 +52,7 @@ pub enum ReprGroundingDeriveTrait {
     ReprDeriveEq,
     ReprDerivePartialOrd,
     ReprDeriveOrd,
+    ReprDeriveHash,
     ReprDeriveSerialize,
     ReprDeriveDeserialize,
     ReprDeriveAdd,
@@ -89,6 +90,7 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveEq => true,
             ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
             ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+            ReprGroundingDeriveTrait::ReprDeriveHash => true,
             ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             _ => false,
@@ -101,6 +103,7 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveEq => true,
             ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
             ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+            ReprGroundingDeriveTrait::ReprDeriveHash => true,
             ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             ReprGroundingDeriveTrait::ReprDeriveAdd => true,
@@ -118,6 +121,7 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveEq => true,
             ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
             ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+            ReprGroundingDeriveTrait::ReprDeriveHash => true,
             ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             _ => false,
@@ -130,6 +134,7 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveEq => true,
             ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
             ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+            ReprGroundingDeriveTrait::ReprDeriveHash => true,
             ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             _ => false,
@@ -142,6 +147,7 @@ pub fn repr_grounding_derive_shape_has_trait(
             ReprGroundingDeriveTrait::ReprDeriveEq => true,
             ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
             ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+            ReprGroundingDeriveTrait::ReprDeriveHash => true,
             ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
             ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
             _ => false,
@@ -154,6 +160,7 @@ pub fn repr_grounding_derive_shape_has_trait(
                 ReprGroundingDeriveTrait::ReprDeriveEq => true,
                 ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
                 ReprGroundingDeriveTrait::ReprDeriveOrd => true,
+                ReprGroundingDeriveTrait::ReprDeriveHash => true,
                 ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
                 ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
                 _ => false,
@@ -164,6 +171,8 @@ pub fn repr_grounding_derive_shape_has_trait(
                 ReprGroundingDeriveTrait::ReprDeriveDebug => true,
                 ReprGroundingDeriveTrait::ReprDeriveClone => true,
                 ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
+                ReprGroundingDeriveTrait::ReprDeriveEq => true,
+                ReprGroundingDeriveTrait::ReprDeriveHash => true,
                 ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
                 ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
                 _ => false,
@@ -380,6 +389,112 @@ pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
         __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
         __cons_v
     })
+}
+
+pub fn phantom_opaque_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new({
+                        let mut __cons_v = (*Rc::new({
+                            let mut __cons_v = (*Rc::new({
+                                let mut __cons_v = (*Rc::new(vec![])).clone();
+                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+                                __cons_v
+                            }))
+                            .clone();
+                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
+                            __cons_v
+                        }))
+                        .clone();
+                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
+                        __cons_v
+                    }))
+                    .clone();
+                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
+        __cons_v
+    })
+}
+
+pub fn map_key_required_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new(vec![])).clone();
+            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveHash);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
+        __cons_v
+    })
+}
+
+pub fn repr_grounding_derive_trait_rank(derive_trait: ReprGroundingDeriveTrait) -> i64 {
+    match derive_trait.clone() {
+        ReprGroundingDeriveTrait::ReprDeriveDebug => 0,
+        ReprGroundingDeriveTrait::ReprDeriveClone => 1,
+        ReprGroundingDeriveTrait::ReprDeriveCopy => 2,
+        ReprGroundingDeriveTrait::ReprDerivePartialEq => 3,
+        ReprGroundingDeriveTrait::ReprDeriveEq => 4,
+        ReprGroundingDeriveTrait::ReprDerivePartialOrd => 5,
+        ReprGroundingDeriveTrait::ReprDeriveOrd => 6,
+        ReprGroundingDeriveTrait::ReprDeriveHash => 7,
+        ReprGroundingDeriveTrait::ReprDeriveSerialize => 8,
+        ReprGroundingDeriveTrait::ReprDeriveDeserialize => 9,
+        ReprGroundingDeriveTrait::ReprDeriveAdd => 10,
+        ReprGroundingDeriveTrait::ReprDeriveSub => 11,
+        ReprGroundingDeriveTrait::ReprDeriveMul => 12,
+        ReprGroundingDeriveTrait::ReprDeriveDiv => 13,
+        ReprGroundingDeriveTrait::ReprDeriveRem => 14,
+        ReprGroundingDeriveTrait::ReprDeriveNeg => 15,
+    }
+}
+
+pub fn derive_traits_contain(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+    derive_trait: ReprGroundingDeriveTrait,
+) -> bool {
+    {
+        let mut __found = false;
+        for t in traits.clone().iter().cloned() {
+            if (repr_grounding_derive_trait_rank(t.clone())
+                == repr_grounding_derive_trait_rank(derive_trait.clone()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn derive_traits_union(
+    base: Rc<Vec<ReprGroundingDeriveTrait>>,
+    extra: Rc<Vec<ReprGroundingDeriveTrait>>,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    extra.clone().iter().cloned().fold(
+        base.clone(),
+        |acc: Rc<Vec<ReprGroundingDeriveTrait>>, t: ReprGroundingDeriveTrait| {
+            if derive_traits_contain(acc.clone(), t.clone()) {
+                acc.clone()
+            } else {
+                v1_rt::concat(acc.clone(), Rc::new(vec![t.clone()]))
+            }
+        },
+    )
 }
 
 pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
@@ -775,6 +890,8 @@ pub struct ReprDeriveEq;
 pub struct ReprDerivePartialOrd;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveOrd;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReprDeriveHash;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveSerialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
