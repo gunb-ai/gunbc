@@ -41834,6 +41834,40 @@ pub fn run_required_floor(
         );
     }
 
+    // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
+    // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
+    // the manifest because it answers a different question: the manifest says which claims
+    // exist, this says which of them are known to fail while someone fixes them.
+    let expected_red_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_expected_red.floor_expected_red_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_expected_red_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_expected_red_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    out.insert(s.to_string());
+                }
+                other => {
+                    return Err(format!(
+                        "floor_expected_red_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-known-red] roster carries {} enrolled identity(ies)",
+        expected_red_roster.len()
+    );
+
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
     // `hermetic` is the frame the manifest was folded in. It owns a scope AND the mutable
@@ -41926,6 +41960,8 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut known_red_held: usize = 0;
+    let mut known_red_now_passing: usize = 0;
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
     let mut scope_kb_total: u64 = 0;
@@ -42051,6 +42087,33 @@ pub fn run_required_floor(
                 claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
             );
         }
+        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
+        // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
+        // difference from an exclusion is that it still RUNS and its outcome is still asserted.
+        //
+        // Three things follow, and they are the whole reason this is admissible where a skip
+        // list is not. A failure outside the roster still reds the build, so the roster covers
+        // named debt rather than a category. A quarantined row that PASSES also reds, so a fix
+        // is counted the moment it lands instead of being silently absorbed into a green run —
+        // which is what makes the roster monotonically shrinking rather than a place things go
+        // to be forgotten. And every row is an executing claim with a receipt, so nothing in
+        // here reads as covered when it is not.
+        let expected_red = expected_red_roster.contains(claim.qualified.as_str());
+        let passed = matches!(result, ClaimOutcome::Pass);
+        if expected_red && passed {
+            known_red_now_passing += 1;
+            outcome.failures.push(format!(
+                "{} is enrolled as expected-red and PASSED — remove it from \
+                 v2.workflow.floor_expected_red",
+                claim.qualified
+            ));
+            continue;
+        }
+        if expected_red {
+            known_red_held += 1;
+            outcome.passed += 1;
+            continue;
+        }
         match result {
             ClaimOutcome::Pass => outcome.passed += 1,
             ClaimOutcome::Fail => outcome
@@ -42125,6 +42188,15 @@ pub fn run_required_floor(
         scope_kb_max_modules,
         scope_kb_total as f64 / 1048576.0,
         scope_constructions
+    );
+    // THE DEBT, REPORTED EVERY RUN. `held` is the enrolled population that behaved as enrolled
+    // — the number that must fall. `now_passing` is enrolled rows that PASSED, which is a build
+    // failure by design: a fix has landed and the roster is stale, and the run says so rather
+    // than quietly absorbing it.
+    eprintln!(
+        "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
+         identity(ies) now PASS and must be removed from the roster",
+        known_red_held, known_red_now_passing
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",

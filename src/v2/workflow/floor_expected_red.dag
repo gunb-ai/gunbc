@@ -1,0 +1,40 @@
+module v2.workflow.floor_expected_red
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+// THE EXPECTED-RED ROSTER: identities this branch KNOWS fail, enrolled by exact qualified name.
+//
+// This is NOT a skip list and the distinction is the whole justification for it. Every identity
+// here still EXECUTES in the fold and its outcome is still asserted; what the roster changes is
+// which outcome counts as agreement. A row that fails as enrolled is agreement. A row that is
+// NOT enrolled and fails reds the build. A row that IS enrolled and PASSES also reds the build,
+// naming itself and asking to be removed — so a fix is counted the moment it lands rather than
+// being absorbed into a green run.
+//
+// That last arm is what makes this monotone. A skip list grows quietly and its members rot,
+// because nothing observes them and nothing notices when they start working. This roster can
+// only shrink under an honest run, and its length is the debt.
+//
+// WHY IT EXISTS. The floor cut replaced an evaluator that ran a selected subset per PR with one
+// that folds the whole discovered roster through a single prepared subject. The replacement is
+// faster end to end than the floor it replaces and runs strictly more rows, and it fails a
+// population the old one did not — some because this branch broke them, some because the old
+// floor never executed them. Holding the whole branch until every one is repaired keeps everyone
+// on the slower, less complete floor in the meantime. Enrolling them keeps the new floor's
+// verdict honest while they are worked.
+//
+// WHAT IT MUST NOT BECOME. A row belongs here only while someone is fixing it. It is not a
+// disposition: it names no executing consumer other than this floor, it establishes no coverage,
+// and an identity that sits here indefinitely is a defect nobody owns wearing a receipt. The
+// roster is admissible because it is temporary, visible at identity grain, and self-emptying —
+// remove any of those three and it is the skip list it is carefully not.
+//
+// POPULATION: pending the census on the current tree. Empty until then, which means the floor
+// refuses on every known failure exactly as it does today — the mechanism lands before the data
+// so that enrolling an identity is a separate, reviewable act from building the machinery that
+// reads it.
+fn floor_expected_red_roster() -> List<String> {
+  Empty {}
+}
