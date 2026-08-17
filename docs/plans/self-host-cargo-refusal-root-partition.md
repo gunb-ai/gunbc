@@ -1786,3 +1786,45 @@ skipped; it is the arm that does run, under-collecting.
 contains `let read = filesystem.read(path.clone()).await?;` — an `.await` inside a non-async fn,
 which is the residue's two E0728 sites. That is an emitter producing a construct the target language
 cannot accept in that position, and it belongs to no root above.
+
+### 11.18 Root T3 characterized: `Set`/`Map` are modeled as function-records and realized as native containers, with no side winning consistently
+
+T3 (111 sites at M=11) is the next-largest unowned root. The authority is
+`dag/std/types.dag:107-108`:
+
+```
+type Set<element>   = PointwisePower<element>      # dag/std/algebra.dag: { member: fn(T) -> Bool }
+type Map<key,value> = PartialFunction<key,value>   # { lookup, empty, get, insert, merge, keys, values, has, size }
+```
+
+Both are **records of function fields** — a set IS its membership function, a map IS its lookup
+function. The emitted crate contains those structs faithfully (`std_algebra.rs`
+`pub struct PointwisePower<T> { pub member: Rc<dyn Fn(T) -> bool>, … }`). It ALSO renders `Set`/`Map`
+*type positions* as native `im::OrdSet` / `im::HashMap`. Neither realization is wrong on its own;
+they are simply not the same type, and both are reached from one alias.
+
+Split by mechanism (M=11, all 111 rows, fail-closed):
+
+| # | mechanism | sites | specimen |
+|---|---|---:|---|
+| a | **modeled literal vs native annotation** — `Rc::new(Set { member: … })` / `Rc::new(Map { lookup: … })` emitted where the annotation rendered natively | 43 | `expected OrdSet<String>, found Rc<PointwisePower<_>>` · `struct Rc<PartialFunction<_,_>> has no field named lookup` |
+| d | Vector wrap / element-shape mismatches (`Vector<T>` vs `T`, `Rc<Vector<Rc<X>>>` vs `Rc<Vector<X>>`) — adjacent to R1, kept separate | 36 | `expected Rc<Vector<Rc<PortReading>>>, found Rc<Vector<PortReading>>` |
+| b | **modeled field access on the native carrier** — the consumer half of (a) | 16 | `(terminals.member)(x)` on `Rc<OrdSet<Rc<FormalTerminal>>>` · `.keys` on `Rc<HashMap<…>>` |
+| c1 | **the seed runtime's map API is String-keyed** — `v1_rt::lookup<V>(table: &HashMap<String, V>, key: String)` (`src/v1/stage0/src/v1_rt.rs`), so a modeled map keyed by anything else cannot reach it | 15 | `expected &HashMap<String, _>, found &Rc<HashMap<OccurrenceId, Rc<OriginEvent>>>` — also `Rc<Node>`, `ParsePositionKey`, `EnvironmentBindingKey` keys |
+| c2 | `v1_rt::keys` does not exist | 1 | `cannot find function keys in module v1_rt` |
+
+**Three things this settles for whoever takes it.**
+
+1. **It is not a missing realization row** (my earlier reading in 11.10 said the types were "absent
+   from the table entirely" — that was right about the checkpoint table and wrong as a description of
+   the root). The types ARE realized, twice, and the defect is that construction and annotation
+   disagree about which realization is in force at a given site.
+2. **c1 is an independent obstacle and does not dissolve with a–b.** Even if every site agreed on the
+   native carrier, a map keyed by `Rc<Node>` still cannot call the seed runtime's String-keyed
+   `lookup`. That is a seed-API limitation, and 15 sites sit on it today.
+3. **Direction matters and the corpus has already chosen** — the modeled record cannot be the
+   realization for a map that must be *iterated* (`keys` returns a `FreeMonoid<K>` built by the record
+   itself), while the native container cannot serve `.member` as a field. A decision that keeps the
+   record shape has to author the whole API; a decision that keeps the container has to rewrite the
+   literals and generalize the runtime API's key type. Both are real work; the current state is
+   paying for both.
