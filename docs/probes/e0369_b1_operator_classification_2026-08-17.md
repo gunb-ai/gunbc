@@ -87,6 +87,9 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - **CI run 32039364615 @ `a1de4ade` (2026-08-17):** infra flake — `ci` job failed at **Set up job**
   (~2 min) with GitHub **429** on artifact archive download; `gunbc ci` never ran. Retry via new
   head.
+- **CI run 32040389516 @ `6738550a` (2026-08-17):** same **429** at **Set up job** on **both**
+  `build` and `ci` (~1 min each); artifact `upload-artifact` tarball download refused. No floor
+  signal. Retry via new head after rate-limit window.
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
