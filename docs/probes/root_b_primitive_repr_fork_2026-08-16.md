@@ -347,12 +347,12 @@ reads `type Hash = Fnv1a64Structural` becoming `String` as a choice.
 
 | | sites |
 |---|---:|
-| directly attributable to name-keying | **286** |
+| directly attributable to name-keying | **253** |
 | exposed-but-not-caused | 110 |
 | **not** attributable (shape, ownership, required traits) | ~1,470 |
 | **corpus denominator (fixed, M=11)** | **1,883** |
 
-**Name-keying is ~15% of the wall. It is not the wall.** Four independent structural
+**Name-keying is ~13.4% of the wall (253 / 1,883). It is not the wall.** Four independent structural
 confirmations (`Bool`, the `Nat`/algebra carrier, `Hash`, and the `Witness` rows below) do not
 change that denominator, and this receipt does not claim otherwise.
 
@@ -386,7 +386,15 @@ diagnostics and **nine** new distinct sites, and every root size held to within 
 C 167, K 132, D 116, T7 105). The marginal entry returns roughly two new defects, so this is close
 to the whole wall rather than a sample of it — no broader census is owed before planning.
 
-**Why the figure rose from 253 to 286.** 33 of Root D's 116 sites — `missing generics for enum
+**Why the figure is 253 and not 286 — the 33 are counted by `vivid-wren-870`, by agreement.**
+They are the `missing generics for enum Witness` sites, and the reasoning for putting them there is
+mine: re-keying the relation would have made the row match the *right* declaration **and still
+dropped `<T>`**, so the **deletion** is what closes them, not the key. `vivid-wren-870` deletes the
+rows in gunbc#8341 and counts them; this receipt strikes them. One home for the arithmetic, not
+two. (Historical note, for anyone reconciling against an earlier revision: this figure read 286
+briefly, on the reasoning below.)
+
+**The reasoning that made them a candidate for this lane.** 33 of Root D's 116 sites — `missing generics for enum
 Witness` — come from this same table, which carries `{ dag_name: "Witness", target_type: "Witness" }`
 plus a second row spelled `"witness"`. **A row stating a bare target type is a row claiming arity
 zero for a generic declaration**, which `dag/std/types.dag` `container_type_arity` contradicts
@@ -416,3 +424,46 @@ which question each site is answering, and whether anyone asked it *there*. That
 `type Hash = Fnv1a64Structural` losing its RHS took a trace rather than a read — the row is a true
 statement about one declaration being applied to a different one, and both halves look correct in
 isolation.
+
+## 11. Inherited from the Root D lane — a control, a trap, and a witness that pins a defect
+
+`vivid-wren-870` landed the row deletion (gunbc#8341) and handed over three things.
+
+**The null control this lane was missing, to be enrolled against any re-keying change.**
+`dag/test/claim/root_d_checkpoint_scalar_declared_arity_witness_test.dag`
+`w_arity_zero_checkpoint_scalar_still_strips_phantom_arguments`. It compiles a fixture importing
+`std.integer { Int8 }` and asserts the emitted `std_integer.rs` **contains** `Compose<i64,` and
+**does not contain** `i64<`. Both halves matter here: the first proves a genuine arity-0 row still
+matches and still renders after re-keying, the second proves the phantom argument is still stripped
+rather than surfacing as `i64<T>`. My own controls prove same-named types stop colliding; none of
+them proves a legitimate scalar row still fires, which is exactly the way identity-keying could
+regress silently.
+
+Its stated limitation, carried rather than dropped: it is an **emit-text** claim, so if re-keying
+changes the emitted spelling of `Int8` for an unrelated reason it reds on the text and not on the
+property. Read the diff, not the boolean.
+
+**A harness trap worth an hour if hit cold.** `compile_dag_rust_emit_check` compiles a *virtual
+single-module* source through the witness-root index, and in that mode importing `v2.std.witness` —
+or `v2.std.node` beneath it — refuses with hard diagnostics, so the check returns `false`
+**indistinguishably from a failed assertion**. `v2.std.optional` imports fine, so it is not a
+blanket `src/v2` limitation; which diagnostic was not chased. This lane will want fixtures over real
+`std` types, so it will meet this directly.
+
+That trap has a consequence for the Root D fixture that is **this lane's obligation**: its positive
+fixture declares its own two-arm `Witness<C>` rather than importing the authority, which is
+defensible only *because the table is spelling-keyed and the spelling is the load-bearing input*.
+Re-keying makes that false, at which point the fixture must import the real declaration. The
+dissolve-on is written into that witness note pointing here.
+
+**A witness that currently pins a defect as expected behaviour.**
+`dag/test/claim/root4_measure_missing_generics_witness_test.dag`
+`w_zero_param_alias_list_param_unchanged` asserts the emitted text
+`ClosedCarrierAlias<ProbeQuantity, ProbeScale, ProbeMagnitude>` for a **zero-parameter** alias —
+the authored alias name carrying the resolved definition's arguments. Whoever fixes that class goes
+red there, and should read it as **the witness pinning the defect**, not as a regression.
+
+**Ownership of it is unresolved and I am not claiming it unilaterally.** It was passed to me as
+"probably yours", but the same message describes the shape as `vivid-wren-870`'s own half 1 (the
+applied-alias/dropped-parameter-list class, their 73 sites), which is not this lane's. Flagged here
+so it is not silently absorbed by whichever lane touches it first.
