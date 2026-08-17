@@ -59,9 +59,19 @@ fn w_unrelated_zero_param_leaf_unchanged() -> Bool {
   )
 }
 
+fn w_positive_int_refined_alias_rhs_stays_bare_nat() -> Bool {
+  compile_dag_rust_emit_check(
+    "module std.integer_positive_int_probe\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\n",
+    "src/std_integer_positive_int_probe.rs",
+    ["pub type PositiveInt = crate::std_nat::Nat"],
+    ["Nat<Magnitude>", "Nat<"]
+  )
+}
+
 test fn root4_measure_missing_generics_witness_holds() -> Bool {
   w_applied_generic_carrier_preserves_arguments()
     && w_empty_applied_property_falls_through_to_resolved_children()
     && w_zero_param_alias_use_site_stays_bare()
     && w_unrelated_zero_param_leaf_unchanged()
+    && w_positive_int_refined_alias_rhs_stays_bare_nat()
 }

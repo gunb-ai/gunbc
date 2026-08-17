@@ -28,7 +28,11 @@ fn declaration_ref_carries_symbol(r: DeclarationRef) -> Bool {
 }
 
 fn hand_authored_works_refs_all_carry_symbols() -> Bool {
-  all(hand_authored_doc_binds, b => all(hand_authored_bind_works(b: b), r => declaration_ref_carries_symbol(r: r)))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      all(binds, b => all(hand_authored_bind_works(b: b), r => declaration_ref_carries_symbol(r: r)))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
 }
 
 fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind) -> Bool {
@@ -38,11 +42,15 @@ fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind)
 }
 
 fn hand_authored_production_doc_binds() -> List<HandAuthoredDocBind> {
-  filter(hand_authored_doc_binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
+  }
 }
 
 fn hand_authored_doc_declaration_refs() -> List<DeclarationRef> {
-  list_flat_map(xs: hand_authored_doc_binds, f: fn(b) { hand_authored_bind_works(b: b) })
+  list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
 fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
@@ -51,7 +59,7 @@ fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
 
 fn hand_authored_cited_symbol_control_declaration_refs() -> List<DeclarationRef> {
   list_flat_map(
-    xs: filter(hand_authored_doc_binds, b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+    xs: filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
     f: fn(b) { hand_authored_bind_works(b: b) }
   )
 }
@@ -61,13 +69,18 @@ fn hand_authored_works_resolution_pool_roots() -> List<String> {
 }
 
 fn hand_authored_works_refs_all_resolve() -> Bool {
-  let pool = hand_authored_works_resolution_pool_roots()
-  let facts = decl_facts(pool_roots: pool)
-  let modules = module_declaration_facts_live(pool_roots: pool)
-  all(
-    hand_authored_production_doc_declaration_refs(),
-    r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
-  )
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+    HandAuthoredDocBindsBuilt { binds: _ } => {
+      let pool = hand_authored_works_resolution_pool_roots()
+      let facts = decl_facts(pool_roots: pool)
+      let modules = module_declaration_facts_live(pool_roots: pool)
+      all(
+        hand_authored_production_doc_declaration_refs(),
+        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+      )
+    }
+  }
 }
 
 fn hand_authored_bind_key(b: HandAuthoredDocBind) -> String {
@@ -76,18 +89,6 @@ fn hand_authored_bind_key(b: HandAuthoredDocBind) -> String {
     ProbeDoc => concat("probe/", b.slug)
   }
 }
-
-fn hand_authored_key_collision_count(binds: List<HandAuthoredDocBind>) -> Int {
-  binds
-    |> filter(b => (binds |> filter(o => hand_authored_bind_key(b: o) == hand_authored_bind_key(b: b)) |> count) > 1)
-    |> count
-}
-
-fn hand_authored_bind_identities_unique() -> Bool {
-  hand_authored_key_collision_count(binds: hand_authored_doc_binds) == 0
-}
-
-
 
 fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
   match b.home {
@@ -106,7 +107,7 @@ data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { mo
 
 data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-CORPUS DECLARER OBSERVATION, and the reason this sentence names the type it does. This module imports v2 modules and sits under dag/, so it is exactly the shape that broke the floor when whole-tree published-mock declarer selection was decided by a substring scan: a documentary row naming PublishedMockCase made this file read as a corpus declarer, its closure could not resolve under the dag-only roots that precompute uses, and the run refused before any witness executed. The declarer decision is now the exact type-annotation check. This sentence therefore MENTIONS PublishedMockCase without declaring one, so if the substring shortcut is ever restored the floor reds here first."
 
-data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
+data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "affected-set-differential-falsifier",
@@ -1223,7 +1224,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "rc-ownership-wrap-decision-design",
     primary_work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
-    additional_works: [],
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_shared_type_if_needed", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_field_from_child", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit", decl_name: "render_node_type", field: WholeDeclaration },
+    ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
   },
   HandAuthoredDocBind {
@@ -1527,8 +1534,62 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
 ]
 
+type HandAuthoredDocBindsPopulation
+  = HandAuthoredDocBindsBuilt { binds: List<HandAuthoredDocBind> }
+  | HandAuthoredDocBindsDuplicateKey {
+      key: String,
+      first: HandAuthoredDocBind,
+      duplicate: HandAuthoredDocBind,
+    }
+
+fn hand_authored_bind_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn hand_authored_binds_to_keyed_rows(binds: List<HandAuthoredDocBind>) -> List<KeyedRow<String, HandAuthoredDocBind>> {
+  map(binds, b => KeyedRow { row_key: hand_authored_bind_key(b: b), value: b })
+}
+
+fn hand_authored_doc_binds_keyed_build(incomings: List<HandAuthoredDocBind>) -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+  keyed_roster_build(
+    incomings: hand_authored_binds_to_keyed_rows(binds: incomings),
+    key_eq: hand_authored_bind_key_eq,
+  )
+}
+
+fn hand_authored_doc_binds_construct() -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+  hand_authored_doc_binds_keyed_build(incomings: hand_authored_doc_bind_incomings)
+}
+
+fn hand_authored_doc_binds_population() -> HandAuthoredDocBindsPopulation {
+  match hand_authored_doc_binds_construct() {
+    KeyedRosterBuilt { rows: rows } =>
+      HandAuthoredDocBindsBuilt { binds: map(rows, row => row.value) }
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      HandAuthoredDocBindsDuplicateKey {
+        key: k,
+        first: f.value,
+        duplicate: d.value,
+      }
+  }
+}
+
+fn hand_authored_doc_binds() -> List<HandAuthoredDocBind> {
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } => binds
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
+  }
+}
+
+fn hand_authored_bind_identities_unique() -> Bool {
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: _ } => true
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
 fn hand_authored_doc_graph_roots() -> List<String> {
-  map(hand_authored_doc_binds, b => hand_authored_doc_path(b: b))
+  map(hand_authored_doc_binds(), b => hand_authored_doc_path(b: b))
 }
 
 fn doc_graph_roots_all() -> List<String> {
@@ -1551,5 +1612,9 @@ fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
 }
 
 fn hand_authored_slugs_all_unregistered() -> Bool {
-  all(hand_authored_doc_binds, b => hand_authored_plan_slug_is_unregistered(b: b))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      all(binds, b => hand_authored_plan_slug_is_unregistered(b: b))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
 }

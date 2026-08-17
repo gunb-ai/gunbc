@@ -239,6 +239,7 @@ fn stage0_v1_artifact_modules() -> List<String> {
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
     "v1_compiler_artifact",
+    "v1_compiler_infer_env",
     "v1_compiler_infer_items",
     "v1_compiler_infer_service",
     "v1_compiler_infer_types",
