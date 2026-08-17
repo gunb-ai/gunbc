@@ -132,15 +132,38 @@ one-dimensional fixture above was true and insufficient: the identity fixture ha
 site, and the breadth fixture varies fields but never unifies them against a signature. Neither can
 exercise the product.
 
-**Instrument limitation, stated rather than hidden:** `Other` (49.6s, 19% of the module) is a bucket
-for the `ExprData` variants the probe did not enumerate. A fifth of the module's cost is currently
-attributed to "not one of the seven kinds I named."
+**The `Other` bucket resolved to `RecordLit`, and callee resolution is NOT the cost.** Full
+`ExprData` enumeration plus direct timing of the two operations on the Call path:
 
-**Open — the next measurement.** Counters INSIDE the Call rule: callee lookups, candidate scans,
-type-compatibility calls, generic substitutions, each against its DISTINCT-key count. Relation-level
-recomputation across 402 distinct call sites is entirely consistent with `amp = 1.0` and has not been
-measured. If calls-per-distinct-key returns ~100x, the repair is interning or memoizing a pure
-relation; if it returns ~1x, the cost is a genuine per-site scan and the repair is an index.
+```
+gunbc.host_effect_realize :: Call       210873ms  n=402  524561 us/call
+gunbc.host_effect_realize :: RecordLit   49576ms  n=205  241836 us/call
+                                        -------- together 260.4s, essentially the whole module
+
+body_shadow_aware_func_sig (callee resolution), corpus-wide top row:
+v1.compiler.emit_rust :: sig_lookup    249ms  n=4191  59us/call  distinctNames=844  amp=5.0
+   -> gunbc.host_effect_realize does not appear in the table at all
+```
+
+So **callee resolution is negligible**, which refutes the func-env DAG walk as the mechanism — the
+candidate suggested by that structure's sharing factor (614 distinct nodes, 33,783 naive traversals).
+The repair it implied, indexing the environment, would have bought nothing.
+
+A single record literal — `ProvisionBuildCacheOnHost { node: n, catalog_id: id }`, two fields —
+costs **241 ms**. Both dominant kinds are places where a value is checked against a large
+coproduct's variant shapes, and neither involves callee lookup.
+
+**Current candidate, explicitly untested:** `global_variant_base` carries **14,309** entries (built
+from `symbol_index.global_bare`). If record-literal construction and call-argument unification
+consult it, both hot kinds share one mechanism and it is a corpus-sized population consulted for a
+local question. Stated as the next thing to measure, NOT as a finding: three candidates have now
+been proposed for this same 259s (func-env walk, type size, variant base) and the first two were
+measured false.
+
+**Relation-level amplification is real but cheap where measured:** `sig_lookup` runs at amp 5.0-21.0
+(calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it simply
+costs too little to matter. That is evidence about this operation only; the RecordLit and
+call-argument paths have not been given the same census.
 
 **Scope of `amp = 1.0`:** no expression NODE is re-entered. It says nothing about repeated type
 comparisons, generic substitutions, or name lookups across different expressions; a relation-level
