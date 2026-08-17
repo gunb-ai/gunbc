@@ -2064,3 +2064,45 @@ second grain.
 `v2_compiler_parse.rs:78`, `alloc` bare, `index` bare) and two independent instruments converge on the
 same fourteen-occurrence population from opposite ends — 121-vs-5 counted by position here,
 921-vs-7 counted by type there. That convergence is worth more than either count alone.
+
+### 11.23 T5b characterized: ~10 declarations demand serde/Debug over closure-bearing values
+
+The 44 sites, attributed to the declaration whose derive *demands* the trait (not the type that fails
+to implement it). All 44 land inside twelve enclosing declarations, and the top five carry 32:
+
+```
+18  RuntimeBehaviorInterpreter                            v2_std_runtime.rs
+ 6  InterpretationStructureWitness                        v2_std_runtime.rs
+ 3  ProducedDeclSupport                                   v2_std_compilers_target_model.rs
+ 3  EffectIoEvalContext                                   v2_compiler_eval.rs
+ 2  LexWalkAcc                                            v2_compiler_tokenize.rs
+ 2  TargetDeriveSupplementalGenericBoundContractAuthority v2_std_compilers_target_model.rs
+ 2  TargetDeriveSupplementalGenericBoundContract          "
+ 2  TargetCollectionRealization                           "
+ 2  TargetRepresentationParameterSlot                     "
+ 1  EffectIoYieldOutcome                                  v2_compiler_eval.rs
+ 3  (attribution not resolvable within 200 lines)
+```
+
+The failing values are `ValueInterpreter` / `TransformInterpreter` / `BranchInterpreter` /
+`LoopInterpreter` / `BindInterpreter` / `MatchInterpreter` (6 × 3 traits = 18 under
+`RuntimeBehaviorInterpreter` alone), `EffectIoEvalBundle`, `CompiledLexRule`,
+`PartialFunction<String, …>`, and — in one case — a bare
+`dyn Fn(Rc<Node>) -> Rc<Outcome<Rc<TargetBodiedArrowStatementScaffold>>>`.
+
+**The operator question this makes precise.** `ProducedDeclSupport` holds
+`render: Rc<dyn Fn(Rc<Node>) -> …>` **directly in a serialized variant**, so the question is not a
+repair detail: *should a declaration whose value contains a function be serializable at all?* Three
+answers exist and they are different work — drop serde/Debug from these declarations; split each into
+a serializable description plus a non-serializable realization; or keep the derive and make the
+function field a named, resolvable reference (the `PrimitiveDefinition`-style identity move DESIGN
+already contemplates elsewhere). The derive roster applies serde unconditionally to every record and
+coproduct, so **any** type transitively reaching a closure fails — the population grows with the model,
+not with the corpus.
+
+**Method note, and I got this wrong first:** my initial scan for "records deriving serde while holding
+a closure-bearing field" found exactly **one**, and I nearly reported that the hypothesis was refuted.
+It matched only `pub field:` lines at struct-body depth and therefore missed **enum variant fields** —
+`ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
+was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
+value: a negative result from an unvalidated scan is not evidence of absence.
