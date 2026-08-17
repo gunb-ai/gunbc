@@ -1055,7 +1055,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/self_host/crate_layout_witness_test.dag",
     functions: [
-      "transition_parity_host_index_agrees_with_hand_rows", "projection_refuses_on_absent_index",
       "crate_layout_witnesses"
     ]
   },
