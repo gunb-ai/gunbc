@@ -1307,7 +1307,10 @@ pub fn is_value_variant_type_arg(
     } {
         false
     } else {
-        v1_rt::map_contains_key(&variant_to_enum, name.clone())
+        match v1_rt::map_get(&variant_to_enum, name.clone()) {
+            Some(owner) => (owner.clone() != "".to_string()),
+            None => false,
+        }
     }
 }
 

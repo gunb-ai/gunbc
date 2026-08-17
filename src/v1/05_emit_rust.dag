@@ -698,11 +698,39 @@ fn type_param_is_collection_element_in_values(param_name: String, value_params: 
   )
 }
 
+// The owner string carries a THIRD state that its type does not name: v1.compiler.emit_info
+// derive_variant_to_enum inserts "" when two enums in the closure claim one variant name, so ""
+// means AMBIGUOUS rather than owned. map_contains_key cannot see that value, so it read an
+// ambiguous name as an unambiguous value-variant and collapsed the type argument to unit --
+// fabricating plausible output where the emitter could not know the answer. The six other readers
+// of this map already guard the sentinel explicitly; this one did not -- which makes the class a
+// single-authority failure rather than a bug: a sentinel whose meaning must be re-implemented
+// correctly by every reader is a convention, not a construction, and it produces this defect one
+// reader at a time. Next rung, and the trigger this repair does NOT reach: ambiguity becomes a
+// typed arm rather than a bare "" (Unowned | OwnedBy | Ambiguous), so a reader that ignores it
+// does not compile.
+//
+// AND THE DEEPER DEFECT, measured while trying to witness this and recorded because it outlives the
+// repair: the sentinel is asking a question the language does not define globally. §1c
+// (v1.compiler.infer constructor_binding_authority) rules that a module's constructor namespace is
+// FLAT -- its own declarations plus its DIRECT imports, never transitive ancestry -- and a name
+// bound to two owners IN ONE FILE is a VariantCollision refused at env construction. So ownership
+// is a PER-FILE fact. derive_variant_to_enum folds the whole TRANSITIVE closure, where no such
+// owner exists. The two populations disagree by construction, and that is exactly what is observed:
+// emitting src/v2/compiler/05_emit.dag reports NO collision and 92 clean files, while the same run
+// records Optional as ambiguously owned 68 times and Absent 91 times. A fixture that imports both
+// claimants DIRECTLY does refuse, which is the wall working correctly on the population it owns.
+// Honoring the sentinel is therefore right but is not the terminal fix: a per-file relation was
+// flattened into a global map, and the ambiguity is that flattening's artifact rather than a defect
+// in any declaration.
 fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
   if generic_param_names |> any(g => g == name) {
     false
   } else {
-    map_contains_key(variant_to_enum, name)
+    match map_get(variant_to_enum, name) {
+      Present { value: owner } => owner != ""
+      Absent => false
+    }
   }
 }
 
