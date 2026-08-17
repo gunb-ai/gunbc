@@ -420,3 +420,11 @@ identity means a cycle and a typed cycle refusal, unique deep structure means
 an explicit worklist, and only an authoritative domain ceiling would justify a
 depth bound. A 149th `maybe_grow` is refused either way: it would erase the
 symptom before distinguishing those.
+
+## Findings filed against main, not against this cut
+
+- [a record field initializer is not checked against its declared type](main-record-field-type-unchecked-finding.md)
+  — surfaced as the control half of a cut comparison that was then withdrawn.
+  Below the ordinary compiler floor, reproduces in seven lines, and is a fact
+  about `main` rather than about the import deletion. Linked from here so that
+  withdrawing the branch-side claim does not orphan the control's own result.
