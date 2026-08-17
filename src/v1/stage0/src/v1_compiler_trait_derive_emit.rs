@@ -8,18 +8,20 @@ pub use crate::extdeps_languages_rust_emit::{
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
+use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::*;
 pub use crate::std_trait_derive_shape::{
-    fn_field_derive_traits, kernel_int_arithmetic_traits, nullary_coproduct_derive_traits,
+    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
+    map_key_required_derive_traits, nullary_coproduct_derive_traits,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
     repr_grounding_supplemental_bool_host_bridge_target, symbol_wrapped_ord_carrier_derive_traits,
 };
-pub use crate::std_types::is_container_type;
+pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGroundingDeriveTrait};
+pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_emit::to_pascal;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;
@@ -179,15 +181,242 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
     }
 }
 
+pub fn v1_with_map_key_requirement(
+    base: Rc<Vec<ReprGroundingDeriveTrait>>,
+    map_key_required: bool,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    if map_key_required.clone() {
+        derive_traits_union(base.clone(), map_key_required_derive_traits())
+    } else {
+        base.clone()
+    }
+}
+
+pub fn v1_type_expr_is_keyed_map(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match container_template_algebra(authored_name_at(source_indices.clone(), type_expr.clone())) {
+        Some(algebra) => (algebra.clone() == "PartialFunction".to_string()),
+        None => false,
+    }
+}
+
+pub fn v1_map_key_head_names_in_type_expr(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = if v1_type_expr_is_keyed_map(type_expr.clone(), source_indices.clone()) {
+            match type_expr.children.clone().first().cloned() {
+                Some(key_child) => Rc::new(vec![authored_name_at(
+                    source_indices.clone(),
+                    child_type_node(key_child.clone()),
+                )]),
+                None => Rc::new(vec![]),
+            }
+        } else {
+            Rc::new(vec![])
+        };
+        v1_rt::concat(
+            own.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in type_expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_map_key_head_names_in_type_expr(
+                            child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn v1_type_expr_head_names(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        v1_rt::concat(
+            Rc::new(vec![authored_name_at(
+                source_indices.clone(),
+                type_expr.clone(),
+            )]),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in type_expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_type_expr_head_names(
+                            child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MapKeyRequirementRound {
+    pub names: Rc<BTreeSet<String>>,
+    pub added: i64,
+}
+
+pub fn v1_map_key_round_add(
+    round: Rc<MapKeyRequirementRound>,
+    name: String,
+) -> Rc<MapKeyRequirementRound> {
+    if ((name.clone() == "".to_string()) || v1_rt::set_contains(&round.names.clone(), name.clone()))
+    {
+        round.clone()
+    } else {
+        Rc::new(MapKeyRequirementRound {
+            names: v1_rt::rc_set_insert(round.names.clone(), name.clone()),
+            added: (round.added.clone() + 1),
+        })
+    }
+}
+
+pub fn v1_map_key_propagate_round(
+    round: Rc<MapKeyRequirementRound>,
+    declared_type_names: Rc<Vec<String>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<MapKeyRequirementRound> {
+    declared_type_names.clone().iter().cloned().fold(
+        round.clone(),
+        |acc: Rc<MapKeyRequirementRound>, type_name: String| {
+            if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
+                acc.clone()
+            } else {
+                match v1_rt::map_get(&type_decl_items, type_name.clone()) {
+                    Some(item) => v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
+                        acc.clone(),
+                        |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
+                            v1_type_expr_head_names(te.clone(), source_indices.clone())
+                                .iter()
+                                .cloned()
+                                .fold(inner, |deep: Rc<MapKeyRequirementRound>, head: String| {
+                                    if map_has_declared_type(type_decl_items.clone(), head.clone())
+                                    {
+                                        v1_map_key_round_add(deep.clone(), head.clone())
+                                    } else {
+                                        deep.clone()
+                                    }
+                                })
+                        },
+                    ),
+                    None => acc.clone(),
+                }
+            }
+        },
+    )
+}
+
+pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, name: String) -> bool {
+    match v1_rt::map_get(&type_decl_items, name.clone()) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+pub fn v1_map_key_fixpoint_loop(
+    mut round: Rc<MapKeyRequirementRound>,
+    mut declared_type_names: Rc<Vec<String>>,
+    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut remaining: i64,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BTreeSet<String>> {
+    loop {
+        if (remaining.clone() <= 0) {
+            break round.names.clone();
+        } else {
+            let next = v1_map_key_propagate_round(
+                Rc::new(MapKeyRequirementRound {
+                    names: round.names.clone(),
+                    added: 0,
+                }),
+                declared_type_names.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            );
+            if (next.added.clone() == 0) {
+                break next.names.clone();
+            } else {
+                {
+                    let __tco_0 = next.clone();
+                    let __tco_1 = (remaining - 1);
+                    round = __tco_0;
+                    remaining = __tco_1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn v1_map_key_required_type_names(
+    seed_type_exprs: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BTreeSet<String>> {
+    {
+        let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
+        let seeded = seed_type_exprs.clone().iter().cloned().fold(
+            Rc::new(MapKeyRequirementRound {
+                names: v1_rt::rc_empty_set::<String>(),
+                added: 0,
+            }),
+            |acc: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
+                v1_map_key_head_names_in_type_expr(te.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                    .fold(
+                        acc,
+                        |inner: Rc<MapKeyRequirementRound>, key_name: String| {
+                            if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
+                                v1_map_key_round_add(inner.clone(), key_name.clone())
+                            } else {
+                                inner.clone()
+                            }
+                        },
+                    )
+            },
+        );
+        v1_map_key_fixpoint_loop(
+            seeded.clone(),
+            declared_type_names.clone(),
+            type_decl_items.clone(),
+            ((declared_type_names.clone().len() as i64) + 1),
+            source_indices.clone(),
+        )
+    }
+}
+
 pub fn v1_emit_struct_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
+    map_key_required: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if has_fn_fields.clone() {
-        rust_trait_derive_attr_from_traits(fn_field_derive_traits())
+        if map_key_required.clone() {
+            v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat("trait_derive_emit: '".to_string(), name.clone()), "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster".to_string()))
+        } else {
+            rust_trait_derive_attr_from_traits(fn_field_derive_traits())
+        }
     } else {
         if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone())
         {
@@ -196,11 +425,12 @@ pub fn v1_emit_struct_derives(
                     children.clone(),
                     source_indices.clone(),
                 );
-                if repr_grounding_derive_completeness_predicate(
+                let traits = v1_with_map_key_requirement(
                     symbol_wrapped_ord_carrier_derive_traits(),
-                    shape.clone(),
-                ) {
-                    rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
+                    map_key_required.clone(),
+                );
+                if repr_grounding_derive_completeness_predicate(traits.clone(), shape.clone()) {
+                    rust_trait_derive_attr_from_traits(traits.clone())
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: symbol-wrapped ord carrier refused".to_string(),
@@ -209,9 +439,15 @@ pub fn v1_emit_struct_derives(
             }
         } else {
             if v1_rt::set_contains(&shared_types, name.clone()) {
-                rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+                rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
+                    record_derive_traits_heap(),
+                    map_key_required.clone(),
+                ))
             } else {
-                rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+                rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
+                    record_derive_traits_copy(),
+                    map_key_required.clone(),
+                ))
             }
         }
     }
@@ -219,6 +455,7 @@ pub fn v1_emit_struct_derives(
 
 pub fn v1_emit_enum_derives(
     children: Rc<Vec<Rc<Node>>>,
+    map_key_required: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -226,13 +463,21 @@ pub fn v1_emit_enum_derives(
             children.clone(),
             source_indices.clone(),
         );
+        let nullary_traits = v1_with_map_key_requirement(
+            nullary_coproduct_derive_traits(),
+            map_key_required.clone(),
+        );
+        let payload_traits = v1_with_map_key_requirement(
+            payload_coproduct_derive_traits(),
+            map_key_required.clone(),
+        );
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
-                    nullary_coproduct_derive_traits(),
+                    nullary_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+                    rust_trait_derive_attr_from_traits(nullary_traits.clone())
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: nullary coproduct derive completeness refused"
@@ -242,10 +487,10 @@ pub fn v1_emit_enum_derives(
             }
             ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
                 if repr_grounding_derive_completeness_predicate(
-                    payload_coproduct_derive_traits(),
+                    payload_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+                    rust_trait_derive_attr_from_traits(payload_traits.clone())
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: payload coproduct derive completeness refused"
@@ -1599,6 +1844,7 @@ pub fn v1_emit_struct_from_capability_table(
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
+    map_key_required: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
@@ -1607,6 +1853,7 @@ pub fn v1_emit_struct_from_capability_table(
             children.clone(),
             shared_types.clone(),
             has_fn_fields.clone(),
+            map_key_required.clone(),
             source_indices.clone(),
         );
         let impl_bodies =
