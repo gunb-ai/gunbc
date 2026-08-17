@@ -12,10 +12,18 @@ import gunbc.typed_remote_file_write { TypedRemoteFileWrite, RemoteFileMode }
 // permanently UNREALIZABLE rather than merely unimplemented -- the realizer's refusal was reporting a
 // missing type, not missing work.
 //
-// This is the smallest widening that admits the second kind without weakening the first: two arms,
-// each carrying an already-sealed payload. There is deliberately NO arm carrying a command string, a
-// script body, or a shell fragment; adding one would reopen exactly what the typed-write module
-// closed, and the absence of that constructor is what keeps it shut rather than a review habit.
+// This is the smallest widening that admits the second kind without weakening the first. There is
+// deliberately NO arm carrying a command string, a script body, or a shell fragment; adding one
+// would reopen exactly what the typed-write module closed, and the absence of that constructor is
+// what keeps it shut rather than a review habit.
+//
+// THE TWO ARMS ARE NOT EQUALLY SEALED, and saying so matters because the difference is exactly where
+// the guarantee stops. `RemoteFileBytes` carries a `TypedRemoteFileWrite`, whose sole mint checks
+// path containment and far-side portability, so its payload cannot be forged. `RemoteArgv` carries a
+// bare `List<String>`: this type does NOT make an arbitrary argv unwritable. What holds there is
+// upstream and downstream instead -- the realizer admits words through `portable_remote_words`, and
+// both SSH execution seams re-check them -- so the property is a fact about those paths, not about
+// this constructor.
 type RemoteOperation
   = RemoteArgv { argv: List<String> }
   | RemoteFileBytes { write: TypedRemoteFileWrite, mode: RemoteFileMode }

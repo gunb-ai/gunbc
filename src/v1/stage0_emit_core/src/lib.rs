@@ -24,6 +24,10 @@ pub mod v1_compiler_artifact {
     pub use v1_stage0_v1_artifact::v1_compiler_artifact::*;
 }
 
+pub mod v1_compiler_infer_env {
+    pub use v1_stage0_v1_infer::v1_compiler_infer_env::*;
+}
+
 pub mod v1_compiler_infer_items {
     pub use v1_stage0_v1_infer::v1_compiler_infer_items::*;
 }

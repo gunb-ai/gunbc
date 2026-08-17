@@ -7,6 +7,15 @@ import gunbc.spark_serving_realization {
   EnableLingerForOwnAccount,
   ReloadUserManager,
   EnableUserUnit,
+  WriteUserUnitFile,
+  WriteSystemUnitFile,
+  ReloadSystemManager,
+  EnableSystemUnit,
+  InstallRuntimePackage,
+  InstallOwnedRuntimeClosure,
+  PullModelArtifact,
+  GrantContainerRuntimeAccess,
+  RunContainerAsOwnUser,
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
@@ -18,7 +27,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal,
 }
 import gunbc.file_access { FileTreeScope }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 
@@ -92,6 +101,17 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
 //
 // Mode is owner-read-write: a user unit is read by that user's own systemd manager and has no reason
 // to be world-readable.
+//
+// TWO OPERATIONS, ORDERED, because the first consumer is a BARE host. `~/.config/systemd/user` does
+// not exist on a machine that has never run a user unit, and the file convergence opens a staging
+// sibling with `dd` -- it does not create missing parents. Without the mkdir the very first step
+// refuses on exactly the host this effect exists to restore, so realizing the write alone would not
+// have realized the effect.
+//
+// The mkdir is NOT privileged: the directory lives under the executor's own home, so `sudo` would be
+// both unnecessary and a privilege escalation for a write the account can already perform. `-p` makes
+// it idempotent, which matters because this effect re-runs on every converge until the unit member
+// reports converged.
 fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommandsVerdict {
   match typed_remote_file_write_seal(
     path: spark_serving_user_unit_path(),
@@ -103,8 +123,20 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
         reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", why as String], ""),
       }
     TypedRemoteFileWriteAdmitted { write: w } =>
-      SparkServingInstallRemoteCommandsPresent {
-        operations: [RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite }],
+      match portable_remote_words(
+        raws: ["mkdir", "-p", spark_serving_user_unit_dir() as String],
+      ) {
+        Absent =>
+          SparkServingInstallRemoteCommandsRefused {
+            reason: "spark_serving_converge_realize: WriteUserUnitFile refused — the user unit directory is not portable under the far-side re-parse allowlist",
+          }
+        Present { value: words } =>
+          SparkServingInstallRemoteCommandsPresent {
+            operations: [
+              RemoteArgv { argv: portable_remote_words_strings(words: words) },
+              RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+            ],
+          }
       }
   }
 }

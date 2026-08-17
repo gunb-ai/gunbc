@@ -89,7 +89,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-emit-core".to_string(),
         crate_dir: "src/v1/stage0_emit_core".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedEmitCoreCrate,
-        modules: Rc::new(vec!["v1_compiler_artifact".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_types".to_string(), "v1_compiler_languages".to_string(), "v1_rt".to_string(), "v1_std_core".to_string()]),
+        modules: Rc::new(vec!["v1_compiler_artifact".to_string(), "v1_compiler_infer_env".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_types".to_string(), "v1_compiler_languages".to_string(), "v1_rt".to_string(), "v1_std_core".to_string()]),
         reexport_packages: Rc::new(vec![]),
         carries_non_empty_wrappers: false,
     })])
