@@ -515,7 +515,7 @@ fn rust_witness_type_arg_from_fn_return(emit_info: v1.compiler.infer_emit_info.E
   }
 }
 
-fn rust_witness_type_arg_for_variant(variant_name: String, v1.compiler.infer_types.resolved_type: v1.std.core.Node, fields: List<v1.std.core.Node>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: v1.std.core.Node, fields: List<v1.std.core.Node>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   if variant_name == "Holds" {
     match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
@@ -531,13 +531,13 @@ fn rust_witness_type_arg_for_variant(variant_name: String, v1.compiler.infer_typ
   }
 }
 
-fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, v1.compiler.infer_types.resolved_type: v1.std.core.Node, fields: List<v1.std.core.Node>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: v1.std.core.Node, fields: List<v1.std.core.Node>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match effective_parent {
     Present { value: parent } =>
       if !rust_witness_parent_leaf(parent: parent) {
         concat(v1.std.core.qualified_last_segment(name: parent), "::", variant_name)
       } else {
-        match rust_witness_type_arg_for_variant(variant_name: variant_name, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+        match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
           Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
           Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
         }
@@ -1115,7 +1115,7 @@ fn render_rust_alias_rhs_type(n: v1.std.core.Node, generic_param_names: List<Str
 }
 
 fn type_variable_node(id: String) -> v1.std.core.Node {
-  v1.std.core.Node { name: "", span: v1.std.core.make_span(start: 0, end: 0), ident_span: none, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, v1.compiler.emit.is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  v1.std.core.Node { name: "", span: v1.std.core.make_span(start: 0, end: 0), ident_span: none, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
 fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
@@ -1731,7 +1731,7 @@ fn data_item_type_is_coproduct_wire_contract(item: v1.std.core.Node, imports: Li
   }
 }
 
-fn module_defines_local_coproduct_wire_contract_type(v1.std.core.module_items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn module_defines_local_coproduct_wire_contract_type(module_items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   v1.std.core.module_items
     |> any(item =>
       (
@@ -1743,10 +1743,10 @@ fn module_defines_local_coproduct_wire_contract_type(v1.std.core.module_items: L
     )
 }
 
-fn is_coproduct_wire_contract_row(item: v1.std.core.Node, v1.std.core.module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_coproduct_wire_contract_row(item: v1.std.core.Node, module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   if !v1.compiler.emit_core_support.is_data_def_item(item: item) {
     false
-  } else if module_defines_local_coproduct_wire_contract_type(v1.std.core.module_items: v1.std.core.module_items, source_indices: source_indices) {
+  } else if module_defines_local_coproduct_wire_contract_type(module_items: v1.std.core.module_items, source_indices: source_indices) {
     false
   } else if !data_item_type_is_coproduct_wire_contract(item: item, imports: imports, source_indices: source_indices) {
     false
@@ -1778,21 +1778,21 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: v1.std.core.Nod
   }
 }
 
-fn emit_coproduct_wire_contract_validations(v1.std.core.module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, local_coproduct_names: List<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_coproduct_wire_contract_validations(module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, local_coproduct_names: List<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   if local_coproduct_names |> count == 0 {
     ""
   } else {
     v1.std.core.module_items
-      |> filter(item => is_coproduct_wire_contract_row(item: item, v1.std.core.module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices))
+      |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices))
       |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
       |> filter(text => text != "")
       |> join(separator: "\n")
   }
 }
 
-fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, v1.std.core.module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> RustEnumWireSerde? {
+fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> RustEnumWireSerde? {
   let contracts = v1.std.core.module_items
-    |> filter(item => is_coproduct_wire_contract_row(item: item, v1.std.core.module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
+    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: v1.std.core.module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
   if contracts |> count == 0 {
     none
   } else if contracts |> count == 1 {
@@ -1869,7 +1869,7 @@ fn duplicate_qualified_item_registry_marker(name: String) -> v1.compiler.infer_i
     service_names: [],
     resource_names: [],
     params: [],
-    v1.compiler.emit.is_self_recursive: false,
+    is_self_recursive: false,
     has_non_tail_self_call: false
   }
 }
@@ -3142,7 +3142,7 @@ fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry:
   let this_module_name = v1.compiler.infer_env.authored_name(env: scope.type_env, node: m)
   let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
-  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(v1.std.core.module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
+  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -3152,7 +3152,7 @@ fn emit_module_full(typed_module: v1.compiler.infer_items.TypedModule, registry:
       && v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
     |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: v1.compiler.infer_env.authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, v1.std.core.module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
+    |> map(item => emit_typed_item(item: item, module_name: v1.compiler.infer_env.authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
@@ -4703,12 +4703,12 @@ fn emit_non_empty_wrappers() -> String {
   concat(vec_wrapper, "\n\n", set_wrapper)
 }
 
-fn emit_typed_item(item: v1.std.core.Node, module_name: String, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, wire_contract_item: v1.std.core.Node?, data_items: Map<String, List<v1.std.core.Node>>, v1.std.core.module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<v1.compiler.infer_items.TypedModule>, module_index: ModuleIndex) -> String {
+fn emit_typed_item(item: v1.std.core.Node, module_name: String, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, wire_contract_item: v1.std.core.Node?, data_items: Map<String, List<v1.std.core.Node>>, module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<v1.compiler.infer_items.TypedModule>, module_index: ModuleIndex) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", v1.compiler.infer_env.authored_name(env: env, node: item))
   let item_text = v1.compiler.infer_env.authored_name(env: env, node: item)
   if v1.compiler.emit_core_support.is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, v1.std.core.module_items: v1.std.core.module_items, imports: imports)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: v1.std.core.module_items, imports: imports)
   } else if v1.compiler.emit_core_support.is_type_alias_item(item: item, source_indices: env.source_indices) {
 
     if item_text == "String" {
@@ -4954,7 +4954,7 @@ fn emit_item_clone_bound_refusal(item: v1.std.core.Node, item_name: String, emit
   }
 }
 
-fn emit_type_def_from_connective(item: v1.std.core.Node, recursive_types: Set<String>, shared_types: Set<String>, env: v1.compiler.infer_env.TypeEnv, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, wire_contract_item: v1.std.core.Node?, data_items: Map<String, List<v1.std.core.Node>>, v1.std.core.module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>) -> String {
+fn emit_type_def_from_connective(item: v1.std.core.Node, recursive_types: Set<String>, shared_types: Set<String>, env: v1.compiler.infer_env.TypeEnv, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, wire_contract_item: v1.std.core.Node?, data_items: Map<String, List<v1.std.core.Node>>, module_items: List<v1.std.core.Node>, imports: List<v1.std.core.Node>) -> String {
   let item_text = v1.compiler.infer_env.authored_name(env: env, node: item)
   let is_product = v1.compiler.infer_types.is_product_type(n: item)
   if is_product {
@@ -4990,7 +4990,7 @@ fn emit_type_def_from_connective(item: v1.std.core.Node, recursive_types: Set<St
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
-    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, v1.std.core.module_items: v1.std.core.module_items, imports: imports, source_indices: env.source_indices) {
+    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: v1.std.core.module_items, imports: imports, source_indices: env.source_indices) {
       Present { value: local_policy } => local_policy
       Absent =>
         if all_unit_variants {
@@ -6589,7 +6589,7 @@ fn effective_variant_parent_from_resolved(leaf_name: String, rt: v1.std.core.Nod
   }
 }
 
-fn effective_variant_parent(name: String, binding_kind: v1.std.core.VarBindingKind?, v1.compiler.infer_types.resolved_type: v1.std.core.InferredNode?, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn effective_variant_parent(name: String, binding_kind: v1.std.core.VarBindingKind?, resolved_type: v1.std.core.InferredNode?, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   let leaf_name = value_ref_qualified_leaf(name: name)
   let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
     Present { value: p } => if p != "" { Present { value: p } } else { none }
@@ -6641,7 +6641,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, v1.compiler.infer_it
 
 data none_undetermined_carrier_refuse_note: String = "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers."
 
-fn emit_none_keyword_for_resolved_type(v1.compiler.infer_types.resolved_type: v1.std.core.InferredNode?) -> String {
+fn emit_none_keyword_for_resolved_type(resolved_type: v1.std.core.InferredNode?) -> String {
   match v1.compiler.infer_types.resolved_type {
     Present { value: v1.std.core.Resolved { node: rt } } =>
       match rt.return_cardinality {
@@ -6652,11 +6652,11 @@ fn emit_none_keyword_for_resolved_type(v1.compiler.infer_types.resolved_type: v1
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, v1.compiler.infer_types.resolved_type: v1.std.core.InferredNode?, shared_types: Set<String>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>, module_name: String) -> String {
+fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, resolved_type: v1.std.core.InferredNode?, shared_types: Set<String>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>, module_name: String) -> String {
   let resolved_name = value_ref_normalize_self_module(name: name, module_name: module_name)
   let leaf_name = value_ref_qualified_leaf(name: resolved_name)
-  let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
-  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type) }
+  let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
+  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: v1.compiler.infer_types.resolved_type) }
   else if leaf_name == "true" || leaf_name == "false" { v1.compiler.emit.emit_keyword(key: leaf_name, target: v1.compiler.artifact.Rust) }
   else {
 
@@ -6720,8 +6720,8 @@ fn emit_typed_expr_base(texpr: v1.std.core.Node, registry: Map<String, v1.compil
     v1.std.core.ExprVar { binding_kind: binding_kind } =>
       let n = v1.std.core.expr_var_name_at(texpr: texpr, source_indices: si)
       let leaf_name = value_ref_qualified_leaf(name: n)
-      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, v1.compiler.infer_types.resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
-      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(v1.compiler.infer_types.resolved_type: texpr.inferred) }
+      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
+      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred) }
       else if leaf_name == "true" || leaf_name == "false" { v1.compiler.emit.emit_keyword(key: leaf_name, target: v1.compiler.artifact.Rust) }
       else {
         match variant_parent {
@@ -6969,7 +6969,7 @@ fn emit_rust_expr_var(expr: v1.std.core.Node, registry: Map<String, v1.compiler.
   match expr.expr_data {
     v1.std.core.ExprVar { binding_kind: binding_kind } =>
       let n = v1.std.core.expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, v1.compiler.infer_types.resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: v1.compiler.artifact.Rust)
   }
 }
@@ -7067,11 +7067,11 @@ fn emit_rust_expr_record_lit(expr: v1.std.core.Node, registry: Map<String, v1.co
         let concrete = v1.std.core.authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
-      let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, v1.compiler.infer_types.resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let rc_name = match parent_enum {
         Present { value: en } => en
         Absent =>
-          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, v1.compiler.infer_types.resolved_type: expanded_rt, emit_info: emit_info, source_indices: si) {
+          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, resolved_type: expanded_rt, emit_info: emit_info, source_indices: si) {
             Present { value: p } => p
             Absent =>
 
@@ -7193,7 +7193,7 @@ fn is_enum_type_name(type_name: String, type_summaries: Map<String, v1.compiler.
   v1.compiler.infer_emit_info.is_enum_in_summaries(type_summaries: type_summaries, type_name: type_name)
 }
 
-fn contextual_variant_parent_from_type_name(variant_name: String, v1.compiler.infer_types.resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   let rt_name = v1.std.core.authored_name_at(source_indices: source_indices, node: v1.compiler.infer_types.resolved_type)
   if v1.compiler.infer_types.resolved_type.ident_span != none && rt_name != variant_name && v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
     Present { value: rt_name }
@@ -7202,21 +7202,21 @@ fn contextual_variant_parent_from_type_name(variant_name: String, v1.compiler.in
   }
 }
 
-fn contextual_variant_parent_absent(variant_name: String, v1.compiler.infer_types.resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn contextual_variant_parent_absent(variant_name: String, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match v1.compiler.infer_types.resolved_type.return_cardinality {
     v1.std.core.CardOptional =>
-      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices) }
-    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
+      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices) }
+    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
-fn contextual_variant_parent(variant_name: String, parent_enum: String?, v1.compiler.infer_types.resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match parent_enum {
     Present { value: explicit_parent } =>
       if v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
         Present { value: explicit_parent }
       } else { none }
-    Absent => contextual_variant_parent_absent(variant_name: variant_name, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
+    Absent => contextual_variant_parent_absent(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -8336,7 +8336,7 @@ fn emit_typed_match_arm(arm: v1.std.core.Node, registry: Map<String, v1.compiler
     v1.std.core.ExprVar { binding_kind: body_binding_kind } =>
       let body_name = v1.std.core.expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, v1.compiler.infer_types.resolved_type: Present { value: v1.std.core.Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: v1.std.core.Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
@@ -8599,7 +8599,7 @@ fn emit_field_value_with_context(field_value: v1.std.core.Node, struct_node: v1.
               } else { pe }
             Absent => pe
           }
-          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: v1.compiler.infer_types.resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let rc_name = match corrected_parent {
             Present { value: en } => en
             Absent => variant_name
@@ -8674,7 +8674,7 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
-fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, parent_enum: String?, v1.compiler.infer_types.resolved_type: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
+fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, parent_enum: String?, resolved_type: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: v1.compiler.infer_types.resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
     Present { value: sn } => Present { value: sn }
@@ -8767,7 +8767,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
@@ -8800,7 +8800,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
-          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, v1.compiler.infer_types.resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
       if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
@@ -10420,7 +10420,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
         v1.std.core.ExprListLit => true
         v1.std.core.ExprVar { binding_kind: bk } =>
           let vname = v1.std.core.expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
-          match effective_variant_parent(name: vname, binding_kind: bk, v1.compiler.infer_types.resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
+          match effective_variant_parent(name: vname, binding_kind: bk, resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
             Present { value: enum_name } => variant_ref_self_wraps(name: vname, enum_name: enum_name, shared_types: shared_types)
             Absent => value_inferred_type_is_rc_wrapped(value: value, shared_types: shared_types, scope: scope, emit_info: emit_info)
           }
