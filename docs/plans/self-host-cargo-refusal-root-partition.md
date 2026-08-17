@@ -367,9 +367,11 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 
 > **ROOT-CAUSED AND MEASURED LIVE, 2026-08-16 (`eager-deer-389`). The table above is superseded
 > as sizing; the mechanism below replaces it.** Full receipt with method and controls:
-> `docs/probes/root_b_primitive_repr_fork_2026-08-16.md`, carried on gunbc#8337 and not yet on
-> main — named rather than linked, because a link to a file this branch does not contain is a
-> dangling edge in the doc graph and the reachability lens refuses it.
+> [`docs/probes/root_b_primitive_repr_fork_2026-08-16.md`](../probes/root_b_primitive_repr_fork_2026-08-16.md),
+> merged to main on gunbc#8337. It was named rather than linked while it lived only on that branch,
+> because a link to a file the tree does not contain is a dangling edge the reachability lens
+> refuses; now that it is on main the link is the correct form, and it is also what makes the probe
+> reachable rather than an orphan.
 >
 > **The mechanism is one switch.** `v1.compiler.04_infer` `rust_corpus_repr` chooses
 > `HostNative` vs `FaithfulFreeMonoid` from `corpus_has_v1_seed_source_indices`, a **path
