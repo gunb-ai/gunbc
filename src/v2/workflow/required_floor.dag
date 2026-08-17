@@ -397,6 +397,9 @@ data manifest_scan_empty: ManifestScan = ManifestScan {
 // contract the group form had, reached without collecting the group. `first_seen_reversed`
 // records a name only when it is new, so it is both the dedup and the order, and a declaration
 // enrolled three times still reports one refusal about itself rather than three.
+// `first_seen_reversed` is walked in reverse — last-seen first — and the prepending fold flips
+// it back, so the emitted refusals come out in FIRST-OCCURRENCE order with one reversal rather
+// than two.
 fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
   let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
     let qualified = required_floor_claim_qualified(claim: c)
@@ -419,9 +422,6 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
       }
     }
   })
-  // `first_seen_reversed` is walked in reverse — i.e. last-seen first — and the prepending fold
-  // flips it back, so the emitted refusals come out in FIRST-OCCURRENCE order with one reversal
-  // rather than two.
   fold_list(
     xs: scan.first_seen_reversed,
     empty: no_manifest_refusals,
@@ -443,6 +443,9 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
 // rather than one list with a flag because the flag would have to be derived from something,
 // and the only available something is `reads_live_tree` — the derivation this module refuses
 // to make.
+// THIS IS THE ONE PLACE REVERSED ORDER IS DISCHARGED. Both scan populations were prepended and
+// are restored here, once each, before anything reads them. Hermetic claims precede wet ones and
+// each class keeps its site order, exactly as the appending form produced them.
 fn required_floor_manifest(
   bindings: List<ModulePathBinding>,
   hermetic_sites: List<WitnessSite>,
@@ -459,9 +462,6 @@ fn required_floor_manifest(
     resolved: resolve_sites(index: index, sites: wet_sites),
     mode: Wet
   )
-  // THE ONE PLACE REVERSED ORDER IS DISCHARGED. Both populations were prepended during the scan
-  // and are restored here, once each, before anything reads them. Hermetic claims precede wet
-  // ones and each class keeps its site order, exactly as the appending form produced them.
   let claims = list_reverse(xs: after_wet.claims_reversed)
   ClaimScan {
     claims: claims,
