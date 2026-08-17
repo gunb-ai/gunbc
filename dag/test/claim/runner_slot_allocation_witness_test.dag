@@ -69,15 +69,15 @@ data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMIT
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
   host_memory_admitted_width(host: operator_host_srv1) == 5
     && host_memory_admitted_width(host: operator_host_srv2) == 5
-    && host_memory_admitted_width(host: operator_host_srv3) == 7
-    && host_memory_admitted_width(host: operator_host_srv4) == 7
+    && host_memory_admitted_width(host: operator_host_srv3) == 6
+    && host_memory_admitted_width(host: operator_host_srv4) == 6
 }
 
 test fn runner_slot_allocation_committed_widths_match_memory_admission() -> Bool {
   gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
     && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
