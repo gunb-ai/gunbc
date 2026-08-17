@@ -67,18 +67,18 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
             if rt.ident_span == none {
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
+                make_field_node(name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
               )
             } else {
-              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+              [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: no_span())]
             }
           } else {
-            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+            [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: no_span())]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+          [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: no_span())]
         }
     }
   }
