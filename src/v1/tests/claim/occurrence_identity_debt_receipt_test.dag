@@ -5,7 +5,7 @@ data occurrence_identity_debt_receipt_offline_recipe: String = "LOCAL CONTROL RE
 
 data parser_reaching_witness_governed_placement_note: String = "GOVERNED PLACEMENT LAW for a witness importing the production v1 parser: discovery, compile-clean, stage0 regeneration, and scheduled execution are separate authorities and satisfying one does not satisfy the others. dag/test/claim is invalid because ordinary discovery resolves against witness_layer_roots = [dag, src/v2], where v1.compiler imports cannot resolve. dag/test/manual is discovery-excluded but remains inside the dag compile-clean universe, so the same imports hard-fail whole-tree compile-clean; exclusion from discovery is not exclusion from compile-clean. docs or any path outside dag, src/v2, and src/v1 avoids those failures only by becoming ungoverned, which is not a placement. src/v1/tests/claim is the governed home: compile_clean_source_roots includes src/v1, ordinary discovery does not scan it, and regen capture is the established gated pattern rather than a defect; the file and every newly reachable module in its import closure require registered generated_stage0_files projections. parser_transport_witness_entries supplies the remaining scoped per-PR EXECUTION consumer only. A roster row does not grant compile-clean roots or stage0 residency."
 
-data occurrence_identity_debt_receipt_boundary_note: String = "Acceptance receipts for four occurrence-identity debts owned by namespace-reference-derived-closure. Every fixture enters through the production parser, and every asserted reference is consumed by std.occurrence_binding_resolve.resolve_reference_occurrence_binding, the canonical sidecar-consuming supplied-candidate boundary. The functions are green by local execution but their consumer debt rows remain until parser_transport_witness_entries exists on main and executes them per PR under the scoped dag and src/v1 parser-transport batch. The rebuilt-reference receipt additionally executes locally through the production compile/reconcile Node rebuild in the generated pipeline_occurrence_sidecar_serde_round_trip test: it parses the left source independently, compiles that same source, and requires byte-equal OccurrenceTransport ids and containment paths before serde. That Rust assertion is cargo-checked but not executed per PR. Discriminating RED packet: removing or reminting typed-module occurrence_transport propagation reds rebuilt-reference; resetting the allocator between identical reparses reds structurally-equal distinct identity; skipping nested Bind declarations in stamp_parsed_pattern reds pattern reachability; and keying any parser occurrence population by authored_name instead of OccurrenceId reds the same-spelling matrix. one-occurrence-collector-dedupe is deliberately absent: main has no occurrence-aware repeated-discovery collector, and a test-local deduper would not be a consumer."
+data occurrence_identity_debt_receipt_boundary_note: String = "Acceptance receipts for four occurrence-identity debts owned by namespace-reference-derived-closure. Every fixture enters through the production parser, and every asserted reference is consumed by std.occurrence_binding_resolve.resolve_reference_occurrence_binding, the canonical sidecar-consuming supplied-candidate boundary. The functions are green by local execution but their consumer debt rows remain until parser_transport_witness_entries exists on main and executes them per PR under the scoped dag and src/v1 parser-transport batch. The rebuilt-reference receipt additionally executes locally through the production compile/reconcile Node rebuild in the generated pipeline_occurrence_sidecar_serde_round_trip test: it parses the left source independently, compiles that same source, and requires byte-equal OccurrenceTransport ids and containment paths before serde. That Rust assertion is cargo-checked but not executed per PR. Discriminating RED packet: removing or reminting typed-module occurrence_transport propagation reds rebuilt-reference; resetting the allocator between identical reparses reds structurally-equal distinct identity; skipping nested Bind declarations in stamp_parsed_pattern reds pattern reachability; and keying any parser occurrence population by authored_name instead of std.occurrence_identity.OccurrenceId reds the same-spelling matrix. one-occurrence-collector-dedupe is deliberately absent: main has no occurrence-aware repeated-discovery collector, and a test-local deduper would not be a consumer."
 
 fn oid_receipt_parse(
   source: String,
@@ -26,7 +26,7 @@ fn oid_receipt_parse(
 
 fn oid_receipt_name_for_occurrence(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> String? {
   match transport.index.entries
     |> filter(entry => entry.projection.occurrence.value == occurrence.value)
@@ -191,7 +191,7 @@ fn oid_receipt_single_populations_have_distinct_ids(
 }
 
 fn oid_receipt_occurrence_ids_are_pairwise_distinct(
-  occurrences: List<OccurrenceId>
+  occurrences: List<std.occurrence_identity.OccurrenceId>
 ) -> Bool {
   occurrences |> enumerate |> all(left =>
     occurrences |> enumerate |> all(right =>

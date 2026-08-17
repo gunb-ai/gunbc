@@ -2,7 +2,7 @@ module v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
 
 
-data occurrence_binding_parser_walk_witness_note: String = "Parser integration witness (namespace-reference-derived-closure merge bar): every case begins at authored source, reaches the P2 structural walk through v1.compiler.parse.parse_with_table transport only — no hand-constructed OccurrenceTransport. Case 6 discharges projection law (A) only: repeated bound-reference providers for one declaration project to one DirectModuleDependency edge — not identity collapse, collector deduplication, or section-13 repeated-discovery collapse. Collector re-observation dedup (B) stays a distinct deferred debt on ProductionOccurrenceCollectorMissing. Case 7 parses once in one graph scope, preserves the parser-minted reference occurrence on the positive arm, and substitutes an occurrence id unknown within that same transport on the negative arm — never comparing allocator-local OccurrenceId values across standalone parses."
+data occurrence_binding_parser_walk_witness_note: String = "Parser integration witness (namespace-reference-derived-closure merge bar): every case begins at authored source, reaches the P2 structural walk through v1.compiler.parse.parse_with_table transport only — no hand-constructed OccurrenceTransport. Case 6 discharges projection law (A) only: repeated bound-reference providers for one declaration project to one DirectModuleDependency edge — not identity collapse, collector deduplication, or section-13 repeated-discovery collapse. Collector re-observation dedup (B) stays a distinct deferred debt on ProductionOccurrenceCollectorMissing. Case 7 parses once in one graph scope, preserves the parser-minted reference occurrence on the positive arm, and substitutes an occurrence id unknown within that same transport on the negative arm — never comparing allocator-local std.occurrence_identity.OccurrenceId values across standalone parses."
 
 data occurrence_binding_parser_walk_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_binding_parser_walk_witness_test.dag --functions namespace_reference_derived_closure_parser_integration_holds"
 
@@ -152,7 +152,7 @@ fn obcpw_reference_binds_to_declaration(
 
 fn obcpw_reference_with_occurrence(
   reference: ReferenceOccurrence,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> ReferenceOccurrence {
   ReferenceOccurrence {
     occurrence: occurrence,
@@ -193,7 +193,7 @@ fn obcpw_unknown_occurrence_transport_refuses(
   }
 }
 
-fn obcpw_candidate_ids_distinct(candidates: List<OccurrenceId>) -> Bool {
+fn obcpw_candidate_ids_distinct(candidates: List<std.occurrence_identity.OccurrenceId>) -> Bool {
   match candidates |> first {
     Absent => false
     Present { value: first } =>
@@ -390,7 +390,7 @@ test fn parser_same_text_distinct_identities_ambiguous_holds() -> Bool {
 
 data parser_repeated_bindings_projection_law_note: String = "Case 6 — projection law (A) under the same-module ruling (slice A / PR 7515): two BoundReferenceProvider rows for one declaration (greet + greet_again → format_greeting) are retained; DirectModuleDependency emits NO M→M self-edge from those providers (edges count 0). Uses per-reference resolve — not structural_binding_walk over the whole transport — so incidental unbound type/name refs in the fixture cannot refuse the population. Cross-module one-edge dedup stays a distinct fixture when a multi-module authored source is available. Does NOT discharge Section13RepeatedDiscoverySameIdentityCollapse; collector re-observation dedup (B) remains deferred on ProductionOccurrenceCollectorMissing."
 
-data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
+data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. std.occurrence_identity.OccurrenceId integers are allocator-local and must not be compared across standalone parses."
 
 fn obcpw_bound_providers_named(
   transport: OccurrenceTransport,
@@ -465,7 +465,7 @@ test fn parser_transport_scoped_preserved_identity_and_unknown_occurrence_refuse
               )
               let unknown = obcpw_reference_with_occurrence(
                 reference: format_reference,
-                occurrence: OccurrenceId { value: 999999 },
+                occurrence: std.occurrence_identity.OccurrenceId { value: 999999 },
               )
               match resolve_reference_binding_via_structural_candidates(
                 transport: transport,
@@ -527,7 +527,7 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
 
 fn obcpw_declaration_for_occurrence(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> DeclarationOccurrence? {
   fold(
     transport.declarations,
@@ -622,7 +622,7 @@ fn obcpw_inputs_without_reference_authored_order(
   }
 }
 
-data occurrence_binding_parser_walk_exact_red_note: String = "Blocker 5: each negative control asserts its exact typed outcome — remove ModuleExposure-equivalent by dropping the declaration exposure row => MissingDeclarationExposure for that declaration; drop the reference AuthoredOrderRow => MissingAuthoredOrderRow for that occurrence; wrong LexicalExposure on a module sibling => Unbound for the exact reference; unknown OccurrenceId => TransportRefused. Never accept anything-except-Bound."
+data occurrence_binding_parser_walk_exact_red_note: String = "Blocker 5: each negative control asserts its exact typed outcome — remove ModuleExposure-equivalent by dropping the declaration exposure row => MissingDeclarationExposure for that declaration; drop the reference AuthoredOrderRow => MissingAuthoredOrderRow for that occurrence; wrong LexicalExposure on a module sibling => Unbound for the exact reference; unknown std.occurrence_identity.OccurrenceId => TransportRefused. Never accept anything-except-Bound."
 
 test fn parser_module_sibling_without_module_exposure_reds() -> Bool {
   match obcpw_parse(
