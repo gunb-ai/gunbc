@@ -231,3 +231,33 @@ membership as the proposition "arity 0 in Rust". That is one Present arm answeri
 questions — the same shape as the name-keying deficit, one level up from it. The lowercase
 `"witness"` twin is a pure name-keying artifact (two spellings of one concept) and belongs to that
 lane; it is deleted here only because it goes with its sibling.
+
+## 9. Two-arm artifact diff over the whole probed closure (2026-08-17)
+
+Prompted by `smart-ram-730`'s retraction of the "previously masked, not new breakage" phrasing,
+after `gentle-dove-833` measured 21 of 25 new diagnostics in their own lane as breakage their change
+INTRODUCED. The class that motivates it: a defect's *output* can be load-bearing for an unrelated
+consumer, so removing the wrong thing removes a marker something else keyed on, and nothing refuses.
+An error histogram cannot see that — both unmasking and new emission read as "new diagnostics".
+
+Section 7's per-code table is a histogram, so it does not settle the question on its own. The
+artifact diff does, and it was run over the **entire emitted closure**, not the two minimal
+reproducers — same entry, same command, same worktree, the only variable being the binary:
+
+```
+91 emitted .rs files in both arms
+ 2 files differ
+ 8 changed lines = 4 sites, every one of them:
+     -  ... -> Rc<Witness>          +  ... -> Rc<Witness<T>>
+     -  pub value: Rc<Witness>,     +  pub value: Rc<Witness<T>>,
+```
+
+**Every other emitted byte in the closure is identical.** One emitted form did not become a
+different form, no new form appeared, and the four sites that changed are exactly the four the fix
+targets. `M` is the same on both arms by construction — one entry — so the comparison is not a
+function of how many entries were probed.
+
+This does not make section 7's per-code equality redundant; the two answer different questions.
+The histogram says no diagnostic class moved. The artifact diff says no *emitted text* moved either,
+which is the stronger statement and the only one that can see a marker whose removal silently
+changes an unrelated consumer's behaviour.
