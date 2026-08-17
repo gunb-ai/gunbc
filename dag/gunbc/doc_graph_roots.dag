@@ -1196,6 +1196,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "root_b_primitive_repr_fork_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rust_corpus_repr", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "RustCorpusRepr's two fused axes (numeric-primitive realization and reference-derived use-line synthesis) are split into independent facts, so a pure-v2 closure can take the host numeric grounding without losing use-line synthesis; at that point this probe's measurements become historical and its finding folds into the successor carrier") },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "e0277_trait_bound_census_2026-07-26",
     primary_work: DeclarationRef { module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_generic_params_needing_clone_bound", field: WholeDeclaration },
     additional_works: [],
