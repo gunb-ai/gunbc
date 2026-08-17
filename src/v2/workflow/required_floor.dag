@@ -1,6 +1,6 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { contains, fold_list, length, list_append, list_map, list_snoc_item }
+import v2.std.algebra { Cons, Empty, fold_list, length, list_append, list_map, list_reverse, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -244,126 +244,195 @@ type ClaimScan {
   refusals: List<ManifestRefusal>
 }
 
-data claim_scan_empty: ClaimScan = ClaimScan {
-    claims: no_required_floor_claims,
-    refusals: no_manifest_refusals
+// THE SCAN ACCUMULATES BY PREPENDING AND REVERSES ONCE AT THE END.
+//
+// It appended with `list_snoc_item`, and that is quadratic in ALLOCATION, not merely in time.
+// `list_snoc_item(xs, item)` is `list_append(left: xs, right: [item])`, and `list_append` folds
+// over its LEFT argument rebuilding every cell — so appending one row to a list of length k
+// allocates k+1 cells and abandons the k that were there. Appending n rows one at a time
+// allocates about n squared over two.
+//
+// On the measured subject that is 10,444 claims, so roughly 54.6 MILLION cons cells for the
+// claim list alone, each a variant carrying a boxed field vector. Manifest evaluation was
+// observed peaking around 38 GB — about 29 GB above the prepared graph it starts from — to
+// produce 10,444 records holding a module path, a function name, a mode and an integer. Nothing
+// about the RESULT is large; all of it was the intermediates.
+//
+// WHY THIS SURVIVED UNTIL THE CUT, because it is the more useful half of the finding: the
+// deleted floor packed workers to a memory envelope and prepared a separate small subject per
+// worker, so no execution ever accumulated one 10,444-element list this way. The quadratic was
+// always here; the governor kept it under the size where it is visible. Folding the whole roster
+// once is what turned a latent cost shape into a measured peak, which is the deletion surfacing
+// what the old structure was hiding rather than a regression the cut introduced.
+//
+// Prepending is O(1) per row and `list_reverse` is one linear prepend fold, so the population is
+// built in time and allocation linear in its own size. Both populations are REVERSED-ORDER while
+// the scan runs and are restored exactly once, in `required_floor_manifest`. The field names say
+// so, because a list whose order is a lie is worse than a slow one: the obligation is discharged
+// in a single named place rather than assumed by each reader.
+type ClaimScanReversed {
+  claims_reversed: List<RequiredFloorClaim>
+  refusals_reversed: List<ManifestRefusal>
+}
+
+data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
+    claims_reversed: no_required_floor_claims,
+    refusals_reversed: no_manifest_refusals
   }
 
 fn scan_resolved(
-  acc: ClaimScan,
+  acc: ClaimScanReversed,
   resolved: ResolvedWitness,
   mode: ExecutionMode
-) -> ClaimScan {
+) -> ClaimScanReversed {
   match resolved {
-    WitnessIdentified { identity: id, site: _ } => ClaimScan {
-      claims: list_snoc_item(
-        xs: acc.claims,
-        item: RequiredFloorClaim {
+    WitnessIdentified { identity: id, site: _ } => ClaimScanReversed {
+      claims_reversed: Cons {
+        head: RequiredFloorClaim {
           declaration: id,
           execution_mode: mode,
           budget_ms: required_floor_claim_budget_ms()
-        }
-      ),
-      refusals: acc.refusals
+        },
+        tail: acc.claims_reversed
+      },
+      refusals_reversed: acc.refusals_reversed
     }
-    WitnessIdentityRefused { refusal: r } => ClaimScan {
-      claims: acc.claims,
-      refusals: list_snoc_item(
-        xs: acc.refusals,
-        item: DeclarationIdentityAmbiguous { refusal: r }
-      )
+    WitnessIdentityRefused { refusal: r } => ClaimScanReversed {
+      claims_reversed: acc.claims_reversed,
+      refusals_reversed: Cons {
+        head: DeclarationIdentityAmbiguous { refusal: r },
+        tail: acc.refusals_reversed
+      }
     }
   }
 }
 
 fn scan_resolved_list(
-  acc: ClaimScan,
+  acc: ClaimScanReversed,
   resolved: List<ResolvedWitness>,
   mode: ExecutionMode
-) -> ClaimScan {
+) -> ClaimScanReversed {
   fold_list(xs: resolved, empty: acc, cons: fn(inner, r) {
     scan_resolved(acc: inner, resolved: r, mode: mode)
   })
 }
 
 // COMPLETENESS IS AN IDENTITY JOIN, NEVER A COUNT. Two populations of equal size can name
-// different declarations, and a count comparison reports that as clean. So the duplicate
-// check below groups by qualified name and asks about the group's members, never about how
-// many rows exist.
-fn claims_named(claims: List<RequiredFloorClaim>, qualified: String) -> List<RequiredFloorClaim> {
-  fold_list(xs: claims, empty: no_required_floor_claims, cons: fn(acc, c) {
-    if required_floor_claim_qualified(claim: c) == qualified {
-      list_snoc_item(xs: acc, item: c)
-    } else {
-      acc
-    }
-  })
-}
+// different declarations, and a count comparison reports that as clean. So the duplicate check
+// asks about a qualified declaration's ENROLLMENTS, never about how many rows exist.
+//
+// ENROLLMENT IS A STATE PER NAME, not a group to be re-collected. The former shape asked, for
+// each first-seen name, `claims_named(claims, qualified)` — a fold over the WHOLE claim list —
+// while also testing membership with `contains` over a linearly growing `seen` list that was
+// itself built by quadratic append. On 10,444 claims with mostly distinct names that is three
+// separate quadratic populations layered on one pass, and none of them retains anything the
+// verdict needs: the group was collected only to take its length and compare its modes.
+//
+// `QualifiedEnrollment` carries exactly what those questions consume, and it is a state machine
+// over occurrences rather than a collection of them. Absence from the map is the zero case.
+// The reference mode is the FIRST occurrence's, which is what the group form compared against,
+// and once conflicting it stays conflicting — so a declaration enrolled Hermetic, Hermetic, Wet
+// reports the conflict rather than reporting agreement from a prefix.
+type QualifiedEnrollment
+  = FirstEnrollment { mode: ExecutionMode }
+  | RepeatedSameMode { mode: ExecutionMode }
+  | RepeatedConflictingModes
 
-fn claim_group_modes_agree(group: List<RequiredFloorClaim>, mode: ExecutionMode) -> Bool {
-  fold_list(xs: group, empty: true, cons: fn(agree, c) {
-    agree && execution_mode_eq(left: c.execution_mode, right: mode)
-  })
+fn enrollment_after(prior: QualifiedEnrollment, mode: ExecutionMode) -> QualifiedEnrollment {
+  match prior {
+    FirstEnrollment { mode: first } =>
+      if execution_mode_eq(left: first, right: mode) {
+        RepeatedSameMode { mode: first }
+      } else {
+        RepeatedConflictingModes
+      }
+    RepeatedSameMode { mode: first } =>
+      if execution_mode_eq(left: first, right: mode) {
+        RepeatedSameMode { mode: first }
+      } else {
+        RepeatedConflictingModes
+      }
+    RepeatedConflictingModes => RepeatedConflictingModes
+  }
 }
 
 // The two duplicate arms are kept APART on purpose. The same declaration twice under one mode
 // is a roster defect: it would run twice and the receipt would carry two rows for one
 // subject. The same declaration under two modes is a contradiction about how it must execute,
 // and the tempting repair — pick one — discards the fact worth knowing. Both refuse; only the
-// second is unrecoverable without a decision.
-fn claim_group_refusal(
+// second is unrecoverable without a decision. A name enrolled exactly once refuses nothing.
+// Prepends onto the accumulator rather than returning a fragment to be appended: a zero-or-one
+// fragment joined with `list_append` would rebuild the accumulator once per name, which is the
+// same quadratic being removed above, merely over a smaller population. "n is small here" is not
+// a fact that stays true — this list is one row per DUPLICATED declaration today because the
+// roster is mostly clean, and the shape must not depend on the roster staying that way.
+fn enrollment_refusal_prepend(
   acc: List<ManifestRefusal>,
-  group: List<RequiredFloorClaim>,
   qualified: String,
-  reference_mode: ExecutionMode
+  enrollment: QualifiedEnrollment
 ) -> List<ManifestRefusal> {
-  if length(xs: group) < 2 {
-    acc
-  } else if claim_group_modes_agree(group: group, mode: reference_mode) {
-    list_snoc_item(xs: acc, item: DeclarationEnrolledTwice { qualified: qualified })
-  } else {
-    list_snoc_item(
-      xs: acc,
-      item: DeclarationEnrolledWithConflictingModes { qualified: qualified }
-    )
+  match enrollment {
+    FirstEnrollment { mode: _ } => acc
+    RepeatedSameMode { mode: _ } =>
+      Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+    RepeatedConflictingModes =>
+      Cons {
+        head: DeclarationEnrolledWithConflictingModes { qualified: qualified },
+        tail: acc
+      }
   }
 }
 
 type ManifestScan {
-  seen: List<String>
-  refusals: List<ManifestRefusal>
+  enrollments: Map<String, QualifiedEnrollment>
+  first_seen_reversed: List<String>
 }
 
 data manifest_scan_empty: ManifestScan = ManifestScan {
-    seen: no_seen_qualified_names,
-    refusals: no_manifest_refusals
+    enrollments: empty_map(),
+    first_seen_reversed: no_seen_qualified_names
   }
 
-// The whole claim list is captured by the closure rather than threaded through the
-// accumulator: the group for a name is a question about the WHOLE manifest, and an
-// accumulator carrying only what the fold has seen so far would answer it against a prefix —
-// a duplicate whose second occurrence comes later would read as unique. The `seen` list is
-// what makes it ONE refusal per distinct duplicated declaration rather than one per group
-// member; without it a declaration enrolled three times reports three refusals about itself
-// and a reader counting refusals sees three defects.
+// ONE refusal per distinct duplicated declaration, ordered by FIRST occurrence — the same
+// contract the group form had, reached without collecting the group. `first_seen_reversed`
+// records a name only when it is new, so it is both the dedup and the order, and a declaration
+// enrolled three times still reports one refusal about itself rather than three.
 fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
   let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
     let qualified = required_floor_claim_qualified(claim: c)
-    if contains(xs: acc.seen, item: qualified, eq: fn(l, r) { l == r }) {
-      acc
-    } else {
-      ManifestScan {
-        seen: list_snoc_item(xs: acc.seen, item: qualified),
-        refusals: claim_group_refusal(
-          acc: acc.refusals,
-          group: claims_named(claims: claims, qualified: qualified),
-          qualified: qualified,
-          reference_mode: c.execution_mode
-        )
+    match map_lookup(m: acc.enrollments, key: qualified) {
+      Absent => ManifestScan {
+        enrollments: map_insert(
+          m: acc.enrollments,
+          key: qualified,
+          value: FirstEnrollment { mode: c.execution_mode }
+        ),
+        first_seen_reversed: Cons { head: qualified, tail: acc.first_seen_reversed }
+      }
+      Present { value: prior } => ManifestScan {
+        enrollments: map_insert(
+          m: acc.enrollments,
+          key: qualified,
+          value: enrollment_after(prior: prior, mode: c.execution_mode)
+        ),
+        first_seen_reversed: acc.first_seen_reversed
       }
     }
   })
-  scan.refusals
+  // `first_seen_reversed` is walked in reverse — i.e. last-seen first — and the prepending fold
+  // flips it back, so the emitted refusals come out in FIRST-OCCURRENCE order with one reversal
+  // rather than two.
+  fold_list(
+    xs: scan.first_seen_reversed,
+    empty: no_manifest_refusals,
+    cons: fn(acc, qualified) {
+      match map_lookup(m: scan.enrollments, key: qualified) {
+        Present { value: e } =>
+          enrollment_refusal_prepend(acc: acc, qualified: qualified, enrollment: e)
+        Absent => acc
+      }
+    }
+  )
 }
 
 // THE MANIFEST. One fold over the observed populations, producing one claim list and the
@@ -381,7 +450,7 @@ fn required_floor_manifest(
 ) -> ClaimScan {
   let index = build_entry_module_index(bindings: bindings)
   let after_hermetic = scan_resolved_list(
-    acc: claim_scan_empty,
+    acc: claim_scan_reversed_empty,
     resolved: resolve_sites(index: index, sites: hermetic_sites),
     mode: Hermetic
   )
@@ -390,11 +459,15 @@ fn required_floor_manifest(
     resolved: resolve_sites(index: index, sites: wet_sites),
     mode: Wet
   )
+  // THE ONE PLACE REVERSED ORDER IS DISCHARGED. Both populations were prepended during the scan
+  // and are restored here, once each, before anything reads them. Hermetic claims precede wet
+  // ones and each class keeps its site order, exactly as the appending form produced them.
+  let claims = list_reverse(xs: after_wet.claims_reversed)
   ClaimScan {
-    claims: after_wet.claims,
+    claims: claims,
     refusals: list_append(
-      left: after_wet.refusals,
-      right: duplicate_refusals(claims: after_wet.claims)
+      left: list_reverse(xs: after_wet.refusals_reversed),
+      right: duplicate_refusals(claims: claims)
     )
   }
 }
