@@ -2,11 +2,12 @@
 
 **Status:** census complete, measured at `44126ca1de0`, 2026-08-03. No prose deleted, no carriers migrated.
 
-**Authority:** the revision-pinned TSV observation at `docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv`. This markdown is a **generated projection** — regenerate with:
-
-```
-python3 docs/probes/dissolution_census_a_ci_layer_roots_project.py write
-```
+**Authority:** this markdown is now the sole surviving record. It *was* a generated projection of a
+revision-pinned TSV observation, and both the TSV and the projection script were deleted 2026-08-16
+under the operator ruling to delete anything not actively derived. **It is therefore no longer
+regenerable** — the rows below are a dated observation retained as evidence, not a live projection,
+and re-deriving them means re-running the census against live `gunbc.ci_layer_roots` rather than
+re-running a script.
 
 **Classifier:** `dag-note-prose-census-lexical-v1` — Lexical sentence classifier (same honesty bound as dag-note-prose-census §6); shares are ±10pp.
 

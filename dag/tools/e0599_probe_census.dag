@@ -35,9 +35,7 @@ type E0599RootFamilyRow {
   description: String,
 }
 
-data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob, e0599_write_canonical_seven_module_log_labels_blob, and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; aggregate output refuses unless inputs match e0599_canonical_seven_modules exactly. Frozen receipt a probe TSV deleted 2026-08-16 (operator: delete anything not actively derived) is output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
-
-data e0599_baseline_receipt: String = "a probe TSV deleted 2026-08-16 (operator: delete anything not actively derived)"
+data e0599_probe_census_note: String = "Single authority for canonical-seven E0599 per-error census: failure-shape patterns (rustc message text), root-family rollup (three mechanistic roots + tails), and module roster. Realization: docs/probes/e0599_census_extract.sh (SCAFFOLD) calls e0599_write_message_pattern_rows_blob, e0599_write_canonical_seven_module_log_labels_blob, and e0599_write_root_family_labels_from_blob (ProcessExit exports) over PROBE_KEEP_LOG_DIR/*.cargo.log; aggregate output refuses unless inputs match e0599_canonical_seven_modules exactly. Its frozen receipt TSV was deleted 2026-08-16 (operator ruling: delete anything not actively derived); that receipt was output, not authority. dissolve-on: gunbc bash-emit #5828 / modeled cssl_probe transport or self_host_curated_seed_linked_harness probe classifier row."
 
 data e0599_canonical_seven_modules: List<String> = [
   "src/v2/compiler/06_translate.dag",
