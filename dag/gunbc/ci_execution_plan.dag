@@ -13,7 +13,6 @@ data ci_execution_plan_note: String = "Medium-neutral CI execution plan derived 
 
 type CiExecutionStage
   = CiBuildStage
-  | CiRegenStage
   | CiFloorStage
 
 type CiExecutionSubject
@@ -39,13 +38,12 @@ type CiExecutionPlan {
 }
 
 fn ci_execution_default_stages() -> List<CiExecutionStage> {
-  [CiBuildStage, CiRegenStage, CiFloorStage]
+  [CiBuildStage, CiFloorStage]
 }
 
 fn ci_execution_stage_wire(stage: CiExecutionStage) -> String {
   match stage {
     CiBuildStage => "build"
-    CiRegenStage => "regen"
     CiFloorStage => "floor"
   }
 }
