@@ -4193,6 +4193,14 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     use crate::v1_std_core::CompilerDiagnostic;
     let class = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
+        // Import-era diagnostic, re-admitted into the seed by the post-#8283 merge
+        // (main declares and produces it; this branch's v1_std_core did not carry
+        // it at all). Handled rather than stripped: hand-editing a generated file to
+        // remove a variant would put a second, divergent authority beside the .dag
+        // that emits it. The corpus has zero import statements, so this arm is
+        // unreachable in practice and regen removes the variant when it re-derives
+        // the seed from a .dag with no import machinery.
+        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::MissingExport { .. } => "MissingExport",
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
