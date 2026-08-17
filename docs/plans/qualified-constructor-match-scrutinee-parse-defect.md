@@ -89,8 +89,22 @@ loudly and counted instead.
 
 ## A measurement hazard this exposed, worth keeping
 
-An unparseable `.dag` file does not produce a diagnostic. It PANICS in
-`for_each_parsed_module_binding` and aborts the entire compile. So a corpus that
+An unparseable `.dag` file does not produce a diagnostic on THIS path. It
+PANICS in `for_each_parsed_module_binding` and aborts the entire compile.
+
+**Scope, corrected 2026-08-17.** This is a claim about
+`for_each_parsed_module_binding`, and only that. It is NOT a general claim that
+malformed source panics, and in particular it is NOT true of a leftover
+`import`: through `parse_file_admitted` that emits the ordinary diagnostic *the
+import statement is deleted; name the container instead*. Session
+quiet-deer-375 established the import case by execution on the regen lane; this
+paragraph's own case was established by execution here (a corpus went 165 ->
+"1"). Two parse entry points with different failure behavior, which is itself
+worth knowing -- and the earlier phrasing let a measured fact about one of them
+be read as a fact about parsing in general. Anyone citing this must name the
+entry point.
+
+So a corpus that
 reports `1` may be strictly worse than one reporting `165` -- the run died
 before measuring. During this investigation a corpus went from 165 diagnostics
 to "1" and the naive reading was a 99% improvement; the truth was a hard abort
