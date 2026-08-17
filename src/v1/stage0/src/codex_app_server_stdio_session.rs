@@ -378,11 +378,13 @@ pub fn run_cli_main() -> i32 {
         return 2;
     }
 
-    let preamble_content =
-        std::fs::read_to_string(preamble_file.as_ref().unwrap()).unwrap_or_else(|e| {
+    let preamble_content = match std::fs::read_to_string(preamble_file.as_ref().unwrap()) {
+        Ok(content) => content,
+        Err(e) => {
             eprintln!("codex_app_server_stdio_session: read preamble file: {e}");
-            String::new()
-        });
+            return 1;
+        }
+    };
 
     let preamble_lines: Vec<String> = preamble_content
         .lines()
