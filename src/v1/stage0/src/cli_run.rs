@@ -13592,8 +13592,7 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -15168,7 +15167,11 @@ pub fn whole_tree_strict_sources(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WholeCorpusSemanticOracle {
     pub diagnostic_fingerprint: String,
-    pub rust_corpus_repr: String,
+    // `rust_corpus_repr` retired with the `RustCorpusRepr` mode it reported. Rust primitive
+    // realization is now keyed on each declaration's own declaring module, so there is no
+    // corpus-global representation to report; a field naming one would fabricate a fact that
+    // no longer has a referent. Per-declaration realization is observable in the emitted text
+    // and in `emit_graph_fingerprint`.
     /// Canonical JSON identity hash of the full `EmitGraphInfo` (resolved emit repr).
     pub emit_graph_fingerprint: String,
     /// Aggregate per-module diagnostics + emit-repr rows + graph-level emit metadata.
@@ -15243,8 +15246,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeCorpusSemanticOracle, String> {
-    use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
-
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
@@ -15266,10 +15267,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         .collect();
     diag_lines.sort();
     let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
-    let rust_corpus_repr = match graph.emit_graph_info.corpus_repr {
-        HostNative => "HostNative".to_string(),
-        FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),
-    };
     let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
 
     let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
@@ -15307,7 +15304,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         format!(
             "diagnostic_fingerprint={diagnostic_fingerprint}\n\
              emit_graph_fingerprint={emit_graph_fingerprint}\n\
-             rust_corpus_repr={rust_corpus_repr}\n\
              per_module:\n{per_module_blob}"
         )
         .as_bytes(),
@@ -15315,7 +15311,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
 
     Ok(WholeCorpusSemanticOracle {
         diagnostic_fingerprint,
-        rust_corpus_repr,
         emit_graph_fingerprint,
         corpus_fingerprint,
         modules_resolved: picked.modules_resolved,

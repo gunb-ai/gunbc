@@ -92,7 +92,7 @@ pub fn realize_pack_width_from_scalars(
                 _ => -1,
             };
             let verdict = match realize_ctx.field(&fields, "verdict") {
-                Some(Value::Str(s)) => s.rc(),
+                Some(Value::Str(s)) => Rc::clone(s),
                 _ => Rc::from("unknown"),
             };
             Ok(DerivedScheduleWidth {

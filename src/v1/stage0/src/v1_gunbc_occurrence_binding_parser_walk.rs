@@ -2,16 +2,21 @@
 // Source module: v1.gunbc.occurrence_binding_parser_walk
 
 use self::ParsedOccurrenceBindingSource::*;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
+pub use crate::std_occurrence_binding_candidates::DeclarationExposure;
+use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
     OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
 };
+use crate::std_occurrence_identity::OccurrenceCategory::*;
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
     OccurrenceTransport, ReferenceOccurrence,
 };
+pub use crate::std_occurrence_identity::{OccurrenceCategory, OccurrenceIndex};
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_ready_module_path};
 pub use crate::v1_compiler_tokenize::tokenize;
