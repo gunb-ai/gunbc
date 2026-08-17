@@ -2443,6 +2443,10 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let clone_impl_required = v1_clone_impl_required_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: [typed_module])
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
