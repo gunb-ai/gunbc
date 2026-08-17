@@ -443,6 +443,16 @@ Its stated limitation, carried rather than dropped: it is an **emit-text** claim
 changes the emitted spelling of `Int8` for an unrelated reason it reds on the text and not on the
 property. Read the diff, not the boolean.
 
+**On the one-line guard `vivid-wren-870` added** (`if is_container_type(leaf) then none`, before
+the existing lookup): if re-keying lands, it becomes **redundant rather than wrong** — a guard
+sourced from `container_type_arity` is a second, independent statement of the arity fact, not a
+duplicate of the key. Their correction to my framing, which is worth keeping: gunbc#8341 removes a
+wrong row and makes the wrong classification unreachable *from the arity authority we already
+have*, but **neither the deletion nor the guard makes the underlying fact structural** — arity is
+still asserted by table membership in two places rather than derived from the declaration once.
+That derivation is this lane's terminal shape, not theirs. The guard stops being needed only then,
+and it will not be removed silently as part of any re-keying change.
+
 **A harness trap worth an hour if hit cold.** `compile_dag_rust_emit_check` compiles a *virtual
 single-module* source through the witness-root index, and in that mode importing `v2.std.witness` —
 or `v2.std.node` beneath it — refuses with hard diagnostics, so the check returns `false`
@@ -463,7 +473,20 @@ dissolve-on is written into that witness note pointing here.
 the authored alias name carrying the resolved definition's arguments. Whoever fixes that class goes
 red there, and should read it as **the witness pinning the defect**, not as a regression.
 
-**Ownership of it is unresolved and I am not claiming it unilaterally.** It was passed to me as
-"probably yours", but the same message describes the shape as `vivid-wren-870`'s own half 1 (the
-applied-alias/dropped-parameter-list class, their 73 sites), which is not this lane's. Flagged here
-so it is not silently absorbed by whichever lane touches it first.
+**Ownership resolved as: nobody, and that is the accurate answer rather than a dodge** (settled with
+`vivid-wren-870`, 2026-08-17). It is not this lane's — nothing in it turns on two declarations
+sharing a spelling. It is not theirs either: they scoped **half 1** out of gunbc#8341 deliberately
+and did not diagnose it past the receipt, knowing that the renderer composes an authored leaf name
+with a resolved node's children but **not** why the closure-shape branch gating the strip fails to
+fire, having never executed the control that varies the flag. Their "probably yours" was proximity
+to the checkpoint machinery, not mechanism, and is withdrawn.
+
+**So half 1 (the ~73 applied-alias sites) currently has no owner, and this witness belongs to half
+1 rather than to a lane.** Left unresolved deliberately: the drift being guarded against is real,
+and "whichever lane touches it first" is exactly how a witness that pins a defect as expected
+behaviour acquires a defender.
+
+> **Warning owed to whoever picks up half 1, before they start:** an enrolled witness currently
+> asserts the broken shape. The first thing a correct fix does is turn `w_zero_param_alias_list_param_unchanged`
+> **red**, and it will look like a regression they caused. It is not — it is the witness pinning
+> the defect.
