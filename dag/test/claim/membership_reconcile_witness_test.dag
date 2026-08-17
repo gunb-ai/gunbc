@@ -24,7 +24,6 @@ import gunbc.membership_reconcile {
   MembershipReconcileScopedOutcome,
   MembershipReconcileScopedReady,
   MembershipReconcileDuplicateScopedKey,
-  MembershipDesiredRoster,
   membership_write_count, membership_removal_count, membership_refusal_count,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   membership_added_count, membership_change_count,
