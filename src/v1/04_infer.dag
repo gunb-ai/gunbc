@@ -562,6 +562,63 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   }
 }
 
+// A bare variant reference's inferred type is its OWNER coproduct, and resolution
+// binds that owner as the DECLARATION node — whose children are the coproduct's arms,
+// not type arguments. A generic owner therefore reaches emission uninstantiated and the
+// renderer consumes an arm as a type argument: `type Optional<T> = Absent | Present {
+// value: T }` renders `Option<Absent>` from child 0, which is not a Rust type.
+// When the context supplies an expected type that owns this variant, that expected node
+// IS the instantiated owner, so prefer it. Returns none when there is no expected type
+// or it does not own this variant, leaving the declaration-node behavior unchanged.
+// This is the same lookup the unresolved-name arm below already performs; it is hoisted
+// here so a variant that RESOLVES gets it too, rather than only one that does not.
+fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: InferScope) -> Node? {
+  match expected {
+    Present { value: exp } =>
+      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
+      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
+        Present { value: _ } => Present { value: exp_enum }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// Deliberately narrower than "the expected type wins", on TWO axes.
+//
+// IDENTITY: the expected type is adopted only when its OWN head names the coproduct
+// resolution already bound (owner_name), so this is an INSTANTIATION of the owner the
+// binder chose, never a re-targeting to a different coproduct that happens to declare
+// an arm of the same name (Absent is an arm of Optional, ObservationVerdict and
+// ConvergeVerdict alike). Re-targeting would leave the returned parent_enum naming one
+// coproduct while the inferred type named another.
+//
+// CARDINALITY: optionality is NOT a wrapper type here — `BinOp?` is a BinOp node whose
+// return_cardinality is CardOptional (00_core with_optional_cardinality), so a head-name
+// comparison alone cannot see it. For `binop: Mod` against an expected `BinOp?` the head
+// IS "BinOp" and the arm IS found, but the constructor's own type is BinOp and the
+// optionality is a coercion the emitter performs; adopting the expected node makes the
+// value look already-optional, the wrap is skipped, and `binop: BinOp::Mod` is emitted
+// where `Some(BinOp::Mod)` is owed. So adoption additionally requires the expected node
+// to be Required: the variant must belong to the coproduct at the expected type's OWN
+// level (Absent IS an arm of Optional) rather than being reached through a coercion.
+// Both halves were caught by the self-host fixed point re-emitting v1's own sources,
+// not by reasoning about them — a head-only check and then a name+identity check each
+// passed every other measurement while still dropping the wrapper.
+fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == Required
+        && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
+        match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
+          Present { value: _ } => exp
+          Absent => fallback
+        }
+      } else { fallback }
+    Absent => fallback
+  }
+}
+
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
   if contains(name, ".") {
     match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
@@ -3137,7 +3194,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 name: name,
                 expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                 children: [],
-                inferred: Present { value: Resolved { node: binding.resolved } },
+                inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
                 span: span,
                 name_span: span
               ))
@@ -3187,7 +3244,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         name: name,
                         expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                         children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
+                        inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
                         span: span,
                         name_span: span
                       ))
@@ -3203,15 +3260,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       ))
                   }
                 Absent =>
-                  let expected_variant_enum = match expected {
-                    Present { value: exp } =>
-                      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
-                      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
-                        Present { value: _ } => Present { value: exp_enum }
-                        Absent => none
-                      }
-                    Absent => none
-                  }
+                  let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
                   match expected_variant_enum {
                     Present { value: exp_enum } =>
                       ok_infer(texpr: make_named_expr_node(
@@ -9572,6 +9621,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
     clone_bounded_type_params: empty_map(),
+    map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
     corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed),
     fn_generic_param_names: [],

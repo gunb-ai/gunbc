@@ -89,6 +89,13 @@ path = "src/bin/claim_executor.rs"
 name = "json_parse_scaling_probe"
 path = "src/bin/json_parse_scaling_probe.rs"
 
+# Isolated char_at scaling receipt: position x string-length, uncontaminated by the
+# JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
+# 2026-08-17). DISSOLUTION: delete alongside json_parse_scaling_probe.rs.
+[[bin]]
+name = "char_at_scaling_probe"
+path = "src/bin/char_at_scaling_probe.rs"
+
 # Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
 # Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
 [[bin]]
