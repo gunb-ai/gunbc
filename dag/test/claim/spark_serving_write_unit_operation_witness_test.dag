@@ -1,6 +1,6 @@
 module test.claim.spark_serving_write_unit_operation_witness_test
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, Int }
 import gunbc.spark_serving_realization {
   ServingInstallEffect,
   WriteUserUnitFile,
@@ -23,7 +23,21 @@ import gunbc.remote_operation {
   remote_operations_argv_only,
 }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
+
+// Position-wise kind, so an ordering claim asserts WHERE each kind sits rather than only how many
+// of each exist. A count-only claim is satisfied by any permutation, including the one that puts the
+// write before its own directory.
+fn kind_at(ops: List<RemoteOperation>, i: Int) -> String {
+  match ops[i] {
+    Absent => "<none>"
+    Present { value: op } =>
+      match op {
+        RemoteArgv { argv: _ } => "argv"
+        RemoteFileBytes { write: _, mode: _ } => "file"
+      }
+  }
+}
 
 fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteCommandsVerdict {
   realize_spark_serving_install_effect_commands(
@@ -40,8 +54,47 @@ fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteComm
 test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operation_count(operations: ops) == 1
+      remote_operation_count(operations: ops) == 2
         && remote_operation_file_write_count(operations: ops) == 1
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// THE BARE-HOST KEYSTONE. `~/.config/systemd/user` does not exist on a machine that has never run a
+// user unit, and the file convergence opens a staging sibling with `dd` -- it does not create missing
+// parents. So the mkdir must come FIRST; reversed, the write refuses on exactly the host this effect
+// exists to restore. Order is asserted by position, which is the only thing that distinguishes a
+// correct sequence from one containing the same two operations.
+test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      match ops.first() {
+        Absent => false
+        Present { value: first } =>
+          match first {
+            RemoteArgv { argv: argv } =>
+              argv == ["mkdir", "-p", spark_serving_user_unit_dir() as String]
+            RemoteFileBytes { write: _, mode: _ } => false
+          }
+      }
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The mkdir targets the executor's OWN home, so sudo would be an unnecessary privilege escalation
+// for a write the account can already perform. Asserted rather than assumed, because a stray sudo
+// here would silently require a sudoers grant that does not exist.
+test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      match ops.first() {
+        Absent => false
+        Present { value: first } =>
+          match first {
+            RemoteArgv { argv: argv } => argv.first() != Present { value: "sudo" }
+            RemoteFileBytes { write: _, mode: _ } => false
+          }
+      }
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -51,7 +104,8 @@ test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
 test fn the_unit_write_carries_no_argv_projection() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      length(remote_operations_argv_only(operations: ops)) == 0
+      length(remote_operations_argv_only(operations: ops)) == 1
+        && remote_operation_file_write_count(operations: ops) == 1
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -62,7 +116,7 @@ test fn the_unit_write_carries_no_argv_projection() -> Bool {
 test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      match ops.first() {
+      match ops[1] {
         Absent => false
         Present { value: op } =>
           match op {
@@ -85,17 +139,12 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
 test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
   match realize(effects: [WriteUserUnitFile, EnableLingerForOwnAccount]) {
     SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operation_count(operations: ops) == 2
+      remote_operation_count(operations: ops) == 3
         && remote_operation_file_write_count(operations: ops) == 1
-        && length(remote_operations_argv_only(operations: ops)) == 1
-        && match ops.first() {
-          Absent => false
-          Present { value: op } =>
-            match op {
-              RemoteFileBytes { write: _, mode: _ } => true
-              RemoteArgv { argv: _ } => false
-            }
-        }
+        && length(remote_operations_argv_only(operations: ops)) == 2
+        && kind_at(ops: ops, i: 0) == "argv"
+        && kind_at(ops: ops, i: 1) == "file"
+        && kind_at(ops: ops, i: 2) == "argv"
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
