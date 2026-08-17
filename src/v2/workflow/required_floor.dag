@@ -75,6 +75,7 @@ type RequiredFloorClaim {
   declaration: WitnessIdentity
   execution_mode: ExecutionMode
   budget_ms: Int
+  warn_ms: Int
 }
 
 // THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
@@ -124,14 +125,45 @@ data no_manifest_refusals: List<ManifestRefusal> = []
 
 data no_seen_qualified_names: List<String> = []
 
-// The evaluation deadline for one claim, at ONE authority for the whole manifest.
+// THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
-// It is stated here rather than imported from the fast-lane rule because the fast lane is a
-// PLACEMENT question — which checks may ride the PR path — and this is an EXECUTION question:
-// how long a single claim may run before the frame refuses. They agree on 5 seconds today,
-// and reusing one for the other would make that coincidence load-bearing.
+// WALL, not thread CPU, and the distinction is not academic: it is the difference between a
+// guard that fires and one that watches. Measured on the completed floor run,
+// `resolution_divergence_silent_pick_gate_keystone_holds` burned 504 SECONDS of wall and
+// returned an ordinary Bool -- it never tripped anything, because its CPU stayed under the
+// ceiling the whole time. Its cost was filesystem reads resolving a corpus closure, which is
+// I/O: the exact profile a CPU budget cannot see, and the exact profile a wall ceiling exists
+// for. A CPU budget catches a spin. Only a wall ceiling catches a witness that is slow because
+// of what it reaches for.
+//
+// TWO TIERS, because "too slow" and "unacceptable" are different verdicts with different
+// remedies. The warning tier reports a row that is an order of magnitude above where an
+// ordinary witness should land and lets it finish; the hard tier stops it. Collapsing them
+// loses the population that is heading for the cliff but has not reached it -- and that
+// population is the one worth fixing, because a witness at the hard ceiling has already cost
+// the run its full budget by the time anyone hears about it.
+//
+// THE NUMBERS (operator, 2026-08-17): 500ms HARD, 100ms warn. 500 was previously the warning
+// under a 5000ms ceiling; the ceiling moved down onto it because 5000ms is magnitudes above
+// where any witness should end. The measured median is 1.0ms, so an ordinary row sits two
+// orders of magnitude under the warning and three under the ceiling.
+//
+// A row over the ceiling has exactly two honest remedies, and the refusal names both: reduce
+// what the witness reaches for, or move it to a designated long/ home that CI does not run.
+// The warn value is a judgement -- the operator set the ceiling, not the warning -- and it is
+// placed an order of magnitude below the ceiling so the signal arrives while a fix is still
+// cheap.
+//
+// They are stated here rather than imported from the fast-lane rule because the fast lane is a
+// PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
+// how long a single claim may run before the frame refuses. They agree today, and reusing one
+// for the other would make that coincidence load-bearing.
 fn required_floor_claim_budget_ms() -> Int {
-  5000
+  500
+}
+
+fn required_floor_claim_warn_ms() -> Int {
+  100
 }
 
 fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
@@ -205,7 +237,8 @@ fn scan_site(
           function: site.function
         },
         execution_mode: mode,
-        budget_ms: required_floor_claim_budget_ms()
+        budget_ms: required_floor_claim_budget_ms(),
+        warn_ms: required_floor_claim_warn_ms()
       },
       tail: acc.claims_reversed
     },

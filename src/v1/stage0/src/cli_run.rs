@@ -40955,6 +40955,7 @@ pub struct RequiredFloorClaim {
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
     pub budget_ms: u64,
+    pub warn_ms: u64,
 }
 
 /// What one required-floor attempt did. The three identity counts are separate fields rather
@@ -40970,6 +40971,7 @@ pub struct RequiredFloorOutcome {
     pub claims_executed: usize,
     pub receipt_identities: usize,
     pub passed: usize,
+    pub over_warn: usize,
     pub failures: Vec<String>,
 }
 
@@ -41015,6 +41017,21 @@ pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWi
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
+}
+
+/// Whether a witness file sits in the designated long home CI does not run.
+///
+/// This is a PATH test, and that is exactly what the 2026-08-04 ruling warned about — so the
+/// exclusion it drives is reported, never silent. The gunbc#7762 specimen was a witness moved
+/// under `long/` to escape a budget: it left discovery, no cadence picked it up, nothing
+/// executed it, and admission still held. Green CI, zero coverage, source file retained.
+///
+/// The remedy is not to refuse the directory — the operator's rule is that an over-ceiling
+/// witness must either shrink or move here — it is to make the population LOUD. Every run
+/// prints the count and the rows, so a roster that grows by relocation is visible in the same
+/// breath as the roster that runs, and "excluded" can never read as "covered".
+pub fn is_long_home(path: &str) -> bool {
+    path.contains("/test/claim/long/") || path.contains("/tests/claim/long/")
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41617,6 +41634,28 @@ pub fn run_required_floor(
     // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
     // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
     // was always "exactly one". The refusal for the other cases had no reachable producer.
+    // THE LONG HOME IS EXCLUDED FROM THE FOLD, AND COUNTED IN THE SAME BREATH.
+    //
+    // The operator's rule (2026-08-17) gives an over-ceiling witness two remedies: shrink it, or
+    // move it here. So this population is expected to exist and expected to grow. What must not
+    // happen is the gunbc#7762 outcome, where relocation deleted the coverage and nothing said
+    // so — the rows are therefore reported as UNCOVERED every run, not merely omitted.
+    let (long_files, files): (Vec<_>, Vec<_>) =
+        files.into_iter().partition(|f| is_long_home(&f.path));
+    let long_rows: usize = long_files.iter().map(|f| f.functions.len()).sum();
+    eprintln!(
+        "[floor-long-home] excluded_files={} excluded_rows={} — NOT RUN BY CI AND NOT COVERED; \
+         each row needs its cost reduced or an executing consumer on another cadence",
+        long_files.len(),
+        long_rows
+    );
+    for f in &long_files {
+        eprintln!(
+            "[floor-long-home] uncovered {} ({} rows)",
+            f.path,
+            f.functions.len()
+        );
+    }
     let mut sites: Vec<v1_interpreter::Value> = Vec::new();
     for file in &files {
         for function in &file.functions {
@@ -41701,6 +41740,7 @@ pub fn run_required_floor(
         claims_executed: 0,
         receipt_identities: 0,
         passed: 0,
+        over_warn: 0,
         failures: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
@@ -41763,7 +41803,18 @@ pub fn run_required_floor(
         // evaluation caches a context owns, or one witness contaminates the next through a
         // memo rather than through anything it declared.
         let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        // ARM THE WALL CEILING, which is what the operator's rule has always been about and
+        // what this path was not doing. `run_claim_measured` already arms the deadline and
+        // applies a completion-side backstop when a wall budget is set -- the mechanism was
+        // complete in the interpreter and simply never switched on here, so a CPU budget stood
+        // in for it while printing the wall rule's own error text.
+        //
+        // Both clocks are armed deliberately. CPU catches a spin; wall catches a witness that
+        // is slow because of what it reaches for, which CPU cannot see: the worst row measured
+        // burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary Bool,
+        // because its time was filesystem reads and its CPU never approached the limit.
         frame.set_witness_eval_budget(Some(claim.budget_ms));
+        frame.set_witness_wall_budget(Some(claim.budget_ms));
         set_phase(FloorPhase::Eval, &claim.qualified);
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
@@ -41776,6 +41827,23 @@ pub fn run_required_floor(
             receipt.wall_nanos,
             matches!(result, ClaimOutcome::Pass),
         );
+        // THE WARNING TIER. A row an order of magnitude above where an ordinary witness lands,
+        // but under the ceiling, is reported and allowed to finish.
+        //
+        // It is a separate verdict from the hard cut because the remedies differ, and because
+        // this is the population worth acting on: a witness at the ceiling has already spent
+        // the run's full budget by the time anyone hears about it, while a witness at the
+        // warning is heading there and still cheap to fix. Reported per row and counted, so
+        // the population is observable rather than something a reader must reconstruct from
+        // timings.
+        let wall_ms = receipt.wall_nanos / 1_000_000;
+        if wall_ms > u128::from(claim.warn_ms) {
+            outcome.over_warn += 1;
+            eprintln!(
+                "[floor-witness-slow] {} {}ms > {}ms warn (ceiling {}ms)",
+                claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
+            );
+        }
         match result {
             ClaimOutcome::Pass => outcome.passed += 1,
             ClaimOutcome::Fail => outcome
@@ -42003,6 +42071,14 @@ fn required_floor_claims_from_admission(
                 ))
             }
         };
+        let warn_ms = match ctx.field(cf, "warn_ms") {
+            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+            other => {
+                return Err(format!(
+                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
+            ))
+            }
+        };
         let execution_mode = match ctx.field(cf, "execution_mode") {
             Some(v1_interpreter::Value::Variant {
                 variant_name: m, ..
@@ -42031,6 +42107,7 @@ fn required_floor_claims_from_admission(
             function,
             execution_mode,
             budget_ms,
+            warn_ms,
         });
     }
     eprintln!(
