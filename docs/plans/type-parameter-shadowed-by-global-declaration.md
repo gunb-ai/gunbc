@@ -70,3 +70,41 @@ Locate where type parameters are bound during resolution and confirm they are
 absent from the lookup chain rather than merely ranked below module scope. The
 discriminating control already exists in tree and needs no authoring: revert the
 rename (if taken) and `Witness<C>` must still resolve to the parameter.
+
+## Located candidate mechanism (2026-08-17, NOT yet confirmed by execution)
+
+The exclusion machinery already exists, which narrows this from "the rule is
+missing" to "the rule loses a race".
+
+`v1.compiler.infer` `census_upgrade_type_decl_binding` builds an `excluded` set
+from `node.params |> map(generic_param_name_at)` and passes it to
+`qualify_decl_reference_positions`, so a declaration's own type parameters are
+deliberately kept out of qualification. `census_qualify_leaf_binding` does the
+same. So parameters are known and are meant to be protected.
+
+The suspect is `stamp_type_param_occurrences`, which converts a bare node whose
+label is a parameter name into `TypeVariable { id: nm }` -- but only under
+
+```
+if n.inferred == none { ...stamp... } else { n }
+```
+
+If reference resolution has already bound that node to the global `C`, then
+`inferred` is populated and the stamp DECLINES rather than overriding. On that
+reading the defect is an ORDERING one: a module-scope resolution that ran first
+is treated as settled, and the nearer binder never gets to replace it. That also
+explains why it appears only now -- the guard is unchanged, but before the cut
+there was no reachable global `C` for resolution to have bound first.
+
+**Deliberately not patched on this reading.** Five hypotheses died on the `Nat`
+class today, every one of them plausible at this level of detail, and this is
+load-bearing inference code. What is owed first is the discriminating
+observation, not a diff:
+
+- does `param_names` for `Witness` actually contain `C`? (if not, the fault is
+  upstream in `generic_param_name_at` and the guard is innocent)
+- is `inferred` already `Present` on the `C` node when `stamp_type_param_occurrences`
+  reaches it? (if not, this whole reading is dead)
+
+Either answer is one instrumented run. Both are cheap next to a wrong change in
+`04_infer`.
