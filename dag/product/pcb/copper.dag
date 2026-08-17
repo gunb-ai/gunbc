@@ -23,7 +23,7 @@ import product.pcb.stackup {
 }
 
 // COPPER REALIZES A NET; IT DOES NOT DEFINE ONE. The logical net authority is
-// product.compute_board.analog's ElectricalNet, and this module consumes it. A second net type
+// product.electrical.connectivity's ElectricalNet, and this module consumes it. A second net type
 // here would be the fork DESIGN section 3 forbids, and it would be the expensive kind: the two
 // would drift silently, because a copper net and a schematic net that disagree still both compile.
 //
@@ -150,10 +150,11 @@ type CopperRefusalCause
 // copper carrier could only have acquired the motherboard as a consumer by making the motherboard
 // impersonate a three-part analog board.
 //
-// ElectricalNet is already general: its members are component-and-terminal identities, which say
-// nothing about what kind of component. Only the wrapper was specimen-bound. HOMING IS STILL WRONG
-// and is the declared next step -- these net concepts live in a specimen module and belong in a
-// connectivity authority both the analog article and this consume.
+// ElectricalNet was already general: its members are component-and-terminal identities, which say
+// nothing about what kind of component. Only the wrapper was specimen-bound, which is why the fix
+// was to extract the general grain rather than to move the specimen -- product.electrical
+// .connectivity now owns it and the analog article consumes it on the same footing this module
+// does, so neither is the other's authority.
 fn net_exists(nets: List<ElectricalNet>, net: NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
