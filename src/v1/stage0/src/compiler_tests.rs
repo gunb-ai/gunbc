@@ -2344,11 +2344,23 @@ mod compiler_tests {
         // The three asserted are the population vivid-wren-870 separated as the same
         // SHAPE as Int: the src/v2 declaration is a genuinely different STRUCTURE, not a
         // spelling coincidence. Int = GroupCompletion<Nat>, String = FreeMonoid<Char>,
-        // Bool = a two-variant coproduct. Their census found SEVEN table names also
+        // Bool = a two-variant coproduct, Hash = a single-field RECORD. Their census found
+        // SEVEN table names also
         // declared under src/v2 (adding Float, Symbol, Unit, Hash), as a LOWER BOUND from
-        // a line-start `type` grep. The other four are unasserted: Symbol and Unit are
+        // a line-start `type` grep. The other three are unasserted: Symbol and Unit are
         // bodyless and may be declared-abstract rather than competing realizations, and I
-        // have not measured Float or Hash. Absence here is UNMEASURED, never cleared.
+        // have not measured Float. Absence here is UNMEASURED, never cleared.
+        //
+        // HASH IS THE ONE THAT COSTS A GUARANTEE, not merely a representation. The row
+        // targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2
+        // declaration of Fnv1a64Structural -- a single-field record whose digest field is
+        // `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note
+        // states the public forgeable record constructors are DELETED and that the
+        // where-refinement IS the construction wall. So realizing that type as a bare String
+        // alias renders away the carrier the wall is attached to -- a §4b construction rung
+        // a name-keyed spelling row can silently drop. Verified from declarations by
+        // vivid-wren-870 and re-read here; NO live site is claimed, because neither of us
+        // emitted a closure that reaches a v2-declared Hash through lookup_checkpoint.
         //
         // This needs no emitting closure -- the probe is a pure function, so it asks a
         // question the corpus does not currently exercise. That is why it caught what the
@@ -2374,6 +2386,13 @@ mod compiler_tests {
                 "src/v2/std/logic.dag".to_string()
             ),
             Some("bool".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Hash".to_string(),
+                "src/v2/std/node.dag".to_string()
+            ),
+            Some("v1_rt::Hash".to_string())
         );
         // GroupCompletion has no checkpoint row and is not the seed host numeric alias,
         // so the checkpoint declines to render it directly -- it fires ONLY for the
