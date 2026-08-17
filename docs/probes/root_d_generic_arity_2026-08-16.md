@@ -261,3 +261,42 @@ This does not make section 7's per-code equality redundant; the two answer diffe
 The histogram says no diagnostic class moved. The artifact diff says no *emitted text* moved either,
 which is the stronger statement and the only one that can see a marker whose removal silently
 changes an unrelated consumer's behaviour.
+
+## 10. The before-arm, re-taken with checkable provenance (2026-08-17)
+
+Section 9's before-arm came from this working tree, and my defence of it was a chronology — the tree
+was emitted before I edited anything. That is an account, not an audit: an emit reads the WORKING
+TREE, so an uncommitted edit leaves no trace a timestamp can reveal, and "when did I run this
+relative to my own edits" is not recoverable afterwards by anyone, including me.
+
+So the arm was re-taken from a detached worktree, and both checks the program converged on were run:
+
+```
+git worktree add --detach <scratch>/basewt 5e1a73fa339      # the merge-base with origin/main
+git status --porcelain (excluding target/)  ->  0 dirty tracked files
+build gunbc there with RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0   ->  real compile output
+emit src/v2/compiler/06_translate.dag with the same command as both other arms
+```
+
+**Provenance (prevention).** The arm is now reproducible by a third party from the SHA alone.
+
+**WHAT read (verification).** The construct this change introduces — `Witness<T>` in the two files
+that move — is **absent from the base arm**: 0 in `v2_std_witness.rs`, 0 in `v2_std_collection.rs`.
+An arm that already contained it would have been mid-change whatever its timestamp said.
+
+**Result.**
+
+```
+base arm (SHA 5e1a73fa) vs section 9's before-arm   ->  0 files differ, byte-identical
+base arm vs after-arm                               ->  2 files, 8 lines, the same 4 Witness sites
+```
+
+So section 9's measurement stands unchanged, and it now rests on bytes reproducible from a commit
+rather than on my recollection of when I ran it. Recorded as a re-take rather than a correction:
+the original arm was in fact clean, and the point is that nobody could have checked that before.
+
+One scope note carried from the same review, because it applies to this receipt's own numbers: the
+include count `Witness<T>` is **0 -> 4 per-file** across the two files that change, and **1 -> 5
+tree-wide** over the same closure, because `v2_compiler_translate.rs` already produced that spelling
+in the base arm for unrelated reasons. Count an include at the scope the assertion uses; a per-file
+0 does not license a tree-wide include.
