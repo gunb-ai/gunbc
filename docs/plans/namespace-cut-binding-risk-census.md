@@ -68,6 +68,44 @@ So the cut is **~95% safe by binding identity**, and the residue is ~4.5% —
 `decoy_record` — fixtures authored to be caught by an ambiguity check. Their
 presence in this list is the oracle working, not a defect found.
 
+## A blind spot this census cannot see at all: alias substitution
+
+Added 2026-08-17, from a specimen found by session quiet-deer-375 on the regen
+lane. It is recorded here rather than in a separate note because it is a limit
+on THIS instrument, and leaving it out would make the number above read as more
+complete than it is.
+
+`dag/extdeps/rust/version.dag` declares `type CargoPackageVersion =
+SemVerIdentity`. The SOURCE IS UNCHANGED by the cut. Yet emit now produces
+`extdeps.version.VersionIdentity` where main produced `SemVerIdentity` -- the
+alias's TARGET rather than the alias. The hop happens in emit's
+`resolved_type(item)`: the inferred Resolved node is the target, and its name is
+a containment path.
+
+So **which declaration a reference names can change without anyone editing the
+reference.** Deleting imports moved the resolved identity.
+
+This census is structurally incapable of detecting that. It compares GLOBAL
+DECLARER UNIQUENESS per spelling; alias substitution keeps the spelling
+identical and changes the referent, so every such site is scored SAFE. A name
+with exactly one declarer -- the 89% majority, the part of this report that
+reads as reassuring -- is no more protected than any other.
+
+Per DESIGN §5 that is the one category outside the guarantee ladder entirely:
+not a wrong answer that refuses loudly, but a silently different program. The
+terminal oracle (per-occurrence pre/post binding parity, with both resolvers
+run) WOULD catch it, because it compares resolved declarations rather than
+declarer counts. That is a further argument for building it, and a reason not
+to treat this census as a substitute in the meantime.
+
+Open question at time of writing: whether the same mechanism explains the
+integration branch's largest diagnostic class, 51 rows of
+`expected 'Product(CommutativeSemiring)', got 'Primitive(Int)'` at fully
+qualified `std.nat.Nat` annotations, `Nat` itself being an alias of
+`CommutativeSemiring<Magnitude>`. Consistent but unproven -- the discriminating
+control is whether a Nat-annotated field still accepts an integer literal in a
+tree that compiles green.
+
 ## Honest limits
 
 This is a STATIC over-approximation of risk, and states so rather than implying
