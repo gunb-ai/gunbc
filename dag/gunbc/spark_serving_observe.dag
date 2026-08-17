@@ -44,6 +44,7 @@ import gunbc.spark_serving_loaded_release {
 }
 import gunbc.spark_serving_release {
   SparkServingObservation,
+  spark_serving_release_identity,
   SparkServingAbsent,
   SparkServingObserved,
   SparkServingObservationRefused,
@@ -348,7 +349,10 @@ fn spark_serving_observation_line(observation: SparkServingObservation) -> Strin
     SparkServingObservationRefused { host: h, cause: c } =>
       join(["observation host=", h as String, " state=refused cause=", c as String, "\n"], "")
     SparkServingObserved { host: h, loaded_release: r } =>
-      join(["observation host=", h as String, " state=observed digest=", r.digest.digest as String, "\n"], "")
+      join([
+        "observation host=", h as String, " state=observed digest=",
+        spark_serving_release_identity(spec: r).digest.digest as String, "\n",
+      ], "")
   }
 }
 
