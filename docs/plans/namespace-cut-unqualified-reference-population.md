@@ -331,3 +331,49 @@ readiness:
     - regen's generated authority and the known .dag/seed twin divergence.
 
 So this decides VEHICLE AND MIGRATION SIZE. It does not decide merge.
+
+## SUPERSEDED by operator ruling, 2026-08-17: the bar is compilation and tests
+
+The decision rule above was written against an IDENTITY bar -- prove each
+reference still resolves to the declaration it resolved to before the cut. The
+operator has ruled that bar out:
+
+    "i wouldn't worry about proving names pointing where they used to -- i would
+     only focus on tests/compilation still working"
+
+WHAT THIS RETIRES. Class B -- multi-declarer names bound by pool coincidence,
+whose intended owner is not recoverable from the post-cut tree -- was the
+population that made a CLOSE recommendation likely, because recovering it needs
+the pre-cut ledger and an occurrence-level rewrite. Under the ruling that
+recovery is not owed. The close conditions above therefore no longer apply, and
+the continue conditions collapse to ordinary work: compile clean, tests green,
+regen restored.
+
+WHAT IT DOES NOT RETIRE, stated because the ruling is about EFFORT, not about
+what is true. Binding still consults containment only when there are two or more
+candidates; with exactly one resident candidate no visibility check runs. So a
+green tree is green because of what happened to be loaded, not because a rule
+says it should be. The live specimen is dag/extdeps/bmc/types.dag, which compiles
+only when unrelated files drag its dependencies into the pool (#6985 Class B).
+The consequence under the new bar is not wrong-meaning; it is INSTABILITY -- a
+file added later can introduce a second candidate and turn a passing tree red, or
+change a binding quietly, at a site unrelated to the change that triggered it.
+
+THE CHEAP ROUTE TO MAKING THE NEW BAR HOLD FOR A REASON, and the one open design
+decision: apply the existing containment filter on the one-candidate path too, so
+resolution follows the containment tree rather than load order. The machinery
+exists (global_bare_chain_candidates is already total, with no fallback), and
+GlobalBareCandidate / GlobalBareUniqueBinding carry identical fields with a
+conversion already in 04_env, so this introduces no new type or helper. It is a
+real semantic change with a real blast radius: bare references are common because
+most names are unique, so arming it could refuse a large population. The
+measurement in flight sizes exactly that, and NOTHING IS ARMED WITHOUT AN
+EXPLICIT OPERATOR DECISION on the measured number.
+
+The measurement itself is retained and still worth taking under the new bar --
+not as a merge gate, but because it is the only number that says how much of the
+tree's greenness is load-order coincidence, and therefore how exposed the tree is
+to unrelated future changes.
+
+REMAINING WORK UNDER THE NEW BAR: compile clean; tests green; regen restored.
+Ordinary, and none of it needs the ledger.
