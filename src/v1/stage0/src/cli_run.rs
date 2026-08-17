@@ -40670,6 +40670,153 @@ pub struct PreparedClaimScope {
 /// but the subject does not contain is a REFUSAL rather than a silent omission: evaluating
 /// against a scope that quietly lost a module reproduces, one level down, exactly the missing
 /// binding this scope exists to prevent.
+// THE REFERENCE CLOSURE, BECAUSE AN IMPORT CLOSURE CANNOT SEE A BARE CROSS-MODULE REFERENCE.
+//
+// Measured on the first complete floor run: 2,280 of 10,444 claims refused with "no such
+// function", and 95% of the modules they came from declare ZERO import lines against 13% of the
+// modules that passed. `base64_encode` lives in `std.encoding`; its witness declares no imports
+// and reaches it by bare name, so a scope derived from imports contained the witness alone and
+// every reference in it failed. Those claims were not failing on their merits -- they could not
+// see their own dependencies, which is the empty-observation class at roster scale.
+//
+// This is not a corpus defect to be fixed by adding import lines. DESIGN's namespace-only
+// resolution thread is operator-signed: the containment tree is the single naming authority and
+// the terminal step DELETES the import grammar, so a bare cross-module reference is the intended
+// authoring form and a projection that can only see imports is what is wrong.
+//
+// What this deliberately is NOT: widening the scope to the whole prepared subject. That is the
+// absorbing fallback -- and it is precisely the pool-membership coincidence (#6985 Class B) that
+// made these witnesses green by accident under the deleted floor, where a module resolved only
+// because some unrelated importer had already dragged its target into the pool. The answer has
+// to be the module's ACTUAL references, so that a witness reaching a module nothing else pulls
+// in still resolves, and a witness reaching nothing still gets a scope of one.
+//
+// The reference edges are read from the PREPARED graph's own `Node` trees, not re-parsed from
+// disk as `reference_resolution_facts` does. That producer answers a corpus-wide question before
+// preparation exists; here the resolved graph is already in hand, and re-reading the files would
+// be a second answer to a question the prepared artifacts have already answered -- the exact
+// duplication the import-scan this replaces was criticised for one comment down.
+//
+// Resolution reuses the existing bare/qualified rules rather than restating them: longest
+// declared module prefix for a qualified chain, and for a bare name the same proximity rule
+// (a name the module declares itself resolves locally; otherwise the declarer sharing the
+// longest module-path prefix wins). A tie is a genuine homonym, and it contributes BOTH
+// declarers rather than picking one -- an evaluation scope is a visibility question, and
+// narrowing it on a coin-flip is how a claim silently fails to see the module it meant.
+struct ReferenceClosureIndex {
+    module_count: usize,
+    decl_index: HashMap<String, std::collections::BTreeSet<String>>,
+    module_names: std::collections::HashSet<String>,
+    refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+}
+
+thread_local! {
+    static REFERENCE_CLOSURE_INDEX: std::cell::RefCell<Option<Rc<ReferenceClosureIndex>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn reference_closure_index(
+    prepared: &PreparedRepository,
+) -> Result<Rc<ReferenceClosureIndex>, String> {
+    // ONE PREPARED SUBJECT PER PROCESS is the architecture of this fold, so the index is built
+    // once and reused across all 10,444 claims -- rebuilding it per claim would be a corpus walk
+    // per row. That assumption is CHECKED rather than assumed: a later call seeing a different
+    // module population refuses instead of silently answering from the first subject's index.
+    if let Some(existing) = REFERENCE_CLOSURE_INDEX.with(|c| c.borrow().clone()) {
+        if existing.module_count != prepared.graph.modules.len() {
+            return Err(format!(
+                "CLAIM-SCOPE REFUSAL cause=ReferenceIndexSubjectChanged \
+                 built_for_modules={} observed_modules={} — the reference closure index is built \
+                 once per prepared subject and this process prepared a second one",
+                existing.module_count,
+                prepared.graph.modules.len()
+            ));
+        }
+        return Ok(existing);
+    }
+    let started = std::time::Instant::now();
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    for m in prepared.graph.modules.iter() {
+        let name = m.func_env.name.clone();
+        module_names.insert(name.clone());
+        for decl in collect_module_decl_names(&m.module) {
+            decl_index.entry(decl).or_default().insert(name.clone());
+        }
+        let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut chains: Vec<Vec<String>> = Vec::new();
+        for item in m.module.children.iter() {
+            collect_node_refs(item, &mut bare, &mut chains);
+        }
+        let mut flat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for n in bare {
+            flat.insert(n);
+        }
+        for chain in chains {
+            flat.insert(format!("\u{1f}{}", chain.join(".")));
+        }
+        refs_by_module.insert(name, flat);
+    }
+    let index = Rc::new(ReferenceClosureIndex {
+        module_count: prepared.graph.modules.len(),
+        decl_index,
+        module_names,
+        refs_by_module,
+    });
+    eprintln!(
+        "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={}",
+        started.elapsed().as_millis(),
+        index.module_count,
+        index.decl_index.len()
+    );
+    REFERENCE_CLOSURE_INDEX.with(|c| *c.borrow_mut() = Some(index.clone()));
+    Ok(index)
+}
+
+// The modules one module reaches directly by reference. Chains carry a leading unit separator so
+// a qualified path can never collide with a bare identifier in one set.
+fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<String> {
+    let Some(refs) = index.refs_by_module.get(module) else {
+        return Vec::new();
+    };
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for r in refs.iter() {
+        if let Some(chain) = r.strip_prefix('\u{1f}') {
+            let segs: Vec<String> = chain.split('.').map(|s| s.to_string()).collect();
+            if let Some(m) = longest_declared_module_prefix(&segs, &index.module_names) {
+                if m != module {
+                    out.insert(m);
+                }
+            }
+            continue;
+        }
+        let Some(mods) = index.decl_index.get(r) else {
+            continue;
+        };
+        // A name the module declares itself resolves locally -- no cross-module edge.
+        if mods.contains(module) {
+            continue;
+        }
+        let mut best_len = 0usize;
+        let mut winners: Vec<&String> = Vec::new();
+        for m in mods.iter() {
+            let shared = module_prefix_shared_len(module, m);
+            if winners.is_empty() || shared > best_len {
+                best_len = shared;
+                winners.clear();
+                winners.push(m);
+            } else if shared == best_len {
+                winners.push(m);
+            }
+        }
+        for w in winners {
+            out.insert(w.clone());
+        }
+    }
+    out.into_iter().collect()
+}
+
 pub fn claim_scope_for(
     prepared: &PreparedRepository,
     entry_module_path: &str,
@@ -40710,6 +40857,22 @@ pub fn claim_scope_for(
     for parent in entry_module.func_env.parents.iter() {
         if seen.insert(parent.name.clone()) {
             order.push(parent.name.clone());
+        }
+    }
+    // Then the REFERENCE closure, transitively, appended after the import closure so that a
+    // module reached both ways keeps the compiler's precedence position and this only ever ADDS
+    // visibility. Breadth-first from the entry over a sorted frontier, so the resulting order is
+    // a function of the graph and not of a hash map's iteration -- order is part of the scope's
+    // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
+    // every cache keyed on it.
+    let ref_index = reference_closure_index(prepared)?;
+    let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
+    while let Some(current) = frontier.pop() {
+        for target in reference_targets_of(&ref_index, &current) {
+            if seen.insert(target.clone()) {
+                order.push(target.clone());
+                frontier.push(target);
+            }
         }
     }
     let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
