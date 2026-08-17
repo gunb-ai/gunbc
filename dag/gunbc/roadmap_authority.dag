@@ -1514,7 +1514,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_KSJNTEDB15YG37HBQXP8P62XJ8",
       id: "v2-emitter-producer-provenance",
       owner: "self-host",
-      path: "src/v2/compiler/self_host/frontier.dag",
+      path: "src/v2/compiler/self_host/emitter_producer_provenance.dag",
       t: fields(
         headline: "Record which generator actually produced each result",
         boundary: "Every result says which generator made it and how far it got, as two separate facts. Claiming the new generator made something, without the evidence that it did, has to be impossible to write down.",
@@ -1545,7 +1545,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_KD37MRQ3ZA6F502DBKE6FE0VB8",
       id: "v2-emitter-first-behavioral-module",
       owner: "self-host",
-      path: "src/v2/compiler/self_host/frontier.dag",
+      path: "src/v2/compiler/self_host/wet_receipt_enrollment.dag",
       t: fields(
         headline: "Regenerate one already-tested module with the new generator",
         boundary: "Take a module that already has working tests, change only which generator produces it, and confirm it still passes the same tests including the deliberately broken one.",
@@ -1560,7 +1560,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5E7W23B34MW5Z7XMATBBJ11QFS",
       id: "v2-emitter-native-bootstrap",
       owner: "self-host",
-      path: "src/v2/compiler/self_host/frontier.dag",
+      path: "src/v2/compiler/self_host/v2_emitter_direct_rust_door_contract.dag",
       t: fields(
         headline: "Build the new generator with itself, then do it again",
         boundary: "The generator, and only the generator: it writes and builds a native version of itself, that native version writes and builds another, and the second one needs nothing from the old compiler. The other parts of the compiler are still produced the old way at this point.",
