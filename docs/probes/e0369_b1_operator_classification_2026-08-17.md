@@ -84,6 +84,9 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - **CI run 32030285591 @ `fcbfd3ba` (2026-08-17):** same shape — **9948 passed · 0 failed**,
   `floor_outcome=failure` at ~13.9 GB peak, job killed at ~100 min before post-discovery batches
   logged. Not a classification or probe defect; sessionpush `pull_request` run (run count 1).
+- **CI run 32039364615 @ `a1de4ade` (2026-08-17):** infra flake — `ci` job failed at **Set up job**
+  (~2 min) with GitHub **429** on artifact archive download; `gunbc ci` never ran. Retry via new
+  head.
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
