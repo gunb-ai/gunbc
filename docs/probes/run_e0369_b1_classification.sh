@@ -12,15 +12,21 @@
 #
 # M=11 E0369 B1 operator-on-carrier classification receipt.
 # Route: curated_cargo_probe_one.sh (§11.1 instrument) → cargo.log parse → classify.
+# PAIRED READING (2026-08-17): a zero is only readable beside a nonzero from the same
+# invocation; fresh log dir per run (never reuse PROBE_KEEP_LOG_DIR across sweeps).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
-STAMP_DIR="$SCRIPT_DIR/e0369_b1_classification_$(date -u +%Y-%m-%d)"
+STAMP_DIR="$(mktemp -d "$SCRIPT_DIR/e0369_b1_classification.XXXXXX")"
 LOG_DIR="$STAMP_DIR/logs"
 mkdir -p "$LOG_DIR"
+{
+  echo "git_sha=$(git rev-parse HEAD)"
+  echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} >"$STAMP_DIR/.probe_invocation"
 
 export CSSL_STD_SEED_LINK=1
 export GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
@@ -41,24 +47,53 @@ MODULES=(
 )
 
 echo "stamp_dir=$STAMP_DIR"
-echo "git_sha=$(git rev-parse HEAD)"
+cat "$STAMP_DIR/.probe_invocation"
 
-fail=0
+probe_fail=0
 for spec in "${MODULES[@]}"; do
   name="${spec%%:*}"
   path="${spec#*:}"
   echo "=== probe $name ==="
   if ! "$SCRIPT_DIR/curated_cargo_probe_one.sh" "$path" >/dev/null; then
-    fail=1
+    probe_fail=1
     echo "WARN: probe failed for $name" >&2
   fi
 done
 
+missing_logs=()
+for spec in "${MODULES[@]}"; do
+  name="${spec%%:*}"
+  if [[ ! -s "$LOG_DIR/${name}.cargo.log" ]]; then
+    missing_logs+=("$name")
+  fi
+done
+
+if ((${#missing_logs[@]} > 0)); then
+  echo "REFUSED: missing or empty cargo.log for: ${missing_logs[*]}" >&2
+  echo "subject_presence=$(( ${#MODULES[@]} - ${#missing_logs[@]} ))/${#MODULES[@]} (cargo leg did not run — zero is not a measurement)" >&2
+  echo "REFUSED: will not classify from absent cargo logs" >&2
+  exit 1
+fi
+
+paired_rustc_errors="$(
+  python3 - <<'PY' "$LOG_DIR"
+import pathlib, re, sys
+log_dir = pathlib.Path(sys.argv[1])
+total = 0
+for path in sorted(log_dir.glob("*.cargo.log")):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    total += len(re.findall(r"^error\[E\d+\]:", text, flags=re.MULTILINE))
+print(total)
+PY
+)"
+echo "subject_presence=${#MODULES[@]}/${#MODULES[@]} cargo.log paired_rustc_errors=${paired_rustc_errors}"
+
 python3 "$SCRIPT_DIR/e0369_b1_operator_classify.py" \
   --log-dir "$LOG_DIR" \
+  --require-all-logs \
   --out-tsv "$STAMP_DIR/sites_classified.tsv" \
   --summary-md "$STAMP_DIR/summary.md" \
   --git-sha "$(git rev-parse HEAD)"
 
-echo "done: $STAMP_DIR (probe_fail=$fail)"
-exit "$fail"
+echo "done: $STAMP_DIR (probe_fail=$probe_fail paired_rustc_errors=$paired_rustc_errors)"
+exit "$probe_fail"

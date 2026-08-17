@@ -69,11 +69,18 @@ entry closure. Fresh M=11 re-measurement is scripted in `run_e0369_b1_classifica
 
 ## What is NOT claimed
 
-- Fresh M=11 cargo logs were not banked in this receipt (the full M=11 loop is scripted in
-  `run_e0369_b1_classification.sh`; `render_cssl_probe_lib_cargo_toml.sh` now reads the
-  `NotProcessExit` return from stderr, but no M=11 run was executed for this commit). The
-  classification is executed on the July instance bank and extended to 191 by mechanism
-  argument above.
+- Fresh M=11 cargo logs were not banked in this receipt. The authoritative count here is the
+  **July 7-module instance bank** (112 distinct B1-keyword sites), extended to 191 by mechanism
+  argument — not a live `curated_cargo_probe_one.sh` sweep on current main.
+- **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe had two coupled
+  defects — manifest render (`NotProcessExit` on stderr) and **exit 0 on `HARNESS_REFUSE`** — plus
+  **stale `PROBE_KEEP_LOG_DIR` logs** on refusing reruns (nonzero from a prior invocation reads as
+  present). This branch fixes: stderr extraction, non-zero exit on refuse, `clear_probe_keep_log` on
+  harness/emit refuse, fresh `mktemp` log dir per M=11 sweep, and **paired reading** (`paired_rustc_errors`
+  beside any count — a bare zero is refused).
+- **Reading rule:** a zero is only readable beside a nonzero from the same invocation. The July bank
+  pairs 112 classified sites with per-site TSV rows (nonzero enumeration); it does not rely on a bare
+  grep-over-missing-log zero.
 - Nat/Int sites whose diagnostic spells only `Rc<v2_std_nat::Nat>` without an algebra
   keyword are **excluded** from the B1 filter (strict keyword match per §18) and therefore
   from the 191 — they belong to Root B3 (`Nat`/`Int` vs `{integer}`/`i64`), not this row.

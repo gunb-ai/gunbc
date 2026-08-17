@@ -354,6 +354,11 @@ def write_outputs(
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--log-dir", type=Path, help="*.cargo.log from curated_cargo_probe_one.sh")
+    ap.add_argument(
+        "--require-all-logs",
+        action="store_true",
+        help="with --log-dir, refuse if any M=11 module log is missing or empty",
+    )
     ap.add_argument("--instances-dir", type=Path, help="July-style shapes/*.instances.tsv directory")
     ap.add_argument("--json-dir", type=Path, help="optional *.jsonl cargo check outputs")
     ap.add_argument("--out-tsv", type=Path, required=True)
@@ -379,6 +384,19 @@ def main() -> int:
                 all_sites.extend(parse_cargo_log(log, entry))
             else:
                 print(f"missing log: {log}", file=sys.stderr)
+                if args.require_all_logs:
+                    print(
+                        "REFUSED: absent cargo.log is not zero errors "
+                        f"(subject_presence missing {entry})",
+                        file=sys.stderr,
+                    )
+                    return 2
+            if args.require_all_logs and log.is_file() and log.stat().st_size == 0:
+                print(
+                    f"REFUSED: empty cargo.log for {entry} (cargo leg did not run)",
+                    file=sys.stderr,
+                )
+                return 2
     if args.json_dir:
         for entry, _ in MODULES_11:
             jpath = args.json_dir / f"{entry}.jsonl"
@@ -392,10 +410,26 @@ def main() -> int:
 
     write_outputs(classified, args.out_tsv, args.summary_md, args.git_sha)
     counts = Counter(cls for _, cls, _ in classified)
+    paired_rustc_errors = 0
+    if args.log_dir:
+        for entry, _ in MODULES_11:
+            log = args.log_dir / f"{entry}.cargo.log"
+            if log.is_file():
+                text = log.read_text(encoding="utf-8", errors="replace")
+                paired_rustc_errors += len(
+                    re.findall(r"^error\[E\d+\]:", text, flags=re.MULTILINE)
+                )
     print(
         f"sites={len(classified)} repr_fork={counts.get('repr_fork', 0)} "
-        f"missing_trait_impl={counts.get('missing_trait_impl', 0)}"
+        f"missing_trait_impl={counts.get('missing_trait_impl', 0)} "
+        f"paired_rustc_errors={paired_rustc_errors}"
     )
+    if args.log_dir and len(classified) == 0 and paired_rustc_errors == 0:
+        print(
+            "SUSPECT_ZERO: bare zero with no paired rustc output from this log dir",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

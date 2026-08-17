@@ -20,6 +20,12 @@
 #   FALSE-RED hazard:     missing required lane shim → out-of-scope refusals unrelated to entry.
 #                           Observed: FormalNonterminal/BTreeSet without 03_normalize shims.
 #   When verdicts flip between runs, diff INVOCATION first (shim path, CSSL_STD_SEED_LINK).
+#   FAIL-CLOSED (2026-08-17): HARNESS_REFUSE and EMIT_REFUSE exit non-zero after printing the
+#   TSV row — a recorded refusal must stop the line; exit 0 on harness down zeroed deficit frequency.
+#   STALE-LOG (2026-08-17): PROBE_KEEP_LOG_DIR is not cleared per module — a refusing run must
+#   rm -f the prior <module>.cargo.log or downstream greps read an unstated time (nonzero survives
+#   only when the log was written by THIS invocation). Use a fresh log dir per orchestrated sweep.
+#   PAIRED READING: publish a count beside any zero — a bare zero from this instrument is suspect.
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
@@ -54,10 +60,26 @@ if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
 fi
 export GUNBC
 
-KEEP_DIR=""
+PROBE_LOG_BASENAME="$(basename "$MODULE_PATH" .dag)"
+
+probe_keep_log_path() {
+  echo "${PROBE_KEEP_LOG_DIR:-}/${PROBE_LOG_BASENAME}.cargo.log"
+}
+
+clear_probe_keep_log() {
+  [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]] || return 0
+  rm -f "$(probe_keep_log_path)"
+}
+
+publish_probe_keep_log() {
+  local build_log="$1"
+  [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]] || return 0
+  [[ -f "$build_log" ]] || return 0
+  cp "$build_log" "$(probe_keep_log_path)"
+}
+
 if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
-  KEEP_DIR="$PROBE_KEEP_LOG_DIR"
-  mkdir -p "$KEEP_DIR"
+  mkdir -p "$PROBE_KEEP_LOG_DIR"
 fi
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
 cleanup() { rm -rf "$OUT"; }
@@ -149,9 +171,10 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
+      clear_probe_keep_log
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-      exit 0
+      exit 1
     fi
   fi
 
@@ -171,9 +194,10 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     FIRST_ERROR="cssl harness authority unavailable"
     MAPPED_GATE="HARNESS_MISSING"
     VERDICT="HARNESS_REFUSE"
+    clear_probe_keep_log
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-    exit 0
+    exit 1
   fi
 
   BUILD_LOG="$OUT/cargo.log"
@@ -205,14 +229,9 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     else
       MAPPED_GATE="UNKNOWN"
     fi
-    if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
-      mkdir -p "$PROBE_KEEP_LOG_DIR"
-      cp "$BUILD_LOG" "$PROBE_KEEP_LOG_DIR/$(basename "$MODULE_PATH" .dag).cargo.log"
-    fi
   fi
-  if [[ -n "$KEEP_DIR" && -f "${BUILD_LOG:-}" ]]; then
-    mod_base="$(basename "$MODULE_PATH" .dag)"
-    cp "$BUILD_LOG" "$KEEP_DIR/${mod_base}.cargo.log"
+  if [[ -n "${BUILD_LOG:-}" && -f "$BUILD_LOG" ]]; then
+    publish_probe_keep_log "$BUILD_LOG"
   fi
 fi
 
@@ -241,7 +260,12 @@ elif [[ "$EMIT_OK" -eq 0 ]]; then
   CARGO_VERDICT="emit_fail"
   FIRST_ERROR="$(head -3 "$EMIT_LOG" | tr '\n' ' ')"
   VERDICT="EMIT_REFUSE"
+  clear_probe_keep_log
 fi
 
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+
+case "$VERDICT" in
+  HARNESS_REFUSE | EMIT_REFUSE) exit 1 ;;
+esac
