@@ -128,6 +128,27 @@ Two mutations were executed rather than asserted, and the profile is **not unifo
 
 The missing-row witness therefore does **not** discriminate this reconciliation — it is a regression control proving an underlying catalog miss still propagates through the flow gate rather than being swallowed by it. Calling it a disagreement control would be rung inflation. The distinct-layer witness earns its place from mutation two: `Rc` against `Box` is a real disagreement that a by-value-versus-by-reference comparison calls agreement, and every other witness passes under that bug.
 
+### Two-arm artifact diff, and both halves of the prediction that failed
+
+The claim "this changes no emitted output outside its own module" is the kind that is comfortable to assert and cheap to test, so it was tested. Two emissions of the **same entry** (`03_ingest`), same command, same source roots, same `gunbc` binary — the binary is the compiler and the edits are its `.dag` input, so it is held constant by construction — differing **only** in the commit. `M` is therefore fixed by construction; a corpus census at a different `M` is the right before-arm for a corpus-wide claim and the wrong one for a change-detection question.
+
+The prediction was written before the run, in both directions: `v2_compiler_wrap_decision.rs` **would** change (gaining the flow-gate functions, losing two note constants); every other file **would not**.
+
+The whole artifact was diffed — all 177 files, no grep for the shape believed touched, since the hazard is precisely a second consequence the author did not predict. Result: **2 files differ, not 1**, and both halves of the prediction were wrong in detail.
+
+| file | predicted | actual |
+|---|---|---|
+| `v2_compiler_wrap_decision.rs` | +4 fns, −2 note constants | +45 lines (4 fns), −1 line — a **glob import** `use …WrapDecision::*` replaced by explicit imports. The note constants **never emitted at all**, in either arm. |
+| `v2_std_cross_tree_resolution.rs` | unchanged | **2 `pub use` lines reordered** — a module this change never touched |
+
+The second file is the one worth keeping. The tempting reading is emission nondeterminism, and the control refutes it: **B vs B′ — same commit, same command, re-run — is 0 differing files**, and A vs B′ reproduces the reorder exactly. So the reorder is **deterministically caused by this change**, specifically by widening an import list in an unrelated module, and calling it noise would have been the instrument agreeing with the hypothesis.
+
+Stating the two ownerships separately, because they have different answers: the **artifact** change is this change's (two `pub use` lines move); there is **no defect** — the sorted line multisets are identical, so it is a pure reorder of explicit named re-exports, order-irrelevant to Rust resolution, and no non-`pub use` line is involved. Had a name-shadowing glob been in play the answer could have differed, which is why it was checked rather than assumed.
+
+What this buys is a positive argument rather than an absence: 177 files, 2 differ, 46 lines total, every other byte identical — so if some path had keyed on emitted text this change perturbed, it would have had to surface as some *other* emitted movement, and there is none. A targeted count of the shape believed edited could not have supported that, and would have missed the second file entirely.
+
+Two hazards checked and not applicable here, recorded so the next reader need not re-derive them: no `string_contains`/substring predicate over emitted content appears anywhere in this diff, so the emitter-self-match class has no subject; and the emission logs carry real output (`0 blocking, 545 advisory`) rather than a bare exit status, so the exit-0-without-a-compile class does not apply.
+
 **The acceptance condition is two numbers, never one.** The populations are largely disjoint and oppositely signed, so a fix validated on a sample drawn from one direction will look correct, move about half the population, and make the other half worse. Any candidate must carry a discriminating control **in each direction**, and the after-measurement must show **both** counts falling, reported separately. 28→0 while 27→40 is a regression wearing a burn-down.
 
 ### Status of the reproduction
