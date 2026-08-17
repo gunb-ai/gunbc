@@ -124,7 +124,7 @@ fn is_compiler_family_module(module: &str) -> bool {
 /// The emit-artifact sanitize scaffold is DISSOLVED (2026-07-23): its last rule
 /// (dedupe symbols across `pub use` lines) moved to the emitter's construction
 /// seam (`strip_repeated_use_symbols` in v1.compiler.emit_rust), and the 21-module
-/// curated sweep census (docs/probes/curated_cargo_frontier_probe_sweep.tsv,
+/// curated sweep census (a probe TSV deleted 2026-08-16 (operator: delete anything not actively derived),
 /// raw_dup_pub_use column, measured on the RAW emit before assembly) shows zero
 /// firings. Emit-retained artifacts are now byte-untouched by assembly.
 ///
