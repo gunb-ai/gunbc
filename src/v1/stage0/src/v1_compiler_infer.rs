@@ -6076,6 +6076,10 @@ pub fn infer_expr_body(
                                 Some(s) => s.params.clone(),
                                 None => Rc::new(vec![]),
                             };
+                            let call_sig_split = split_sig_params(
+                                sig_params.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
                             let has_lambda = {
                                 let mut __found = false;
                                 for a in call_args.clone().iter().cloned() {
@@ -6164,12 +6168,8 @@ pub fn infer_expr_body(
                                 })
                             } else {
                                 {
-                                    let sig_split = split_sig_params(
-                                        sig_params.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    let value_params = sig_split.value_params.clone();
-                                    let generic_names = sig_split.generic_names.clone();
+                                    let value_params = call_sig_split.value_params.clone();
+                                    let generic_names = call_sig_split.generic_names.clone();
                                     let final_state = Rc::new(
                                         call_args
                                             .clone()
@@ -6320,12 +6320,8 @@ pub fn infer_expr_body(
                                         ),
                                         None => error_type(),
                                     };
-                                    let value_params_for_check = split_sig_params(
-                                        sig_params.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    )
-                                    .value_params
-                                    .clone();
+                                    let value_params_for_check =
+                                        call_sig_split.value_params.clone();
                                     let arg_shape_diags = direct_call_shape_diags(
                                         func_name.clone(),
                                         sig_params.clone(),
