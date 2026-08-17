@@ -9,7 +9,7 @@ import gunbc.ci_gate {
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
+  GeneratedArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, declaration_ref_in_list }
@@ -1840,11 +1840,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
 
 data commit_workflow_realization_bindings: List<CommitWorkflowRealizationBinding> = [
   CommitWorkflowRealizationBinding {
-    surface: GithubActionsCiJob,
-    handler: CiYamlHandler,
-    artifact: CiYamlArtifact
-  },
-  CommitWorkflowRealizationBinding {
     surface: GitPrePushHook,
     handler: GitPrePushScriptHandler,
     artifact: GithooksPrePushArtifact
@@ -2606,10 +2601,10 @@ fn ci_floor_commit_witness_claim_schedule() -> List<ScheduleWitnessEntry> {
 
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
-    GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
-    GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
+    GithubActionsCiJob => ci_surface_artifact_wiped
+    GithubActionsCiRegenJob => ci_surface_artifact_wiped
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
-    FalsifierCadenceJob => artifact_path(a: FalsifierYamlArtifact)
+    FalsifierCadenceJob => ci_surface_artifact_wiped
   }
 }
 
@@ -2622,12 +2617,20 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
   }
 }
 
-fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact {
+// The CI surfaces have NO generated artifact as of the 2026-08-15 wipe: ci.yml, falsifier.yml and
+// falsifier-alert.yml are deleted and their registry rows are gone, so there is nothing for these
+// three surfaces to name. The enrollment rows below are retained deliberately -- they ARE the
+// obligations ledger the re-add queue is drawn from -- but a surface with no artifact answers the
+// sentinel rather than a fabricated one, and the total function is gone rather than returning a
+// plausible wrong artifact.
+data ci_surface_artifact_wiped: String = "<wiped 2026-08-15: no generated artifact for this surface>"
+
+fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact? {
   match surface {
-    GithubActionsCiJob => CiYamlArtifact
-    GithubActionsCiRegenJob => CiYamlArtifact
-    GitPrePushHook => GithooksPrePushArtifact
-    FalsifierCadenceJob => FalsifierYamlArtifact
+    GithubActionsCiJob => none
+    GithubActionsCiRegenJob => none
+    GitPrePushHook => Present { value: GithooksPrePushArtifact }
+    FalsifierCadenceJob => none
   }
 }
 

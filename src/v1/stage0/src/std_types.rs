@@ -229,6 +229,33 @@ pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
 
 pub type CommitSha = String;
 
+pub fn commit_sha_text_holds_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn commit_sha_text_holds(head: String) -> bool {
+    ((v1_rt::string_length(&head) == 40) && {
+        let mut __all = true;
+        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            .iter()
+            .cloned()
+        {
+            if !(((cp.clone() >= 48) && (cp.clone() <= 57))
+                || ((cp.clone() >= 97) && (cp.clone() <= 102)))
+            {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
+}
+
 pub type Sha256 = String;
 
 pub type RetryCount = i64;

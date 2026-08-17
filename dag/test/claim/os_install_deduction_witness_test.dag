@@ -6,7 +6,6 @@ import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, 
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data }
 import std.types { Bool }
-import test.claim.falsifier_workflow_witness_test { string_contains }
 import v2.std.live_tree { LiveTreeDisposition }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -216,4 +215,11 @@ test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
     RuntimeOsInstalled => false
     _ => false
   }
+}
+
+// Local since the falsifier witness that used to declare it was deleted with the CI wipe
+// (2026-08-15). One line over one builtin: a cross-test import for this is a dependency on
+// another witness's incidental helper, not on a shared authority.
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
 }

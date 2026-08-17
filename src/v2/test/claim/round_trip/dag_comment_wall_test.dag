@@ -42,11 +42,11 @@ test fn dag_comment_wall_slash_slash_inside_string_compiles() -> Bool {
 }
 
 test fn dag_line_comment_is_fail_closed() -> Bool {
-  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed }
+  dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed }
 }
 
 test fn dag_block_comment_is_fail_closed() -> Bool {
-  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
+  dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 test fn slash_slash_inside_string_literal_accepted() -> Bool {

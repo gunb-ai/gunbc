@@ -7,8 +7,6 @@
 //! json_parse_scaling_probe`. Modes (`JSON_PARSE_PROBE_MODE`):
 //! - `survival`: one `JSON_PARSE_TARGET_BYTES`, exactly one `parse_json` call (fresh process).
 //! - `memo_receipt`: one target; cold parse + first repeat + average of subsequent memo hits.
-//! - `counters`: one target; reports `MutationCounters` (list_push calls vs items_copied) to
-//!   distinguish an O(log n) push_back from an O(m) `value_to_list_carrier` fallback copy.
 //! - `scaling` / `large`: legacy grids (memo-contaminated; not used for acceptance receipts).
 //!
 //! CHECKABLE RECEIPT: survival mode records Present parse + member count vs process death.
@@ -26,7 +24,11 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{make_eval_context, resolve_entry_graph, workspace_root};
-use v1_compiler::v1_interpreter::{self, str_value, ExecutionMode, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
+
+fn str_value(s: impl AsRef<str>) -> Value {
+    Value::Str(std::rc::Rc::from(s.as_ref()))
+}
 
 const ENTRY: &str = "dag/extdeps/languages/json/parse.dag";
 
@@ -202,39 +204,6 @@ fn survival_succeeded(outcome: &ParseOutcome) -> bool {
     matches!(outcome, ParseOutcome::Parsed { .. })
 }
 
-/// One target, one parse — reports `MutationCounters` (list_push calls vs items copied)
-/// to distinguish an O(log n) push_back from an O(m) `value_to_list_carrier` fallback
-/// materialization. Cheap/decisive per eager-koi-458's 2026-08-17 scope correction.
-fn run_counters(ctx: &v1_interpreter::InterpContext) -> Result<ParseOutcome, String> {
-    let target = target_bytes_from_env()?;
-    let (member_count, json) = json_object_at_least_bytes(target);
-    eprintln!(
-        "json_parse_scaling_probe: counters target={target} members={member_count} bytes={}",
-        json.len()
-    );
-    let before = ctx.mutation_counters_snapshot();
-    let outcome = parse_json_once(ctx, &json, member_count);
-    let after = ctx.mutation_counters_snapshot();
-    println!("mode\tcounters\toutcome={}", outcome_label(&outcome));
-    println!("counter\tcalls\titems_copied");
-    println!(
-        "list_push\t{}\t{}",
-        after.list_push_calls - before.list_push_calls,
-        after.list_push_items_copied - before.list_push_items_copied
-    );
-    println!(
-        "list_concat\t{}\t{}",
-        after.list_concat_calls - before.list_concat_calls,
-        after.list_concat_items_copied - before.list_concat_items_copied
-    );
-    println!(
-        "map_insert\t{}\t{}",
-        after.map_insert_calls - before.map_insert_calls,
-        after.map_insert_entries_copied - before.map_insert_entries_copied
-    );
-    Ok(outcome)
-}
-
 /// One target, one parse — intended for a fresh process per invocation.
 fn run_survival(ctx: &v1_interpreter::InterpContext) -> Result<ParseOutcome, String> {
     let target = target_bytes_from_env()?;
@@ -374,7 +343,6 @@ fn run() -> Result<bool, String> {
     let mode = std::env::var("JSON_PARSE_PROBE_MODE").unwrap_or_else(|_| "scaling".to_string());
     let success = match mode.as_str() {
         "survival" => survival_succeeded(&run_survival(&ctx)?),
-        "counters" => survival_succeeded(&run_counters(&ctx)?),
         "memo_receipt" => {
             run_memo_receipt(&ctx)?;
             true

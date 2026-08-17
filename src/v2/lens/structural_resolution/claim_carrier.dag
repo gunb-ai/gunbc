@@ -9,5 +9,5 @@ type LensStructuralResolutionClaim {
 fn lens_structural_resolution_actual(
   claim: LensStructuralResolutionClaim
 ) -> Witness<StructuralResolutionFact> {
-  at(tree: claim.input)
+  v2.lens.structural_resolution.at(tree: claim.input)
 }

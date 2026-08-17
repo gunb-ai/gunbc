@@ -7,11 +7,11 @@ fn ptfes_token(class: Symbol, lexeme: String) -> Token {
   Token { class: class, lexeme: lexeme, file: ^ptfes_file, start: 0, end: 1 }
 }
 
-data ptfes_empty: List<Token> = Empty
+data ptfes_empty: List<Token> = std.algebra.Empty
 
 data ptfes_one: List<Token> = Cons {
   head: ptfes_token(class: ^ptfes_a, lexeme: "a"),
-  tail: Empty
+  tail: std.algebra.Empty
 }
 
 test fn parse_token_first_agrees_with_list_at_optional_on_empty_holds() -> Bool {

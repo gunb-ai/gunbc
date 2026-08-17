@@ -75,7 +75,7 @@ fn s1_closure_failures() -> List<String> {
         Accepted { value: validated, diagnostics: _ } =>
           fold_list(
             xs: s1_closure_paths,
-            empty: Empty,
+            empty: std.algebra.Empty,
             cons: fn(acc, path) {
               match s1_file_parses(lex: lm.lex, validated: validated, path: path) {
                 true => acc

@@ -8,6 +8,8 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
+pub use crate::v1_std_core::CompilerDiagnostic;
+use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};

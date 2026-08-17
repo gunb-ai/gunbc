@@ -147,9 +147,10 @@ type RunnableResourceProfile {
 }
 
 // A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
-// numbers alone cannot say. Two independently owned populations feed one aligned clamp list — the
-// positional gunbc.ci_spec rows for ordinary batches, and the scoped witness batch's own row in
-// gunbc.ci_layer_roots — and the executor reconstructed the origin from the LIST POSITION. That is
+// numbers alone cannot say. Two independently owned populations once fed one aligned clamp list —
+// the positional gunbc.ci_spec rows for ordinary batches, and a scoped witness batch's own row in
+// gunbc.ci_layer_roots (that batch is deleted; the field it forced is not) — and the executor
+// reconstructed the origin from the LIST POSITION. That is
 // how a refusal came to report clamp_ms=360000 while citing gunbc_ci_floor_batch_clamp_params[0],
 // a row whose overhead is 240 seconds: two facts that cannot both be true, printed in one located
 // diagnostic, costing two lanes their time reconciling a number against a row that never produced
@@ -179,16 +180,12 @@ type RunnableBatchClampSource
   = RunnableUsesFloorPositionalClamp
   | RunnableOwnsBatchClamp { clamp: RunnableBatchClamp }
 
-type ScopedWitnessProcessIsolation
-  = SharedWalkProcess
-  | SequentialChildProcess
-  | FreshJobProcess
-
-type ScopedWitnessBatchId = NonEmptyStr where brand("ScopedWitnessBatchId")
-
+// A single-variant carrier, and deliberately still a coproduct rather than a collapse to a
+// bare product: it once had a ScopedWitnessFloorWorker arm carrying a batch id, deleted with
+// the scoped witness batch (2026-08-15). The remaining arm keeps its own name so a second
+// worker kind is one row rather than a type change at every reader.
 type FloorWorkerIdentity
-  = OrdinaryFloorWorker
-  | ScopedWitnessFloorWorker { batch_id: ScopedWitnessBatchId }
+  = OrdinaryFloorWorker {}
 
 type FloorWorkerTerminalReceipt
   = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }
@@ -248,272 +245,7 @@ type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObs
 
 data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv"
 
-type ScopedExecutionRequestPath = NonEmptyStr where brand("ScopedExecutionRequestPath")
-
-data scoped_execution_request_path: ScopedExecutionRequestPath = "target/floor-attempts/scoped-execution-requests.json"
-
-data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects each SequentialChildProcess/FreshJobProcess ScopedWitnessBatch -- its frozen entries, source-root envelope, execution authority, clamp and the plan-derived budgets a child reads -- into scoped_execution_request_path together with the tested commit/tree/tool it was frozen against, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the request and observation storage projections from List<ScopedExecutionRequest> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths."
-
-type ScopedWitnessBatchResourceProfile {
-  runnable: RunnableResourceProfile
-  clamp: RunnableBatchClamp
-  process_isolation: ScopedWitnessProcessIsolation
-}
-
-type ScopedWitnessExecutionAuthority
-  = InheritedWalkSourceRoots {}
-
-data scoped_witness_execution_authority_note: String = "ScopedWitnessExecutionAuthority carries PROVENANCE, not an open-ended placeholder: InheritedWalkSourceRoots means every executor-owned .dag decision used while realizing the scoped batch — affected-set selection, witness execution-leg classification, and post-discovery cost/attribution projections — resolves from the enclosing walk's source-root authority. The scoped batch cannot author a second root list, so executor machinery cannot enter or move the witness subject universe, its digest, or its measured clamp basis. The one-variant carrier is therefore a construction wall against re-forking the root fact, not hollow generality."
-
-data scoped_witness_execution_authority_seed_refusal_note: String = "PRE-EXISTING SEED DIAGNOSTIC DEBT, observed by the scoped carrier rather than created by it: cli_run prime_witness_execution_legs panics when witness_entry_eligibility_census cannot resolve, instead of returning a typed located refusal through DiscoverySummary. The panic is fail-closed in effect but loses the actionable result arm and was one cause of an unexplained nonzero worker exit in run 30746409064. dissolve-on: prime_witness_execution_legs returns Result with the eligibility authority entry and inherited execution-authority roots in its error; run_discovery_corpus_with_options projects that error into the existing located discovery refusal and the panic arm deletes."
-
-type ScopedWitnessBatch {
-  batch_id: ScopedWitnessBatchId
-  source_roots: List<String>
-  entries: List<ScheduleWitnessEntry>
-  scan_dirs: List<String>
-  node_frontier_selection: NodeFrontierSelection
-  execution_authority: ScopedWitnessExecutionAuthority
-  execution_mode: ExecutionMode
-  resource_profile: ScopedWitnessBatchResourceProfile
-}
-
-fn scoped_witness_source_roots_digest(source_roots: List<String>) -> Fnv1a64Structural {
-  fold(source_roots, init: content_hash_atom(value: "scoped-witness-source-roots"), f: fn(acc, root) {
-    content_hash_combine_structural(left: acc, right: content_hash_atom(value: root))
-  })
-}
-
-fn scoped_witness_batch(
-  batch_id: ScopedWitnessBatchId,
-  source_roots: List<String>,
-  entries: List<ScheduleWitnessEntry>,
-  scan_dirs: List<String>,
-  node_frontier_selection: NodeFrontierSelection,
-  resource_profile: ScopedWitnessBatchResourceProfile,
-) -> ScopedWitnessBatch {
-  ScopedWitnessBatch {
-    batch_id: batch_id,
-    source_roots: source_roots,
-    entries: entries,
-    scan_dirs: scan_dirs,
-    node_frontier_selection: node_frontier_selection,
-    execution_authority: InheritedWalkSourceRoots {},
-    execution_mode: resource_profile.runnable.execution_mode,
-    resource_profile: resource_profile,
-  }
-}
-
-type ScopedWitnessExecutionOutcome
-  = ScopedWitnessExecuted { ok: Bool }
-  | ScopedWitnessSelectionSkipped { provenance: String }
-  | ScopedWitnessSchedulingRefused { detail: String }
-  | ScopedWitnessBudgetKilled { detail: String }
-
-type ScopedWitnessExecutionResult {
-  head_sha: CommitSha
-  batch_id: String
-  source_roots_digest: Fnv1a64Structural
-  entry: String
-  function: String
-  witness_kind: WitnessKind
-  outcome: ScopedWitnessExecutionOutcome
-}
-
-type ScopedWitnessExecutionReceiptDecode
-  = ScopedWitnessExecutionReceiptDecoded { rows: List<ScopedWitnessExecutionResult> }
-  | ScopedWitnessExecutionReceiptRefused { detail: String }
-
-type ScopedWitnessExecutionReceiptPath = NonEmptyStr where brand("ScopedWitnessExecutionReceiptPath")
-
-data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = "target/scoped-witness-execution-receipt.tsv"
-
-data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
-
-data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. The decoded batch_id is validated nonempty wire identity text rather than an authored ScopedWitnessBatchId: this boundary observes a worker projection and cannot honestly construct that brand from arbitrary TSV text. The source_roots_digest carrier is family-narrow Fnv1a64Structural: wrong-family assignment is structurally impossible, while external text remains honestly guarded at rung two by fnv1a64_structural_hex_digest. The union exists only at the wire seam immediately before serialize_content_hash. The decoder intentionally refuses Sha1 and Sha256 wire identities rather than widening this structural-fingerprint field; RED controls pin both refusals. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
-
-data scoped_witness_execution_receipt_refined_identity_scaffold_note: String = "DESIGN section 4b guarantee-ladder scaffold for exactly one field: ScopedWitnessExecutionResult.batch_id. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId but reached it by an unchecked cast from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed the cast as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty check. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for this branded refined carrier at the decode boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only decoded ScopedWitnessExecutionResult.batch_id; ScopedWitnessBatch.batch_id remains branded where its authority constructs it. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text projected from the scheduled authority, never through an implicit cast. CLIMB ALREADY CONSUMED: #7480 grounded hash families, so source_roots_digest now reaches rung four against wrong-family assignment as Fnv1a64Structural; the minimum in-scope rung remains two at the external-text path, where fnv1a64_structural_hex_digest is the permanent validating mint and refusal is honest rather than debt. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating ScopedWitnessBatchId constructor for wire text; the decoder calls it, restores that field, and this scaffold deletes."
-
-fn scoped_witness_batch_id_wire_text(batch_id: ScopedWitnessBatchId) -> String {
-  concat("", batch_id)
-}
-
-fn scoped_witness_source_roots_digest_wire_text(source_roots_digest: Fnv1a64Structural) -> String {
-  concat("", serialize_content_hash(hash: as_content_hash_structural(structural: source_roots_digest)))
-}
-
-fn scoped_witness_source_roots_digest_for_wire(source_roots: List<String>) -> String {
-  scoped_witness_source_roots_digest_wire_text(
-    source_roots_digest: scoped_witness_source_roots_digest(source_roots: source_roots),
-  )
-}
-
-fn scoped_witness_kind_label(kind: WitnessKind) -> String {
-  match kind {
-    CorpusWitnessKind => "corpus"
-    ExecutionWitnessKind => "execution"
-    NativeBundleWitnessKind => "native-bundle"
-  }
-}
-
-fn scoped_witness_kind_from_label(label: String) -> WitnessKind? {
-  if label == "corpus" {
-    Present { value: CorpusWitnessKind }
-  } else if label == "execution" {
-    Present { value: ExecutionWitnessKind }
-  } else if label == "native-bundle" {
-    Present { value: NativeBundleWitnessKind }
-  } else {
-    none
-  }
-}
-
-fn scoped_witness_execution_outcome_label(outcome: ScopedWitnessExecutionOutcome) -> String {
-  match outcome {
-    ScopedWitnessExecuted { ok: _ } => "executed"
-    ScopedWitnessSelectionSkipped { provenance: _ } => "selection-skipped"
-    ScopedWitnessSchedulingRefused { detail: _ } => "scheduling-refused"
-    ScopedWitnessBudgetKilled { detail: _ } => "budget-killed"
-  }
-}
-
-fn scoped_witness_execution_outcome_detail(outcome: ScopedWitnessExecutionOutcome) -> String {
-  match outcome {
-    ScopedWitnessExecuted { ok: ok } => if ok { "true" } else { "false" }
-    ScopedWitnessSelectionSkipped { provenance: provenance } => provenance
-    ScopedWitnessSchedulingRefused { detail: detail } => detail
-    ScopedWitnessBudgetKilled { detail: detail } => detail
-  }
-}
-
-fn scoped_witness_execution_result_tsv_row(row: ScopedWitnessExecutionResult) -> String {
-  join([
-    row.head_sha,
-    row.batch_id,
-    scoped_witness_source_roots_digest_wire_text(source_roots_digest: row.source_roots_digest),
-    row.entry,
-    row.function,
-    scoped_witness_kind_label(kind: row.witness_kind),
-    scoped_witness_execution_outcome_label(outcome: row.outcome),
-    scoped_witness_execution_outcome_detail(outcome: row.outcome),
-  ], "\t")
-}
-
-fn scoped_witness_execution_outcome_from_wire(label: String, detail: String) -> ScopedWitnessExecutionOutcome? {
-  if label == "executed" && detail == "true" {
-    Present { value: ScopedWitnessExecuted { ok: true } }
-  } else if label == "executed" && detail == "false" {
-    Present { value: ScopedWitnessExecuted { ok: false } }
-  } else if label == "selection-skipped" && detail != "" {
-    Present { value: ScopedWitnessSelectionSkipped { provenance: detail } }
-  } else if label == "scheduling-refused" && detail != "" {
-    Present { value: ScopedWitnessSchedulingRefused { detail: detail } }
-  } else if label == "budget-killed" && detail != "" {
-    Present { value: ScopedWitnessBudgetKilled { detail: detail } }
-  } else {
-    none
-  }
-}
-
-fn scoped_witness_exact_head_text_holds(head: String) -> Bool {
-  head.length() == 40 && all(chars(s: head), cp =>
-    (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
-  )
-}
-
-data scoped_witness_exact_head_grounding_note: String = "Scoped witness execution results bind every row to the explicit lowercase 40-hex head supplied by the runner. std.types CommitSha is presently an unvalidated String alias, so scoped_witness_exact_head_text_holds is the located construction wall for this receipt family. Dissolve-on: CommitSha gains one validating constructor shared by every Git-head consumer; this decoder then calls that authority and deletes its local syntax check."
-
-fn scoped_witness_execution_result_from_columns(columns: List<String>) -> ScopedWitnessExecutionResult? {
-  match columns {
-    Empty => none
-    Cons { head: head_sha, tail: after_head } => match after_head {
-      Empty => none
-      Cons { head: batch_id, tail: after_batch } => match after_batch {
-        Empty => none
-        Cons { head: source_roots_digest, tail: after_digest } => match after_digest {
-          Empty => none
-          Cons { head: entry, tail: after_entry } => match after_entry {
-            Empty => none
-            Cons { head: function, tail: after_function } => match after_function {
-              Empty => none
-              Cons { head: witness_kind_label, tail: after_kind } => match after_kind {
-                Empty => none
-                Cons { head: outcome_label, tail: after_outcome } => match after_outcome {
-                  Empty => none
-                  Cons { head: outcome_detail, tail: after_detail } => match after_detail {
-                    Cons { head: _, tail: _ } => none
-                    Empty =>
-                      if !scoped_witness_exact_head_text_holds(head: head_sha)
-                        || batch_id == ""
-                        || source_roots_digest == ""
-                        || entry == ""
-                        || function == "" {
-                        none
-                      } else {
-                        match fnv1a64_structural_hex_digest(hex: source_roots_digest) {
-                          Absent => none
-                          Present { value: decoded_source_roots_digest } =>
-                            match scoped_witness_kind_from_label(label: witness_kind_label) {
-                              Absent => none
-                              Present { value: kind } =>
-                                match scoped_witness_execution_outcome_from_wire(
-                                  label: outcome_label,
-                                  detail: outcome_detail,
-                                ) {
-                                  Absent => none
-                                  Present { value: outcome } => Present {
-                                    value: ScopedWitnessExecutionResult {
-                                      head_sha: head_sha,
-                                      batch_id: batch_id,
-                                      source_roots_digest: decoded_source_roots_digest,
-                                      entry: entry,
-                                      function: function,
-                                      witness_kind: kind,
-                                      outcome: outcome,
-                                    }
-                                  }
-                                }
-                            }
-                        }
-                      }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn scoped_witness_execution_receipt_decode(text: String) -> ScopedWitnessExecutionReceiptDecode {
-  let lines = split(s: text, delimiter: "\n")
-  if length(lines) < 2 || lines.first() != scoped_witness_execution_receipt_header {
-    ScopedWitnessExecutionReceiptRefused { detail: "schema header absent or receipt has no rows" }
-  } else {
-    let body = lines.skip(n: 1)
-    let rows = if body.skip(n: length(body) - 1).first() == "" {
-      body.take(n: length(body) - 1)
-    } else {
-      body
-    }
-    if length(rows) == 0 {
-      ScopedWitnessExecutionReceiptRefused { detail: "receipt has no scoped witness execution result rows" }
-    } else {
-      fold(rows, init: ScopedWitnessExecutionReceiptDecoded { rows: [] }, f: fn(state, line) {
-        match state {
-          ScopedWitnessExecutionReceiptRefused { detail: detail } => ScopedWitnessExecutionReceiptRefused { detail: detail }
-          ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
-            match scoped_witness_execution_result_from_columns(columns: split(s: line, delimiter: "\t")) {
-              Absent => ScopedWitnessExecutionReceiptRefused { detail: "malformed scoped witness execution result row" }
-              Present { value: row } => ScopedWitnessExecutionReceiptDecoded { rows: concat(rows, [row]) }
-            }
-        }
-      })
-    }
-  }
-}
+data floor_worker_observation_note: String = "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the observation storage projection from FloorWorkerObservation, deleting the seed wire labels while preserving the branded path."
 
 fn runnable_memory_negligible() -> RunnableMemoryClass {
   RunnableMemoryNegligible
@@ -580,52 +312,24 @@ fn runnable_heavy_whole_tree_resolve(profile: RunnableResourceProfile) -> Bool {
 fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
   match r {
     RunnableSingleClaim { entry: _, function: _, profile: p } => p
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
-    RunnableScopedWitnessBatch { batch: batch } => batch.resource_profile.runnable
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
     RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
   }
 }
 
 fn runnable_batch_clamp_source(r: Runnable) -> RunnableBatchClampSource {
   match r {
-    RunnableScopedWitnessBatch { batch: batch } => RunnableOwnsBatchClamp { clamp: batch.resource_profile.clamp }
     RunnableSingleClaim { entry: _, function: _, profile: _ } => RunnableUsesFloorPositionalClamp
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
     RunnableKernelWorkload { fused_op_count: _ } => RunnableUsesFloorPositionalClamp
   }
 }
 
 fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-    RunnableScopedWitnessBatch { batch: batch } => runnable_excludes_corpus_co_residence(profile: batch.resource_profile.runnable)
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: p } => runnable_excludes_corpus_co_residence(profile: p)
     RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
-type NodeFrontierSelection
-  = SelectionOff
-  | SelectionApplied
-  | SelectionPredictOnly
-
-fn node_frontier_selection_eq(left: NodeFrontierSelection, right: NodeFrontierSelection) -> Bool {
-  match left {
-    SelectionOff => match right {
-      SelectionOff => true
-      SelectionApplied => false
-      SelectionPredictOnly => false
-    }
-    SelectionApplied => match right {
-      SelectionOff => false
-      SelectionApplied => true
-      SelectionPredictOnly => false
-    }
-    SelectionPredictOnly => match right {
-      SelectionOff => false
-      SelectionApplied => false
-      SelectionPredictOnly => true
-    }
   }
 }
 
@@ -635,12 +339,10 @@ type Runnable
       source_roots: List<String>
       scan_dirs: List<String>
       explicit_entries: List<ScheduleWitnessEntry>
-      node_frontier_selection: NodeFrontierSelection
       exclude_substrings: List<String>
       discovery_scope_dirs: List<String>
       profile: RunnableResourceProfile
     }
-  | RunnableScopedWitnessBatch { batch: ScopedWitnessBatch }
   | RunnableKernelWorkload { fused_op_count: Int }
 
 type OnSuccessRunnableDisposition
@@ -655,9 +357,7 @@ data on_success_runnable_disposition_note: String = "The single modeled admissio
 
 fn on_success_runnable_disposition(runnable: Runnable) -> OnSuccessRunnableDisposition {
   match runnable {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
-      OnSuccessDiscoveryRefused
-    RunnableScopedWitnessBatch { batch: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       OnSuccessDiscoveryRefused
     RunnableKernelWorkload { fused_op_count: _ } =>
       OnSuccessKernelRefused
@@ -694,13 +394,13 @@ All four profile restrictions are conditional on mechanisms stages do not yet ha
 
 Every plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading."
 
-data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, `scoped_execution_authority_source_roots`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows and resolving executor-owned decisions against inherited walk roots are HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
+data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, and the manifest/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; resolving executor-owned decisions against inherited walk roots is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
 
 WHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.
 
-WHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, inherited execution authority, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust controls `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` and `scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots` pin the seed projections so an unaffected row remains present without failing the worker and executor-owned decisions consume the enclosing walk roots without entering the witness subject envelope. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, `floor_worker_signal_overrules_a_completed_terminal_report`, and `floor_worker_verdict_reaches_the_durable_journal` pin the coordinator's typed observation boundary, the derived-verdict law, and the surviving out-of-band projection used when the Actions stream drops worker stderr. Deleting or flattening the modeled arms, widening the subject roots with executor dependencies, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, losing the durable verdict, or restoring the old isolation spelling makes one of those controls red.
+WHAT THE SCOPED EXTENSION WAS, and why this row shrank. A scoped-witness worker once ran a second source-root envelope in a sequential child process, with its own clamp, execution authority, request projection and TSV receipt family, all hand-Rust here. Its single instance and every carrier behind it were deleted 2026-08-15 with affected-set selection, because the batch existed to make a second subject envelope affordable and selection was what made it affordable. The seed shrank by that whole path rather than migrating it.
 
-MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
+MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane choice, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
 
 data walk_finalization_note: String = "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan \{ batches: floor_batches, finalization: NoWalkFinalization, .. \}` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.
 
@@ -743,25 +443,6 @@ type WalkPopulationBudgetRefusal {
 
 data walk_population_budget_note: String = "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop."
 
-fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
-  match sel {
-    SelectionApplied => true
-    SelectionOff => false
-    SelectionPredictOnly => false
-  }
-}
-
-fn runnable_selection_applied(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
-      node_frontier_selection_applied(sel: sel)
-    RunnableScopedWitnessBatch { batch: batch } =>
-      node_frontier_selection_applied(sel: batch.node_frontier_selection)
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
 type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
@@ -775,8 +456,7 @@ type RealizationPlan<S> {
 fn runnable_step_label(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
-    RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -833,33 +513,23 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
     RunnableSingleClaim { entry: le, function: lf, profile: lp } => match right {
       RunnableSingleClaim { entry: re, function: rf, profile: rp } =>
         (le == re) && (lf == rf) && runnable_resource_profile_eq(left: lp, right: rp)
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-      RunnableScopedWitnessBatch { batch: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
-    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, node_frontier_selection: lskip, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, node_frontier_selection: rskip, exclude_substrings: rex2, discovery_scope_dirs: rsc, profile: rp } =>
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, exclude_substrings: rex2, discovery_scope_dirs: rsc, profile: rp } =>
         string_list_eq(left: lsr, right: rsr)
           && string_list_eq(left: lsd, right: rsd)
           && schedule_witness_entry_list_eq(left: lex, right: rex)
-          && node_frontier_selection_eq(left: lskip, right: rskip)
           && string_list_eq(left: lex2, right: rex2)
           && string_list_eq(left: lsc, right: rsc)
           && runnable_resource_profile_eq(left: lp, right: rp)
-      RunnableScopedWitnessBatch { batch: _ } => false
-      RunnableKernelWorkload { fused_op_count: _ } => false
-    }
-    RunnableScopedWitnessBatch { batch: lb } => match right {
-      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-      RunnableScopedWitnessBatch { batch: rb } => lb == rb
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
     RunnableKernelWorkload { fused_op_count: lleft } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-      RunnableScopedWitnessBatch { batch: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
       RunnableKernelWorkload { fused_op_count: rcount } => lleft == rcount
     }
   }
