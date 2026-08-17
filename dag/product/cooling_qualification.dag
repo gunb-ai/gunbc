@@ -34,9 +34,9 @@ type InstalledCoolingRealization {
 }
 
 type CoolingCatalogRefusalCause
-  = CoolerSocketDoesNotMatchProcessorSocket {
-      cooler_socket: CpuSocket
-      processor_socket: CpuSocket
+  = CoolerMountDoesNotMatchProcessorMount {
+      cooler_mount: ProcessorCoolingMount
+      processor_mount: ProcessorCoolingMount
     }
   | BaseboardNotInCoolerSupportedPopulation {
       baseboard_model: BaseboardModel
@@ -86,18 +86,24 @@ fn cooler_supports_baseboard(
   }
 }
 
-// SOCKET EQUALITY IS NOT DECIDED HERE. It is decided once, by cpu_socket_eq on the authority that
-// owns CpuSocket, and this function delegates. Re-deriving the comparison from fields would be a
-// second definition of one concept, and it drifted the moment the identity model gained an axis:
-// this path compared package and contact count only, so an AMD LGA socket at Ampere's contact
-// count qualified a cooler against an Ampere processor. Equal contact count is a coincidence of
-// scale, not a mounting fact -- a real supplier already sells LGA4926 cold plates labelled for
-// Intel, and the count alone is what let that label look plausible.
-fn cooler_socket_matches_processor_socket(
-  cooler_socket: CpuSocket,
-  processor_socket: CpuSocket,
+// THE COOLER QUESTION IS A MOUNT QUESTION. A cooler never touches the electrical contacts; it bolts
+// to the retention hardware around them, so the fact that decides fit is the mount the socket
+// presents. Socket and mount correlate because a platform defines both together, which is exactly
+// what let socket equality stand here and look right.
+//
+// It is not right, and the counter-example is ordinary rather than contrived: AMD retained AM4's
+// retention geometry on AM5, so AM4 coolers fit AM5 boards and AMD says so, while the sockets differ
+// on every socket fact -- 1331 pin-grid against 1718 land-grid. Socket equality REFUSES that cooler.
+// A false refusal is the quiet failure direction, because it reads as caution.
+//
+// Equality is still decided once by the authority that owns the concept: cooling_mount_eq on
+// extdeps.cpu.types, and this delegates. The earlier contact-count defect is not re-litigated here -
+// a foreign platform sharing a contact count now differs in mount platform_owner as well.
+fn cooler_mount_matches_processor_mount(
+  cooler_mount: ProcessorCoolingMount,
+  processor_mount: ProcessorCoolingMount,
 ) -> Bool {
-  cpu_socket_eq(a: cooler_socket, b: processor_socket)
+  cooling_mount_eq(a: cooler_mount, b: processor_mount)
 }
 
 // measure_le admits only operands of the SAME quantity and scale, so "design power covers TDP"
@@ -113,15 +119,15 @@ fn cooler_design_power_covers_processor_tdp(
 fn cooling_catalog_verdict(
   realization: InstalledCoolingRealization,
 ) -> CoolingCatalogVerdict {
-  if !cooler_socket_matches_processor_socket(
-    cooler_socket: realization.cooler.socket,
-    processor_socket: realization.processor.socket,
+  if !cooler_mount_matches_processor_mount(
+    cooler_mount: realization.cooler.socket.cooling_mount,
+    processor_mount: realization.processor.socket.cooling_mount,
   ) {
     CoolingCatalogRefused {
       host: realization.host,
-      cause: CoolerSocketDoesNotMatchProcessorSocket {
-        cooler_socket: realization.cooler.socket,
-        processor_socket: realization.processor.socket,
+      cause: CoolerMountDoesNotMatchProcessorMount {
+        cooler_mount: realization.cooler.socket.cooling_mount,
+        processor_mount: realization.processor.socket.cooling_mount,
       },
     }
   } else if !cooler_supports_baseboard(
@@ -212,10 +218,10 @@ fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
       "no installed cooling realization is modeled for this host: thermal qualification cannot be claimed until the cooler is an exact PhysicalAsset with host containment"
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        CoolerSocketDoesNotMatchProcessorSocket {
-          cooler_socket: _,
-          processor_socket: _,
-        } => "installed cooler socket does not match the installed processor socket"
+        CoolerMountDoesNotMatchProcessorMount {
+          cooler_mount: _,
+          processor_mount: _,
+        } => "installed cooler mount does not match the installed processor mount: a cooler attaches to the retention hardware, so the mount identity is what decides fit and the sockets may legitimately differ"
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } =>
           "installed baseboard is not in the cooler vendor's supported-board population"
         CoolerDesignPowerBelowProcessorTdp {
