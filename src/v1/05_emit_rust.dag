@@ -5731,9 +5731,9 @@ fn needs_reference_node(n: Node, source_indices: Map<String, NewlineIndex>) -> B
   if n.connective != NoConnective || n.children |> count > 0 {
     true
   } else {
-    let v1.compiler.coercion.is_copy = is_rust_value_type(n: n, source_indices: source_indices)
+    let is_copy = is_rust_value_type(n: n, source_indices: source_indices)
       || (is_product_type(n: n) && n.children |> count == 0)
-    v1.compiler.coercion.is_copy == false
+    is_copy == false
   }
 }
 
@@ -6962,7 +6962,7 @@ fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, sco
   match expr.expr_data {
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -8861,7 +8861,7 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
 
 fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, has_interpolations: Bool) -> InterpPart {
   match part {
-    Text { value: v } =>
+    v1.std.core.Text { value: v } =>
       let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
       InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
@@ -9473,16 +9473,16 @@ fn emit_rest_url_line(transport: Node, op_name: String, source_indices: Map<Stri
         concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", self.base_url);")
       ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
-          ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+          ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => Interpolation { expr: arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
-          Text { value: v } => escape_rust_interp_text(s: v)
+          v1.std.core.Text { value: v } => escape_rust_interp_text(s: v)
           Interpolation { expr: _ } => "{}"
         })
         let fmt_str = fmt_segments |> join(separator: "")
         let args = parts |> flat_map(p => match p {
-          Text { value: _ } => []
+          v1.std.core.Text { value: _ } => []
           Interpolation { expr: e } => {
             let var_name = emit_ident(name: expr_var_name_at(texpr: e, source_indices: source_indices), target: v1.compiler.artifact.Rust)
             let is_opt = is_optional_typed_expr(e: e)
@@ -9961,16 +9961,16 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, corpus
       concat("\"", escape_string_literal_body(s: s), "\"")
     ExprStringInterp => {
       let parts = arg.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {
-        Text { value: v } => escape_rust_interp_text(s: v)
+        v1.std.core.Text { value: v } => escape_rust_interp_text(s: v)
         Interpolation { expr: _ } => "{}"
       })
       let fmt_str = fmt_segments |> join(separator: "")
       let args = parts |> flat_map(p => match p {
-        Text { value: _ } => []
+        v1.std.core.Text { value: _ } => []
         Interpolation { expr: e } => {
           let name = expr_var_name_at(texpr: e, source_indices: source_indices)
           let var_name = emit_ident(name: name, target: v1.compiler.artifact.Rust)

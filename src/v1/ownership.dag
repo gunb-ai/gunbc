@@ -528,7 +528,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     _ => ""
   }
   let cond_required = match init_arg_node.inferred {
-    Present { value: Resolved { node: type_node } } => type_node.return_cardinality == Required
+    Present { value: Resolved { node: type_node } } => type_node.return_cardinality == v1.std.core.Required
     _ => false
   }
   let cond_struct = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name, si: si)

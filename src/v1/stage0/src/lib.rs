@@ -167,6 +167,7 @@ pub mod derived_realization_schedule;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
+pub mod regen_read_import_closure;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod source_closure;

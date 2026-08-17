@@ -1332,8 +1332,8 @@ mod workspace_root_discovery_tests {
 
 #[cfg(test)]
 mod regen_input_closure_tests {
-    use super::{regen_input_sources, regen_path_affects_regen};
-    use std::collections::HashSet;
+    use super::{regen_input_sources_with_oracle, regen_path_affects_regen, RegenImportOracle};
+    use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
 
     fn fixture_root(tag: &str) -> PathBuf {
@@ -1346,29 +1346,59 @@ mod regen_input_closure_tests {
         std::fs::write(p, content).expect("write fixture");
     }
 
-    /// The regen input closure is exactly the `src/v1` entries plus their transitive
-    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
-    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
-    /// (every dag change would appear in-closure and the shortcut would never fire).
+    /// The regen READ set is the `src/v1` entries plus their transitive
+    /// *import-oracle* closure through `[src/v1, dag]`. A `dag` module nobody
+    /// imported on the oracle is EXCLUDED. This is the RED control: without
+    /// the exclusion the skip is vacuous (every dag change would appear
+    /// in-closure).
     #[test]
-    fn closure_is_imports_only_unimported_dag_excluded() {
-        let root = fixture_root("imports-only");
+    fn closure_is_references_only_unreferenced_dag_excluded() {
+        let root = fixture_root("refs-only");
         let _ = std::fs::remove_dir_all(&root);
         write(
             &root,
             "src/v1/a.dag",
-            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
+            "module v1.a\nfn f(x: v1.b.T) -> std.x.Y { x }\n",
         );
-        write(&root, "src/v1/b.dag", "module v1.b\n");
-        write(&root, "dag/std/x.dag", "module std.x\n");
-        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
-        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
+        write(&root, "src/v1/b.dag", "module v1.b\ntype T = Int\n");
+        write(&root, "dag/std/x.dag", "module std.x\ntype Y = Int\n");
+        write(&root, "dag/std/y.dag", "module std.y\ntype Z = Int\n"); // unreferenced — excluded
+        write(&root, "dag/gunbc/u.dag", "module gunbc.u\ntype U = Int\n"); // unreferenced — excluded
+                                                                           // Leftover `import` in the dag witness tree must not refuse the seed
+                                                                           // index, and a homonym declared only there must not enter READ.
+        write(
+            &root,
+            "dag/test/claim/leftover_import.dag",
+            "module test.claim.leftover\nimport std.x { Y }\ntype T = Int\n",
+        );
 
-        let relpaths: HashSet<String> = regen_input_sources(&root)
-            .expect("closure computes")
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
+        write(
+            &root,
+            "src/v1/stage0/tests/fixtures/no_module.dag",
+            "data x: Int = 0\n",
+        );
+
+        let mut oracle_texts = HashMap::new();
+        oracle_texts.insert(
+            "src/v1/a.dag".to_string(),
+            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\nfn f(x: T) -> Y { x }\n"
+                .to_string(),
+        );
+        oracle_texts.insert(
+            "src/v1/b.dag".to_string(),
+            "module v1.b\ntype T = Int\n".to_string(),
+        );
+        oracle_texts.insert(
+            "dag/std/x.dag".to_string(),
+            "module std.x\ntype Y = Int\n".to_string(),
+        );
+
+        let relpaths: HashSet<String> =
+            regen_input_sources_with_oracle(&root, RegenImportOracle::AuthoredTexts(&oracle_texts))
+                .expect("closure computes")
+                .into_iter()
+                .map(|(p, _)| p)
+                .collect();
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(
@@ -1377,19 +1407,27 @@ mod regen_input_closure_tests {
         );
         assert!(
             relpaths.contains("src/v1/b.dag"),
-            "imported v1 module present"
+            "referenced v1 module present"
         );
         assert!(
             relpaths.contains("dag/std/x.dag"),
-            "imported dag module present"
+            "referenced dag module present"
         );
         assert!(
             !relpaths.contains("dag/std/y.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
+            "unreferenced dag module must be EXCLUDED: {relpaths:?}"
         );
         assert!(
             !relpaths.contains("dag/gunbc/u.dag"),
-            "unimported dag module must be EXCLUDED: {relpaths:?}"
+            "unreferenced dag module must be EXCLUDED: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.contains("src/v1/stage0/tests/fixtures/no_module.dag"),
+            "module-less parse fixture must stay out of READ: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.contains("dag/test/claim/leftover_import.dag"),
+            "dag witness tree must stay out of the seed index/READ set: {relpaths:?}"
         );
     }
 
@@ -1419,6 +1457,24 @@ mod regen_input_closure_tests {
         ));
         assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
         assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
+    }
+
+    #[test]
+    fn frozen_read_closure_is_the_ci_skip_subject() {
+        let closure: HashSet<String> =
+            crate::regen_read_import_closure::REGEN_READ_IMPORT_CLOSURE_PATHS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect();
+        assert!(
+            regen_path_affects_regen("dag/std/syntax.dag", &closure),
+            "main import-closure member must trigger regen"
+        );
+        assert!(
+            !regen_path_affects_regen("dag/std/observation.dag", &closure),
+            "std.observation is not in main's import closure; skip must not treat it as READ"
+        );
+        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
     }
 }
 
@@ -3196,16 +3252,17 @@ fn compile_clean_scoping_active() -> bool {
 // ---------------------------------------------------------------------------
 // Regen (self-host fixed-point) affected-set scoping.
 //
-// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
-// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
-// committed crate. The emit is a pure function of exactly one input set: every
-// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
-// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
-// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
-// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
-// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
-// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
-// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
+// READ / EMIT / TRIGGER are three different sets. Imports made them look
+// identical; they are not.
+//   READ    — `regen_input_sources`: `src/v1` entries plus the transitive
+//             reference closure through `[src/v1, dag]`. Too small gives
+//             unresolved names; too big wastes parse.
+//   EMIT    — the committed roster `generated_stage0_files` (exact both
+//             ways). `regen_stage0` refuses an extra or missing file.
+//   TRIGGER — the skip witness currently derives from READ (conservative).
+// The emitter binary (`src/v1/**` Rust), committed stage0 outputs (same
+// prefix), and Cargo/toolchain config also force a run. Fail-closed: any
+// uncertainty runs. Main pushes run regen unconditionally as the cold control.
 // ---------------------------------------------------------------------------
 
 pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
@@ -3276,53 +3333,112 @@ pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
     vec![workspace.join("src/v1"), workspace.join("dag")]
 }
 
-/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
-/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
-/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
-/// consumes this function — so the regen compile and the skip witness share one closure
-/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
-/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
-/// oracle guarding that equivalence.
+/// Main still has `import` statements. This branch deleted them. The measured
+/// green regen on main (bbb5213, 144 emitted files) compiled the import
+/// closure of `src/v1` — 142 files, including `std.occurrence_identity` and
+/// excluding `std.observation`. A reference walk over this tree cannot
+/// reconstruct that set: qualified-only under-admits (639), unique-bare and
+/// homonym pulls over-admit and make `OccurrenceId` ambiguous (1086–1203).
+/// Production READ is that closure as a frozen path list (identity join
+/// against this tree's bytes). Dissolve-on: the qualified `container.member`
+/// walk matches that list identity-for-identity.
+enum RegenImportOracle<'a> {
+    FrozenImportClosure,
+    /// Test fixture: relpath → source text that still contains `import` lines.
+    AuthoredTexts(&'a std::collections::HashMap<String, String>),
+}
+
+/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: live
+/// `src/v1/**.dag` entries union the frozen main import-closure paths,
+/// returned as sorted `(workspace-relpath, content)` of THIS tree.
+///
+/// This is the READ set. TRIGGER currently derives from READ (conservative).
+/// EMIT is the committed roster in
+/// `gunbc.stage0_emit_plan_generated.generated_stage0_files`, checked by
+/// `regen_stage0` after compile.
+///
+/// Fail-closed: a listed import-closure path that is missing from this tree
+/// refuses. Module-less parse fixtures are skipped, not compiled. The dag
+/// witness tree is not in the frozen list.
 pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    regen_input_sources_with_oracle(workspace, RegenImportOracle::FrozenImportClosure)
+}
+
+fn regen_input_sources_with_oracle(
+    workspace: &Path,
+    oracle: RegenImportOracle<'_>,
+) -> Result<Vec<(String, String)>, String> {
     let roots = regen_source_roots(workspace);
-    let index = regen_build_module_index(&roots)?;
     let entry_root = roots
         .first()
         .ok_or_else(|| "regen source root list must not be empty".to_string())?;
     let mut entry_paths = Vec::new();
     regen_collect_dag_files(entry_root, &mut entry_paths)?;
 
-    // module_path -> (relpath, content); the first occurrence of a module path wins, so
-    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut moduleless: Vec<String> = Vec::new();
     for path in &entry_paths {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = regen_workspace_relpath(path, workspace);
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
+        if extract_module_path(&content).is_none() {
+            moduleless.push(rel);
+            continue;
         }
-        queue.push(content);
+        entries.push((rel, content));
     }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = regen_workspace_relpath(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
+    report_moduleless_dag_entry_skips(&moduleless);
+
+    let sources = match oracle {
+        RegenImportOracle::FrozenImportClosure => load_frozen_import_closure(workspace, &entries)?,
+        RegenImportOracle::AuthoredTexts(texts) => {
+            let index = crate::source_closure::admit_regen_declaration_index(&roots, workspace)
+                .map_err(|e| e.to_string())?;
+            crate::source_closure::closure_for_entries_following_imports(
+                &entries,
+                &index,
+                |relpath| {
+                    Ok(texts
+                        .get(relpath)
+                        .map(|text| extract_import_paths(text))
+                        .unwrap_or_default())
+                },
+            )
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|s| (s.path.clone(), s.content.clone()))
+            .collect()
         }
-    }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    };
+    let mut result = sources;
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    eprintln!("regen READ import-oracle: {} file(s)", result.len());
     Ok(result)
+}
+
+fn load_frozen_import_closure(
+    workspace: &Path,
+    entries: &[(String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    let mut by_rel: std::collections::BTreeMap<String, String> = entries.iter().cloned().collect();
+    for rel in crate::regen_read_import_closure::REGEN_READ_IMPORT_CLOSURE_PATHS {
+        if by_rel.contains_key(*rel) {
+            continue;
+        }
+        let path = workspace.join(rel);
+        if !path.is_file() {
+            return Err(format!(
+                "regen READ: import-closure path `{rel}` is listed and missing from this tree"
+            ));
+        }
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("regen READ: read {rel}: {e}"))?;
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
+        by_rel.insert((*rel).to_string(), content);
+    }
+    Ok(by_rel.into_iter().collect())
 }
 
 /// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.

@@ -106,7 +106,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
       }
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
@@ -137,7 +137,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -156,7 +156,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>
@@ -1654,7 +1654,7 @@ fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: f
 
 fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
   expr.children |> map(child => match child.expr_data {
-    ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+    ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
     _ => Interpolation { expr: arg_value(n: child) }
   })
 }
@@ -1994,7 +1994,7 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -2011,7 +2011,7 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>

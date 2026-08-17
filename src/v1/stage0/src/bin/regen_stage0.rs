@@ -251,6 +251,9 @@ fn run() -> Result<(), String> {
 
     let mut phases = Vec::new();
     let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    time_phase(&mut phases, "assert_emitted_map_matches_roster", || {
+        assert_emitted_map_matches_roster(&emitted)
+    })?;
     // Hand-maintained verification: diff each hand file against its fresh emit candidate
     // (without overwriting it) so the gate's exclusion of hand files stops being silent.
     // Runs before the crate assembly / registry asserts so the report is always visible on
@@ -548,11 +551,12 @@ fn source_files_for_roots(
     roots: &[PathBuf],
     workspace: &Path,
 ) -> Result<Vec<Rc<SourceFile>>, String> {
-    // The regen input closure ([src/v1, dag] entries + transitive import closure) is
-    // computed by the single authority `cli_run::regen_input_sources`, which the
-    // regen-affected-set skip witness also consumes — so "what regen reads" lives in
-    // exactly one place. `roots` must match that authority's roots (asserted here so a
-    // caller drift is a loud refusal, never a silent fork).
+    // The regen READ set ([src/v1, dag] entries + transitive reference
+    // closure) is computed by the single authority `cli_run::regen_input_sources`,
+    // which the regen-affected-set skip witness also consumes — so "what regen
+    // reads" lives in exactly one place. EMIT is checked separately against the
+    // committed roster. `roots` must match that authority's roots (asserted here
+    // so a caller drift is a loud refusal, never a silent fork).
     let expected = v1_compiler::cli_run::regen_source_roots(workspace);
     if roots != expected.as_slice() {
         return Err(format!(
@@ -1015,6 +1019,57 @@ fn write_workspace_members(workspace: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn assert_emitted_map_matches_roster(emitted: &HashMap<String, String>) -> Result<(), String> {
+    let registered: BTreeSet<&str> = generated_stage0_files()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    let hand_maintained: BTreeSet<&str> = HAND_MAINTAINED_STAGE0_FILES.iter().copied().collect();
+    // Roster grain is generated .rs. Compile also emits crate files (Cargo.toml);
+    // those are not EMIT-set members and must not refuse as extras.
+    let emitted_basenames: BTreeSet<String> = emitted
+        .keys()
+        .map(|path| {
+            Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone())
+        })
+        .filter(|name| name.ends_with(".rs"))
+        .collect();
+
+    let extra: Vec<&String> = emitted_basenames
+        .iter()
+        .filter(|name| {
+            !registered.contains(name.as_str()) && !hand_maintained.contains(name.as_str())
+        })
+        .collect();
+    if !extra.is_empty() {
+        return Err(format!(
+            "regen EMIT set: compile produced file(s) absent from the committed generated_stage0_files roster: {}\n\
+             Roster changes are deliberate edits, not a side effect of widening the READ set. Ask before regenerating the roster or dissolving a closure stub.",
+            extra
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let missing: Vec<&str> = registered
+        .iter()
+        .copied()
+        .filter(|name| !emitted_basenames.contains(*name))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "regen EMIT set: committed generated_stage0_files roster contains file(s) the compile did not emit: {}",
+            missing.join(", ")
+        ));
+    }
+    Ok(())
+}
+
 fn assert_output_set_matches_registry(
     committed_src: &Path,
     fresh_src: &Path,
@@ -1275,6 +1330,49 @@ mod tests {
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn emitted_map_rejects_file_not_on_roster() {
+        let mut emitted = HashMap::new();
+        for name in generated_stage0_files() {
+            emitted.insert(format!("src/{name}"), "ok".to_string());
+        }
+        emitted.insert("src/not_on_roster.rs".to_string(), "nope".to_string());
+        let err = assert_emitted_map_matches_roster(&emitted)
+            .expect_err("extra emitted file must refuse");
+        assert!(err.contains("not_on_roster.rs"), "{err}");
+        assert!(
+            err.contains("committed generated_stage0_files roster"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn emitted_map_ignores_non_rs_compile_outputs() {
+        let mut emitted = HashMap::new();
+        for name in generated_stage0_files() {
+            emitted.insert(format!("src/{name}"), "ok".to_string());
+        }
+        emitted.insert("Cargo.toml".to_string(), "[package]\n".to_string());
+        assert_emitted_map_matches_roster(&emitted)
+            .expect("Cargo.toml is crate assembly, not a generated_stage0_files extra");
+    }
+
+    #[test]
+    fn emitted_map_rejects_missing_roster_file() {
+        let mut emitted = HashMap::new();
+        let skip = generated_stage0_files()[0].as_str();
+        for name in generated_stage0_files() {
+            if name == skip {
+                continue;
+            }
+            emitted.insert(format!("src/{name}"), "ok".to_string());
+        }
+        let err = assert_emitted_map_matches_roster(&emitted)
+            .expect_err("missing roster file must refuse");
+        assert!(err.contains(skip), "{err}");
+        assert!(err.contains("the compile did not emit"), "{err}");
     }
 
     #[test]
