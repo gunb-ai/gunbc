@@ -3,7 +3,7 @@ module test.claim.pcb_copper_witness
 import std.logic { Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { micrometer }
-import product.compute_board.analog { AnalogCircuitIntent, ElectricalNet, NetIdentity, terminal_ref }
+import product.compute_board.analog { ElectricalNet, NetIdentity }
 import product.pcb.stackup {
   AdmittedStackup,
   CopperLayer,
@@ -26,7 +26,7 @@ import product.pcb.copper {
   RealizationNamesNoSuchNet,
   RealizationSelectedAgainstAnotherStackup,
   admit_copper,
-  copper_is_complete_over_intent,
+  copper_is_complete_over_nets,
   copper_layer_function,
   copper_layer_ordinal,
   select_copper_layer,
@@ -59,14 +59,15 @@ data vcc: NetIdentity = "VCC" as NetIdentity
 data gnd_net: NetIdentity = "GND" as NetIdentity
 data absent_net: NetIdentity = "SPI_CLK" as NetIdentity
 
-data intent: AnalogCircuitIntent = AnalogCircuitIntent {
-  title: "witness board",
-  components: [],
-  nets: [
-    ElectricalNet { identity: vcc, members: [] },
-    ElectricalNet { identity: gnd_net, members: [] },
-  ],
-}
+// THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
+// intent, so this witness can hand it a roster that belongs to no analog article at all. If the
+// carrier still required an AnalogCircuitIntent, this file would not compile -- which makes the
+// decoupling a fact the suite depends on rather than a claim in a comment. The identities are
+// motherboard rails rather than the RC specimen's, for the same reason.
+data board_nets: List<ElectricalNet> = [
+  ElectricalNet { identity: vcc, members: [] },
+  ElectricalNet { identity: gnd_net, members: [] },
+]
 
 // A SECOND, DIFFERENT BOARD. Same layer count and same functions at every ordinal, differing only
 // in copper thickness and in the declaration admission judged - so an ordinal alone cannot tell the
@@ -197,7 +198,7 @@ test fn w_copper_naming_real_nets_admits() -> Bool {
     Absent => false
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: gnd_net, ordinal: 1)
-  match admit_copper(intent: intent, board: board, rs: rs) {
+  match admit_copper(nets: board_nets, board: board, rs: rs) {
     CopperAdmitted { realizations: out } => count(out) == 2
     CopperRefused { causes: _ } => false
   }
@@ -213,8 +214,8 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
     Absent => false
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: absent_net, ordinal: 1)
-  count(rs) == count(intent.nets)
-    && match admit_copper(intent: intent, board: board, rs: rs) {
+  count(rs) == count(board_nets)
+    && match admit_copper(nets: board_nets, board: board, rs: rs) {
       CopperAdmitted { realizations: _ } => false
       CopperRefused { causes: c } =>
         count(c) == 1
@@ -235,7 +236,7 @@ test fn w_red_a_net_realized_twice_is_refused() -> Bool {
     Absent => false
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
-  match admit_copper(intent: intent, board: board, rs: rs) {
+  match admit_copper(nets: board_nets, board: board, rs: rs) {
     CopperAdmitted { realizations: _ } => false
     CopperRefused { causes: c } => count(c) == 2
   }
@@ -250,11 +251,11 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
-  match admit_copper(intent: intent, board: board, rs: []) {
+  match admit_copper(nets: board_nets, board: board, rs: []) {
     CopperRefused { causes: _ } => false
     CopperAdmitted { realizations: _ } =>
-      count(unrealized_nets(intent: intent, rs: [])) == 2
-        && !copper_is_complete_over_intent(intent: intent, rs: [])
+      count(unrealized_nets(nets: board_nets, rs: [])) == 2
+        && !copper_is_complete_over_nets(nets: board_nets, rs: [])
   }
 }
   }
@@ -263,9 +264,9 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
 test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
   let partial = realization_on(net: vcc, ordinal: 0)
   let full = partial + realization_on(net: gnd_net, ordinal: 1)
-  count(unrealized_nets(intent: intent, rs: partial)) == 1
-    && !copper_is_complete_over_intent(intent: intent, rs: partial)
-    && copper_is_complete_over_intent(intent: intent, rs: full)
+  count(unrealized_nets(nets: board_nets, rs: partial)) == 1
+    && !copper_is_complete_over_nets(nets: board_nets, rs: partial)
+    && copper_is_complete_over_nets(nets: board_nets, rs: full)
 }
 
 // RED control: THE CROSS-STACKUP CLASS. Both boards have three layers with identical functions at
@@ -281,10 +282,10 @@ test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
       let native = realization_on(net: vcc, ordinal: 1)
       count(foreign) == 1
         && count(native) == 1
-        && match admit_copper(intent: intent, board: board, rs: native) {
+        && match admit_copper(nets: board_nets, board: board, rs: native) {
           CopperRefused { causes: _ } => false
           CopperAdmitted { realizations: _ } =>
-            match admit_copper(intent: intent, board: board, rs: foreign) {
+            match admit_copper(nets: board_nets, board: board, rs: foreign) {
               CopperAdmitted { realizations: _ } => false
               CopperRefused { causes: c } =>
                 count(filter(c, x => match x {
