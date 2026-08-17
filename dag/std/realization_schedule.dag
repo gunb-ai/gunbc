@@ -401,24 +401,24 @@ data scoped_witness_exact_head_grounding_note: String = "Scoped witness executio
 
 fn scoped_witness_execution_result_from_columns(columns: List<String>) -> ScopedWitnessExecutionResult? {
   match columns {
-    Empty => none
-    Cons { head: head_sha, tail: after_head } => match after_head {
-      Empty => none
-      Cons { head: batch_id, tail: after_batch } => match after_batch {
-        Empty => none
-        Cons { head: source_roots_digest, tail: after_digest } => match after_digest {
-          Empty => none
-          Cons { head: entry, tail: after_entry } => match after_entry {
-            Empty => none
-            Cons { head: function, tail: after_function } => match after_function {
-              Empty => none
-              Cons { head: witness_kind_label, tail: after_kind } => match after_kind {
-                Empty => none
-                Cons { head: outcome_label, tail: after_outcome } => match after_outcome {
-                  Empty => none
-                  Cons { head: outcome_detail, tail: after_detail } => match after_detail {
-                    Cons { head: _, tail: _ } => none
-                    Empty =>
+    std.algebra.Empty => none
+    std.algebra.Cons { head: head_sha, tail: after_head } => match after_head {
+      std.algebra.Empty => none
+      std.algebra.Cons { head: batch_id, tail: after_batch } => match after_batch {
+        std.algebra.Empty => none
+        std.algebra.Cons { head: source_roots_digest, tail: after_digest } => match after_digest {
+          std.algebra.Empty => none
+          std.algebra.Cons { head: entry, tail: after_entry } => match after_entry {
+            std.algebra.Empty => none
+            std.algebra.Cons { head: function, tail: after_function } => match after_function {
+              std.algebra.Empty => none
+              std.algebra.Cons { head: witness_kind_label, tail: after_kind } => match after_kind {
+                std.algebra.Empty => none
+                std.algebra.Cons { head: outcome_label, tail: after_outcome } => match after_outcome {
+                  std.algebra.Empty => none
+                  std.algebra.Cons { head: outcome_detail, tail: after_detail } => match after_detail {
+                    std.algebra.Cons { head: _, tail: _ } => none
+                    std.algebra.Empty =>
                       if !scoped_witness_exact_head_text_holds(head: head_sha)
                         || batch_id == ""
                         || source_roots_digest == ""

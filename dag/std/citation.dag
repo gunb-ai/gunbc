@@ -239,7 +239,7 @@ fn text_quote_selector(
 }
 
 fn text_position_selector(start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt) -> CitationSelectorConstruction {
-  match nat_compare(a: end, b: start) {
+  match std.nat.nat_compare(a: end, b: start) {
     Less =>
       CitationSelectorRefused {
         cause: TextPositionEndBeforeStart { start: start, end: end },
