@@ -2125,7 +2125,7 @@ rather than repaired, for the reason in 16.2.
 
 | root | sites | authored decisions | ratio | what one decision is |
 |---|---:|---:|---:|---|
-| B1 algebra carrier | 509 | 1 | 509× | one closure-shape flag deciding the numeric representation |
+| B1 algebra carrier — **WITHDRAWN as one root, see §18** | ~~509~~ | ~~1~~ | — | was: one closure-shape flag. It is at least three mechanisms. |
 | K unsynthesized use-line | 132 | 1 | 132× | one collector that does not reach pattern / nested-argument positions |
 | T7 `Hash` collision | 105 | 1 | 105× | one row in `rust_type_checkpoints` |
 | A generic clone bound | 133 | 2 | 67× | two axes with complementary blind spots |
@@ -2237,3 +2237,68 @@ reported as emission change — attributed to the branch owner, by the measurer.
 **And the shared property of all three:** each is a control on the *instrument*, not on the
 subject, and each is cheap enough that its only real cost is remembering to run it before the
 result exists rather than after.
+
+## 18. B1 is not one root — the tighten-your-class audit run on my own largest bucket
+
+**§11.3 sized B1 at 509 sites (27.2%) and called it the largest root in the live corpus. That is
+withdrawn.** The class was assigned by keyword — rustc code in a set AND the signature *contains*
+`CommutativeSemiring` / `Magnitude` / `Measure<` / `Semiring` anywhere. Tightening it to *the
+carrier must be one side of an expected/found pair* leaves **54 of 509**.
+
+Re-decomposed by mechanism, over the same M=11 census:
+
+| mechanism | sites | share | moved by a repr flag? |
+|---|---:|---:|---|
+| operator on carrier (E0369) | 191 | 37.5% | **undetermined — not classified** |
+| derive: serde Serialize/Deserialize | 132 | 25.9% | no |
+| REPR: carrier expected, integer literal found | 92 | 18.1% | yes |
+| REPR: carrier vs another named type | 54 | 10.6% | yes |
+| derive: Debug | 35 | 6.9% | no |
+| other | 5 | 1.0% | — |
+
+**At most 146 sites are the repr mechanism I named.** The 191 E0369 rows are deliberately left
+unclassified: E0369 on a carrier is ambiguous between a missing trait impl and the repr fork, and
+guessing would repeat the error this section reports.
+
+### 18.1 The 167 derive-shaped sites are ONE declaration, and it is underivable
+
+Split by missing derive and by type:
+
+```
+96  serde::Deserialize      CommutativeSemiring<Magnitude>
+36  serde::Serialize        CommutativeSemiring<Magnitude>
+35  Debug                   CommutativeSemiring<Magnitude>
+                            distinct type names: 1     Hash: 0     Eq: 0
+```
+
+The emitted declaration says why no derive roster change can move them:
+
+```rust
+#[derive(Clone)]
+pub struct CommutativeSemiring<T> {
+    pub add:  Rc<dyn Fn(T, T) -> T>,
+    pub mul:  Rc<dyn Fn(T, T) -> T>,
+    pub zero: T, pub one: T, pub _phantom: PhantomData<T>,
+}
+```
+
+Two `Rc<dyn Fn>` fields — `serde` and `Debug` are not derivable on it in principle. So all 167 are
+T5b's modeling-decision class **on one declaration**. Zero are T5a: no site in the 167 is missing
+`Hash` or `Eq`, so the keyed-collection axis does not apply to any of them.
+
+**A correction I issued to the T5 owner and repeat here:** I first relayed that "whoever holds T5 is
+holding materially more than 27+44". The T5a half is wrong — that population is unchanged. The T5b
+half is right in sites and misleading in shape: **167 more sites, one more type.** Which is §16
+happening to my own correction — I reported a site count where the unit of work was one declaration.
+
+### 18.2 What the failure was
+
+I grouped by mechanism in every root except the largest, where I grouped by a keyword naming a
+**type**. A type name in a diagnostic says the carrier was *involved*; it does not say *how*. The
+dispatch brief that opened this lane said "group by mechanism, not by error code" — and the same
+warning applies to grouping by symbol, which is what a type-name keyword is. The population was
+large enough to hide three mechanisms inside one plausible name.
+
+**Consequence for anyone measuring the repr cut:** a `RustCorpusRepr` change should be expected to
+move the repr-shaped sites, at most 146 and possibly fewer — **not 509.** If a receipt shows far
+less than 509 moving, that is this mis-sizing and not an underperforming cut.
