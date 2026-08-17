@@ -723,3 +723,76 @@ What this does NOT establish: that qualification is the terminal form. DESIGN's
 namespace census intends bare references to resolve by containment for globally
 unique names, and that work remains. Qualification is the form that compiles
 now, and it is compatible with that end state rather than a substitute for it.
+
+## The qualification redrive, measured: it does not pay, and the count is the wrong oracle
+
+Executed, on one entry closure (`dag/extdeps/version/semver.dag`), with a
+`gunbc` built from this branch. Both arms resolved the SAME closure -- 790
+sources -- so the denominators are identical and the numbers are comparable.
+
+```
+baseline (references left BARE)                165 diagnostics,  57 files
+qualified, first attempt                       389
+  + kernel optional variants left bare         281
+```
+
+Qualification made it WORSE, and stayed worse after two rounds of fixes. The
+set-diff at the first attempt was 10 fixed against 108 new, so the aggregate was
+never the interesting quantity.
+
+**Three causes were identified, each by execution.** The first two are defects in
+the rewriting pass and are fixed: `test fn` declarations, `let` binders, lambda
+parameters and function parameters were all being qualified as though they were
+cross-module references, which is nonsense -- they name locals. The third is not
+a defect in the pass at all and is the important one.
+
+**The kernel/modelled Optional fork.** `sugar_sequence_pair_optional` returns
+`SugarSequencePair?`. The `?` sugar produces the KERNEL optional, whose
+`Present`/`Absent` are not the same type as the modelled `v2.std.optional`
+variants. Bare `Present` matched the kernel value; `v2.std.optional.Present`
+does not, so the pattern binds nothing, the scrutinee degrades to a generic `T`,
+and every field access on it refuses. That single substitution accounted for 108
+of the new diagnostics -- roughly 2% of the edits causing about 60% of the
+damage. Leaving those variants bare is not a workaround; it is correct, because
+the name in that position genuinely refers to the kernel constructor. This is
+the model-vs-realization fork DESIGN already tracks as an open thread, reached
+from a new direction.
+
+**Why the residue is small but the gap is not.** Wrong qualification TARGETS --
+a name imported from a module that re-exports it rather than declaring it -- are
+only 520 of ~62,800 import bindings (0.8%), and only four distinct ones appear
+in the diagnostics. Fixing them cannot close a 116-diagnostic gap, so the
+remaining difference is not explained by bad targets.
+
+### The measurement itself is suspect, and this is the finding
+
+Comparing diagnostic COUNTS between the bare corpus and the qualified corpus
+compares two broken states, and fewer messages does not mean closer to correct.
+A bare cross-module reference that happens to resolve produces NO diagnostic --
+and DESIGN's Class B says exactly how it resolves: by pool-membership
+coincidence, because some unrelated module elsewhere in the closure dragged the
+target in. Those silent bindings are counted as successes by this oracle while
+being precisely the accidental coverage the cut exists to remove.
+
+So the baseline's 165 is not a better state that qualification regressed from.
+It is a state whose failures are partly INVISIBLE to the instrument being used
+to judge it. A qualified corpus can be more correct AND report more
+diagnostics, because qualification converts silent coincidental binding into a
+located refusal -- which is what §5 asks for.
+
+**What is needed instead of a count** is a binding-identity oracle: for each
+cross-module reference, does it bind to the declaration the pre-cut import
+identified? That question is decidable against the declaration index built here
+(73,393 names, 98.5% uniquely declared, matching DESIGN's namespace census), and
+it does not care how many diagnostics either arm emits. Until such an oracle
+exists, neither "165" nor "281" should be quoted as evidence about this branch.
+
+### Disposition
+
+The 2,941-file qualification is NOT committed. It is preserved on this branch as
+a git stash ("namespace-cut: corpus-wide qualification (2941 files, unproven)")
+together with the rewriting tool, so the work is recoverable without asserting
+an unproven change into the PR. The tool now protects declarations, `let`
+binders, lambda parameters, function parameters and kernel optional variants,
+and a parallel per-file parse sweep reports zero parse failures across all
+changed files.
