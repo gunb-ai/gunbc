@@ -41892,6 +41892,8 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut claim_rss_kb_max: u64 = 0;
+    let mut claim_rss_kb_max_row = String::new();
     let mut scope_kb_total: u64 = 0;
     let mut scope_kb_max: u64 = 0;
     let mut scope_kb_max_module = String::new();
@@ -41956,8 +41958,39 @@ pub fn run_required_floor(
         frame.set_witness_eval_budget(Some(claim.budget_ms));
         frame.set_witness_wall_budget(Some(claim.budget_ms));
         set_phase(FloorPhase::Eval, &claim.qualified);
+        // WHAT ONE CLAIM COSTS IN MEMORY, for the same reason the scope is measured beside it:
+        // the fold's resident set swings ~5.6GB and the scope turned out to account for 0.02GB
+        // of it, so the remainder is unattributed and the only honest way to attribute it is to
+        // read it where it happens. A claim's frame owns mutable evaluation caches (call memo,
+        // data cache, name caches) that live exactly as long as the claim, so a row that walks
+        // a large population can cost far more than the scope it walks.
+        //
+        // This matters beyond memory now: the runner throttles at `memory.high`, and under
+        // throttling WALL time inflates while thread-CPU does not — so a row that drives the
+        // resident set into the watermark inflates the wall measurement of every row near it,
+        // including its own. Naming the rows that cost the most is therefore the first step in
+        // separating expensive witnesses from witnesses that merely ran next to one.
+        let claim_rss_before = current_rss_bytes().unwrap_or(0) / 1024;
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
+        let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
+        let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
+        if claim_rss_kb > claim_rss_kb_max {
+            claim_rss_kb_max = claim_rss_kb;
+            claim_rss_kb_max_row = claim.qualified.clone();
+        }
+        // A quarter of a gigabyte in ONE row is loud, because a row that costs that much is
+        // both a memory subject in its own right and the reason its neighbours' wall times
+        // cannot be trusted. Threshold is a reporting choice, not a verdict: nothing refuses on
+        // it, it only makes the population visible so it can be ranked.
+        if claim_rss_kb > 262_144 {
+            eprintln!(
+                "[floor-claim-memory] {} grew rss by {:.2}GB (to {:.2}GB)",
+                claim.qualified,
+                claim_rss_kb as f64 / 1048576.0,
+                claim_rss_after as f64 / 1048576.0
+            );
+        }
         outcome.claims_executed += 1;
         receipted.insert(claim.qualified.clone());
         style.stream_witness(
@@ -42058,6 +42091,15 @@ pub fn run_required_floor(
         scope_kb_max_modules,
         scope_kb_total as f64 / 1048576.0,
         scope_constructions
+    );
+    eprintln!(
+        "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
+        claim_rss_kb_max as f64 / 1048576.0,
+        if claim_rss_kb_max_row.is_empty() {
+            "-"
+        } else {
+            claim_rss_kb_max_row.as_str()
+        }
     );
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently
