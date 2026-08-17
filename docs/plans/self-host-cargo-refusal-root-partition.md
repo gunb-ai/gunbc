@@ -1215,8 +1215,8 @@ cause.
 |---|---|---|---|
 | B — algebra/numeric carrier, closure flag | ~~509~~ → **at most 146 repr-shaped (§18)**, and narrower still: sites whose type carries a checkpoint row do not move | `eager-deer-389` | identity-keying design; flip control executed both directions |
 | C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
-| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | `vivid-wren-870` | `Witness` row deletion ready; alias half entangled with B |
-| A — derive/bounds | **unknown; under challenge** | this session | see 12.5 |
+| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` | **both halves LANDED** — half 1 as `bbb52138b25` ([PR #8350](https://github.com/gunb-ai/gunbc/pull/8350)), which also retired an enrolled witness that had been asserting the broken shape; half 2 as `7cfeb6f0fd7` ([PR #8341](https://github.com/gunb-ai/gunbc/pull/8341)), deleting the `Witness` checkpoint-scalar rows so scalar arity derives from its single authority |
+| A — derive/bounds | **LANDED**, [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as `c4e9cc918c5` | this session | see 12.5 for what the diagnosis got wrong on the way |
 | tail — six mid-sized roots + 62 singletons | 1,874 distinct total | `smart-ibex-716` | partitioned, §11 |
 
 **Live collision:** B and D both land on `rust_scalar_checkpoint_render_base`. The split asked for
@@ -1241,8 +1241,32 @@ suspicious independent of which trigger scopes what. A's split into CloneSharedR
 TargetApiRequirement 168 / OwnedDeconstructionRequirement 63 came from the same July TSV that
 produced two of the dead claims in 12.2.
 
-**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
-land, treat A as unpartitioned, not as diagnosed.**
+~~**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
+land, treat A as unpartitioned, not as diagnosed.**~~ — **SUPERSEDED by the RESOLVED block below;
+A is landed, not open.** Struck rather than deleted because the instruction was correct when
+written and the paragraph above it records *why* the then-current diagnosis was refused, which is
+the part that still governs.
+
+**RESOLVED 2026-08-17 — and the challenge above was right, which is why what landed is not what
+this section proposed.** [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as
+`c4e9cc918c5`: *split the clone-bounds map into the two facts it was answering.* The fix is a
+fused-map decomposition, not the coproduct-skip edit the retracted diagnosis pointed at — the skip
+is still there and still deliberate, exactly as `trait_derive_emit_item_clone_bound_wf_propagation_note`
+defends it. The E0599-vs-E0277 mismatch this section flagged is what kept that edit from being made.
+
+Two receipts worth keeping, because both were nearly missed:
+
+- **The landed change needed a stage0 regeneration that was not in the first push.** Four generated
+  files (`v1_compiler_emit_rust`, `v1_compiler_infer`, `v1_compiler_infer_emit_info`,
+  `v1_compiler_trait_derive_emit`) were stale against the `.dag` edit; `regen` was green on the
+  final head, which is the receipt that matters.
+- **Two regen runs before that reported a PERFECT FIXED POINT while measuring nothing.**
+  `ctrl-build --remote` syncs to the *invoking* head, and the fix lived on a different branch, so
+  the runs compiled a tree that never contained it. A wrong-branch arm is worse than a stale one —
+  correct SHA, correct binary, correct argv, clean provenance, and every other check passes on it.
+  Only a subject-presence grep printed beside the verdict (`grep -c` on a construct the change
+  introduces: 0 in base, >0 in the change arm) distinguishes the two. Anyone regenerating stage0
+  for a root fix should print that count next to the fixed-point verdict, always.
 
 ### 12.6 Adjacent, landed: the self-host frontier roster is deleted
 
@@ -2317,3 +2341,21 @@ large enough to hide three mechanisms inside one plausible name.
 **Consequence for anyone measuring the repr cut:** a `RustCorpusRepr` change should be expected to
 move the repr-shaped sites, at most 146 and possibly fewer — **not 509.** If a receipt shows far
 less than 509 moving, that is this mis-sizing and not an underperforming cut.
+
+### 18.3 The measured Root B flip, and one retraction
+
+`smart-ibex-716` executed the flip in both directions. **What holds, measured:** 211 → 204 errors,
+203 → 196 sites, with 195 common, 8 removed and 1 added; containment 0-of-18 disjoint.
+
+**Retracted in full and recorded so nobody re-derives it:** a reading that 43 sites showed renderer
+inconsistency, that 18 sites reassigned from B to R1, and that the two roots were fused. The
+specimen behind it was read from a different module's artifact. Nothing from that reading reached a
+carrier.
+
+**What survives from it is worth more than the retracted claim.** The leaf name `Nat` denotes two
+different types under two module authorities — `01_tokenize`'s is an enum, not the algebra alias —
+so **a census pooled across modules is keyed on a name that is not unique over the population it
+pools.** That is §18.2's failure one level deeper: grouping by a type name is unsound not only
+because a name says involvement rather than mechanism, but because the same name may not denote one
+type at all. Key on resolved type identity per artifact, never on the printed name, and allow a site
+to carry more than one root.
