@@ -2,7 +2,9 @@ module extdeps.cpu.amd
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cpu.types { CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, PinGridArray }
+import extdeps.cpu.types {
+  SocketedPinGrid,
+  SocketedLandGrid, CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SocketFactCitation }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
@@ -26,6 +28,17 @@ data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.amd.com/en/products/cpu/amd-ryzen-7-pro-8700ge"
+  }
+}
+
+// SOCKET AM5 IS LGA, NOT PGA. Both Zen 4 rows below recorded PinGridArray at 1718 contacts, which
+// is the termination AMD used through AM4 and abandoned at AM5 -- the socket is a zero insertion
+// force flip-chip land grid array, so the processor presents lands and the socket presents the
+// springs. The count was already right; the termination was carried over from the AM4 rows.
+data socket_am5_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Socket_AM5"
   }
 }
 
@@ -74,6 +87,31 @@ data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
   },
 ]
 
+// THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
+// correct 1718 count; an uncited socket field is what let a wrong termination sit beside a right
+// number without anything to check it against.
+data socket_am4_citations: List<SocketFactCitation> = [
+  SocketFactCitation {
+    field: "package",
+    authority: amd_ryzen_5_3600_authority,
+  },
+  SocketFactCitation {
+    field: "contact_count",
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data socket_am5_citations: List<SocketFactCitation> = [
+  SocketFactCitation {
+    field: "package",
+    authority: socket_am5_authority,
+  },
+  SocketFactCitation {
+    field: "contact_count",
+    authority: socket_am5_authority,
+  },
+]
+
 data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   data_capacity_per_core: byte_size(32768),
   instruction_capacity_per_core: byte_size(32768),
@@ -119,7 +157,8 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 6,
   threads: hardware_thread_count(12),
   nominal_sustained_per_thread_hz: hertz(3600000000),
-  socket: CpuSocket { package: PinGridArray, contact_count: 1331 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1331 },
+  socket_citations: socket_am4_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
@@ -137,7 +176,8 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 8,
   threads: hardware_thread_count(16),
   nominal_sustained_per_thread_hz: hertz(3300000000),
-  socket: CpuSocket { package: PinGridArray, contact_count: 1718 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 },
+  socket_citations: socket_am5_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -155,7 +195,8 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 16,
   threads: hardware_thread_count(32),
   nominal_sustained_per_thread_hz: hertz(4200000000),
-  socket: CpuSocket { package: PinGridArray, contact_count: 1718 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 },
+  socket_citations: socket_am5_citations,
   tdp_watts: watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -185,3 +226,15 @@ data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
     sustained_per_thread_hz: hertz(4200000000),
   },
 }
+
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS. It lives here rather than in a witness so that a
+// consumer asking "every AMD processor this repository models" reads one authority, and so that
+// an author adding a row is editing the roster in the same file rather than remembering a test
+// elsewhere. The roster is still hand-authored -- a genuinely closed denominator would have to be
+// discovered from the module tree, which is lens work -- so this narrows the gap rather than
+// closing it, and says so.
+data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+  ryzen_5_3600_catalog,
+  ryzen_7_pro_8700ge_catalog,
+  ryzen_9_7950x3d_catalog,
+]

@@ -87,6 +87,7 @@ fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
 type DeploymentArtifactStep {
   kind: OwnedArtifactKind
   path: NonEmptyStr
+  serve_route_key: TailscaleServeRouteKey?
 }
 
 type DeploymentDependencyStep {
@@ -164,7 +165,10 @@ type DeploymentServiceConfig {
 // eval_budget_cpu_ms=unset eval_budget_wall_ms=unset`. The per-request deadline machinery
 // existed and was armed around every route call, and both CLI flags existed typed
 // Option<u64> — the unit simply never passed them, so every request was armed with None.
-// cli_run handle_serve states the consequence itself: the 500 existed and was unreachable,
+// cli_run handle_serve stated the consequence itself: the 500 existed and was unreachable,
+// (that handler was deleted by the cli-run driver cut, PR #8286; the citation is HISTORICAL —
+// it records what the seam said when the incident was measured, and a reader should not expect
+// to find the symbol at HEAD. The measurement it grounds is unaffected: the incident happened.)
 // and because the accept loop is serial the stuck request held the accept queue for every
 // later one. That is how ~1.5s of per-request work became a 10-16 hour unresponsive
 // dashboard: nothing made a request slow, nothing made it STOP.
