@@ -41780,16 +41780,8 @@ pub fn run_required_floor(
     // only checkable if the table is built before anything runs.
     floor_seam("claim-scope-projection");
     let scope_start = std::time::Instant::now();
-    let mut scopes: std::collections::HashMap<String, PreparedClaimScope> =
-        std::collections::HashMap::new();
-    for claim in &claims {
-        if !scopes.contains_key(&claim.module_path) {
-            scopes.insert(
-                claim.module_path.clone(),
-                claim_scope_for(&prepared, &claim.module_path)?,
-            );
-        }
-    }
+    let distinct_scopes: std::collections::BTreeSet<&str> =
+        claims.iter().map(|c| c.module_path.as_str()).collect();
     // SCOPE SIZE IS REPORTED, because it is the quantity every per-claim cost is proportional to.
     //
     // A context's lazily-built indexes are derived from the scope's module population and rebuilt
@@ -41798,35 +41790,63 @@ pub fn run_required_floor(
     // multiplicand and the fold's cost moved with it. Reporting only the projection's own
     // duration hides that entirely: the projection is where scopes are BUILT, and the fold is
     // where their size is PAID.
-    let mut sizes: Vec<usize> = scopes.values().map(|s| s.indexes.modules.len()).collect();
-    sizes.sort_unstable();
-    let total: usize = sizes.iter().sum();
+    // SCOPES ARE NO LONGER RETAINED, and the census that required retaining them never did.
+    //
+    // The table above held one `PreparedClaimScope` per distinct claim module — 1,383 of them
+    // over a 3,646-module corpus at a mean of 511.5 modules each, so every module's structures
+    // were materialized around 192 times. Measured, that table WAS the floor's memory: manifest
+    // evaluation sat flat at 9.94 GB and scope projection added 25 GB before a single witness
+    // ran. It was built eagerly on the stated ground that "how many scopes exist" must be a
+    // question about the manifest rather than about execution history.
+    //
+    // That ground is sound and the table was not what established it. The manifest's distinct
+    // scope identities are exactly the distinct module paths its claims name, which is a fact
+    // about `claims` — countable without constructing anything, and counted here BEFORE the
+    // fold, so the census keeps the property it was built for.
+    //
+    // What replaces the table is a stream: the fold holds at most one scope, rebuilding when the
+    // claim module changes. Claims arrive grouped by module, so the number of constructions
+    // tracks the number of distinct scopes rather than the number of claims — and because that
+    // is a property of the manifest's order rather than a guarantee, the fold COUNTS its
+    // constructions and reports them against this number. A grouping that degrades shows up as
+    // constructions far above distinct scopes, loudly, instead of as silent rebuilding.
     eprintln!(
-        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves) \
-         modules_per_scope min={} p50={} p90={} max={} mean={:.1} corpus={}",
-        scopes.len(),
+        "floor: {} distinct claim scope(s) named by the manifest, counted in {}ms \
+         (0 reads, 0 parses, 0 resolves, 0 scopes retained) corpus={}",
+        distinct_scopes.len(),
         scope_start.elapsed().as_millis(),
-        sizes.first().copied().unwrap_or(0),
-        sizes.get(sizes.len() / 2).copied().unwrap_or(0),
-        sizes.get(sizes.len() * 9 / 10).copied().unwrap_or(0),
-        sizes.last().copied().unwrap_or(0),
-        if sizes.is_empty() {
-            0.0
-        } else {
-            total as f64 / sizes.len() as f64
-        },
         prepared.graph.modules.len()
     );
 
     floor_seam("claim-evaluation-fold");
     let eval_started = std::time::Instant::now();
+    // AT MOST ONE SCOPE IS ALIVE. Rebuilt when the claim module changes, dropped when it is
+    // replaced. See the projection note above for why the table it replaces was the floor's
+    // memory and why its census survives without it.
+    let mut current_scope: Option<(String, PreparedClaimScope)> = None;
+    let mut scope_constructions: usize = 0;
+    let mut scope_module_total: usize = 0;
+    let mut scope_module_max: usize = 0;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
         }
-        let scope = scopes
-            .get(&claim.module_path)
-            .expect("every claim's scope was projected above");
+        if current_scope.as_ref().map(|(module, _)| module.as_str())
+            != Some(claim.module_path.as_str())
+        {
+            // Dropped before the next is built, not after: holding both would put two scopes
+            // resident at the seam and defeat the point of streaming them.
+            drop(current_scope.take());
+            let built = claim_scope_for(&prepared, &claim.module_path)?;
+            scope_constructions += 1;
+            scope_module_total += built.indexes.modules.len();
+            scope_module_max = scope_module_max.max(built.indexes.modules.len());
+            current_scope = Some((claim.module_path.clone(), built));
+        }
+        let scope = &current_scope
+            .as_ref()
+            .expect("a scope was just built for this claim's module")
+            .1;
         // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
         // evaluation caches a context owns, or one witness contaminates the next through a
         // memo rather than through anything it declared.
@@ -41901,6 +41921,23 @@ pub fn run_required_floor(
     eprintln!(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
+    );
+    // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
+    // by module and each scope was built exactly once; higher means it was not, and the excess
+    // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
+    // because the sizes are observed as scopes are built, not read off a retained table.
+    eprintln!(
+        "floor: {} scope construction(s) for {} distinct scope(s) \
+         modules_per_scope mean={:.1} max={} corpus={}",
+        scope_constructions,
+        distinct_scopes.len(),
+        if scope_constructions == 0 {
+            0.0
+        } else {
+            scope_module_total as f64 / scope_constructions as f64
+        },
+        scope_module_max,
+        prepared.graph.modules.len()
     );
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently
