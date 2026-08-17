@@ -9375,6 +9375,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
+  let module_type_env_cache = TypeEnvCache {
+    deps_map: env_cache.deps_map,
+    str_bindings: env_cache.str_bindings,
+    cycle_set_str: env_cache.cycle_set_str,
+    variant_locals: ctx.variant_locals
+  }
   let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
@@ -9383,22 +9389,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       module: typed_module,
       items: reannotated_items,
       type_env: env,
-      type_env_cache: TypeEnvCache {
-        deps_map: env_cache.deps_map,
-        str_bindings: env_cache.str_bindings,
-        cycle_set_str: env_cache.cycle_set_str,
-        variant_locals: ctx.variant_locals
-      },
+      type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
         env: env,
-        cache: TypeEnvCache {
-          deps_map: env_cache.deps_map,
-          str_bindings: env_cache.str_bindings,
-          cycle_set_str: env_cache.cycle_set_str,
-          variant_locals: ctx.variant_locals
-        },
+        cache: module_type_env_cache,
         source_indices: source_indices
       ),
       func_env: updated_func_env,
