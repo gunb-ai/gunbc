@@ -463,3 +463,48 @@ at whole-corpus grain through this path until the recursion is repaired or the
 harness is scoped. Scoping it is the better instrument anyway: the subject is
 157 files, and building the whole world to ask about a known population is the
 same over-scoping this branch already cut out of two witnesses.
+
+## Correction: 3,096 is a FLOOR, and the two-driver contrast dissolves
+
+Both corrections come from one check — do two instruments I compared actually
+do the same work — prompted by review rather than by my own reading.
+
+**The contrast dissolves.** I reported that `gunbc compile` completes over the
+same corpus where a `compile_to_resolved` harness faults, and read that as two
+drivers on one subject. They are not one subject:
+
+```
+CLI     resolved 2394 sources (transitive import closure)
+        1353 indexed modules enter the name census only (NOT compiled)
+audit   3747 sources in one vector
+```
+
+The CLI does reach FURTHER through the phase sequence — it completes reconcile
+and analyses where the harness faults in reconcile — so it is not stopping
+early. But it was fed a smaller population, so "one faults and one does not" is
+not attributable to the driver. It is not a localizer and I am not building on
+it.
+
+**And the headline number is a floor.** The same line corrects a number I have
+been quoting all session:
+
+```
+main    2621 of 3756 compiled  ->    32 diagnostics
+branch  2394 of 3747 compiled  ->  3096 diagnostics
+```
+
+The branch is measured over FEWER modules than main, and 1,353 modules were
+never compiled at all. So 3,096 is a lower bound on the cut's corpus damage,
+not a measurement of it, and the gap is not random: the CLI drives its
+whole-corpus compile from the transitive IMPORT closure, which is exactly what
+this branch deletes. With imports gone nothing pulls a module that nothing
+imports, so the modules most likely to be broken by the cut are precisely the
+ones the instrument cannot see.
+
+**That makes the measurement gap the same fact as the defect.** The import
+graph is not the reference graph. Measuring this branch through an import-driven
+closure is measuring the cut with the instrument the cut removes. Any real
+number for the corpus requires a reference closure — the edges the compiler
+actually resolved — which is the authority `sleek-moth-351` is building for the
+floor's scope derivation. That is one authority, not two, and this lane should
+consume theirs rather than fork a second.
