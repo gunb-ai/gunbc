@@ -33,17 +33,17 @@ data board_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef 
   field: std.decl_ref.WholeDeclaration,
 }
 
-data vcc: product.compute_board.analog.NetIdentity = "VCC" as product.compute_board.analog.NetIdentity
-data gnd_net: product.compute_board.analog.NetIdentity = "GND" as product.compute_board.analog.NetIdentity
-data absent_net: product.compute_board.analog.NetIdentity = "SPI_CLK" as product.compute_board.analog.NetIdentity
+data vcc: NetIdentity = "VCC" as NetIdentity
+data gnd_net: NetIdentity = "GND" as NetIdentity
+data absent_net: NetIdentity = "SPI_CLK" as NetIdentity
 
 // THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
 // intent, so this witness hands it a roster belonging to no analog article at all. If the carrier
 // still required an AnalogCircuitIntent this file would not compile, which makes the decoupling a
 // fact the suite depends on rather than a claim in a comment.
-data board_nets: List<product.compute_board.analog.ElectricalNet> = [
-  product.compute_board.analog.ElectricalNet { identity: vcc, members: [] },
-  product.compute_board.analog.ElectricalNet { identity: gnd_net, members: [] },
+data board_nets: List<ElectricalNet> = [
+  ElectricalNet { identity: vcc, members: [] },
+  ElectricalNet { identity: gnd_net, members: [] },
 ]
 
 // A SECOND, DIFFERENT BOARD. Same layer count and same functions at every ordinal, differing only
@@ -148,7 +148,7 @@ test fn w_red_a_negative_ordinal_refuses() -> Bool {
     && admitted_three_layer_selection(ordinal: 0)
 }
 
-fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef, net: product.compute_board.analog.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
+fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef, net: NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: s, authority: authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => []
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -159,7 +159,7 @@ fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.D
   }
 }
 
-fn realization_on(net: product.compute_board.analog.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
+fn realization_on(net: NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => []
     product.pcb.stackup.StackupAdmitted { admitted: a } =>

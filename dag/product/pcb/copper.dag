@@ -2,7 +2,7 @@ module product.pcb.copper
 
 
 // COPPER REALIZES A NET; IT DOES NOT DEFINE ONE. The logical net authority is
-// product.compute_board.analog's ElectricalNet, and this module consumes it. A second net type
+// product.electrical.connectivity's ElectricalNet, and this module consumes it. A second net type
 // here would be the fork DESIGN section 3 forbids, and it would be the expensive kind: the two
 // would drift silently, because a copper net and a schematic net that disagree still both compile.
 //
@@ -103,19 +103,19 @@ fn copper_layer_function(r: CopperLayerRef) -> product.pcb.stackup.CopperLayerFu
 // the net's members, because membership is the schematic's fact and duplicating it here is how the
 // two representations start to disagree.
 type NetCopperRealization {
-  net: product.compute_board.analog.NetIdentity
+  net: NetIdentity
   layer: CopperLayerRef
 }
 
 type CopperRefusalCause
-  = RealizationNamesNoSuchNet { net: product.compute_board.analog.NetIdentity }
-  | RealizationSelectedAgainstAnotherStackup { net: product.compute_board.analog.NetIdentity }
-  | NetSplitAcrossLayersWithoutAConnection { net: product.compute_board.analog.NetIdentity }
-  | NetHasTwoConductorsOnOneLayer { net: product.compute_board.analog.NetIdentity }
-  | InterlayerConnectionNamesNoSuchNet { net: product.compute_board.analog.NetIdentity }
-  | InterlayerConnectionSelectedAgainstAnotherStackup { net: product.compute_board.analog.NetIdentity }
-  | InterlayerConnectionJoinsALayerToItself { net: product.compute_board.analog.NetIdentity, ordinal: Int }
-  | InterlayerConnectionEndpointHasNoConductor { net: product.compute_board.analog.NetIdentity, ordinal: Int }
+  = RealizationNamesNoSuchNet { net: NetIdentity }
+  | RealizationSelectedAgainstAnotherStackup { net: NetIdentity }
+  | NetSplitAcrossLayersWithoutAConnection { net: NetIdentity }
+  | NetHasTwoConductorsOnOneLayer { net: NetIdentity }
+  | InterlayerConnectionNamesNoSuchNet { net: NetIdentity }
+  | InterlayerConnectionSelectedAgainstAnotherStackup { net: NetIdentity }
+  | InterlayerConnectionJoinsALayerToItself { net: NetIdentity, ordinal: Int }
+  | InterlayerConnectionEndpointHasNoConductor { net: NetIdentity, ordinal: Int }
 
 // ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
 // is renamed in the schematic and its copper realization keeps the old identity, so the board has a
@@ -129,15 +129,16 @@ type CopperRefusalCause
 // copper carrier could only have acquired the motherboard as a consumer by making the motherboard
 // impersonate a three-part analog board.
 //
-// ElectricalNet is already general: its members are component-and-terminal identities, which say
-// nothing about what kind of component. Only the wrapper was specimen-bound. HOMING IS STILL WRONG
-// and is the declared next step -- these net concepts live in a specimen module and belong in a
-// connectivity authority both the analog article and this consume.
-fn net_exists(nets: List<product.compute_board.analog.ElectricalNet>, net: product.compute_board.analog.NetIdentity) -> Bool {
+// ElectricalNet was already general: its members are component-and-terminal identities, which say
+// nothing about what kind of component. Only the wrapper was specimen-bound, which is why the fix
+// was to extract the general grain rather than to move the specimen -- product.electrical
+// .connectivity now owns it and the analog article consumes it on the same footing this module
+// does, so neither is the other's authority.
+fn net_exists(nets: List<ElectricalNet>, net: NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
 
-fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: product.compute_board.analog.NetIdentity) -> std.types.List<NetCopperRealization> {
+fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: NetIdentity) -> std.types.List<NetCopperRealization> {
   filter(rs, r => r.net == net)
 }
 
@@ -154,7 +155,7 @@ fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: product.co
 // derive from intent.nets, so the population is the schematic's, and a realization naming a net the
 // schematic lacks is still caught by RealizationNamesNoSuchNet rather than silently skipped.
 fn copper_refusal_causes(
-  nets: List<product.compute_board.analog.ElectricalNet>,
+  nets: List<ElectricalNet>,
   board: product.pcb.stackup.AdmittedStackup,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
@@ -401,7 +402,7 @@ fn admitted_copper_board(a: AdmittedCopper) -> DeclarationRef {
 }
 
 fn admit_copper(
-  nets: List<product.compute_board.analog.ElectricalNet>,
+  nets: List<ElectricalNet>,
   board: product.pcb.stackup.AdmittedStackup,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
@@ -419,10 +420,10 @@ fn admit_copper(
 // realized at all. Fusing them would let a board with two correct traces and forty unrouted nets
 // report as admitted-and-therefore-done, which is the completeness-versus-verdict conflation
 // PcbBodyLayoutStanding already had to split into separate arms.
-fn unrealized_nets(nets: std.types.List<product.compute_board.analog.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.types.List<product.compute_board.analog.ElectricalNet> {
+fn unrealized_nets(nets: std.types.List<ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.types.List<ElectricalNet> {
   filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) == 0)
 }
 
-fn copper_is_complete_over_nets(nets: std.types.List<product.compute_board.analog.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
+fn copper_is_complete_over_nets(nets: std.types.List<ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
   count(unrealized_nets(nets: nets, rs: rs)) == 0
 }
