@@ -1,6 +1,9 @@
 name: required-floor-census
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - session/valiant-hawk-198
 permissions:
   contents: read
 concurrency:
