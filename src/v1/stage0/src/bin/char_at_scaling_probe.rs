@@ -22,7 +22,9 @@
 //! DISSOLUTION (own trigger, independent of `json_parse_scaling_probe.rs`'s — see
 //! `char_at_scaling_probe_dissolution` in `dag/gunbc/char_at_scaling_probe_support.dag`,
 //! DESIGN §5's same-unit rule): delete this bin when CHARAT-0's `char_at` O(1) property is
-//! floor-enrolled with a modeled witness, or when this measurement refutes the hypothesis.
+//! floor-enrolled with a modeled witness, or when a fresh run's own printed TSV (the
+//! CHECKABLE RECEIPT below) shows `mean_call_us` growing with `string_len` across the
+//! `CHAR_AT_PROBE_LENGTHS` range instead of staying flat.
 //! Receipt: `rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER src/v1/stage0` until deletion.
 
 /// Grep receipt for scaffold dissolution (`rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`).
