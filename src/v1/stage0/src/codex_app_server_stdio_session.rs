@@ -220,14 +220,11 @@ fn poll_thread_start_id(
     timeout: Duration,
 ) -> Result<String, String> {
     let deadline = Instant::now() + timeout;
-    let id_needle = format!("\"id\":{rpc_id}");
     loop {
         let snapshot = stdout_buf.lock().unwrap().clone();
         for line in snapshot.lines() {
-            if line.contains(&id_needle) {
-                if let Some(id) = extract_thread_id_from_line(line) {
-                    return Ok(id);
-                }
+            if let Some(id) = extract_thread_id_for_rpc_response(line, rpc_id) {
+                return Ok(id);
             }
         }
         if Instant::now() >= deadline {
@@ -237,9 +234,24 @@ fn poll_thread_start_id(
     }
 }
 
-fn extract_thread_id_from_line(line: &str) -> Option<String> {
+fn json_rpc_id_matches(value: &serde_json::Value, expected: i64) -> bool {
+    match value {
+        serde_json::Value::Number(n) => n.as_i64() == Some(expected),
+        serde_json::Value::String(s) => s.parse::<i64>().ok() == Some(expected),
+        _ => false,
+    }
+}
+
+fn extract_thread_id_for_rpc_response(line: &str, rpc_id: i64) -> Option<String> {
     let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
     let parsed: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    let id_value = parsed.get("id")?;
+    if !json_rpc_id_matches(id_value, rpc_id) {
+        return None;
+    }
     let result = parsed.get("result")?;
     let thread = result.get("thread")?;
     let id = thread.get("id")?;
@@ -464,5 +476,24 @@ mod tests {
         let line = build_turn_start_line(5, "thread-1", "say \"hi\" and \\ backslash").unwrap();
         assert!(line.contains(r#"\"hi\""#));
         assert!(line.contains(r#"\\"#));
+    }
+
+    #[test]
+    fn extract_thread_id_for_rpc_response_requires_exact_id_match() {
+        let line_id4 = r#"{"jsonrpc":"2.0","id":4,"result":{"thread":{"id":"thread-uuid-1"}}}"#;
+        let line_id41 = r#"{"jsonrpc":"2.0","id":41,"result":{"thread":{"id":"wrong-thread"}}}"#;
+        assert_eq!(
+            extract_thread_id_for_rpc_response(line_id4, 4),
+            Some("thread-uuid-1".to_string())
+        );
+        assert_eq!(extract_thread_id_for_rpc_response(line_id41, 4), None);
+    }
+
+    #[test]
+    fn substring_id_needle_would_false_positive_on_id_41() {
+        let line_id41 = r#"{"jsonrpc":"2.0","id":41,"result":{"thread":{"id":"wrong-thread"}}}"#;
+        let false_positive_needle = "\"id\":4";
+        assert!(line_id41.contains(false_positive_needle));
+        assert_eq!(extract_thread_id_for_rpc_response(line_id41, 4), None);
     }
 }
