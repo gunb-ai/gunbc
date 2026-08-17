@@ -146,7 +146,6 @@ fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagno
   }
 }
 
-data wrap_decision_flow_reconciliation_note: String = "R1's construction half. wrap_decision_gate answers ONE position at a time, and every consumer of it -- here and in v1's seed emitter -- then acts on that answer alone. A value does not live at one position: it is produced at one and consumed at another, and when the two answers differ the emitted program carries a type error that no compiler stage located, because no stage ever compared them. Measured on the emitted corpus that defect is ten types and fourteen occurrences, every one wrapped at every signature occurrence and bare at one or more field occurrences, and it produces BOTH error directions from one inconsistency: a producer's Rc<T> assigned into a bare consumer is the over-wrap, a bare producer read into an Rc<T> consumer is the under-wrap. So the flow, not the position, is the unit that has to be decided. wrap_decision_flow_gate is that unit: it projects the SAME authority at both ends -- one function over one catalog, so no second OPINION exists to drift -- and refuses, typed and located, when that one authority's answers for the two positions differ. Stated precisely because the loose form is an overclaim worth not making: this is two traversals of one catalog, not one traversal, and what it rules out is a divergent authority rather than a repeated read. The repeated read is a real cost shape -- two folds over the row list where a per-carrier policy built once would serve both ends -- and it is named here rather than dismissed as small, per DESIGN section 6's rule that a proven cost shape is fixed regardless of the realized n. It is not fixed in this change because the policy carrier is the same carrier change the next rung needs, and building half of it here to save one fold would fork the thing the transition work has to own; the trigger is that carrier landing. RUNG (DESIGN 4b), stated honestly because the distance to the ceiling is the point: this moves the class from silent wrongness (outside the ladder -- emitted, compiled, wrong, discovered only if rustc happens to catch it downstream) to MITIGATABLE -- the line stops with a located refusal naming the carrier. It does NOT reach structural impossibility and must not be read as doing so: the invalid state is still writable, because a catalog may still legitimately state different layers at two positions and this function's only answer to that is to refuse the flow. The next rung is a modeled layer TRANSITION -- the value expression carrying its current layer, and a total raise/lower/refuse function over (from, to) -- at which point an agreeing flow is derived rather than checked and this refusal narrows to the genuinely unconvertible pairs. That is deliberately not built here: it needs TargetValueExpression to carry its layer, which is a carrier change, and DESIGN's model-before-implement discipline puts that ahead of the pipeline edit rather than inside it. NOT WIRED INTO 06_translate BY THIS CHANGE: the seams that would consume it are the ones the ruling scoped, and wiring them is a separate motion with its own emitted-corpus evidence. What lands here is the authority and its executing controls in both directions."
 
 fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
@@ -189,6 +188,40 @@ fn wrap_decisions_equal(a: WrapDecision, c: WrapDecision) -> Bool {
   }
 }
 
+// R1's construction half. wrap_decision_gate answers ONE position at a time, and every consumer of
+// it — here and in v1's seed emitter — then acts on that answer alone. A value does not live at
+// one position: it is produced at one and consumed at another, and when the two answers differ the
+// emitted program carries a type error that no compiler stage located, because no stage ever
+// compared them. Measured on the emitted corpus that defect is ten types and fourteen occurrences,
+// every one wrapped at every signature occurrence and bare at one or more field occurrences, and
+// it produces BOTH error directions from one inconsistency: a producer's Rc<T> assigned into a
+// bare consumer is the over-wrap, a bare producer read into an Rc<T> consumer is the under-wrap.
+// So the flow, not the position, is the unit that has to be decided. wrap_decision_flow_gate is
+// that unit: it projects the SAME authority at both ends — one function over one catalog, so no
+// second OPINION exists to drift — and refuses, typed and located, when that one authority's
+// answers for the two positions differ. Stated precisely because the loose form is an overclaim
+// worth not making: this is two traversals of one catalog, not one traversal, and what it rules
+// out is a divergent authority rather than a repeated read. The repeated read is a real cost shape
+// — two folds over the row list where a per-carrier policy built once would serve both ends — and
+// it is named here rather than dismissed as small, per DESIGN section 6's rule that a proven cost
+// shape is fixed regardless of the realized n. It is not fixed in this change because the policy
+// carrier is the same carrier change the next rung needs, and building half of it here to save one
+// fold would fork the thing the transition work has to own; the trigger is that carrier landing.
+// RUNG (DESIGN 4b), stated honestly because the distance to the ceiling is the point: this moves
+// the class from silent wrongness (outside the ladder — emitted, compiled, wrong, discovered only
+// if rustc happens to catch it downstream) to MITIGATABLE — the line stops with a located refusal
+// naming the carrier. It does NOT reach structural impossibility and must not be read as doing so:
+// the invalid state is still writable, because a catalog may still legitimately state different
+// layers at two positions and this function's only answer to that is to refuse the flow. The next
+// rung is a modeled layer TRANSITION — the value expression carrying its current layer, and a
+// total raise/lower/refuse function over (from, to) — at which point an agreeing flow is derived
+// rather than checked and this refusal narrows to the genuinely unconvertible pairs. That is
+// deliberately not built here: it needs TargetValueExpression to carry its layer, which is a
+// carrier change, and DESIGN's model-before-implement discipline puts that ahead of the pipeline
+// edit rather than inside it. NOT WIRED INTO 06_translate BY THIS CHANGE: the seams that would
+// consume it are the ones the ruling scoped, and wiring them is a separate motion with its own
+// emitted-corpus evidence. What lands here is the authority and its executing controls in both
+// directions.
 fn wrap_decision_flow_gate(
   target: TargetModel,
   source_carrier: Node,

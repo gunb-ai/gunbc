@@ -249,8 +249,33 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
   )
 }
 
-data wrap_decision_flow_note: String = "R1's two-direction controls. The acceptance condition for R1 is that a fix moves BOTH error directions, because the measured defect is ONE inconsistency producing opposite signs -- a producer's Rc<T> reaching a bare consumer over-wraps, a bare producer reaching an Rc<T> consumer under-wraps -- so a control drawn from one direction alone cannot distinguish the right fix from the position-based fix that moves half the population and worsens the other half. Both directions are drawn from the LIVE rust catalog rather than a synthetic fixture, by varying only the flow's direction over one carrier whose rows already disagree by position: Diagnostics is ReferenceLayerRc at OwnershipAtBindingProjection and ReferenceLayerOwned at OwnershipAtFunctionParameter, so binding-to-param is the over shape and param-to-binding is the under shape. wrap_decision_flow_gate must refuse BOTH; today's per-position gate accepts both and emits the producer's layer, which is the silent wrongness. The layer-discrimination control is the one that keeps wrap_decisions_equal honest: Node is ReferenceLayerRc at binding and ReferenceLayerBox at struct field, two DIFFERENT reference layers, and an implementation comparing only by-value against by-reference would call that agreement and pass every other control here. RED, executed rather than asserted, and the profile is reported exactly as measured because it is not uniform. Mutation one, wrap_decision_gates_agree forced to true: the over-wrap, under-wrap and distinct-layer witnesses all go RED; the missing-row witness and both accept witnesses stay GREEN. So the missing-row witness does NOT discriminate this reconciliation -- it is a regression control proving an underlying catalog miss still propagates through the flow gate rather than being swallowed by it, and saying it discriminates disagreement would be inflation. Mutation two, wrap_decisions_equal made layer-blind so any two WrapByReference count as equal: ONLY the distinct-layer witness goes RED, which is what earns that witness its place -- Rc against Box is a real disagreement that a by-value-versus-by-reference comparison calls agreement, and every other witness here passes under that bug. The agreement and inapplicable witnesses are the positive controls that stop a refuse-always implementation from earning a degenerate pass on the refusal half."
 
+// R1's two-direction controls. The acceptance condition for R1 is that a fix moves BOTH error
+// directions, because the measured defect is ONE inconsistency producing opposite signs — a
+// producer's Rc<T> reaching a bare consumer over-wraps, a bare producer reaching an Rc<T> consumer
+// under-wraps — so a control drawn from one direction alone cannot distinguish the right fix from
+// the position-based fix that moves half the population and worsens the other half. Both
+// directions are drawn from the LIVE rust catalog rather than a synthetic fixture, by varying only
+// the flow's direction over one carrier whose rows already disagree by position: Diagnostics is
+// ReferenceLayerRc at OwnershipAtBindingProjection and ReferenceLayerOwned at
+// OwnershipAtFunctionParameter, so binding-to-param is the over shape and param-to-binding is the
+// under shape. wrap_decision_flow_gate must refuse BOTH; today's per-position gate accepts both
+// and emits the producer's layer, which is the silent wrongness. The layer-discrimination control
+// is the one that keeps wrap_decisions_equal honest: Node is ReferenceLayerRc at binding and
+// ReferenceLayerBox at struct field, two DIFFERENT reference layers, and an implementation
+// comparing only by-value against by-reference would call that agreement and pass every other
+// control here. RED, executed rather than asserted, and the profile is reported exactly as
+// measured because it is not uniform. Mutation one, wrap_decision_gates_agree forced to true: the
+// over-wrap, under-wrap and distinct-layer witnesses all go RED; the missing-row witness and both
+// accept witnesses stay GREEN. So the missing-row witness does NOT discriminate this
+// reconciliation — it is a regression control proving an underlying catalog miss still propagates
+// through the flow gate rather than being swallowed by it, and saying it discriminates
+// disagreement would be inflation. Mutation two, wrap_decisions_equal made layer-blind so any two
+// WrapByReference count as equal: ONLY the distinct-layer witness goes RED, which is what earns
+// that witness its place — Rc against Box is a real disagreement that a by-value-versus-by-
+// reference comparison calls agreement, and every other witness here passes under that bug. The
+// agreement and inapplicable witnesses are the positive controls that stop a refuse-always
+// implementation from earning a degenerate pass on the refusal half.
 fn wrap_decision_flow_rejects(
   target: TargetModel,
   source_carrier: Node,
