@@ -181,3 +181,47 @@ because its subject is NARROWER than the rule, so a future re-entrant absent fro
 that emit plan passes silently. `^import ` over the exact *.dag population takes
 the deleted class ITSELF as its subject. A general wall should be modelled on the
 latter shape.
+
+## The seed's own import machinery, disarmed by the cut (2026-08-17)
+
+Separate from the 48 fixtures above: `v1_compiler.cli_run` `extract_import_paths`
+matches lines beginning `import `, and the corpus now contains ZERO of them. So
+every surviving caller returns empty, permanently. Enumerated at 3e493652f7a:
+
+    resolve_virtual_source_with_imports        walks imports to build a closure
+    resolve_transitively_bfs_legacy            BFS over imports
+    (one further closure walk in the same file)
+
+      -> these now compute an EMPTY dependency closure rather than refusing.
+         They are the empty-observation narrow: cannot-express-what-changed
+         rendered as nothing-is-affected. Not currently load-bearing for the
+         gate, because the reference-derived closure replaced regen's use, but
+         they are live functions that will answer "no dependencies" to whoever
+         calls them next.
+
+    four import-layer lens sites (layer prefix / declared-target checks)
+
+      -> these guard on `extract_import_paths(..).is_empty()` and skip, or
+         iterate an empty list and pass. They are INERT: vacuously green, unable
+         to fail, still reporting. DESIGN §6 names this exact tier -- "beware the
+         tier where the machinery exists but nothing gates on it -- coverage by
+         illusion; an inert lens is itself a lie."
+
+WHY THIS IS RECORDED RATHER THAN FIXED NOW. The operator's bar is compilation and
+tests, and none of these breaks either -- which is precisely why they need
+writing down: they are invisible to the bar in force. They are also exactly what
+DESIGN §3's replacement rule says comes out at cutover ("production machinery
+whose only purpose was to implement or compare X is deleted"), so this is a
+deletion population, not a repair population.
+
+THE ORDER MATTERS AND IS DELIBERATE. Deleting them touches cli_run.rs, a seed
+file under the regen fixed point, and regen is not yet restored. Doing it before
+regen is green would mean changing the generator and its output in the same
+motion with no oracle to check either against. So: regen first, then this
+deletion, and it should be one commit that removes the function and every caller
+together rather than leaving a partially-dead surface.
+
+NOT CLAIMED: that this list is complete. It is the `extract_import_paths` caller
+set only. Other import-era machinery (the layer-prefix helpers, the
+rel_path_for_layer_import projection) is reached through these and has not been
+separately enumerated.
