@@ -1743,3 +1743,46 @@ operational form of it is worth quoting exactly — **the silent residue of a de
 set of sites that reference the deleted thing as DATA rather than as CODE**: enumerable by grep,
 invisible to every compiler, and the named specimen DESIGN's "what cannot break loudly" clause was
 missing.
+
+### 11.17 Root K characterized: it is a VARIANT-QUALIFICATION gap, not a general missing-import gap
+
+K (132 sites at M=11) is the largest root with no owner. Characterized on the `03_ingest` closure
+(127 of its sites), by reading the emitted line each diagnostic cites:
+
+```
+109  the missing name is used as a qualified path  `Name::Variant`      86%
+ 17  the missing name is a bare type reference                          13%
+  1  the name is not on the cited line
+```
+
+and by syntactic position:
+
+```
+63  match arm or pattern        NodeKind::ComputationNode { .. } =>, Outcome::Accepted { .. } =>
+54  other body position         Rc::new(Correction::Unavailable { .. }), NoCorrectionReason::…
+ 5  let-binding annotation
+ 5  fn signature
+```
+
+**So K is overwhelmingly the emitter qualifying a variant by its parent enum (`Parent::Variant`) in
+a construction or a pattern, while the parent enum has no use-line.** Only 5 sites are fn signatures.
+`reference_derived_use_lines_note` does claim to cover the variant case ("record-literal type name
++ its parent_enum", "variant constructors routed through their parent's import") — so the finding is
+not that the mechanism ignores variants, it is that **the variant coverage does not reach pattern
+positions and nested construction arguments**, which is where 117 of the 127 sit.
+
+All 36 distinct missing names ARE declared in the corpus — spot-checked at their declaring modules:
+`NamedEdgeTargetLookup` and `NodeKind` in `src/v2/std/node.dag`, `Outcome` and `Correction` in
+`src/v2/std/diagnostic.dag`, `ConstructionMechanism` in `dag/std/disposition.dag`. Nothing here is a
+missing declaration; every one is a missing `use`.
+
+Concentration: `v2_lens_complexity_accumulator_copy_analyze.rs` 31, `v2_lens_reference_deps.rs` 18,
+`v2_lens_unit_modeling.rs` 9, `v2_lens_fact_density.rs` 8 — and the worst file's source
+(`src/v2/lens/complexity_accumulator_copy/analyze.dag`) has **no import lines at all**, which is the
+import-FREE path the note says runs the full union walk. So this is not the import-bearing arm being
+skipped; it is the arm that does run, under-collecting.
+
+**One unrelated specimen surfaced by the same read, recorded so it is not lost:** the emitted corpus
+contains `let read = filesystem.read(path.clone()).await?;` — an `.await` inside a non-async fn,
+which is the residue's two E0728 sites. That is an emitter producing a construct the target language
+cannot accept in that position, and it belongs to no root above.
