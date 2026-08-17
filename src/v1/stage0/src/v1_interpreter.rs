@@ -13300,6 +13300,16 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // parsing alone calls `.length()` O(n) times on the input buffer; without this
         // arm that is O(n^2) allocations and pins multi-gigabyte RSS on ~500KB inputs
         // (srv1 materialize_codex_runtime_bundle bisect, 2026-08-14).
+        //
+        // LIMIT: non-ASCII .length()/.count() remains O(n) per call via the chars() walk.
+        // REASON: the ASCII fast path covers the dominant repeated-query case, and genuinely
+        // non-ASCII strings in this corpus are constructed-then-queried-once-or-never, so
+        // precomputing a codepoint count at construction would not amortize. Flag the
+        // ASCII-in-practice half explicitly AS AN ASSUMPTION about workloads, not a modeled
+        // fact — §6 is clear that "n is small here" is not time-stable.
+        // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
+        // string. If that appears, the amortization argument inverts and a carried count
+        // becomes correct.
         Value::Str(s) => Some(v1_rt::string_length_ascii_aware(s.as_str(), s.is_ascii())),
         _ => None,
     }
