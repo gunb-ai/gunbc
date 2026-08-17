@@ -15,6 +15,7 @@ import gunbc.spark_serving_release {
 }
 import gunbc.spark_serving_membership {
   SparkServingMember,
+  SparkServingMemberAt,
   spark_serving_desired_members,
 }
 import gunbc.spark_serving_observed_members {
@@ -247,7 +248,7 @@ test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
 // typed rows than its own plan had actions and reported no diagnostic. Its frequency was zero by
 // construction because the only live plan is linger-only and linger always translates -- which is
 // exactly why it is worth an executed witness rather than a reading of the code.
-fn removal_refusing_plan() -> MembershipPlan<SparkServingMember> {
+fn removal_refusing_plan() -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
   spark_serving_membership_reconcile(
     desired: [],
     observed: [spark_serving_desired_linger_member(host: subject_host)],
