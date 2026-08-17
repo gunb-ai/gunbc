@@ -138,7 +138,7 @@ The whole artifact was diffed — all 177 files, no grep for the shape believed 
 
 | file | predicted | actual |
 |---|---|---|
-| `v2_compiler_wrap_decision.rs` | +4 fns, −2 note constants | +45 lines (4 fns), −1 line — a **glob import** `use …WrapDecision::*` replaced by explicit imports. The note constants **never emitted at all**, in either arm. |
+| `v2_compiler_wrap_decision.rs` | +4 fns, −2 note constants | +45 lines (4 fns), −1 line — a **glob import** `use …WrapDecision::*` replaced by explicit imports. The note constants are absent from both arms — see the retraction below. |
 | `v2_std_cross_tree_resolution.rs` | unchanged | **2 `pub use` lines reordered** — a module this change never touched |
 
 The second file is the one worth keeping. The tempting reading is emission nondeterminism, and the control refutes it: **B vs B′ — same commit, same command, re-run — is 0 differing files**, and A vs B′ reproduces the reorder exactly. So the reorder is **deterministically caused by this change**, specifically by widening an import list in an unrelated module, and calling it noise would have been the instrument agreeing with the hypothesis.
@@ -146,6 +146,10 @@ The second file is the one worth keeping. The tempting reading is emission nonde
 Stating the two ownerships separately, because they have different answers: the **artifact** change is this change's (two `pub use` lines move); there is **no defect** — the sorted line multisets are identical, so it is a pure reorder of explicit named re-exports, order-irrelevant to Rust resolution, and no non-`pub use` line is involved. Had a name-shadowing glob been in play the answer could have differed, which is why it was checked rather than assumed.
 
 What this buys is a positive argument rather than an absence: 177 files, 2 differ, 46 lines total, every other byte identical — so if some path had keyed on emitted text this change perturbed, it would have had to surface as some *other* emitted movement, and there is none. A targeted count of the shape believed edited could not have supported that, and would have missed the second file entirely.
+
+**Retracted from this receipt: any claim about whether prose rows emit.** An earlier revision read the note constants' absence from both arms as evidence that a `data NAME_note: String` row emits nothing. That is the vacuous-closure error this section elsewhere warns about, committed here against its own author: the prose rows existed only on an intermediate commit, so **neither arm ever contained one**, and an absence measured over a closure that never held the shape proves nothing about the shape. Worse, the general form is independently known false — another lane watched a `_note` row appear in generated `.rs`. Whether a prose row emits is a **per-site fact requiring its own two-arm receipt**, and this receipt does not carry one. The prose-to-annotation conversion in this branch is therefore justified by §4c modeling debt alone, which was always its only real argument.
+
+A related discipline that follows, for anyone converting prose rows: do not convert on a PR whose emission measurement is already banked, since the conversion may itself be an artifact change that invalidates it.
 
 Two hazards checked and not applicable here, recorded so the next reader need not re-derive them: no `string_contains`/substring predicate over emitted content appears anywhere in this diff, so the emitter-self-match class has no subject; and the emission logs carry real output (`0 blocking, 545 advisory`) rather than a bare exit status, so the exit-0-without-a-compile class does not apply.
 
