@@ -6,14 +6,8 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
 import v2.workflow.floor2_prepared_subject {
-  ResolvedWitness,
-  WitnessIdentified,
   WitnessIdentity,
-  WitnessIdentityRefusal,
-  WitnessIdentityRefused,
   WitnessSite,
-  ModulePathNotUnique,
-  QualifiedIdentityClaimedByManySites,
   witness_identity_qualified_name
 }
 
@@ -109,18 +103,6 @@ fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
   }
 }
 
-// A file's module path, observed once from the one source inventory.
-//
-// This is a HOST OBSERVATION, not a declared binding: the host parsed every admitted file to
-// prepare the subject, so it already knows each file's module and reports what it read. The
-// alternative — declaring the module path beside the entry path in .dag — is the second
-// representation of the path/module binding that DESIGN's module-identity-vs-storage thread
-// exists to remove, and it decays exactly the way a positional citation does.
-type ModulePathBinding {
-  entry: String
-  module_path: String
-}
-
 // The manifest refuses rather than deduplicating. Silently merging populations is how a
 // declaration enrolled twice under conflicting modes becomes one arbitrary winner — and the
 // losing mode is precisely the fact worth having. Each arm names the exact qualified
@@ -128,7 +110,6 @@ type ModulePathBinding {
 type ManifestRefusal
   = DeclarationEnrolledTwice { qualified: String }
   | DeclarationEnrolledWithConflictingModes { qualified: String }
-  | DeclarationIdentityAmbiguous { refusal: WitnessIdentityRefusal }
 
 // ADMISSION IS ALL-OR-NOTHING. A manifest carrying any refusal does not run its clean subset
 // and report on the rest: a narrowed roster presented as a roster is the silent narrowing
@@ -155,85 +136,6 @@ fn required_floor_claim_budget_ms() -> Int {
 
 fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
   witness_identity_qualified_name(identity: claim.declaration)
-}
-
-// IDENTITY DERIVATION IS A JOIN AGAINST THE OBSERVED BINDINGS, not a lookup with a fallback.
-//
-// A site whose entry appears in no binding has no identity, and the honest answer is the
-// refusal the carrier already models. Substituting the bare function name — the shape that
-// works per-entry and silently collapses under a shared subject — is the exact failure
-// `WitnessIdentity` exists to make unwritable.
-// THE ENTRY-TO-MODULE JOIN, INDEXED ONCE INSTEAD OF RESCANNED PER SITE.
-//
-// This replaced a per-site fold over the WHOLE binding list, which cost sites x bindings: on
-// the measured subject 10,407 x 3,675 = 38.2 million binding examinations to answer a question
-// with 3,675 distinct answers. The relation is a function from entry to its bindings, so it is
-// built once and read per site — the same relation asked the cheap way, not a different answer.
-//
-// The superseded fold is deleted rather than left beside this. Keeping it would leave a second
-// spelling of one relation with no caller, and the next reader would have to prove which one
-// production uses before touching either.
-//
-// The grouped value models the ARITY, not the population, because arity is the entire verdict:
-// `resolve_site` identifies on exactly one binding and refuses on zero and on many. Nothing
-// downstream ever consumes the ordered list of a contested entry's paths.
-//
-// Retaining the list instead would make the relation quadratic in an entry's own multiplicity —
-// each additional binding re-walks and re-copies everything already grouped under that entry —
-// to build a population whose only use is `length(..) == 1`. Modelling the arity makes the
-// grouping linear in the bindings regardless of how contested any single entry is, and it makes
-// the discarded ordering unwritable rather than merely unused.
-//
-// A repeated IDENTICAL path is still ambiguity. Two bindings claiming one entry means the
-// observation does not name one module, and deduplicating here would answer a question about
-// the observation with an assumption about it.
-type EntryModuleBinding
-  = EntryModuleUnique { module_path: String }
-  | EntryModuleAmbiguous
-
-// Nothing reads the map's own traversal order — no `map_keys`, no `map_values` — so this
-// introduces no order-exposing operation (`v2.lens.determinism` refuses those, and correctly).
-fn build_entry_module_index(bindings: List<ModulePathBinding>) -> Map<String, EntryModuleBinding> {
-  fold_list(xs: bindings, empty: empty_map(), cons: fn(acc, b) {
-    map_insert(
-      m: acc,
-      key: b.entry,
-      value: match map_lookup(m: acc, key: b.entry) {
-        Absent => EntryModuleUnique { module_path: b.module_path }
-        Present { value: _ } => EntryModuleAmbiguous
-      }
-    )
-  })
-}
-
-// Exactly one binding identifies; zero and many both refuse, and they refuse through the same
-// arm because both mean the same thing to a consumer: this entry does not name one module.
-//
-// The lookup is total, so absence is the zero case and not a miss to be papered over. There is
-// no substrate-failure arm to dispose of here precisely because `map_lookup` has none to give.
-fn resolve_site(index: Map<String, EntryModuleBinding>, site: WitnessSite) -> ResolvedWitness {
-  match map_lookup(m: index, key: site.entry) {
-    Present { value: EntryModuleUnique { module_path: path } } =>
-      WitnessIdentified {
-        identity: WitnessIdentity { module_path: path, function: site.function },
-        site: site
-      }
-    Present { value: EntryModuleAmbiguous } =>
-      WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
-    Absent =>
-      WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
-  }
-}
-
-// The index is a parameter rather than built here, so the ONE observed relation is constructed
-// once per manifest and read by every site class. Building it per call would rebuild the same
-// relation once per site population — smaller than the per-site rebuild this replaced, and the
-// same mistake one level up.
-fn resolve_sites(
-  index: Map<String, EntryModuleBinding>,
-  sites: List<WitnessSite>
-) -> List<ResolvedWitness> {
-  list_map(xs: sites, f: fn(s) { resolve_site(index: index, site: s) })
 }
 
 // A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
@@ -280,40 +182,44 @@ data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
     refusals_reversed: no_manifest_refusals
   }
 
-fn scan_resolved(
+// A SITE BECOMES A CLAIM DIRECTLY. There is no identity step between them any more, because the
+// site arrives carrying the module the host read it from, so identification cannot fail.
+//
+// The refusal arm this replaced matched `WitnessIdentityRefused` and produced
+// `DeclarationIdentityAmbiguous`. It had no reachable producer: sites and the entry-to-module
+// list were projected from ONE inventory keyed by the same file path, so the join always found
+// exactly one module. Keeping an arm for it would be validation of a state with no constructor.
+//
+// `refusals_reversed` survives because duplicate enrollment is a real refusal, discovered after
+// the scan rather than during it.
+fn scan_site(
   acc: ClaimScanReversed,
-  resolved: ResolvedWitness,
+  site: WitnessSite,
   mode: ExecutionMode
 ) -> ClaimScanReversed {
-  match resolved {
-    WitnessIdentified { identity: id, site: _ } => ClaimScanReversed {
-      claims_reversed: Cons {
-        head: RequiredFloorClaim {
-          declaration: id,
-          execution_mode: mode,
-          budget_ms: required_floor_claim_budget_ms()
+  ClaimScanReversed {
+    claims_reversed: Cons {
+      head: RequiredFloorClaim {
+        declaration: WitnessIdentity {
+          module_path: site.module_path,
+          function: site.function
         },
-        tail: acc.claims_reversed
+        execution_mode: mode,
+        budget_ms: required_floor_claim_budget_ms()
       },
-      refusals_reversed: acc.refusals_reversed
-    }
-    WitnessIdentityRefused { refusal: r } => ClaimScanReversed {
-      claims_reversed: acc.claims_reversed,
-      refusals_reversed: Cons {
-        head: DeclarationIdentityAmbiguous { refusal: r },
-        tail: acc.refusals_reversed
-      }
-    }
+      tail: acc.claims_reversed
+    },
+    refusals_reversed: acc.refusals_reversed
   }
 }
 
-fn scan_resolved_list(
+fn scan_site_list(
   acc: ClaimScanReversed,
-  resolved: List<ResolvedWitness>,
+  sites: List<WitnessSite>,
   mode: ExecutionMode
 ) -> ClaimScanReversed {
-  fold_list(xs: resolved, empty: acc, cons: fn(inner, r) {
-    scan_resolved(acc: inner, resolved: r, mode: mode)
+  fold_list(xs: sites, empty: acc, cons: fn(inner, s) {
+    scan_site(acc: inner, site: s, mode: mode)
   })
 }
 
@@ -447,19 +353,17 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
 // are restored here, once each, before anything reads them. Hermetic claims precede wet ones and
 // each class keeps its site order, exactly as the appending form produced them.
 fn required_floor_manifest(
-  bindings: List<ModulePathBinding>,
   hermetic_sites: List<WitnessSite>,
   wet_sites: List<WitnessSite>
 ) -> ClaimScan {
-  let index = build_entry_module_index(bindings: bindings)
-  let after_hermetic = scan_resolved_list(
+  let after_hermetic = scan_site_list(
     acc: claim_scan_reversed_empty,
-    resolved: resolve_sites(index: index, sites: hermetic_sites),
+    sites: hermetic_sites,
     mode: Hermetic
   )
-  let after_wet = scan_resolved_list(
+  let after_wet = scan_site_list(
     acc: after_hermetic,
-    resolved: resolve_sites(index: index, sites: wet_sites),
+    sites: wet_sites,
     mode: Wet
   )
   let claims = list_reverse(xs: after_wet.claims_reversed)
@@ -474,12 +378,10 @@ fn required_floor_manifest(
 
 fn required_floor_attempt(
   subject: ObservedSubjectIdentity,
-  bindings: List<ModulePathBinding>,
   hermetic_sites: List<WitnessSite>,
   wet_sites: List<WitnessSite>
 ) -> RequiredFloorAdmission {
   let scan = required_floor_manifest(
-    bindings: bindings,
     hermetic_sites: hermetic_sites,
     wet_sites: wet_sites
   )

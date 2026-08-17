@@ -46,9 +46,25 @@ type SubjectExclusionGround
   = ExcludedDeliberatelyInvalidFixture { property_witness: Symbol }
   | ExcludedOutsideDeclaredSourceRoots { containing_root: Symbol }
 
+// THE SITE CARRIES ITS MODULE, because the host already knows it.
+//
+// `entry` and `module_path` are read from ONE inventory entry in one iteration -- the host
+// parsed the file to prepare the subject, so the file's module is in hand at the moment the site
+// is built. Carrying only `entry` here forced the manifest to ship a second 3,680-row
+// entry-to-module list into the interpreter and JOIN it back, re-deriving inside the fold a fact
+// the producer held two lines earlier.
+//
+// It also made a refusal for a state that cannot exist. Both lists were projected from the same
+// inventory keyed by the same file path, so every site's entry appeared exactly once and the
+// join's answer was always "exactly one" -- `ModulePathNotUnique` had no reachable producer, and
+// two complete floor runs emitted zero identity refusals. Carrying the module here is the
+// construction that makes the absent case unrepresentable rather than validated (DESIGN 4b:
+// construction over validation), which is why the refusal arms below are gone rather than kept
+// "just in case".
 type WitnessSite {
   entry: String
   function: String
+  module_path: String
 }
 
 // WITNESS IDENTITY IS `module.function`, NEVER the bare function name.
@@ -70,110 +86,8 @@ type WitnessIdentity {
   module_path: String
   function: String
 }
-
-type WitnessIdentityRefusal
-  = ModulePathNotUnique { site: WitnessSite }
-  | QualifiedIdentityClaimedByManySites { qualified: String, sites: List<WitnessSite> }
-
-type ResolvedWitness
-  = WitnessIdentified { identity: WitnessIdentity, site: WitnessSite }
-  | WitnessIdentityRefused { refusal: WitnessIdentityRefusal }
-
-type Floor2Plan {
-  subject: PreparedSubjectSpec
-  claims: List<ResolvedWitness>
-}
-
-// A plan whose claim list carries ANY refusal is not a runnable plan. This is the
-// fail-closed arm: the run does not proceed with the identifiable subset and
-// report on the rest, because a partial roster reported as a roster is the same
-// silent narrowing the identity rule exists to prevent.
-type Floor2PlanAdmission
-  = Floor2PlanRunnable { plan: Floor2Plan }
-  | Floor2PlanRefused { refusals: List<WitnessIdentityRefusal> }
-
 fn witness_identity_qualified_name(identity: WitnessIdentity) -> String {
   concat(concat(identity.module_path, "."), identity.function)
-}
-
-fn resolved_witness_refusals(
-  acc: List<WitnessIdentityRefusal>,
-  resolved: ResolvedWitness
-) -> List<WitnessIdentityRefusal> {
-  match resolved {
-    WitnessIdentified { identity: _, site: _ } => acc
-    WitnessIdentityRefused { refusal: r } => list_snoc_item(xs: acc, item: r)
-  }
-}
-
-// The fold's empty case is DECLARED rather than written as a bare literal: an
-// empty list literal carries no element type, so the accumulator's identity would
-// come from inference at the call site rather than from the type this fold is
-// about.
-data floor2_no_refusals: List<WitnessIdentityRefusal> = []
-
-fn floor2_plan_refusals(plan: Floor2Plan) -> List<WitnessIdentityRefusal> {
-  fold_list(xs: plan.claims, empty: floor2_no_refusals, cons: resolved_witness_refusals)
-}
-
-// EXACTLY TWO HOST PRIMITIVES REMAIN, and naming them is what keeps this model honest
-// rather than aspirational: build an evaluable context from a declared source set, and
-// evaluate one qualified name in that context. Both are interpreter capability, not
-// floor policy, and neither can be modeled here until self-hosting closes — a .dag
-// function cannot construct the interpreter that runs it. Everything else the runner
-// used to decide — roster grouping, witness identity, refusal arms, admission, and the
-// verdict fold — is a fact of this module, so changing floor policy is a row edit rather
-// than a Rust edit.
-//
-// CUTOVER STANDING, stated at the scope it actually has. The required floor's DISCOVERED
-// witness corpus now executes this way: cli_run's run_discovery_corpus_with_options_inner
-// routes to run_discovery_rows_against_prepared_subject when selection is Off and the
-// roster was walked from scan_dirs, which is every ordinary merge-critical witness batch
-// (ci_floor_plan corpus_runnable_for). That branch returns BEFORE the entry-major
-// machinery, so the corpus index build, the per-roster pre-resolve closure walk, the
-// frontier attribution and the width governor are not merely unused on it -- they are not
-// reached. There is no width to govern when there is one subject, so the path is width-one
-// by construction rather than by policy.
-//
-// WHAT IS NOT CLAIMED, because two populations still run entry-major and saying otherwise
-// would be rung inflation. Selection-bearing lanes (the falsifier cadence, the expect-red
-// quarantine probes, the v1 scoped batch) need per-entry frontier evaluation, which is
-// exactly what an entry-private context supplies; retiring that is the follow-on that
-// removes node_frontier_selection from Runnable, not this change. And the explicit-entry
-// lanes (the Wet execution corpus, the bin-witness corpus) name around ten entries each,
-// where one whole-tree preparation serving ten is the same cost-shape defect pointing the
-// other way. So run_discovery_rows is NOT deleted, and this note does not say the floor is
-// one subject -- it says the batch that cost 1927.6s of preparation is.
-
-fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {
-  let refusals = floor2_plan_refusals(plan: plan)
-  if length(xs: refusals) == 0 {
-    Floor2PlanRunnable { plan: plan }
-  } else {
-    Floor2PlanRefused { refusals: refusals }
-  }
-}
-
-// Zero per-entry graph resolves holds two ways, and only one of them is a check.
-// CONSTRUCTION: the prepared subject is named once by PreparedSubjectSpec and the claim
-// carries only an identity, so nothing a consumer holds can name a source root, an
-// index, a resolver, or an entry path — an entry-private compiler world is
-// unrepresentable rather than merely counted. COUNTER: the host still reports its
-// resolve count, which catches a regression in the seed below this model. Dissolve-on:
-// the seed's context construction becomes a modeled realization, at which point the
-// counter has no independent subject and deletes.
-//
-// And per-entry graph construction has no representation here AT ALL: no field,
-// arm, or function in this module names an entry-private resolve, so a consumer
-// of this plan cannot request one.
-//
-// THE PREPARATION COUNT IS A PROPERTY OF THE PLAN, not an observation of the run.
-// One plan names one subject, so a plan cannot express two preparations and a
-// consumer cannot accidentally perform a second one. "prepared_subject_count == 1"
-// therefore holds by the shape of Floor2Plan; the runner's counter is a
-// regression control over the host, not the guarantee.
-fn floor2_prepared_subject_count(plan: Floor2Plan) -> Int {
-  1
 }
 
 // WHICH EXECUTION KEY A BATCH GETS IS FLOOR POLICY, so it is a row here rather than a

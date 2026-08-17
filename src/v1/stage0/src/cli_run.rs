@@ -41606,29 +41606,17 @@ pub fn run_required_floor(
     // the .dag manifest evaluation and admission decoding. Four superlinear shapes are known
     // to live in the manifest, which is a ranked hypothesis list and not an attribution: the
     // seams below are what turn the gap into one located term.
-    floor_seam("site-binding-projection");
+    floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
     let files = inventory_witness_files(&prepared);
-    let bindings: Vec<v1_interpreter::Value> = prepared
-        .inventory
-        .iter()
-        .map(|e| {
-            record_value(
-                &hermetic,
-                "ModulePathBinding",
-                vec![
-                    (
-                        "entry",
-                        v1_interpreter::str_value(e.path.replace('\\', "/")),
-                    ),
-                    (
-                        "module_path",
-                        v1_interpreter::str_value(e.module_path.clone()),
-                    ),
-                ],
-            )
-        })
-        .collect();
+    // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
+    // the same inventory entry in the same iteration, so the site is complete at construction.
+    //
+    // This replaced a second projection of the WHOLE inventory into an entry-to-module list --
+    // 3,680 records marshalled into the interpreter -- which the .dag manifest then JOINED back
+    // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
+    // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
+    // was always "exactly one". The refusal for the other cases had no reachable producer.
     let mut sites: Vec<v1_interpreter::Value> = Vec::new();
     for file in &files {
         for function in &file.functions {
@@ -41638,15 +41626,18 @@ pub fn run_required_floor(
                 vec![
                     ("entry", v1_interpreter::str_value(file.path.clone())),
                     ("function", v1_interpreter::str_value(function.clone())),
+                    (
+                        "module_path",
+                        v1_interpreter::str_value(file.module_path.clone()),
+                    ),
                 ],
             ));
         }
     }
     eprintln!(
-        "[floor-phase] phase=site-binding-projection state=completed wall_ms={} sites={} bindings={} files={}",
+        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
         projection_started.elapsed().as_millis(),
         sites.len(),
-        bindings.len(),
         files.len()
     );
     let subject = record_value(
@@ -41677,10 +41668,6 @@ pub fn run_required_floor(
         "required_floor_attempt",
         &[
             (Some("subject".to_string()), subject),
-            (
-                Some("bindings".to_string()),
-                v1_interpreter::Value::List(Rc::new(bindings.into())),
-            ),
             (
                 Some("hermetic_sites".to_string()),
                 v1_interpreter::Value::List(Rc::new(sites.into())),
