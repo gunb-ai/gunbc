@@ -71,7 +71,7 @@ absent from the lookup chain rather than merely ranked below module scope. The
 discriminating control already exists in tree and needs no authoring: revert the
 rename (if taken) and `Witness<C>` must still resolve to the parameter.
 
-## Located candidate mechanism (2026-08-17, NOT yet confirmed by execution)
+## Located candidate mechanism (2026-08-17) — REFUTED, see below
 
 The exclusion machinery already exists, which narrows this from "the rule is
 missing" to "the rule loses a race".
@@ -108,3 +108,50 @@ observation, not a diff:
 
 Either answer is one instrumented run. Both are cheap next to a wrong change in
 `04_infer`.
+
+## The candidate above is REFUTED, and its refutation names the real shape
+
+`stamp_type_param_occurrences` has **no external caller**. In
+`src/v1/04_infer.dag` it appears only at its own definition and its own
+recursive call, and the same is true of the generated seed
+(`v1_compiler_infer.rs`). It never runs. So its `inferred == none` guard cannot
+be declining anything, and the ordering story is dead.
+
+That is an INERT MECHANISM: someone wrote the machinery that marks a
+parameter-named node as `TypeVariable { id: nm }`, and nothing ever calls it.
+DESIGN names this class directly — registration is not enforcement, and an
+inert lens is itself a lie. Here it is worse than inert, because its existence
+made a wrong explanation look well-supported: I read a guard, found it
+plausible, and wrote it down. The function reads exactly like the protection
+this defect needs.
+
+**What is actually live** is the `excluded` set in
+`census_upgrade_type_decl_binding` / `census_qualify_leaf_binding`: a
+declaration's own type parameters are kept OUT of qualification, so `C` inside
+`Witness` is deliberately left as a bare name.
+
+And that is the defect, stated properly:
+
+> Type-parameter protection is implemented as **"do not qualify this name"**.
+> Under import-scoped visibility that was sufficient — a bare `C` had no global
+> binding unless the file imported one, and nothing importing the C-language
+> subject also instantiated `Witness`. Under namespace-only resolution, leaving
+> a name BARE is the opposite of protecting it: bare is precisely what resolves
+> against every module-scope declaration in the corpus.
+
+So nothing regressed in the exclusion logic. The cut changed what "bare" means,
+and a mechanism whose whole strategy was to leave the name alone became a
+mechanism that hands it to the global namespace.
+
+## Repair direction (unchanged in preference, now better grounded)
+
+The parameter must carry a POSITIVE marking that survives into resolution —
+which is what the dead `stamp_type_param_occurrences` was evidently written to
+do — rather than being protected by omission. Either wire that function in at
+the point declarations are upgraded, or have resolution consult the enclosing
+declaration's parameter names before module scope.
+
+Renaming `type C` remains the wrong repair for the reason already given, and now
+for a second: it would leave a corpus-wide rule ("a bare name is a global
+reference") silently wrong for every generic declaration, with no witness left
+to say so.
