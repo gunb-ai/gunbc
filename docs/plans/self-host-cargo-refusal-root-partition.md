@@ -1828,3 +1828,47 @@ Split by mechanism (M=11, all 111 rows, fail-closed):
    record shape has to author the whole API; a decision that keeps the container has to rewrite the
    literals and generalize the runtime API's key type. Both are real work; the current state is
    paying for both.
+
+### 11.19 Roots T5 (92) and R1 (55) characterized
+
+Done ahead of the request so they are dispatch-ready; neither is owned.
+
+**T5 — "missing derives" is two different things, and one of them cannot be fixed by deriving.**
+
+```
+by trait          22 serde::Deserialize · 17 PartialEq (via E0369 ==/!=) · 16 Hash · 11 Debug · 11 Serialize · 11 Eq · 4 Ord
+by self type      14 ParsePositionKey · 8 Node · 8 PartialFunction<String,…> · 5 Target ·
+                   5 EnvironmentBindingKey · 4 each: ReadbackSubject, EffectIoEvalBundle, CompiledLexRule,
+                   BindInterpreter, BranchInterpreter, LoopInterpreter
+```
+
+*T5a — map-key requirements the derive roster does not consult (~27 sites: Hash 16 + Eq 11).* The
+emitted derives are a fixed roster that ignores how the type is USED. `ParsePositionKey` derives
+`Debug, Clone, PartialEq, Serialize, Deserialize` and is then used as a `HashMap` key, which needs
+`Hash + Eq`; `Node` has the same set and the same problem; `EnvironmentBindingKey` derives
+`Eq, PartialOrd, Ord` but not `Hash`. **This half is a real missing derive** — the fix is to derive
+from the use, or to make map-key-ness a modeled fact.
+
+*T5b — serde/Debug demanded of types that carry function fields (~44 sites: Deserialize 22,
+Serialize 11, Debug 11).* `CompiledLexRule` emits `#[derive(Clone)]` and nothing else, because
+`fn_field_derive_traits()` is Clone-only — correctly, since `Rc<dyn Fn>` is not serializable and not
+`Debug`. The failures arrive because a *containing* record derives serde while holding one of these
+as a field, and `PartialFunction<String, …>` (a record of closures, §11.18) is the most-demanded self
+type. **Adding the derive is impossible here; the requirement has to go.** So T5b is the same shape
+as T3: a modeling decision (do not serialize a value containing closures), not a repair.
+
+**R1 — the Rc wrap decision is INCONSISTENT, not uniformly over- or under-wrapping.**
+
+```
+28  expected Rc<X>, found bare X
+27  expected bare X, found Rc<X>          <- near-perfect symmetry
+14  SpanIndex · 6 each ScopeRoster, SubjectRoster, ConsumerRequirement · 4 DecimalDigitsStep · …
+```
+
+Position (03_ingest, 54 sites read): **53 are function-call arguments**, 1 is a record literal, 0 are
+signatures. So the declaration side and the call side disagree about the wrap for the SAME type — the
+signature is internally consistent, the argument expression is not — and the symmetry means no
+blanket rule ("always wrap", "never wrap") describes it. `whole_corpus_scope()` returning
+`Rc<ScopeRoster>` into a parameter typed `ScopeRoster` is the canonical specimen.
+
+Both roots are floor-heavy and cheap to re-measure at M=11 after any fix.
