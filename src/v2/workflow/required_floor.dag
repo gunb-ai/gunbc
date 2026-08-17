@@ -1,7 +1,7 @@
 module v2.workflow.required_floor
 
 import v2.std.algebra { contains, fold_list, length, list_append, list_map, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
@@ -165,20 +165,53 @@ fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
 // refusal the carrier already models. Substituting the bare function name — the shape that
 // works per-entry and silently collapses under a shared subject — is the exact failure
 // `WitnessIdentity` exists to make unwritable.
-fn module_path_for_entry(bindings: List<ModulePathBinding>, entry: String) -> List<String> {
-  fold_list(xs: bindings, empty: no_module_paths, cons: fn(acc, b) {
-    if b.entry == entry {
-      list_snoc_item(xs: acc, item: b.module_path)
-    } else {
-      acc
-    }
+// THE ENTRY-TO-MODULE JOIN, INDEXED ONCE INSTEAD OF RESCANNED PER SITE.
+//
+// This replaced a per-site fold over the WHOLE binding list, which cost sites x bindings: on
+// the measured subject 10,407 x 3,675 = 38.2 million binding examinations to answer a question
+// with 3,675 distinct answers. The relation is a function from entry to its bindings, so it is
+// built once and read per site — the same relation asked the cheap way, not a different answer.
+//
+// The superseded fold is deleted rather than left beside this. Keeping it would leave a second
+// spelling of one relation with no caller, and the next reader would have to prove which one
+// production uses before touching either.
+//
+// The grouped value stays a LIST rather than collapsing to a single path, because the arity is
+// the verdict: `resolve_site` identifies on exactly one and refuses on zero AND on many
+// through one arm. Collapsing here would discard the ambiguity that refusal exists to catch,
+// which is the failure `WitnessIdentity` is built to make unwritable.
+//
+// Ordering within a group is preserved by appending, so a group's members appear in binding
+// order exactly as the per-site fold produced them. Nothing reads the map's own traversal
+// order — no `map_keys`, no `map_values` — so this introduces no order-exposing operation
+// (`v2.lens.determinism` refuses those, and correctly).
+fn build_entry_module_index(bindings: List<ModulePathBinding>) -> Map<String, List<String>> {
+  fold_list(xs: bindings, empty: empty_map(), cons: fn(acc, b) {
+    map_insert(
+      m: acc,
+      key: b.entry,
+      value: list_snoc_item(xs: entry_module_paths(index: acc, entry: b.entry), item: b.module_path)
+    )
   })
+}
+
+// Absent means no binding named this entry — the zero case, which refuses exactly as the
+// unindexed fold's empty result did. It is not a miss to be papered over.
+fn entry_module_paths(index: Map<String, List<String>>, entry: String) -> List<String> {
+  match map_get(index, entry) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: paths } => paths
+        Absent => no_module_paths
+      }
+    _ => no_module_paths
+  }
 }
 
 // Exactly one binding identifies; zero and many both refuse, and they refuse through the same
 // arm because both mean the same thing to a consumer: this entry does not name one module.
-fn resolve_site(bindings: List<ModulePathBinding>, site: WitnessSite) -> ResolvedWitness {
-  let paths = module_path_for_entry(bindings: bindings, entry: site.entry)
+fn resolve_site(index: Map<String, List<String>>, site: WitnessSite) -> ResolvedWitness {
+  let paths = entry_module_paths(index: index, entry: site.entry)
   if length(xs: paths) == 1 {
     WitnessIdentified {
       identity: WitnessIdentity { module_path: paths.first(), function: site.function },
@@ -189,11 +222,14 @@ fn resolve_site(bindings: List<ModulePathBinding>, site: WitnessSite) -> Resolve
   }
 }
 
+// The index is built ONCE here and read per site, which is the whole point: building it inside
+// `resolve_site` would restore the per-site cost this replaces, one level down and harder to see.
 fn resolve_sites(
   bindings: List<ModulePathBinding>,
   sites: List<WitnessSite>
 ) -> List<ResolvedWitness> {
-  list_map(xs: sites, f: fn(s) { resolve_site(bindings: bindings, site: s) })
+  let index = build_entry_module_index(bindings: bindings)
+  list_map(xs: sites, f: fn(s) { resolve_site(index: index, site: s) })
 }
 
 // A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
