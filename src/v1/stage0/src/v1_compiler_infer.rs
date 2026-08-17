@@ -16680,10 +16680,26 @@ pub fn census_upgrade_type_decl_binding(
             param_names.clone(),
             source_indices.clone(),
         );
+        // HAND-SYNCED TWIN of src/v1/04_infer.dag census_upgrade_type_decl_binding.
+        // Regen is suspended for the namespace cut, so a change to the .dag
+        // authority alone does not reach the compile that runs this seed; both
+        // must move together and be reconciled when regen returns. See that
+        // function's comment for why a type parameter needs a POSITIVE mark
+        // rather than protection-by-omission.
+        let param_map = param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc, nm.clone(), true)
+            },
+        );
         Rc::new(TypeBinding {
             name: binding.name.clone(),
             resolved: qualify_decl_reference_positions(
-                node.clone(),
+                stamp_type_param_occurrences(
+                    node.clone(),
+                    param_map.clone(),
+                    source_indices.clone(),
+                ),
                 module_path.clone(),
                 env.clone(),
                 excluded.clone(),

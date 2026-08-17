@@ -8085,9 +8085,30 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
     f: (acc, nm) => map_insert(acc, nm, true)
   )
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
+  // A type parameter must be marked POSITIVELY, not protected by omission.
+  //
+  // `excluded` keeps the parameter names out of qualification, which under
+  // import-scoped visibility WAS the protection: a bare `C` had no global
+  // binding unless the file imported one. Under namespace-only resolution
+  // leaving a name bare is the opposite of protecting it — bare is exactly what
+  // resolves against every module-scope declaration in the corpus. So
+  // `type Witness<C> = Holds { value: C }` bound its own parameter to
+  // `extdeps.languages.c.C`, and the expected type printed as Coproduct(C).
+  //
+  // stamp_type_param_occurrences already existed to do this marking and had NO
+  // CALLER — in the authority or the seed. This wires it in. It is deliberately
+  // the params-only map, never `excluded`: that map also carries the
+  // declaration's OWN name, and stamping `Witness` as a type variable inside
+  // its own body would be a different and worse bug.
+  let param_map = fold(param_names, init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   TypeBinding {
     name: binding.name,
-    resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
+    resolved: qualify_decl_reference_positions(
+      n: stamp_type_param_occurrences(n: node, param_names: param_map, source_indices: source_indices),
+      owner_module_path: module_path,
+      env: env,
+      excluded: excluded
+    ),
     provenance: binding.provenance
   }
 }
