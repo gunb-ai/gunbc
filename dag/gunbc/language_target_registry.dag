@@ -201,7 +201,7 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: rust_language_model_scope },
-    disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.frontier"] }
+    disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emit_coverage_frontier"] }
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: ecmascript_language_model_scope },
