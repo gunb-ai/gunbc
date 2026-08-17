@@ -313,14 +313,6 @@ data roster_registry: List<RosterRegistration> = [
       reason: "emit_fn_def module_path allowlist: List<KeyedRow<..>> value-param type exprs reach emit as opaque containers, so v1_fn_param_type_needs_clone_bound cannot derive K/V; the override emits Clone on every item generic for listed modules only — extending the list is a counted roster edit, not a silent OR branch (trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note)",
       dissolution: unbound_dissolution(description: "v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the allowlist, its emit_fn_def consumer, and this registration")
     }
-  },
-  RosterRegistration {
-    roster: roster_decl(module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "producer_emission_oracle_rows"),
-    unit_kind: "V1SeedEmitter module path with producer emission receipt",
-    membership: DeclaredFrontier {
-      reason: "each row binds an EmitterProduced disposition to a producer emission receipt with enrolled behavioral witness citation; no producer claim without receipt evidence (2026-07-20 flip-wave reverted after 0/6 cargo-green)",
-      dissolution: unbound_dissolution(description: "per-module frontier_probe_survey receipts bind execution-measured digests and rows graduate to ByDerivation membership")
-    }
   }
 ]
 
