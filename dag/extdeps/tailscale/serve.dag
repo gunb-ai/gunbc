@@ -3,8 +3,6 @@ module extdeps.tailscale.serve
 import std.types { NonEmptyStr, Port, String, List, Bool }
 import std.key_relation {
   KeyRelation,
-  GlobalKeyScope,
-  key_relation_global,
   KeyedResourceRelation,
   StateRelation,
   key_relation_scoped_key,
