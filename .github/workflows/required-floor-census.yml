@@ -29,7 +29,8 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel)
           cd "$ROOT"
-          ./target/release/required_floor_failure_census docs/probes/floor_cut_name_resolution_census.tsv
+          BIN="${CARGO_TARGET_DIR:-$ROOT/target}/release/required_floor_failure_census"
+          "$BIN" docs/probes/floor_cut_name_resolution_census.tsv
           python3 docs/probes/floor_cut_name_resolution_partition.py \
             docs/probes/floor_cut_name_resolution_census.tsv \
             -o docs/probes/floor_cut_name_resolution_partition.tsv
