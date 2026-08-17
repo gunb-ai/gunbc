@@ -904,6 +904,57 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
     }
 }
 
+pub fn expected_variant_owner_instantiation(
+    expected: Option<Rc<Node>>,
+    name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        Some(exp) => {
+            let exp_enum =
+                expand_scrut_type_for_variant_lookup(exp.clone(), scope.type_env.clone());
+            match find_child_named(
+                exp_enum.clone(),
+                name.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                Some(_) => Some(exp_enum.clone()),
+                None => None,
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn variant_reference_inferred_node(
+    expected: Option<Rc<Node>>,
+    name: String,
+    owner_name: String,
+    scope: Rc<InferScope>,
+    fallback: Rc<Node>,
+) -> Rc<Node> {
+    match expected.clone() {
+        Some(exp) => {
+            if ((exp.return_cardinality.clone() == Cardinality::Required)
+                && (authored_name_at(scope.type_env.clone().source_indices.clone(), exp.clone())
+                    == owner_name.clone()))
+            {
+                match expected_variant_owner_instantiation(
+                    expected.clone(),
+                    name.clone(),
+                    scope.clone(),
+                ) {
+                    Some(_) => exp.clone(),
+                    None => fallback,
+                }
+            } else {
+                fallback
+            }
+        }
+        None => fallback,
+    }
+}
+
 pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         match symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), name.clone()) {
@@ -5582,7 +5633,13 @@ pub fn infer_expr_body(
                                 }),
                                 Rc::new(vec![]),
                                 Some(Rc::new(InferredNode::Resolved {
-                                    node: binding.resolved.clone(),
+                                    node: variant_reference_inferred_node(
+                                        expected.clone(),
+                                        name.clone(),
+                                        scope_enum.clone(),
+                                        scope.clone(),
+                                        binding.resolved.clone(),
+                                    ),
                                 })),
                                 span.clone(),
                                 span.clone(),
@@ -5672,7 +5729,13 @@ pub fn infer_expr_body(
                                             }),
                                             Rc::new(vec![]),
                                             Some(Rc::new(InferredNode::Resolved {
-                                                node: gbinding.resolved.clone(),
+                                                node: variant_reference_inferred_node(
+                                                    expected.clone(),
+                                                    name.clone(),
+                                                    scope_enum.clone(),
+                                                    scope.clone(),
+                                                    gbinding.resolved.clone(),
+                                                ),
                                             })),
                                             span.clone(),
                                             span.clone(),
@@ -5696,23 +5759,12 @@ pub fn infer_expr_body(
                                     }
                                 }
                                 None => {
-                                    let expected_variant_enum = match expected.clone() {
-                                        Some(exp) => {
-                                            let exp_enum = expand_scrut_type_for_variant_lookup(
-                                                exp.clone(),
-                                                scope.type_env.clone(),
-                                            );
-                                            match find_child_named(
-                                                exp_enum.clone(),
-                                                name.clone(),
-                                                scope.type_env.clone().source_indices.clone(),
-                                            ) {
-                                                Some(_) => Some(exp_enum.clone()),
-                                                None => None,
-                                            }
-                                        }
-                                        None => None,
-                                    };
+                                    let expected_variant_enum =
+                                        expected_variant_owner_instantiation(
+                                            expected.clone(),
+                                            name.clone(),
+                                            scope.clone(),
+                                        );
                                     match expected_variant_enum.clone() {
                                         Some(exp_enum) => ok_infer(make_named_expr_node(
                                             name.clone(),
