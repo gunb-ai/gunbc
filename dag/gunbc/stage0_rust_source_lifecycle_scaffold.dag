@@ -268,7 +268,7 @@ data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
 }
 
 data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.compiler.self_host.frontier",
+  module_path: "v2.compiler.self_host.stage0_crate_layout",
   decl_name: "hand_maintained_stage0_filenames",
   field: WholeDeclaration
 }

@@ -1,7 +1,7 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings
 
 
-data seed_emitter_behavioral_wet_module_bindings_note: String = "Cycle-free leaf for restored SelfHostWetReceiptBinding rows (review 44453/44455/44460/44468): shared by wet_receipt_enrollment for nightly green wet roster enrollment only. Authorization does NOT derive from this list — producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline until witness-realization + frontier_probe_survey."
+data seed_emitter_behavioral_wet_module_bindings_note: String = "Cycle-free leaf for restored SelfHostWetReceiptBinding rows (review 44453/44455/44460/44468): shared by wet_receipt_enrollment for nightly green wet roster enrollment only. Authorization does NOT derive from this list — producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline until witness-realization lands. (This condition used to name frontier_probe_survey as a second requirement; that probe and the self-host frontier roster it surveyed are deleted, so witness-realization is now the whole trigger rather than half of it.)"
 
 type SelfHostWetReceiptBinding {
   module_path: String
@@ -9,7 +9,7 @@ type SelfHostWetReceiptBinding {
   function: String
 }
 
-data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464. Dissolve-on (reviews 44441/44453/44455/44460/44468): local wet receipt greens → restore SelfHostWetReceiptBinding here for nightly re-enrollment → witness-realization enables producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests. Frontier rows stay SeedRetained until that path is host-wired."
+data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464. Dissolve-on (reviews 44441/44453/44455/44460/44468): local wet receipt greens → restore SelfHostWetReceiptBinding here for nightly re-enrollment → witness-realization enables producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests. The frontier rows this clause used to gate on are gone with the self-host frontier roster; what remains gating is the binding itself, which stays absent until that path is host-wired."
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
 

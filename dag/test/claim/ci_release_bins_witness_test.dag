@@ -3,7 +3,7 @@ module test.claim.ci_release_bins_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positives: measured gap bins cssl_assemble / frontier_probe_survey are enrolled and appear on the build line. Retirement negative: compile_clean_floor_skip_witness is absent from the roster, release build line, and both generated workflows. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall). Per-claim test fns (no AND-umbrella; #7287 pattern)."
+data ci_release_bins_witness_note: String = "Authority: gunbc.ci_release_bins. Pack membership is derived (floor ∪ witness-declared). Positive: the measured gap bin cssl_assemble is enrolled and appears on the build line. frontier_probe_survey was the other measured gap bin and is removed with the self-host frontier roster it surveyed (per-bin justification in gunbc.ci_release_bins), so the positives here are one bin, not two. Retirement negative: compile_clean_floor_skip_witness is absent from the roster, release build line, and both generated workflows. RED: no_such_witness_bin_zzz is NOT enrolled, and ensure_built refuses WitnessBinNotEnrolled without cargo (construction wall). Per-claim test fns (no AND-umbrella; #7287 pattern)."
 
 test fn witness_pack_includes_every_floor_invoked() -> Bool {
   fold(
@@ -23,13 +23,11 @@ test fn witness_pack_includes_every_witness_declared() -> Bool {
 
 test fn witness_measured_gap_bins_enrolled() -> Bool {
   release_bin_is_enrolled(bin_name: "cssl_assemble")
-    && release_bin_is_enrolled(bin_name: "frontier_probe_survey")
 }
 
 test fn witness_build_line_carries_gap_bins() -> Bool {
   let line = ci_release_build_line()
   string_contains(s: line, pattern: "--bin cssl_assemble")
-    && string_contains(s: line, pattern: "--bin frontier_probe_survey")
     && string_contains(s: line, pattern: "--bin claim_executor")
 }
 
