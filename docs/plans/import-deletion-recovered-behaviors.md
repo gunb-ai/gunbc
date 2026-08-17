@@ -608,3 +608,54 @@ deleting `import test.common { boxed, unbox }` and `import test.shared1 { val }`
 from a fixture whose subject is materialization, not imports. The pass's file
 filter was extension-based and did not model that `.dag` source also lives
 inside `.rs` strings.
+
+### Second correction: the "mis-qualification residue" is also resolver-side, and it is the worse half
+
+The correction above called ~5% of the population defects the cut pass wrote.
+Checked against main, that is wrong, and the real finding is more serious than
+the one it replaces.
+
+Each cited specimen is a CORRECT qualification the resolver cannot consume:
+
+```
+branch: extdeps.filesystem.filesystem_io.Filesystem.Read(path: ...)
+main:   import extdeps.filesystem.filesystem_io { Filesystem }   +   Filesystem.Read(path: ...)
+
+branch: v2.std.collection.Absent
+main:   import v2.std.collection { Absent, Present }             +   Absent
+```
+
+In both cases the branch's dotted path is exactly the declaring module's path
+plus the name, which is what `import` bound. `undefined variable 'extdeps'` is
+therefore not a malformed reference — it is the resolver reading the leading
+segment of a module path as a variable.
+
+**But the deficit is not uniform across positions, and that is the load-bearing
+part.** Main's own corpus already compiles fully-qualified RECORD construction:
+
+```
+dag/test/claim/medium_fidelity_witness_test.dag:15
+  extdeps.communication.medium.Medium { carried: ..., fidelity: ... }
+```
+
+So a dotted path resolving to a record TYPE works today. What does not work is a
+dotted path resolving to a coproduct VARIANT or a module-member FUNCTION, and
+main has zero instances of either form (`v2.std.collection.Absent` and friends
+appear in 0 files), so the cut is the first consumer of a path the corpus never
+exercised. In pattern position the parser treats the whole dotted string as an
+opaque variant name, which is why the diagnostic reads
+`variant 'v2.std.collection.Present' not found in type 'TailscaleServeRouteKey'`
+-- it searched the scrutinee for a variant literally named with the dots in it.
+
+**The consequence for the branch is that neither form currently resolves for
+cross-module variants and functions.** Bare references fail because nothing
+looks them up; qualified references fail because the resolver rejects dotted
+paths outside record-type position. There is no third spelling. This is why the
+branch cannot be finished by choosing a better qualification rule -- both
+candidate end-states are blocked on the same resolver work, and the corpus is
+currently in a state where no spelling of a cross-module variant reference
+compiles.
+
+Withdrawn with this: the claim that ~5% of the diagnostics are cut-pass defects.
+The one genuine cut-pass defect established so far remains the .dag fixture
+edited inside a Rust string literal.
