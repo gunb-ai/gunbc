@@ -2,7 +2,10 @@ module test.claim.cpu_socket_termination_witness
 
 import std.logic { Bool }
 import std.types { List, NonEmptyStr }
-import extdeps.cpu.types { CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
+import extdeps.cpu.types {
+  socket_termination_as_package_termination,
+  SocketedPinGrid,
+  SocketedLandGrid, CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.types { CpuModelCatalogRow, SocketFactCitation }
@@ -27,14 +30,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // right, which is exactly why the defect survived -- 1718 looked correct beside a
 // termination that had been copied down from the AM4 rows.
 test fn w_am5_processors_terminate_as_land_grid_array() -> Bool {
-  ryzen_7_pro_8700ge_catalog.socket.package == LandGridArray
-    && ryzen_9_7950x3d_catalog.socket.package == LandGridArray
+  socket_termination_as_package_termination(t: ryzen_7_pro_8700ge_catalog.socket.termination) == LandGridArray
+    && socket_termination_as_package_termination(t: ryzen_9_7950x3d_catalog.socket.termination) == LandGridArray
 }
 
 // AM4 STAYS PGA. Without this the fix above could have been applied corpus-wide, which
 // would have replaced one wrong termination with another rather than reading each socket.
 test fn w_am4_processors_still_terminate_as_pin_grid_array() -> Bool {
-  ryzen_5_3600_catalog.socket.package == PinGridArray
+  socket_termination_as_package_termination(t: ryzen_5_3600_catalog.socket.termination) == PinGridArray
 }
 
 // THE CONTACT COUNTS ARE UNCHANGED BY THE TERMINATION FIX. The defect was in the package
@@ -48,9 +51,9 @@ test fn w_the_contact_counts_survive_the_termination_correction() -> Bool {
 // RED control: the two terminations are distinguishable, so the assertions above are
 // properties of the catalogue rather than a comparison that cannot fail.
 test fn w_red_the_two_terminations_are_distinguishable() -> Bool {
-  let lga = CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 }
-  let pga = CpuSocket { platform_owner: amd, package: PinGridArray, contact_count: 1718 }
-  lga.package != pga.package && lga.contact_count == pga.contact_count
+  let lga = CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 }
+  let pga = CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1718 }
+  lga.termination != pga.termination && lga.contact_count == pga.contact_count
 }
 
 // THE DEFECT CLASS, PINNED: equal contact count does not establish equal socket. These two
@@ -58,9 +61,9 @@ test fn w_red_the_two_terminations_are_distinguishable() -> Bool {
 // count alone cannot identify LGA4926, and why the Dynatron coolers sold as "Intel LGA 4926"
 // are mislabelled against an Ampere platform.
 test fn w_red_equal_contact_count_is_not_equal_socket() -> Bool {
-  let lga = CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 }
-  let pga = CpuSocket { platform_owner: amd, package: PinGridArray, contact_count: 1718 }
-  !(lga.package == pga.package && lga.contact_count == pga.contact_count)
+  let lga = CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 }
+  let pga = CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1718 }
+  !(lga.termination == pga.termination && lga.contact_count == pga.contact_count)
 }
 
 // THE COLLISION THE IDENTITY AXIS EXISTS TO PREVENT. Before platform_owner, these two values were
@@ -70,15 +73,15 @@ test fn w_red_equal_contact_count_is_not_equal_socket() -> Bool {
 test fn w_red_same_termination_and_count_under_different_platforms_are_not_one_socket() -> Bool {
   let ampere_4926 = CpuSocket {
     platform_owner: ampere_vendor,
-    package: LandGridArray,
+    termination: SocketedLandGrid,
     contact_count: 4926,
   }
   let hypothetical_amd_4926 = CpuSocket {
     platform_owner: amd,
-    package: LandGridArray,
+    termination: SocketedLandGrid,
     contact_count: 4926,
   }
-  ampere_4926.package == hypothetical_amd_4926.package
+  ampere_4926.termination == hypothetical_amd_4926.termination
     && ampere_4926.contact_count == hypothetical_amd_4926.contact_count
     && !cpu_socket_eq(a: ampere_4926, b: hypothetical_amd_4926)
 }
@@ -86,8 +89,8 @@ test fn w_red_same_termination_and_count_under_different_platforms_are_not_one_s
 // AND THE PREDICATE STILL ADMITS A GENUINE MATCH, so the refusal above is a property of the two
 // values rather than an equality that can only answer false.
 test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
-  let a = CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 }
-  let b = CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 }
+  let a = CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926 }
+  let b = CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926 }
   cpu_socket_eq(a: a, b: b)
 }
 
