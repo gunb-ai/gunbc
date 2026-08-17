@@ -127,14 +127,18 @@ type TypeDefinitionsMapNotFrontierGrounded {
   dissolve_target: DeclarationRef
 }
 
-data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest (frontier-grounding dependency)."
+data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest supplying them through the path-module binding index (see stage0_grounding_target_repointed_note)."
 
 data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
 
+data stage0_grounding_target_repointed_note: String = "REPOINTED, and the old target was wrong before it was deleted. This debt's dissolution used to name v2.compiler.self_host.frontier compiler_frontier_roster, on the premise that the self-host roster would eventually carry each module's exports and type definitions. It never could: a roster row carried a module path and a self-host disposition and nothing else, so the pointer named an authority that was not going to supply the fact even in principle. The roster is deleted, which is what surfaced the mispointing rather than causing it.
+
+The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — v2.compiler.source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real Node-carrier exports through that index."
+
 fn stage0_frontier_grounding_target() -> DeclarationRef {
   DeclarationRef {
-    module_path: "v2.compiler.self_host.frontier" as NonEmptyStr,
-    decl_name: "compiler_frontier_roster" as NonEmptyStr,
+    module_path: "v2.compiler.source_authority" as NonEmptyStr,
+    decl_name: "ModuleStorageIndex" as NonEmptyStr,
     field: WholeDeclaration,
   }
 }
@@ -280,6 +284,7 @@ fn stage0_v1_artifact_modules() -> List<String> {
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
     "v1_compiler_artifact",
+    "v1_compiler_infer_env",
     "v1_compiler_infer_items",
     "v1_compiler_infer_service",
     "v1_compiler_infer_types",

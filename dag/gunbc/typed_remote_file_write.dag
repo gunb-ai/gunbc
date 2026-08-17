@@ -1,6 +1,7 @@
 module gunbc.typed_remote_file_write
 
-import std.types { String, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.ssh.session {
   ssh_session_exec_portable_words_with_stdin,
@@ -31,6 +32,106 @@ type TypedRemoteFileWriteAdmission
 type TypedRemoteFileWriteOutcome
   = TypedRemoteFileWriteRemoteExecAccepted { result: SshSessionExecResult }
   | TypedRemoteFileWriteOutcomeRefused { reason: String }
+
+// ── Convergence ─────────────────────────────────────────────────────────────────────────────────
+//
+// `TypedRemoteFileWriteRemoteExecAccepted` is a zero exit from the writing process and the authority
+// note above is explicit that this is NOT convergence: it proves the remote accepted stdin, not that
+// the declared bytes are at the declared path with the declared mode. This section adds the arm that
+// ruling reserved.
+//
+// FOUR STEPS, and the ORDER is the property.
+//
+//   1. stage    -- write the bytes to a sibling staging path, never to the destination
+//   2. mode     -- set the mode on the staged file, before anything can observe it at its real name
+//   3. rename   -- `mv -f` within one directory, which POSIX makes atomic, so no reader ever sees a
+//                  partially written or wrong-moded file at the destination
+//   4. read back-- `cat` the DESTINATION and compare to the declared content in the model
+//
+// Writing straight to the destination and then chmod-ing is the shape this replaces: it publishes
+// incomplete bytes under the real name, and on a unit file that is a window where systemd can read
+// something that was never a valid unit.
+//
+// WHY `dd status=none` AND NOT `tee`. `tee` copies stdin to stdout, so every byte written is also
+// echoed back across the SSH channel and into whatever captures it -- doubling transfer and putting
+// file content into logs. `dd status=none` writes and says nothing. This is not a style preference:
+// a credential or config file written through `tee` has its contents in the run log.
+//
+// WHY READ-BACK BY CONTENT AND NOT BY DIGEST. A digest comparison needs a digest of the INTENDED
+// bytes, and `.dag` has no SHA-256 over a `String` -- `extdeps.crypto.hash` `Digest` carries a hex
+// its caller supplies. Comparing a remote `sha256sum` of the staged file to a remote `sha256sum` of
+// the destination would prove only that the rename moved the same bytes, saying nothing about
+// whether those bytes were the ones intended, which is the question. Reading the file back and
+// comparing to the declared content answers it directly and the comparison happens in the model,
+// where a witness can exercise it. For a unit file the transfer is a few hundred bytes.
+type RemoteFileMode
+  = RemoteFileModeOwnerReadWrite
+  | RemoteFileModeOwnerReadWriteWorldRead
+
+fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
+  match mode {
+    RemoteFileModeOwnerReadWrite => "600"
+    RemoteFileModeOwnerReadWriteWorldRead => "644"
+  }
+}
+
+type TypedRemoteFileConvergence
+  = TypedRemoteFileConverged { path: FilePath, mode: RemoteFileMode }
+  | TypedRemoteFileConvergenceRefused { step: String, reason: String }
+
+// The staging sibling. It MUST share a directory with the destination: `mv` is atomic only within
+// one filesystem, and a suffix on the same path is the cheapest way to guarantee that without
+// modeling mount points. The suffix is dot-separated so it stays inside the portable-word allowlist.
+fn typed_remote_file_staging_path(write: TypedRemoteFileWrite) -> String {
+  concat(write.path as String, ".gunbc-staging")
+}
+
+fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
+  ["dd", "status=none", concat("of=", typed_remote_file_staging_path(write: write))]
+}
+
+fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
+  ["chmod", remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
+}
+
+fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {
+  ["mv", "-f", typed_remote_file_staging_path(write: write), write.path as String]
+}
+
+fn typed_remote_file_readback_argv(write: TypedRemoteFileWrite) -> List<String> {
+  ["cat", write.path as String]
+}
+
+// The read-back judgment, pure so every arm is reachable hermetically. Exact comparison, with no
+// trimming: normalizing whitespace here would let a real difference pass, and a file whose trailing
+// bytes differ from the declared content is not the file that was declared.
+fn classify_typed_remote_file_readback(
+  write: TypedRemoteFileWrite,
+  mode: RemoteFileMode,
+  readback_succeeded: Bool,
+  readback_stdout: String,
+  readback_stderr: String,
+) -> TypedRemoteFileConvergence {
+  if !readback_succeeded {
+    TypedRemoteFileConvergenceRefused {
+      step: "read-back",
+      reason: concat(
+        concat("could not read back ", write.path as String),
+        concat(" after rename: ", readback_stderr),
+      ),
+    }
+  } else if readback_stdout == write.content {
+    TypedRemoteFileConverged { path: write.path, mode: mode }
+  } else {
+    TypedRemoteFileConvergenceRefused {
+      step: "read-back",
+      reason: concat(
+        concat("the bytes at ", write.path as String),
+        " are not the declared content: the write reported success and the file is something else",
+      ),
+    }
+  }
+}
 
 data typed_remote_file_write_tee_command: String = "tee"
 
@@ -144,6 +245,115 @@ fn typed_remote_file_write_over_fleet_ssh(
               stdin_payload: typed_remote_file_write_stdin_payload(write: write),
             ),
           )
+      }
+  }
+}
+
+// ── The converging sequence ─────────────────────────────────────────────────────────────────────
+
+// One remote step: portable-word admission, then the leg. A non-portable argv refuses BEFORE the
+// leg rather than being quoted into something the far-side shell may re-split.
+fn typed_remote_file_step(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  raws: List<String>,
+  stdin_payload: String,
+) -> SshSessionExecResult? {
+  match portable_remote_words(raws: raws) {
+    Absent => none
+    Present { value: words } => Present {
+      value: ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+        stdin_payload: stdin_payload,
+      ),
+    }
+  }
+}
+
+// A step that carries no stdin still goes through the stdin-bearing operation with an empty payload,
+// so there is ONE leg shape rather than two that could drift apart.
+fn typed_remote_file_step_outcome(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  step: String,
+  raws: List<String>,
+  stdin_payload: String,
+) -> TypedRemoteFileConvergence? {
+  match typed_remote_file_step(target: target, context: context, raws: raws, stdin_payload: stdin_payload) {
+    Absent => Present {
+      value: TypedRemoteFileConvergenceRefused {
+        step: step,
+        reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
+      },
+    }
+    Present { value: r } =>
+      if r.success { none } else {
+        Present {
+          value: TypedRemoteFileConvergenceRefused {
+            step: step,
+            reason: concat("remote step failed: ", trim(s: r.stderr)),
+          },
+        }
+      }
+  }
+}
+
+// STAGE -> MODE -> RENAME -> READ BACK, halting at the first refusal. Each step's failure is located
+// by name, so a converge that stops is a statement about WHICH invariant did not hold rather than a
+// single opaque false. Nothing is published under the destination name until the rename, and nothing
+// is called converged until the destination has been read back and compared.
+func converge_typed_remote_file(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  admission: TypedRemoteFileWriteAdmission,
+  mode: RemoteFileMode,
+) -> TypedRemoteFileConvergence {
+  match admission {
+    TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
+      TypedRemoteFileConvergenceRefused { step: "admission", reason: cause as String }
+    TypedRemoteFileWriteAdmitted { write: write } =>
+      match typed_remote_file_step_outcome(
+        target: target, context: context, step: "stage",
+        raws: typed_remote_file_stage_argv(write: write),
+        stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+      ) {
+        Present { value: refusal } => refusal
+        Absent =>
+          match typed_remote_file_step_outcome(
+            target: target, context: context, step: "mode",
+            raws: typed_remote_file_chmod_argv(write: write, mode: mode),
+            stdin_payload: "",
+          ) {
+            Present { value: refusal } => refusal
+            Absent =>
+              match typed_remote_file_step_outcome(
+                target: target, context: context, step: "rename",
+                raws: typed_remote_file_rename_argv(write: write),
+                stdin_payload: "",
+              ) {
+                Present { value: refusal } => refusal
+                Absent =>
+                  match typed_remote_file_step(
+                    target: target, context: context,
+                    raws: typed_remote_file_readback_argv(write: write),
+                    stdin_payload: "",
+                  ) {
+                    Absent =>
+                      TypedRemoteFileConvergenceRefused {
+                        step: "read-back",
+                        reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
+                      }
+                    Present { value: back } =>
+                      classify_typed_remote_file_readback(
+                        write: write,
+                        mode: mode,
+                        readback_succeeded: back.success,
+                        readback_stdout: back.stdout,
+                        readback_stderr: back.stderr,
+                      )
+                  }
+              }
+          }
       }
   }
 }
