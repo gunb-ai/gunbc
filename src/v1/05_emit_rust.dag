@@ -65,8 +65,7 @@ import v1.compiler.trait_derive_emit {
   v1_emit_type_params_with_clone_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
-  v1_clone_bounded_type_params, v1_clone_impl_required_type_params,
-  v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
