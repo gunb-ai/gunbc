@@ -1230,7 +1230,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "rc-ownership-wrap-decision-design",
     primary_work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
-    additional_works: [],
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_shared_type_if_needed", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_field_from_child", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit", decl_name: "render_node_type", field: WholeDeclaration },
+    ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
   },
   HandAuthoredDocBind {
