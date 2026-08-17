@@ -5,7 +5,6 @@
 pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v1_interpreter.rs",
     "bounded_shell_host_drain.rs",
-    "ci_control_plane.rs",
     "cli_run.rs",
     "coproduct_reflection.rs",
     "data_initializer_identity.rs",
