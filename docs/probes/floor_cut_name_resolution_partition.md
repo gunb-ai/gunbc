@@ -1,7 +1,7 @@
 # Floor-cut name-resolution failure partition (Wave 1)
 
 **Status:** read-only census for operator decision (qualification vs binding-wall).  
-**Branch:** `session/valiant-hawk-198` (side branch off `integration/floor-cut` @ df5abeddd9a).  
+**Branch:** `session/valiant-hawk-198` (off `main` @ 611fd027708+).  
 **Does not:** qualify references, rename declarations, widen reach, or edit `floor_expected_red`.
 
 ## Hypothesis (one root cause, three error shapes)
@@ -10,12 +10,14 @@ Bare names in the widened reference closure bind by insertion-order precedence i
 per-claim scope registry. When two unrelated modules declare the same leaf name, the
 later module in scope order wins silently; the failure surfaces one step later as:
 
-| failure class | expected count (parent brief) |
+| failure class | role |
 | --- | --- |
-| `call_contract_mismatch` | 172 |
-| `no_such_function` | 154 |
-| `undefined_variable` | 16 |
-| **total** | **342** |
+| `call_contract_mismatch` | wrong function selected with matching bare name |
+| `no_such_function` | may be binding or reach gap |
+| `undefined_variable` | may be binding or reach gap |
+
+Population counts are filled from the main CI floor run (or census execution on that
+tree); do not treat stale brief numbers as current.
 
 ## Method
 
@@ -24,7 +26,7 @@ later module in scope order wins silently; the failure surfaces one step later a
 2. For each held expected-red failure, records witness identity, error class/message,
    bare reference name (when parseable), selected declarer module (call-contract rows),
    and all in-scope declarer modules for that bare name.
-3. `docs/scripts/floor_cut_name_resolution_partition.py` — adds `intended_declaration_identity`
+3. `docs/probes/floor_cut_name_resolution_partition.py` — adds `intended_declaration_identity`
    from import analysis and `reach_vs_binding` classification.
 
 Artifacts:
