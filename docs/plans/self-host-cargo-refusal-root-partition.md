@@ -876,6 +876,14 @@ R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
 
 ### 11.4 The six unowned roots: mechanism, assigning evidence, size, falsifier
 
+> **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and nothing in
+> it directs anyone to do the wrong thing — but it is the list a session greps to learn what the
+> partition contains, and **B1 is no longer one root**: §18 decomposes it into at most 146
+> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 rows
+> deliberately left unclassified. Read §18 before treating "six" as the root count or before
+> re-deriving a mechanism for the algebra carrier.
+
+
 **K — unsynthesized use-line. 132 sites.**
 *Mechanism, already named in tree:* `reference_derived_use_lines_note` (`src/v1/05_emit_rust.dag`)
 states that namespace-only resolution references cross-module names without importing them, the
