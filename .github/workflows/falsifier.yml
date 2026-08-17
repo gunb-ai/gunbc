@@ -26,7 +26,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=3" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
