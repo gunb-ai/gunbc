@@ -116,3 +116,60 @@ available and is a configuration decision, which is exactly why the disposition
 for this file was a judgement about its coverage rather than a forced deletion. Any other
 file in this position has the same three dispositions and the same reasoning —
 this is a class, not an incident, even though its current population is one.
+
+## ONE ROOT CAUSE, three confirmed instances (2026-08-17)
+
+The residue is not a list of unrelated authoring defects. Three sites confirmed
+by reading declarations, and they are the same mechanism:
+
+    1. TYPE PARAMETER -> global type
+       src/v2/std/witness.dag:4   type Witness<C> = Holds { value: C } | ...
+       binds C to dag/extdeps/languages/c/subject.dag:13  type C = | CTarget
+       (the C programming language; the corpus's ONLY global `C`)
+       => "variant 'DeriveGrammarRelationTokensProgress' not found in type 'C'"
+
+    2. VARIANT CONSTRUCTOR -> global type of the same name
+       dag/gunbc/ci_workflow.dag:1061  PullRequest { branches: .., types: .. }
+       intends dag/extdeps/github/actions.dag:67
+         | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
+       a 2-field VARIANT of the workflow-trigger coproduct, sitting in a list
+       beside Push { .. } and MergeGroup.
+       binds instead to dag/extdeps/github/pulls.dag:30  type PullRequest { .. },
+       the GitHub REST object, 10+ fields
+       => 10 x "missing required field '<f>' in literal of type 'PullRequest'"
+
+    3. same shape at src/v2/compiler/materialization_carriers.dag:4:78 for
+       `Terminal` (no global `type Terminal` -- the reverse direction, and not
+       yet fully traced; recorded as a candidate, not a confirmation)
+
+THE COMMON STATEMENT. A name whose meaning is determined by CONTEXT -- a type
+parameter bound by its own declaration, a variant constructor determined by the
+coproduct or expected type -- is instead resolved by GLOBAL BARE LOOKUP, and that
+lookup silently succeeds whenever exactly one global declarer happens to exist.
+Context-determined names are being answered by a global search that was never
+asked the right question, and the unique arm means nothing checks whether the
+answer was even visible.
+
+WHY IT SHOWS UP AS MANY DIFFERENT-LOOKING CLASSES. The diagnostic is emitted
+wherever the WRONGLY-REACHED declaration lives, and its text describes that
+declaration's shape. So one root produces "variant not found in type 'C'",
+"missing required field 'base'", "non-exhaustive match: missing Present, Absent",
+and "type mismatch: expected Coproduct(C)" -- four different-looking classes, one
+cause. This is why the residue decomposed into many small buckets: the buckets are
+SYMPTOM SHAPES, not causes.
+
+ESTIMATED SHARE, labelled as an estimate because it is not yet joined at site
+grain: of the 101 unique sites in the CI-scoped compile, the classes whose text is
+consistent with this root -- missing-required-field (12), variant-not-found (7),
+non-exhaustive Present/Absent (8), expected-Coproduct type mismatches (9) -- total
+roughly 36. Three are confirmed by reading declarations; the rest are consistent
+but unverified. DO NOT quote 36 as measured.
+
+CONSEQUENCE. Instance 1 cannot be repaired in source at all (a type parameter has
+no qualified spelling). Instance 2 could be -- but the correct repair is not to
+qualify the variant; it is for a variant constructor to resolve against the type
+it is constructing rather than by global search. Editing these sites would be
+editing correct authoring to satisfy an incorrect resolution order, the same shape
+the Nat repair rejected. So the residue is substantially a RESOLVER population,
+not a SOURCE population, and the remaining work is smaller than 101 suggests but
+concentrated in one place.
