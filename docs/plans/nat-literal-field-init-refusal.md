@@ -174,7 +174,11 @@ whether the current declaration is wrong. That part is settled.
 
 ---
 
-## REPAIRED 2026-08-17: `type Nat = Int where range(min: 0)`
+## ATTEMPTED AND REVERTED 2026-08-17: `type Nat = Int where range(min: 0)`
+
+**This section's original title read REPAIRED. It was wrong and is corrected in
+place rather than amended, per the commitment made when it was written that the
+expectation would be corrected rather than quietly adjusted if it failed.**
 
 The repair choice left open above is taken, under the operator's ruling that the
 bar is compilation and tests rather than reference-identity preservation.
@@ -211,3 +215,47 @@ rather than quietly amended if the expectation fails. This also does not close
 the two-Nat-authority fork; it corrects the wrong declaration in one of them.
 1,571 `std.nat.Nat` annotations exist in tree and every one of them reads as a
 magnitude, which is the population this repair serves.
+
+
+## Why the repair failed, and what it teaches the next attempt
+
+REVERTED at 8400bc847c9. The repair closed a definitional cycle:
+
+    dag/std/nat.dag      type Nat = Int where range(min: 0)      (the attempt)
+    dag/std/integer.dag  type Int = AbelianGroup<GroupCompletion<std.nat.Nat>>
+
+    Nat -> Int -> GroupCompletion<Nat> -> Nat
+
+A whole-tree compile at 3e493652f7a aborted with `has overflowed its stack`
+inside reconcile. The immediately preceding commit (455f549) reached reconcile
+and COMPLETED it, dying later of memory exhaustion instead -- so the failure moved
+EARLIER and changed signal across one intervening semantic change. That is
+evidence, not proof: the two runs also differ in host conditions, and neither is a
+controlled A/B. It is enough to revert on, not enough to call closed.
+
+THE REASONING ERROR, named because it is the one this branch keeps punishing. The
+case for the repair was that std.types spells six refinements as
+`Int where range(...)` -- EpochSecs, EpochMs, Duration, Milliseconds, Port,
+HttpStatus -- and they all compile. What went unchecked is that those live in a
+module where bare `Int` reaches the KERNEL primitive, and that std.integer
+declares a SECOND `Int` in terms of Nat itself. I generalised an idiom across a
+module boundary without checking that the name meant the same thing on both sides
+of it -- which is, exactly, the defect this whole branch is about, committed by
+the person documenting it.
+
+WHAT THE FAILURE ADDS, and it is worth more than the repair was: any Nat repair
+must ground the carrier on something that PROVABLY does not route through
+std.integer.Int. Naming the kernel primitive unambiguously is not currently
+possible from this module, because that is precisely the resolution question the
+unique-arm work is opening. So:
+
+    the Nat repair is DOWNSTREAM of the resolver fix, not independent of it.
+
+Sequencing consequence: do not re-attempt the 50-row class before resolution order
+is corrected. After it, the repair is probably one line and provably safe, because
+the base can then be named for certain.
+
+STILL TRUE, unchanged by the revert: the current declaration is wrong (a natural
+number is not a table of {add, zero, mul, one}, and the module's own nat_compare
+and nat_max order two Nats with `<`, which no such table admits), and the 50
+integer-literal sites are correct authoring that must not be edited to satisfy it.
