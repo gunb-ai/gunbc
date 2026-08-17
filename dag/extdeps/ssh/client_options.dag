@@ -298,6 +298,34 @@ fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClien
   ]
 }
 
+// THE AGENT HALF OF THE SAME POSTURE. Same goal as the function above -- a success must be caused by
+// the modeled credential and nothing else -- reached differently because the private key is held by
+// an agent and never appears on disk.
+//
+// `IdentityAgent` names the exact socket rather than inheriting `SSH_AUTH_SOCK` from the ambient
+// environment, so which agent answered is a modeled fact instead of whatever the process happened to
+// be started with.
+//
+// `IdentityFile` is NOT redundant here and it does not point at a private key: with
+// `IdentitiesOnly=yes` OpenSSH offers only the identities it was explicitly configured with, so
+// naming the PUBLIC key file is what selects one identity out of an agent that may hold several. An
+// agent posture with `IdentitiesOnly=yes` and no selector falls back to the default identity files,
+// and one without `IdentitiesOnly` offers every key the agent holds -- in both cases a success stops
+// being evidence about the modeled key, which is the whole property these options exist to preserve.
+fn openssh_exact_agent_credential_options(
+  agent_socket: NonEmptyStr,
+  public_selector_file: NonEmptyStr,
+) -> List<SshClientOption> {
+  [
+    IdentityAgent { path: agent_socket },
+    IdentityFile { path: public_selector_file },
+    IdentitiesOnly { enabled: true },
+    PreferredAuthentications { methods: "publickey" as NonEmptyStr },
+    PasswordAuthentication { enabled: false },
+    KbdInteractiveAuthentication { enabled: false },
+  ]
+}
+
 // -F takes its value as a following word rather than an -o pair, so this projects the ConfigFile
 // option to the flag OpenSSH actually documents while keeping one serializer as the authority for
 // what the value is.
