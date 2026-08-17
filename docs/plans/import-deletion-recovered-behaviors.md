@@ -371,3 +371,52 @@ should become a refusal — but not before the tree's remaining unresolved
 population reaches zero, because converting it earlier would require a
 suppression list, and a suppression list at a refusal arm is the escape hatch
 §5 forbids.
+
+## The remedy table above is WITHDRAWN, and the crash had a higher cut
+
+Two corrections against this note's own earlier text, both owed to external
+review of it rather than to my own re-reading.
+
+**The pre-registered 370s/739s decision table is falsified, not amended.** It
+offered exactly two outcomes for the 1 MiB arm — ~370s meaning stack use grows
+with work, ~739s meaning a fixed deep descent — and the observed 959s matched
+neither. A plausible mechanism was then found for the miss (stacker chains
+segments, so a smaller native thread stack reaches `maybe_grow` sooner and can
+gain total runway, making time-to-fault non-monotonic). That explains the
+result; it does not rehabilitate the table. A two-outcome model that observes a
+third outcome is refuted, and the honest move is to withdraw it rather than to
+widen it after seeing the answer. It is withdrawn. Nothing downstream should
+cite either row.
+
+**"The true closure" was the wrong name for what `source_closure` computes.**
+This note repeatedly called the ~1,100-module result the true or correct
+closure, and used that to argue no better closure builder could help. The
+implementation says otherwise in its own comment: binding has not happened, so
+a reference-shaped name can still pull an unrelated declaring module, and the
+result is an explicit structural OVER-APPROXIMATION whose precision ceiling is
+bound-occurrence edges. Zero observed homonym widening does not establish zero
+false-positive single-declarer edges. The correct name is *parse-derived
+conservative closure*, and the argument built on the old name does not stand.
+
+**The remedy question was below the available cut.** Which stack overflowed is
+answerable from the fault address and the maps, and it was answered: a
+stacker-allocated 2 MiB segment, faulting on the `PROT_NONE` page 16 bytes
+below its base. But that answer cannot choose between cycle refusal, an
+explicit worklist, and a justified finite bound — only depth plus subject
+identity can. Before spending that, the prior question is whether any consumer
+needs the deep descent at all, and for the `FieldOfFractions` witness it did
+not. `eval_record_lit` decides its collapse on the type NAME string alone
+(`type_name == "GroupCompletion"`, `== "Succ"`); nothing in that arm consults a
+resolved declaration. The whole-corpus resolve that witness carried was the
+compile-clean gate's subject sitting inside a unit test. Split by subject — the
+real authority parsed directly for the shape claim, a minimal same-name
+specimen for the runtime claim — the same two assertions run in 0.02s and
+0.00s, where the fused form took 803s and died in a SIGSEGV.
+
+**Still open, and not closed by the split:** whether a surviving production
+consumer reaches the same descent. If one does, the instrumentation owed is
+logical depth plus a stable subject identity at each descent — repeated
+identity means a cycle and a typed cycle refusal, unique deep structure means
+an explicit worklist, and only an authoritative domain ceiling would justify a
+depth bound. A 149th `maybe_grow` is refused either way: it would erase the
+symptom before distinguishing those.
