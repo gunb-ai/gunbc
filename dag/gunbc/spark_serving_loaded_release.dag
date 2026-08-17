@@ -129,7 +129,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
             Present { value: admission_cause } =>
               SparkServingObservationRefused { host: readback.host, cause: admission_cause }
             Absent =>
-              match derive_loaded_spark_serving_release_identity(readback: readback) {
+              match derive_loaded_spark_serving_release(readback: readback) {
                 Absent =>
                   SparkServingObservationRefused {
                     host: readback.host,

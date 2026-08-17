@@ -304,7 +304,9 @@ test fn active_complete_readback_derives_observed() -> Bool {
     Present { value: expected } =>
       match derive_spark_serving_observation(readback: readback_active_complete()) {
         SparkServingObserved { host: h, loaded_release: r } =>
-          h == "srv5" && (r.digest.digest as String) == (expected.digest.digest as String)
+          h == "srv5"
+            && (spark_serving_release_identity(spec: r).digest.digest as String)
+              == (expected.digest.digest as String)
         SparkServingAbsent { host: _ } => false
         SparkServingObservationRefused { host: _, cause: _ } => false
       }
