@@ -23486,33 +23486,21 @@ impl ShardStyle {
         }
         let ts = floor_ts();
         let tag = self.shard_tag();
-        if let Some(line) = render_witness_claim_result_text(subject, function, wall_nanos, passed)
-        {
-            if self.color {
-                eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
-            } else {
-                eprintln!("{ts} {tag}{line}");
+        match render_witness_claim_result_text(subject, function, wall_nanos, passed) {
+            Some(line) => {
+                if self.color {
+                    eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
+                } else {
+                    eprintln!("{ts} {tag}{line}");
+                }
             }
-            return;
-        }
-        eprintln!(
-            "::warning::witness presentation drift: gunbc.observation_ci_render \
-             `ci_witness_claim_result_text` did not return a line; falling back to legacy \
-             formatting for {subject}:{function}"
-        );
-        let ms = wall_nanos as f64 / 1.0e6;
-        if self.color {
-            let glyph = if passed {
-                "\x1b[32m✓\x1b[0m"
-            } else {
-                "\x1b[31m✗\x1b[0m"
-            };
-            eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({subject})\x1b[0m {ms:.1}ms"
-            );
-        } else {
-            let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({subject}) {ms:.1}ms");
+            // Fail-closed: routine lines may already be folded, so a silent return would read as
+            // a witness that never ran rather than a renderer that refused.
+            None => eprintln!(
+                "::error::witness presentation unavailable: could not render claim result \
+                 through gunbc.observation_ci_render `ci_witness_claim_result_text` for \
+                 {subject}:{function}"
+            ),
         }
     }
 }

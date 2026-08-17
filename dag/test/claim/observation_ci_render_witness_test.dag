@@ -627,36 +627,3 @@ test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
       function: "required_floor_claim_manifest"
     ) == "//src/v2/workflow/required_floor:required_floor_claim_manifest"
 }
-
-test fn w_witness_claim_line_from_module_path_holds() -> Bool {
-  let text = ci_witness_claim_result_text(
-    subject: "test.claim.observation_ci_render_witness_test",
-    function: "w_witness_claim_line_from_module_path_holds",
-    passed: true,
-    wall: nanosecond(count: 230000000)
-  )
-  string_contains(s: text, pattern: "//test/claim/observation_ci_render_witness_test:w_witness_claim_line_from_module_path_holds")
-    && string_contains(s: text, pattern: "PASSED in 230ms")
-}
-
-test fn w_witness_claim_line_from_entry_path_holds() -> Bool {
-  let text = ci_witness_claim_result_text(
-    subject: "dag/test/claim/foo_test.dag",
-    function: "witness_holds",
-    passed: false,
-    wall: nanosecond(count: 1500000000)
-  )
-  string_contains(s: text, pattern: "//dag/test/claim/foo_test:witness_holds")
-    && string_contains(s: text, pattern: "FAILED in 1 seconds")
-}
-
-test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
-  ci_witness_bazel_target_label(
-    subject: "gunbc.output_policy",
-    function: "resolve_channel_policy"
-  ) == "//gunbc/output_policy:resolve_channel_policy"
-    && ci_witness_bazel_target_label(
-      subject: "src/v2/workflow/required_floor.dag",
-      function: "required_floor_claim_manifest"
-    ) == "//src/v2/workflow/required_floor:required_floor_claim_manifest"
-}
