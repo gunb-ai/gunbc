@@ -47,7 +47,7 @@ import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. UseSiteVerdict enrolled (owned-at-all-sites). RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
+data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at ONE emit position, and wrap_decision_flow_gate is the single authority over a producer/consumer PAIR, refusing disagreement. UseSiteVerdict enrolled (owned-at-all-sites). RED, position surface: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails. RED, flow surface (measured, non-uniform): force wrap_decision_gates_agree to true -> over_wrap, under_wrap and distinct_reference_layers witnesses red while missing_row and both accept controls stay green; make wrap_decisions_equal layer-blind -> distinct_reference_layers alone reds. A witness set that reds together says less than one whose profile names which witness guards which arm."
 
 fn wrap_decision_sg_rc_target() -> TargetModel {
   rust_sg2_type_expr_target_model()
