@@ -12,8 +12,14 @@ import v2.std.compilers.lexing {
   symbol_lexeme,
   token_stream_all
 }
+import v2.std.collection { Absent, Present }
+import v2.std.node { Edge, Node, Symbol, content_hash }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
+import v2.std.compilers.lexing { token_stream_all }
 import v2.compiler.tokenize { lex_walk_artifact }
-import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.compiler.parse { ParseArtifact, parse_module }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_grammar, dag_lex_rules }
 
 data dag_line_comment_annotation_channel_note: String = "THE PRODUCTION '//' CHANNEL, asserted against the LexArtifact rather than against Accepted. Before this rule was registered, dag_lex_rules carried NO annotation rule at all, so a '//' line was not lexed as a comment: it tokenized as two dag_token_slash tokens followed by whatever its payload happened to lex as. A comment therefore 'lexed' BY ACCIDENT, exactly when every character in its payload had a semantic rule, and refused at the first character that did not — measured: '-' passed while the em-dash, the backtick and '@' each refused, and the em-dash passed inside a string literal where it is string content.\n\nThat is why an Accepted-only control is a FALSE CONTROL for this capability: 'module m // a b' lexing proves that slash-slash-ident-ident is lexable, not that a comment was recognised. Every claim below therefore reads the artifact — the annotation the channel captured, and the semantic stream it must NOT have polluted. The payload controls use characters with no semantic lex rule precisely because under the accidental route they were the refusing cases; under a real channel the payload is opaque and they are ordinary text."
 
@@ -134,4 +140,184 @@ test fn a_refusal_renders_as_refusal_not_an_empty_stream_RED() -> Bool {
 
 test fn string_content_is_not_captured_as_an_annotation_RED() -> Bool {
   annotation_count(source: url_in_string_source) == 0
+}
+
+// §4c ERASURE OBLIGATION, RE-ENROLLED (2026-08-17, cli-run cut). These claims were carried by
+// src/v1/tests/claim/v1_annotation_erasure_test.dag, which this branch deleted because every
+// symbol it called was a v1 module. Its SUBJECT was never v1. §4c states that annotation capture
+// is disjoint from semantic occurrence allocation: adding prose cannot alter the semantic graph,
+// its identities, or its fingerprint, while textual provenance may move and must remain correct.
+// That obligation outlived its realization, so it is re-enrolled here against the surviving v2
+// path rather than re-authored against the deleted one — the test of which is what the witness
+// CALLS. Rung unchanged; no §4b(3) drop is taken, because all three halves proved expressible.
+//
+// The claims ABOVE this line stop at lex grain: the annotation the channel captured and the
+// token stream it must not have polluted. These reach through parse and normalize, where
+// occurrence identities are actually minted, which is the grain at which disjointness is
+// falsifiable at all. Each half carries its own control, at its own grain, because the three
+// fingerprints answer different questions and a control aimed at the wrong one collapses:
+// content_hash folds node kind and edge label ONLY (Fnv1a64Structural — a SHAPE fingerprint),
+// so a renamed declaration provably cannot move it and is a false control for the hash half,
+// while it is exactly the right control for the atom-identity half.
+fn parse_artifact_tree(artifact: ParseArtifact) -> ParseTree {
+  artifact.tree
+}
+
+fn normalized_root(t: v2.compiler.normalized_tree.NormalizedTree) -> Node {
+  t.root
+}
+
+fn normalized_tree_optional(source: String) -> Node? {
+  match lex_walk_artifact(source: source, file: ^annotation_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: parse_artifact_tree(artifact: artifact)) {
+            v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+            v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => Present { value: normalized_root(t: t) }
+          }
+      }
+  }
+}
+
+// A refusal at ANY of the three stages renders as REFUSED and never as a constant digest: two
+// refusals compared for equality would satisfy the invariance claim vacuously, which is the
+// collapse the non-vacuity claim below exists to refuse.
+fn normalized_semantic_hash(source: String) -> String {
+  match normalized_tree_optional(source: source) {
+    Absent => "REFUSED"
+    Present { value: n } => (content_hash(n: n).digest as String)
+  }
+}
+
+fn edge_target_node(e: Edge) -> Node {
+  e.target
+}
+
+fn node_carries_atom(n: Node, sym: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => if id == sym { true } else { children_carry_atom(n: n, sym: sym) }
+    Absent => children_carry_atom(n: n, sym: sym)
+  }
+}
+
+fn children_carry_atom(n: Node, sym: Symbol) -> Bool {
+  fold_list(xs: n.children, empty: false, cons: fn(acc, e) {
+    acc || node_carries_atom(n: edge_target_node(e: e), sym: sym)
+  })
+}
+
+fn semantic_tree_carries_atom(source: String, sym: Symbol) -> Bool {
+  match normalized_tree_optional(source: source) {
+    Absent => false
+    Present { value: n } => node_carries_atom(n: n, sym: sym)
+  }
+}
+
+fn semantic_token_count(source: String) -> Int {
+  match artifact_of(source: source) {
+    Absent => 0 - 1
+    Present { value: a } => length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)))
+  }
+}
+
+fn last_semantic_token_start(source: String) -> Int {
+  match artifact_of(source: source) {
+    Absent => 0 - 1
+    Present { value: a } =>
+      fold_list(
+        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+        empty: 0 - 1,
+        cons: fn(acc, t) { t.start }
+      )
+  }
+}
+
+// The probe bodies use the lowered-declaration shape normalize is independently witnessed to
+// accept (namespace_graft_body_dissolution_witness_test lowered_body_source). A shape normalize
+// refuses would render every hash "REFUSED" and collapse all three halves at once; measured, a
+// data-decl-with-String-literal module IS refused by normalize, which is why this shape is used.
+data erasure_bare_source: String = "module annotation_probe\n\ndata d3: LiveTreeDisposition = SubstrateInputsOnly\n\nfn g3() -> List<Int> {\n  fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {\n    list_append(left: [item], right: acc)\n  })\n}\n"
+
+data erasure_annotated_source: String = "module annotation_probe\n\n// prose about d3\ndata d3: LiveTreeDisposition = SubstrateInputsOnly\n\nfn g3() -> List<Int> {\n  fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {\n    list_append(left: [item], right: acc)\n  })\n}\n"
+
+// Control source for the SHAPE half: a module with no declarations at all.
+data erasure_header_only_source: String = "module annotation_probe\n"
+
+// Control source for the IDENTITY half: one body callee renamed, shape untouched.
+data erasure_alt_callee_source: String = "module annotation_probe\n\ndata d3: LiveTreeDisposition = SubstrateInputsOnly\n\nfn g3() -> List<Int> {\n  fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {\n    list_prepend_zz(left: [item], right: acc)\n  })\n}\n"
+
+// The prose block, carried as its own row so the provenance claim can assert an EXACT byte
+// delta rather than a direction. 18 bytes: "// prose about d3" plus its newline.
+data erasure_prose_byte_length: Int = 18
+
+// NON-VACUITY, asserted before any equality below is believed: if a probe source did not survive
+// lex, parse and normalize, every hash claim would compare "REFUSED" with "REFUSED". The
+// annotation counts also pin that the two sources differ in exactly the intended way.
+test fn erasure_probe_sources_reach_a_real_semantic_hash() -> Bool {
+  (normalized_semantic_hash(source: erasure_bare_source) != "REFUSED")
+    && (normalized_semantic_hash(source: erasure_annotated_source) != "REFUSED")
+    && (normalized_semantic_hash(source: erasure_header_only_source) != "REFUSED")
+    && (normalized_semantic_hash(source: erasure_alt_callee_source) != "REFUSED")
+    && (annotation_count(source: erasure_bare_source) == 0)
+    && (annotation_count(source: erasure_annotated_source) == 1)
+}
+
+// §4c HALF 1 — SHAPE. Prose cannot alter the semantic graph's structure. Downstream of parse and
+// normalize, so a leaked annotation node or edge moves this digest.
+test fn annotation_does_not_move_the_structural_fingerprint() -> Bool {
+  normalized_semantic_hash(source: erasure_annotated_source)
+    == normalized_semantic_hash(source: erasure_bare_source)
+}
+
+// CONTROL for half 1: the fingerprint is not a constant. A real shape change — declarations
+// present versus absent — must move it, and both digests must be real.
+test fn structural_fingerprint_responds_to_a_real_shape_change_RED() -> Bool {
+  let with_body = normalized_semantic_hash(source: erasure_bare_source)
+  let header_only = normalized_semantic_hash(source: erasure_header_only_source)
+  (with_body != "REFUSED") && (header_only != "REFUSED") && (with_body != header_only)
+}
+
+// §4c HALF 2 — IDENTITY. Prose contributes no atom to the semantic graph: the body's callee
+// identity survives on both sides, and no word of the payload appears as an atom on the
+// annotated side. Asserted at atom grain because content_hash is shape-only and cannot see
+// identities, so half 1 alone would not notice prose that arrived with the right shape.
+//
+// MEASURED BOUND on what this half proves, stated because the obvious assertion is the one that
+// silently proves nothing: DECLARATION NAMES ARE NOT ATOMS in today's normalized tree — the
+// probe body's own `d3` is absent from it, as is `d4`. Asserting `^d3`-absence on the annotated
+// side would therefore have passed whether or not prose leaked, a control-collapse of the
+// name-as-predicate kind. The identities used below are body callees, which is the same grain
+// namespace_graft_body_dissolution_witness_test asserts declaration survival at (`^list_append`).
+// This half climbs to declaration grain when decl-name binding through the containment index
+// lands (DESIGN body-lowering open thread, Stage A).
+test fn annotation_contributes_no_atom_to_the_semantic_graph() -> Bool {
+  semantic_tree_carries_atom(source: erasure_bare_source, sym: ^list_append)
+    && semantic_tree_carries_atom(source: erasure_annotated_source, sym: ^list_append)
+    && !semantic_tree_carries_atom(source: erasure_annotated_source, sym: ^prose)
+    && !semantic_tree_carries_atom(source: erasure_annotated_source, sym: ^about)
+}
+
+// CONTROL for half 2: atom membership is not a constant-true reader. A renamed body callee —
+// invisible to the shape fingerprint above, which is precisely why this half exists — moves the
+// atom set in BOTH directions: the new identity appears and the old one is gone.
+test fn atom_identity_responds_to_a_renamed_callee_RED() -> Bool {
+  semantic_tree_carries_atom(source: erasure_alt_callee_source, sym: ^list_prepend_zz)
+    && !semantic_tree_carries_atom(source: erasure_alt_callee_source, sym: ^list_append)
+}
+
+// §4c HALF 3 — PROVENANCE. Textual provenance MAY move and must remain correct: every semantic
+// token after the prose shifts later by EXACTLY the prose's byte length, while the token
+// population is unchanged. Asserted as an exact delta against a declared constant rather than as
+// a direction, so a lexer that shifted spans by the wrong amount cannot satisfy it.
+test fn annotation_shifts_textual_provenance_by_exactly_its_own_bytes() -> Bool {
+  let bare_last = last_semantic_token_start(source: erasure_bare_source)
+  let annotated_last = last_semantic_token_start(source: erasure_annotated_source)
+  (bare_last > 0)
+    && (semantic_token_count(source: erasure_bare_source) > 0)
+    && (semantic_token_count(source: erasure_annotated_source)
+          == semantic_token_count(source: erasure_bare_source))
+    && ((annotated_last - bare_last) == erasure_prose_byte_length)
 }
