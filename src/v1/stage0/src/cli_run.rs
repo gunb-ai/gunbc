@@ -41112,21 +41112,6 @@ pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWi
     out
 }
 
-/// Whether a witness file sits in the designated long home CI does not run.
-///
-/// This is a PATH test, and that is exactly what the 2026-08-04 ruling warned about — so the
-/// exclusion it drives is reported, never silent. The gunbc#7762 specimen was a witness moved
-/// under `long/` to escape a budget: it left discovery, no cadence picked it up, nothing
-/// executed it, and admission still held. Green CI, zero coverage, source file retained.
-///
-/// The remedy is not to refuse the directory — the operator's rule is that an over-ceiling
-/// witness must either shrink or move here — it is to make the population LOUD. Every run
-/// prints the count and the rows, so a roster that grows by relocation is visible in the same
-/// breath as the roster that runs, and "excluded" can never read as "covered".
-pub fn is_long_home(path: &str) -> bool {
-    path.contains("/test/claim/long/") || path.contains("/tests/claim/long/")
-}
-
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     v1_interpreter::Value::List(Rc::new(
         items
@@ -41727,28 +41712,23 @@ pub fn run_required_floor(
     // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
     // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
     // was always "exactly one". The refusal for the other cases had no reachable producer.
-    // THE LONG HOME IS EXCLUDED FROM THE FOLD, AND COUNTED IN THE SAME BREATH.
+    // EVERY DISCOVERED SITE IS OFFERED TO THE MANIFEST, and the manifest decides which are
+    // required-floor claims.
     //
-    // The operator's rule (2026-08-17) gives an over-ceiling witness two remedies: shrink it, or
-    // move it here. So this population is expected to exist and expected to grow. What must not
-    // happen is the gunbc#7762 outcome, where relocation deleted the coverage and nothing said
-    // so — the rows are therefore reported as UNCOVERED every run, not merely omitted.
-    let (long_files, files): (Vec<_>, Vec<_>) =
-        files.into_iter().partition(|f| is_long_home(&f.path));
-    let long_rows: usize = long_files.iter().map(|f| f.functions.len()).sum();
-    eprintln!(
-        "[floor-long-home] excluded_files={} excluded_rows={} — NOT RUN BY CI AND NOT COVERED; \
-         each row needs its cost reduced or an executing consumer on another cadence",
-        long_files.len(),
-        long_rows
-    );
-    for f in &long_files {
-        eprintln!(
-            "[floor-long-home] uncovered {} ({} rows)",
-            f.path,
-            f.functions.len()
-        );
-    }
+    // This host previously partitioned the population itself, by testing whether a file's PATH
+    // contained the long home. That made a directory the admission authority — the 2026-08-04
+    // ruling's exact root cause — and it decided at file grain, so one expensive witness took
+    // every cheap sibling in its file out of the floor with it. It was also a SECOND authority:
+    // `WitnessDisposition` already modelled the answer in `.dag` and nothing consulted it.
+    //
+    // The disposition now lives where it is authored — `v2.workflow.required_floor`
+    // `disposition_for_module`, a grant over a namespace subtree joined by the prefix relation,
+    // with `RequiredFloor` as the fail-closed default. Discovery's job is to report what exists;
+    // deciding what that means is the manifest's.
+    //
+    // The exclusion is still counted, and counted from the claim list rather than from a
+    // predicate this host applies: sites offered minus claims returned is what the manifest
+    // declined, so the number cannot drift from the decision that produced it.
     let mut sites: Vec<v1_interpreter::Value> = Vec::new();
     for file in &files {
         for function in &file.functions {
@@ -41766,10 +41746,11 @@ pub fn run_required_floor(
             ));
         }
     }
+    let sites_offered = sites.len();
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
         projection_started.elapsed().as_millis(),
-        sites.len(),
+        sites_offered,
         files.len()
     );
     let subject = record_value(
@@ -41821,6 +41802,18 @@ pub fn run_required_floor(
         admission_decode_started.elapsed().as_millis(),
         claims.len()
     );
+    // WHAT THE MANIFEST DECLINED, derived from the two populations rather than recomputed. A
+    // site offered and not returned as a claim carries a non-required disposition, and those
+    // rows are NOT covered by this floor — reported every run in those words, because the
+    // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
+    let declined = sites_offered.saturating_sub(claims.len());
+    if declined > 0 {
+        eprintln!(
+            "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
+             required-floor and NOT RUN HERE — each needs an executing consumer on another \
+             cadence, and none exists yet on this branch"
+        );
+    }
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
