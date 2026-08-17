@@ -24,8 +24,6 @@ use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType}
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
-pub use crate::v1_std_core::MatchPattern;
-use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
@@ -51,7 +49,6 @@ pub struct TypeEnv {
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-    pub source_visible_names: Rc<HashMap<String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
 }
@@ -150,7 +147,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         intern_table: empty_intern_table(),
-        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         symbol_index: empty_symbol_index(),
     })
 }
@@ -819,13 +815,7 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match lookup_binding_by_name_local(env.clone(), name.clone()) {
-        Some(binding) => {
-            if listed_import_required_bare_call_blocked(env.clone(), name.clone()) {
-                None
-            } else {
-                Some(binding.clone())
-            }
-        }
+        Some(binding) => Some(binding.clone()),
         None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
@@ -839,34 +829,10 @@ pub fn closure_independent_bare_free_call_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn bare_free_call_requires_listed_import(name: String) -> bool {
-    (name.clone() == "trim".to_string())
-}
-
-pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match v1_rt::map_get(&env.source_visible_names.clone(), name.clone()) {
-        Some(vis) => vis.clone(),
-        None => false,
-    }
-}
-
-pub fn global_bare_blocked_by_listed_import_requirement(env: Rc<TypeEnv>, name: String) -> bool {
-    (bare_free_call_requires_listed_import(name.clone())
-        && !import_visible_name(env.clone(), name.clone()))
-}
-
-pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) -> bool {
-    global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone())
-}
-
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    if global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone()) {
-        None
-    } else {
-        match global_bare_lookup(env.clone(), name.clone()) {
-            Some(binding) => Some(binding.clone()),
-            None => lookup_qualified_module_projection(env.clone(), name.clone()),
-        }
+    match global_bare_lookup(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_qualified_module_projection(env.clone(), name.clone()),
     }
 }
 
@@ -1967,11 +1933,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 inductive_fields: e.inductive_fields.clone(),
                 source_indices: e.source_indices.clone(),
                 intern_table: e.intern_table.clone(),
-                source_visible_names: v1_rt::rc_map_insert(
-                    e.source_visible_names.clone(),
-                    tp_name.clone(),
-                    true,
-                ),
                 symbol_index: e.symbol_index.clone(),
             })
         })

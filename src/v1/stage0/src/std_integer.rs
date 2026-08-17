@@ -7,7 +7,6 @@ use self::Signedness::*;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
 pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
-pub use crate::std_magnitude::Magnitude;
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 pub use crate::std_nat::Nat;
 use crate::v1_rt;

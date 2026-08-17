@@ -17,6 +17,7 @@ use v1_compiler::cli_run::{
 struct CaptureOutput<'a> {
     baseline_commit: &'a str,
     diagnostic_fingerprint: &'a str,
+    rust_corpus_repr: &'a str,
     emit_graph_fingerprint: &'a str,
     corpus_fingerprint: &'a str,
     modules_resolved: usize,
@@ -69,6 +70,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let output = CaptureOutput {
         baseline_commit: "aeb1739ec5c",
         diagnostic_fingerprint: &oracle.diagnostic_fingerprint,
+        rust_corpus_repr: &oracle.rust_corpus_repr,
         emit_graph_fingerprint: &oracle.emit_graph_fingerprint,
         corpus_fingerprint: &oracle.corpus_fingerprint,
         modules_resolved: oracle.modules_resolved,

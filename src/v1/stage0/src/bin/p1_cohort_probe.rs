@@ -35,6 +35,7 @@ use v1_compiler::cli_run::{
     heartbeat_feed_snapshot, p1_cohort_cgroup_memory, p1_experimental_arm_shared_typed_store,
     run_discovery_corpus_with_options, shared_typecheck_store_counters_snapshot,
     typecheck_compute_count, DiscoveryCorpusOptions, DiscoveryWidthPolicy,
+    NodeFrontierSelectionMode,
 };
 use v1_compiler::memory_governor::{leaf_cgroup_dir, read_cgroup_raw, read_cgroup_u64};
 use v1_compiler::v1_interpreter::ExecutionMode;
@@ -315,6 +316,7 @@ fn main() -> ExitCode {
     );
 
     let options = DiscoveryCorpusOptions {
+        node_frontier_selection: NodeFrontierSelectionMode::Off,
         execution_authority_source_roots: source_roots.clone(),
         explicit_roster_only: true,
         ..Default::default()

@@ -426,13 +426,93 @@ pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
     v
 }
 
+/// A shared string carrier that precomputes ASCII-ness once at construction (`RcStr::new`)
+/// instead of rescanning on every `char_at`/`substring`/`string_length` call — the fact is
+/// carried on the value (DESIGN §5 construction-over-validation), not looked up by an
+/// identity inferred after the fact (the pointer-keyed cache class this replaces, withdrawn
+/// in CHARAT-0 for aliasing on allocation reuse: STRING-INDEX-0).
+#[derive(Debug, Clone)]
+pub struct RcStr {
+    rc: Rc<str>,
+    is_ascii: bool,
+}
+
+impl RcStr {
+    pub fn new(rc: Rc<str>) -> Self {
+        let is_ascii = rc.is_ascii();
+        RcStr { rc, is_ascii }
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.rc
+    }
+
+    #[inline]
+    pub fn is_ascii(&self) -> bool {
+        self.is_ascii
+    }
+
+    /// Owned clone of the underlying allocation, for sites that need a bare `Rc<str>`.
+    pub fn rc(&self) -> Rc<str> {
+        Rc::clone(&self.rc)
+    }
+
+    pub fn ptr_eq(a: &RcStr, b: &RcStr) -> bool {
+        Rc::ptr_eq(&a.rc, &b.rc)
+    }
+}
+
+impl std::ops::Deref for RcStr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl AsRef<str> for RcStr {
+    fn as_ref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl std::fmt::Display for RcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.rc, f)
+    }
+}
+
+impl PartialEq for RcStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.rc == other.rc
+    }
+}
+impl Eq for RcStr {}
+
+impl PartialOrd for RcStr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for RcStr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rc.as_ref().cmp(other.rc.as_ref())
+    }
+}
+
+impl From<Rc<str>> for RcStr {
+    fn from(rc: Rc<str>) -> Self {
+        RcStr::new(rc)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Null,
     Bool(bool),
     Int(i64),
     Float(f64),
-    Str(Rc<str>),
+    Str(RcStr),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
     Set(Rc<OrdSet<String>>),
@@ -461,7 +541,7 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
 }
 
 pub fn str_value(s: impl AsRef<str>) -> Value {
-    Value::Str(Rc::from(s.as_ref()))
+    Value::Str(RcStr::new(Rc::from(s.as_ref())))
 }
 
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
@@ -1492,19 +1572,7 @@ impl ExecutionMode {
     }
 }
 
-/// THE IMMUTABLE HALF OF AN EVALUATION CONTEXT — built once per distinct scope, shared by
-/// every claim that scope serves.
-///
-/// These indexes are a pure function of the module population: given the same modules they are
-/// the same maps. Building them belongs to preparing a scope, not to running a claim.
-///
-/// The split exists because the obvious reading of "a fresh context per claim, so witnesses
-/// cannot contaminate each other" rebuilds ALL of this per claim. On the required floor that is
-/// 9,573 reconstructions of maps that only 1,155 distinct scopes can possibly differ in — the
-/// entry-major cost shape reproduced one layer below the compiler, after the compiler's own
-/// copy of it was removed. Fresh state per claim is correct; fresh INDEXES per claim is the
-/// same defect wearing the word "fresh".
-pub struct PreparedScopeIndexes {
+pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1512,33 +1580,6 @@ pub struct PreparedScopeIndexes {
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
-}
-
-thread_local! {
-    /// How many times the immutable index set has been constructed. The acceptance bar asks
-    /// for `full interpreter index constructions <= distinct prepared scope identities`, and a
-    /// bound nothing counts is a bound nobody can check — this is the counter that makes the
-    /// per-claim rebuild observable instead of inferable from a profile.
-    static SCOPE_INDEX_CONSTRUCTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-pub fn scope_index_construction_count() -> u64 {
-    SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.get())
-}
-
-pub fn reset_scope_index_construction_count() {
-    SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(0));
-}
-
-pub struct InterpContext {
-    /// The heavy maps, SHARED across every claim this scope serves. The four `Rc` handles
-    /// below are cloned per frame because cloning a handle is free; these three are behind one
-    /// handle because BUILDING them is not.
-    indexes: Rc<PreparedScopeIndexes>,
-    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
@@ -1636,14 +1677,7 @@ pub struct SelectedFunctionIdentity {
     pub bare_name_ambiguous: bool,
 }
 
-/// The module path a source file authors, or `None` when the index cannot name
-/// exactly one. Made public for the FLOOR2 qualified-witness lookup: under one
-/// shared prepared subject a witness must be invoked by `module.function`, and
-/// deriving that mapping a second time in the caller would fork this one.
-pub fn selected_module_path(
-    file: &str,
-    module_path_index: &HashMap<String, String>,
-) -> Option<String> {
+fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>) -> Option<String> {
     let normalize = |path: &str| {
         path.replace('\\', "/")
             .split("/./")
@@ -1759,22 +1793,6 @@ impl InterpContext {
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
-        Self::over_scope_indexes(
-            Self::build_scope_indexes(graph, source_indices),
-            execution_mode,
-            fixture_store,
-            whole_tree_published_keys,
-        )
-    }
-
-    /// Build the immutable index set for one module population. THE EXPENSIVE HALF: it walks
-    /// every module and every item, so its cost is denominated in the scope, and a caller that
-    /// runs it per claim has re-introduced a multiplier.
-    pub fn build_scope_indexes(
-        graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ) -> Rc<PreparedScopeIndexes> {
-        SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
@@ -1821,7 +1839,7 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
-        Rc::new(PreparedScopeIndexes {
+        InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
@@ -1829,29 +1847,6 @@ impl InterpContext {
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
-        })
-    }
-
-    /// Join shared immutable indexes with FRESH MUTABLE STATE. This is the per-claim
-    /// constructor, and it is cheap by construction: it clones `Rc` handles and allocates empty
-    /// caches. Nothing here walks a module.
-    ///
-    /// Every mutable field below is deliberately fresh rather than shared. Memos, name caches,
-    /// the effect odometer and the deadline arms all carry state from the claim that ran
-    /// before, and sharing them across claims is how one witness's evaluation becomes another
-    /// witness's answer.
-    pub fn over_scope_indexes(
-        indexes: Rc<PreparedScopeIndexes>,
-        execution_mode: ExecutionMode,
-        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-        whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    ) -> Self {
-        InterpContext {
-            modules: indexes.modules.clone(),
-            item_registry: indexes.item_registry.clone(),
-            source_indices: indexes.source_indices.clone(),
-            emit_graph_info: indexes.emit_graph_info.clone(),
-            indexes,
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
@@ -2074,11 +2069,11 @@ impl InterpContext {
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
-        self.indexes.fn_nodes.get(name)
+        self.fn_nodes.get(name)
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
-        self.indexes.fn_nodes.get(qualified_name).cloned()
+        self.fn_nodes.get(qualified_name).cloned()
     }
 
     pub fn resolved_graph(&self) -> ResolvedGraph {
@@ -2105,7 +2100,7 @@ impl InterpContext {
             module_path,
             decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
             bare_name_ambiguous: !name.contains('.')
-                && self.indexes.ambiguous_bare_function_names.contains(name),
+                && self.ambiguous_bare_function_names.contains(name),
         })
     }
 }
@@ -5723,7 +5718,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Int(n) => Ok(str_value(n.to_string())),
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
-            Value::Str(s) => Ok(Value::Str(Rc::clone(&s))),
+            Value::Str(s) => Ok(Value::Str(s.clone())),
             // Corpus wire/debug casts for structured values — not the blanket Display
             // fallback that silently stringified List/Map (§5 fabricated plausible output).
             Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
@@ -5767,11 +5762,15 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             raw_map_lookup(base, key, env, ctx).map(RawMapLookup::into_raw)
         }
         (Value::Str(s), Value::Int(i)) => {
-            let i = *i as usize;
-            Ok(s.chars()
-                .nth(i)
-                .map(|c| str_value(c.to_string()))
-                .unwrap_or(Value::Null))
+            if *i < 0 {
+                return Ok(Value::Null);
+            }
+            let ch = v1_rt::char_at_ascii_aware(s.as_str(), s.is_ascii(), *i);
+            if ch.is_empty() {
+                Ok(Value::Null)
+            } else {
+                Ok(str_value(ch))
+            }
         }
         _ => Err(InterpError::TypeError {
             msg: format!(
@@ -5799,10 +5798,21 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             Ok(list_value(work.slice(s..e)))
         }
         (Value::Str(str_val), Value::Int(s), Value::Int(e)) => {
-            let s = *s as usize;
-            let e = *e as usize;
-            let sliced: String = str_val.chars().skip(s).take(e.saturating_sub(s)).collect();
-            Ok(str_value(sliced))
+            if *s >= 0 && *e >= 0 {
+                Ok(str_value(v1_rt::substring_ascii_aware(
+                    str_val.as_str(),
+                    str_val.is_ascii(),
+                    *s,
+                    *e,
+                )))
+            } else {
+                // Negative indices wrap in the pre-carrier cast semantics (`*s as usize`);
+                // preserved verbatim off the ascii-aware fast path, which clamps to 0.
+                let s = *s as usize;
+                let e = *e as usize;
+                let sliced: String = str_val.chars().skip(s).take(e.saturating_sub(s)).collect();
+                Ok(str_value(sliced))
+            }
         }
         _ => Err(InterpError::TypeError {
             msg: format!(
@@ -6295,17 +6305,31 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.substring" { "substring" } => {
-                let s = expect_string(&$receiver, "substring")?;
+                let s = expect_value_str(Some(&$receiver), "substring")?;
                 match $args {
                     [start, end] => {
-                        let s_idx = expect_int(Some(start), "substring start")? as usize;
-                        let e_idx = expect_int(Some(end), "substring end")? as usize;
-                        let sliced: String = s
-                            .chars()
-                            .skip(s_idx)
-                            .take(e_idx.saturating_sub(s_idx))
-                            .collect();
-                        Ok(str_value(sliced))
+                        let s_idx = expect_int(Some(start), "substring start")?;
+                        let e_idx = expect_int(Some(end), "substring end")?;
+                        if s_idx >= 0 && e_idx >= 0 {
+                            Ok(str_value(v1_rt::substring_ascii_aware(
+                                s.as_str(),
+                                s.is_ascii(),
+                                s_idx,
+                                e_idx,
+                            )))
+                        } else {
+                            // Negative indices wrap in the pre-carrier cast semantics
+                            // (`idx as usize`); preserved off the ascii-aware fast path,
+                            // which clamps to 0 instead.
+                            let s_idx = s_idx as usize;
+                            let e_idx = e_idx as usize;
+                            let sliced: String = s
+                                .chars()
+                                .skip(s_idx)
+                                .take(e_idx.saturating_sub(s_idx))
+                                .collect();
+                            Ok(str_value(sliced))
+                        }
                     }
                     _ => Err(InterpError::TypeError {
                         msg: "substring requires (start, end) arguments".to_string(),
@@ -6314,12 +6338,17 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.char_at" { "char_at" } => {
-                let s = expect_string(&$receiver, "char_at")?;
+                let s = expect_value_str(Some(&$receiver), "char_at")?;
                 let idx = expect_int($args.first(), "char_at")?;
-                Ok(s.chars()
-                    .nth(idx as usize)
-                    .map(|c| str_value(c.to_string()))
-                    .unwrap_or(Value::Null))
+                if idx < 0 {
+                    return Ok(Value::Null);
+                }
+                let ch = v1_rt::char_at_ascii_aware(s.as_str(), s.is_ascii(), idx);
+                if ch.is_empty() {
+                    Ok(Value::Null)
+                } else {
+                    Ok(str_value(ch))
+                }
             },
 
             arm "method_call.index_by" { "index_by" } => list_method_with_closure(
@@ -6370,7 +6399,7 @@ fn eval_algebra_method_inner(
 }
 
 pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
-    if ctx.indexes.service_ops.contains_key("Clock.UnixSecs") {
+    if ctx.service_ops.contains_key("Clock.UnixSecs") {
         let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty())
             .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
         unix_secs_from_clock_value(&val, ctx)
@@ -6388,8 +6417,7 @@ fn wet_service_call(
 ) -> InterpResult<Value> {
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
-        ctx.indexes
-            .service_ops
+        ctx.service_ops
             .get(&key)
             .ok_or_else(|| InterpError::Unimplemented {
                 what: format!("unknown service operation: {}", key),
@@ -6481,7 +6509,7 @@ fn wet_env_var(name: &str) -> Option<String> {
 /// because the split changes this function's return type and every caller's
 /// handling, which is its own change with its own witnesses.
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
-    if ctx.indexes.service_ops.contains_key("shell.Env.Get") {
+    if ctx.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), str_value(var_name.to_string()))];
         match eval_service_call(
             "shell.Env",
@@ -6571,8 +6599,7 @@ fn eval_service_call(
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
-        ctx.indexes
-            .service_ops
+        ctx.service_ops
             .get(&key)
             .ok_or_else(|| InterpError::Unimplemented {
                 what: format!("unknown service operation: {}", key),
@@ -7028,7 +7055,7 @@ fn operation_input_binding_entry(
         } => {
             if *variant_name == ctx.sym("InputText") {
                 match fields_get(fields, ctx.sym("text")).cloned() {
-                    Some(Value::Str(text)) => Value::Str(Rc::clone(&text)),
+                    Some(Value::Str(text)) => Value::Str(text.clone()),
                     _ => {
                         return Err(ArgvRefusalCause::BindingMalformed(format!(
                             "InputText for `{name}` carries no String text"
@@ -9889,7 +9916,7 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 }
 
 fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResult<Value> {
-    if !ctx.indexes.service_ops.contains_key("Filesystem.Read") {
+    if !ctx.service_ops.contains_key("Filesystem.Read") {
         return Err(if ctx.execution_mode.is_hermetic() {
             InterpError::TypeError {
                 msg:
@@ -11426,21 +11453,32 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.string_length" { "string_length" } => {
-                let s = expect_str($positional.first().copied(), "string_length")?;
-                Ok(Some(Value::Int(s.chars().count() as i64)))
+                let s = expect_value_str($positional.first().copied(), "string_length")?;
+                Ok(Some(Value::Int(v1_rt::string_length_ascii_aware(s.as_str(), s.is_ascii()))))
             },
 
             arm "free_call.substring" { "substring" } => {
-                let s = expect_str($positional.first().copied(), "substring")?;
+                // `v1_rt::substring` already clamps negative start/end to 0 (unlike the raw
+                // `as usize` casts at the other call sites), so the ascii-aware variant's
+                // identical `.max(0)` clamping preserves this arm's prior behavior exactly.
+                let s = expect_value_str($positional.first().copied(), "substring")?;
                 let start = expect_int($positional.get(1).copied(), "substring start")?;
                 let end = expect_int($positional.get(2).copied(), "substring end")?;
-                Ok(Some(str_value(v1_rt::substring(&s, start, end))))
+                Ok(Some(str_value(v1_rt::substring_ascii_aware(
+                    s.as_str(),
+                    s.is_ascii(),
+                    start,
+                    end,
+                ))))
             },
 
             arm "free_call.char_at" { "char_at" } => {
-                let s = expect_str($positional.first().copied(), "char_at")?;
+                // `v1_rt::char_at` already clamps a negative pos to 0 (unlike the raw
+                // `as usize` casts at the other call sites), so the ascii-aware variant's
+                // identical `.max(0)` clamping preserves this arm's prior behavior exactly.
+                let s = expect_value_str($positional.first().copied(), "char_at")?;
                 let pos = expect_int($positional.get(1).copied(), "char_at pos")?;
-                Ok(Some(str_value(v1_rt::char_at(&s, pos))))
+                Ok(Some(str_value(v1_rt::char_at_ascii_aware(s.as_str(), s.is_ascii(), pos))))
             },
 
             arm "free_call.string_contains" { "string_contains" } => {
@@ -11461,7 +11499,10 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.length" { "length" } => match $positional.first() {
-                Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+                Some(Value::Str(s)) => Ok(Some(Value::Int(v1_rt::string_length_ascii_aware(
+                    s.as_str(),
+                    s.is_ascii(),
+                )))),
                 Some(v) => match native_len(v) {
                     Some(n) => Ok(Some(Value::Int(n))),
                     None => match free_monoid_to_vec(v) {
@@ -13472,6 +13513,25 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
     }
 }
 
+/// Like `expect_string`/`expect_str` but returns a reference into the `Value::Str`
+/// payload instead of an owned copy — avoids the O(n) `.to_string()` allocation for
+/// call sites that only need a `&str` view plus the carried ascii flag (STRING-INDEX-0).
+fn expect_value_str<'a>(val: Option<&'a Value>, context: &str) -> InterpResult<&'a RcStr> {
+    match val {
+        Some(Value::Str(s)) => Ok(s),
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a string argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a string argument", context),
+        }),
+    }
+}
+
 fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> {
     match val {
         Some(Value::List(items)) => {
@@ -14941,7 +15001,7 @@ mod value_str_rc_semantic_parity_tests {
         assert_ne!(a, c);
         if let (Value::Str(ra), Value::Str(rb)) = (&a, &b) {
             assert!(
-                !Rc::ptr_eq(ra, rb),
+                !RcStr::ptr_eq(ra, rb),
                 "distinct Rc allocations must still compare equal by content"
             );
         }
@@ -14995,7 +15055,7 @@ mod value_str_rc_semantic_parity_tests {
         let cloned = v.clone();
         if let (Value::Str(a), Value::Str(b)) = (&v, &cloned) {
             assert!(
-                Rc::ptr_eq(a, b),
+                RcStr::ptr_eq(a, b),
                 "Value::Str clone must share the same Rc allocation (not deep-copy); \
                  content-equality tests alone would stay green if clone reintroduced String copy"
             );
@@ -15014,9 +15074,9 @@ mod value_str_rc_semantic_parity_tests {
         let Value::Str(b) = &cloned else {
             panic!("expected Str");
         };
-        assert!(Rc::ptr_eq(a, b));
-        let mut lone = Rc::clone(a);
-        let mut peer = Rc::clone(b);
+        assert!(RcStr::ptr_eq(a, b));
+        let mut lone = a.rc();
+        let mut peer = b.rc();
         assert!(
             Rc::get_mut(&mut lone).is_none(),
             "shared Rc<str> must refuse in-place mutation while another handle exists"

@@ -12,7 +12,6 @@ pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{ExprBlock, ExprLet, ExprUnaryOp, ExprVar};
-pub use crate::v1_std_core::Token;
 use crate::v1_std_core::UnaryOpKind::Neg;
 pub use crate::v1_std_core::{
     build_newline_index, empty_intern_table, expr_call_func_at, expr_var_name_at,
