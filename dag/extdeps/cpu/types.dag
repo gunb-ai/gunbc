@@ -15,7 +15,66 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type SocketPackage = LandGridArray | PinGridArray | BallGridArray
+// TERMINATION AND ATTACHMENT ARE TWO AXES, AND FUSING THEM MADE A CONTRADICTION WRITABLE. The
+// previous SocketPackage listed BallGridArray beside the two socketable terminations, inside a type
+// named CpuSocket -- but a BGA part is SOLDERED to the board. It has no socket at all, so
+// CpuSocket { package: BallGridArray } named a thing that cannot exist, and nothing refused it.
+//
+// The split is by what the fact is ABOUT. A termination is a property of the PACKAGE: it says how
+// the die's carrier presents its contacts, and every part has one whether or not a socket is
+// involved. An attachment is a property of the BOARD RELATIONSHIP: it says how the part is held.
+// Grounding both on one enum made a package property answer a board question.
+type ProcessorPackageTermination = LandGridArray | PinGridArray | BallGridArray
+
+// THE SOCKETABLE SUBSET. A socket accepts a land grid or a pin grid; it cannot accept a ball grid,
+// because balls are reflowed onto pads and a reflowed joint is not a socket. So the socketable
+// terminations are their own closed set and BallGridArray is not among them.
+//
+// RUNG HONESTY, MEASURED RATHER THAN ASSUMED, AND IT IS LOWER THAN THIS SHAPE SUGGESTS. The intent
+// was structural impossibility: a ball-grid socket with no representation. IT IS NOT ACHIEVED, and
+// the probe that says so was run before this comment was written. Constructing
+// CpuSocket { platform_owner: amd, termination: BallGridArray, contact_count: 1718 } inside a
+// witness module was ACCEPTED and executed green, even though BallGridArray belongs to
+// ProcessorPackageTermination and the field is declared SocketTermination -- and even though
+// BallGridArray was not imported by that module at all. The control that makes this a finding rather
+// than a mistaken probe: an invented name in the same position refuses with
+// "undefined variable 'NotARealTerminationXyz'". So the checker resolves a bare variant name from
+// the pool and then does not test which coproduct it belongs to.
+//
+// WHERE THE ERROR DOES SURFACE, measured separately, because the bound matters more than the alarm.
+// Passing BallGridArray to socket_termination_as_package_termination -- argument position rather
+// than a record field -- is also accepted statically, but it fails at RUNTIME with "non-exhaustive
+// pattern match on: BallGridArray" as soon as that function matches. So a total match over the
+// coproduct is a real runtime guard: any value that reaches one is checked. What is silent is a
+// wrong variant that is only STORED or COMPARED and never matched, which is exactly the record-field
+// probe above -- it read contact_count and never looked at the termination.
+//
+// The blast radius is therefore narrower than a count of enums would suggest, and two neighbouring
+// walls were confirmed to HOLD rather than assumed: sole_constructor refuses cross-module
+// construction and cast, and a missing required field refuses at every site (nine socket literals
+// refused until they named a cooling mount). This finding implicates claims that rest on variant
+// membership alone, not those resting on construction sealing or record shape.
+//
+// WHAT THIS TYPE THEREFORE DELIVERS: the two concepts are separated and every socket row in the
+// corpus names a socketable termination, so the corpus is correct and a reader can no longer mistake
+// a package property for a board one. WHAT IT DOES NOT DELIVER: a wall. The rung is MITIGATABLE, not
+// structurally impossible, and no lens detects the cross-coproduct assignment either.
+//
+// NEXT-RUNG TRIGGER: variant-to-coproduct membership checked at the assignment site. That is a
+// substrate capability rather than a modelling change, and it is not specific to sockets -- every
+// closed enum in this corpus that is described as making a state unwritable rests on the same
+// unverified premise, so this note is evidence about the checker and not only about this type.
+type SocketTermination = SocketedLandGrid | SocketedPinGrid
+
+// The one direction that is total: every socket termination IS a package termination. The reverse
+// is deliberately absent -- there is no ball-grid socket to map to, and a partial function back
+// would reintroduce the refusal this type exists to make unnecessary.
+fn socket_termination_as_package_termination(t: SocketTermination) -> ProcessorPackageTermination {
+  match t {
+    SocketedLandGrid => LandGridArray
+    SocketedPinGrid => PinGridArray
+  }
+}
 
 // A SOCKET IS NOT IDENTIFIED BY ITS TERMINATION AND CONTACT COUNT. Those are attributes two
 // unrelated platforms can share: a hypothetical 4926-contact AMD socket would have been
@@ -35,16 +94,25 @@ type SocketPackage = LandGridArray | PinGridArray | BallGridArray
 type CpuSocket {
   platform_owner: Vendor<Hardware>
 
-  package: SocketPackage
+  termination: SocketTermination
   contact_count: Int
 }
+
+// WHY THE ATTACHMENT-MODE HALF IS NOT HERE. Splitting termination from attachment is one correction
+// with two halves, and this is the half that is fully consumed today: every socket row in the corpus
+// now names a SocketTermination, so a ball-grid socket is unwritable at every existing site. The
+// other half - ProcessorBoardAttachment, the Socketed-versus-DirectSoldered axis - has no consumer
+// until CpuModelCatalogRow carries an attachment instead of a socket, and that migration lands with
+// the cooling-mount correction because both change the same path. Landing the type here would put a
+// coproduct in the corpus whose only caller is its own witness, which is the decorative-carrier
+// failure this repository keeps catching in review.
 
 // SAME SOCKET means same platform owner AND same termination AND same count. Equal counts across
 // platforms are a coincidence of scale, not a compatibility fact, and a cooler or a footprint that
 // decided on the count alone would fit a part it was never made for.
 fn cpu_socket_eq(a: CpuSocket, b: CpuSocket) -> Bool {
   a.platform_owner == b.platform_owner
-    && a.package == b.package
+    && a.termination == b.termination
     && a.contact_count == b.contact_count
 }
 
