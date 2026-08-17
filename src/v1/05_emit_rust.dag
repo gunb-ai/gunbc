@@ -61,7 +61,8 @@ import v1.compiler.trait_derive_emit {
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
   v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds,
-  v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_clone_bounded_type_params, v1_clone_impl_required_type_params,
+  v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
@@ -2221,6 +2222,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
+  let clone_impl_required = v1_clone_impl_required_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: typed.modules)
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
@@ -2235,6 +2240,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
+    clone_impl_required_type_params: clone_impl_required,
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -2451,6 +2457,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
+    clone_impl_required_type_params: clone_impl_required,
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -4760,6 +4767,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only,
       clone_bounded_type_params: emit_info.clone_bounded_type_params,
+      clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
       corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
@@ -5483,7 +5491,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     ret_name: ret_name,
     body_is_param_ref: body_is_param_ref,
     ret: inferred,
-    bounds: emit_info.clone_bounded_type_params,
+    bounds: emit_info.clone_impl_required_type_params,
     type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
@@ -7662,6 +7670,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
+              clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
@@ -7691,6 +7700,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
+              clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
