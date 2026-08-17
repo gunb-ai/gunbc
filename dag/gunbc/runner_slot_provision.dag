@@ -163,6 +163,7 @@ fn runner_slot_provision_plan(
         MemberChanged { at: _, from: _, to: _ } => []
         MemberRemoved { at: _, from: _ } => []
         MemberRemovalRefused { from: _, cause: _ } => []
+        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
   }

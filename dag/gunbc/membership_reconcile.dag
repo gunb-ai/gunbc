@@ -25,13 +25,18 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
+type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown | RosterDuplicateKey { roster: MembershipRosterSide }
 
 type MemberAction<M, At>
   = MemberAdded { at: At, to: M }
   | MemberChanged { at: At, from: M, to: M }
   | MemberRemoved { at: At, from: M }
   | MemberRemovalRefused { from: M, cause: TeardownRefusalCause }
+  | MemberRosterDuplicateKeyRefused {
+      roster: MembershipRosterSide,
+      first: M,
+      duplicate: M,
+    }
 
 type MembershipPlan<M, At> {
   actions: List<MemberAction<M, At>>
@@ -185,10 +190,10 @@ fn membership_plan_admitting_outcome<M, K>(
 ) -> MembershipPlan<M, K> {
   match outcome {
     MembershipReconcileReady { plan: plan } => plan
-    MembershipReconcileDuplicateKey { first: f, duplicate: _, key: _, roster: _ } =>
+    MembershipReconcileDuplicateKey { first: f, duplicate: d, key: _, roster: r } =>
       MembershipPlan {
         actions: [
-          MemberRemovalRefused { from: f.value, cause: OwnershipUnknown }
+          MemberRosterDuplicateKeyRefused { roster: r, first: f.value, duplicate: d.value }
         ]
       }
   }
@@ -292,10 +297,10 @@ fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
 ) -> MembershipPlan<M, ScopedKey<Relation, Scope, K>> {
   match outcome {
     MembershipReconcileScopedReady { plan: plan } => plan
-    MembershipReconcileDuplicateScopedKey { first: f, duplicate: _, key: _, roster: _ } =>
+    MembershipReconcileDuplicateScopedKey { first: f, duplicate: d, key: _, roster: r } =>
       MembershipPlan {
         actions: [
-          MemberRemovalRefused { from: f.value, cause: OwnershipUnknown }
+          MemberRosterDuplicateKeyRefused { roster: r, first: f.value, duplicate: d.value }
         ]
       }
   }
@@ -309,6 +314,8 @@ fn membership_effects<M, At>(plan: MembershipPlan<M, At>) -> EffectsOrRefusal<M>
   let refusals = flat_map(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } => [MemberRefusal { member: m, cause: c }]
+      MemberRosterDuplicateKeyRefused { roster: r, first: f, duplicate: _ } =>
+        [MemberRefusal { member: f, cause: RosterDuplicateKey { roster: r } }]
       MemberAdded { at: _, to: _ } => []
       MemberChanged { at: _, from: _, to: _ } => []
       MemberRemoved { at: _, from: _ } => []
@@ -324,6 +331,7 @@ fn membership_effects<M, At>(plan: MembershipPlan<M, At>) -> EffectsOrRefusal<M>
           MemberChanged { at: _, from: f, to: t } => [EffectReplace { from: f, to: t }]
           MemberRemoved { at: _, from: m } => [EffectRemove { from: m }]
           MemberRemovalRefused { from: _, cause: _ } => []
+          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
         }
       )
     }
@@ -349,6 +357,8 @@ fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
       MemberRemoved { at: _, from: _ } =>
         MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals + 1, refusals: acc.refusals }
       MemberRemovalRefused { from: _, cause: _ } =>
+        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } =>
         MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
     }
   )

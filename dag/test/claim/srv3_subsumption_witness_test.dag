@@ -65,6 +65,7 @@ test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
       MemberChanged { at: _, from: _, to: m } => [m.material as String]
       MemberRemoved { at: _, from: _ } => []
       MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
     }
   )
   count(upsert_materials) == 1
@@ -81,6 +82,7 @@ test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
       MemberAdded { at: _, to: _ } => []
       MemberChanged { at: _, from: _, to: _ } => []
       MemberRemoved { at: _, from: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
     }
   )
   tally.adds == 1

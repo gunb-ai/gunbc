@@ -68,6 +68,7 @@ fn spark_serving_install_effects_for_member_action(
     MemberRemoved { at: _, from: member } =>
       Present { value: spark_serving_install_effects_for_remove(member: member) }
     MemberRemovalRefused { from: _, cause: _ } => Absent
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => Absent
   }
 }
 
