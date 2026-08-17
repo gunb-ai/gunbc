@@ -528,12 +528,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "keying-relation-design",
-    primary_work: DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "std.key_relation", decl_name: "KeyRelation", field: WholeDeclaration },
     additional_works: [
+      DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
       DeclarationRef { module_path: "std.effects", decl_name: "KeySource", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "membership_reconcile", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "TailscaleServeRouteKey", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_route_key", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject keyed_two_way_diff describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject KeyRelation describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1137,6 +1140,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "root_b_primitive_repr_fork_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rust_corpus_repr", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the primitive representation stops being selected from a single corpus-wide Boolean and is derived per declaration, so this probe's measurement of the fork describes a shape the compiler no longer has") },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "gate1_repr_mismatch_e0308_diagnosis_2026-07-23",
     primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_string_grounded_type_alias_decl_line", field: WholeDeclaration },
     additional_works: [],
@@ -1183,6 +1193,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane") },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "root_b_primitive_repr_fork_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rust_corpus_repr", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "RustCorpusRepr's two fused axes (numeric-primitive realization and reference-derived use-line synthesis) are split into independent facts, so a pure-v2 closure can take the host numeric grounding without losing use-line synthesis; at that point this probe's measurements become historical and its finding folds into the successor carrier") },
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
@@ -1528,6 +1545,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.ci_workflow_expressions", decl_name: "ci_concurrency_group", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the six findings this note records outlive their archived lanes only until each has a carrier of its own: the rejected_with_pending diagnostic-order defect, the entry-vs-member position divergence, the three-entrypoint admission divergence, the standing section 4c population that makes a full-corpus compile exit 1, the floor-gated deploy, and the run_id concurrency key. When each is either fixed or carried as a typed row, the note is a historical account and deletes with this bind. It is registered rather than deleted today because four sessions were archived holding these measurements and nothing else records them — but a cross-lane status narrative is the parallel-ledger shape DESIGN section 6 warns about, so its home is a question for the operator, not a settled one.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "self-host-cargo-refusal-root-partition",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.frontier_band_a_emit_readiness", decl_name: "compiler_frontier_band_a_emit_readiness_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.infer", decl_name: "node_grounding_frontier_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.self_host.v2_emitter_direct_rust_door_contract", decl_name: "v2_emitter_direct_rust_door_contract_dissolution_note", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the root partition this document coordinates is confirmed, its roots are owned, and the emitted Rust compiles for at least one module — at which point the wall it describes is history and the document deletes with this bind. Registered at subject grain: the bound declarations are the three carriers whose movement would make this document's framing false — the Band A readiness note that routes the blocker to the namespace cut, the inference frontier note whose counted-not-refused status is the correction this document records, and the direct-door dissolution note that says emission is already reached. It is a shared coordination surface for two sessions rather than an authority, which is why every claim in it names its measurement and the unconfirmed hypotheses are labelled as such; a coordination narrative that outlived its lanes would be the parallel-ledger shape DESIGN section 6 warns about.") },
   },
 ]
 

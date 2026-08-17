@@ -16,6 +16,7 @@ import gunbc.managed_directory {
 import extdeps.tailscale.serve {
   tailscale_serve_enable_argv,
   tailscale_serve_off_argv,
+  tailscale_serve_route_key_label,
   TailscaleServeCapability,
   ScopedRemovalSupported,
   ScopedRemovalUnsupported,
@@ -71,7 +72,9 @@ import gunbc.membership_reconcile {
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   MemberRefusal,
   EffectsOrRefusal, EffectsReady, ApplyRefused,
-  membership_reconcile, membership_effects,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_effects,
 }
 import gunbc.live_deploy.operations {
   dpkg_status_command,
@@ -405,9 +408,18 @@ fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 
 data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
 
+type DeploymentStepMemberAt = NonEmptyStr
+
+fn deployment_artifact_reconcile_key(art: DeploymentArtifactStep) -> NonEmptyStr {
+  match art.serve_route_key {
+    Present { value: k } => tailscale_serve_route_key_label(key: k)
+    Absent => art.path
+  }
+}
+
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
   match step {
-    ArtifactStep { step: art } => art.path
+    ArtifactStep { step: art } => deployment_artifact_reconcile_key(art: art)
     Dependency { step: dep } => ensured_subject_identity(subject: dep.subject)
   }
 }
@@ -420,25 +432,29 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
   Present { value: deployment_step_ownership(step: step) }
 }
 
-fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
-  membership_reconcile(
-    desired: spec.steps,
-    observed: [],
-    key_of: deployment_step_key,
-    key_eq: deployment_step_key_eq,
-    value_eq: deployment_step_value_eq,
-    ownership_of: deployment_step_ownership_opt,
+fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: spec.steps,
+      observed: [],
+      key_of: deployment_step_key,
+      key_eq: deployment_step_key_eq,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    ),
   )
 }
 
-fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
-  membership_reconcile(
-    desired: [],
-    observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
-    key_of: deployment_step_key,
-    key_eq: deployment_step_key_eq,
-    value_eq: deployment_step_value_eq,
-    ownership_of: deployment_step_ownership_opt,
+fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [],
+      observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
+      key_of: deployment_step_key,
+      key_eq: deployment_step_key_eq,
+      value_eq: deployment_step_value_eq,
+      ownership_of: deployment_step_ownership_opt,
+    ),
   )
 }
 
