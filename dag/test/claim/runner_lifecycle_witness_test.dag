@@ -90,16 +90,39 @@ test fn witness_srv3_srv4_committed_width_six() -> Bool {
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
+  let w = 3
   let receipt = HostRunnerCapacityReceipt {
     host: operator_host_srv3,
-    requested_width: 6,
-    materialized_count: 7,
-    active_unit_count: 7,
-    registered_count: 7,
-    online_count: 7,
+    requested_width: w,
+    materialized_count: w,
+    active_unit_count: w,
+    registered_count: w,
+    online_count: w,
     slots: [],
   }
   host_runner_capacity_converged(receipt: receipt)
+}
+
+test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() -> Bool {
+  let w = 3
+  !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
+    host: operator_host_srv3,
+    requested_width: w,
+    materialized_count: w,
+    active_unit_count: w,
+    registered_count: w,
+    online_count: w - 1,
+    slots: [],
+  })
+    && !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
+      host: operator_host_srv3,
+      requested_width: w,
+      materialized_count: w - 1,
+      active_unit_count: w,
+      registered_count: w,
+      online_count: w,
+      slots: [],
+    })
 }
 
 test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
