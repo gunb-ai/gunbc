@@ -395,6 +395,29 @@ fn variant_value_binding_parent_enum(expr: &Rc<Node>) -> Option<String> {
     }
 }
 
+/// Resolve a QUALIFIED parent-type name through the module its prefix names.
+///
+/// A qualified reference names its declaring module directly, so this is the constructor
+/// path's replacement for what an import list used to do: the referenced type never enters
+/// the referencing module's type env, and a bare lookup there cannot find it.
+///
+/// The defining module returned is the DECLARING one, not the referencing one -- that is the
+/// whole point, since the constructor's parent identity is a fact about where the type is
+/// declared.
+fn coproduct_through_qualified_prefix(
+    ctx: &InterpContext,
+    parent_enum: &str,
+    si: &SourceIndices,
+) -> Option<(Rc<Node>, String)> {
+    let (prefix, bare) = parent_enum.rsplit_once('.')?;
+    let declaring = typed_module_for_path(ctx, prefix)?;
+    let node = type_item_from_importing_module_type_env(&declaring, bare, si)?;
+    if node.connective != Connective::Disj {
+        return None;
+    }
+    Some((node, prefix.to_string()))
+}
+
 fn coproduct_from_variant_value_binding(
     ctx: &InterpContext,
     tm: &TypedModule,
@@ -402,12 +425,21 @@ fn coproduct_from_variant_value_binding(
     si: &SourceIndices,
 ) -> Option<(Rc<Node>, String)> {
     let bare = bare_symbol_tail(parent_enum);
-    let node = type_item_from_importing_module_type_env(tm, bare, si)?;
-    if node.connective != Connective::Disj {
-        return None;
+    // The local type env first: it still carries the module's OWN declarations, which is the
+    // local-constructor case and stays exactly as it was.
+    if let Some(node) = type_item_from_importing_module_type_env(tm, bare, si) {
+        if node.connective == Connective::Disj {
+            let importing_module = authored_name_at(si.clone(), tm.module.clone());
+            return Some((node, importing_module));
+        }
     }
-    let importing_module = authored_name_at(si.clone(), tm.module.clone());
-    Some((node, importing_module))
+    // Then the qualified prefix. Without this arm a cross-module constructor written as
+    // `other.module.Variant { .. }` compiles clean and produces a graph, but its parent type
+    // silently fails to resolve -- so the projection reports ConstructorResolutionRefused
+    // while nothing in the compile refuses. That is the fail-open the namespace cut would
+    // otherwise introduce corpus-wide, since every cross-module constructor is now written
+    // in exactly this form.
+    coproduct_through_qualified_prefix(ctx, parent_enum, si)
 }
 
 fn variant_value_from_typechecked_expr(
