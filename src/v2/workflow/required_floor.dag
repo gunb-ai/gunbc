@@ -128,51 +128,24 @@ type WitnessDisposition
   | KnownRedQuarantine
   | DeletedNotAWitness
 
-// DISPOSITION IS A GRANT OVER A NAMESPACE SUBTREE, joined by the prefix relation.
+// LONG-HOME EXCLUSION, and it is a hack rather than a model (operator, 2026-08-17).
 //
-// The question this answers is where a witness's disposition comes from, and the wrong answers
-// were both live in this floor. `is_long_home` read the FILE PATH, which is the 2026-08-04
-// ruling's exact root cause — a directory deciding an admission question — and it is at the
-// wrong grain besides, since one expensive witness took every cheap sibling in its file out of
-// the floor with it. `wet_sites` was passed as an unconditionally empty list, which is not a
-// disposition at all but an assertion that no witness is wet, made where an observation was
-// owed.
+// The one thing worth keeping from the version this replaces: the test is on the module's
+// AUTHORED NAME, not on the file path. `is_long_home` in the host tested whether a path
+// contained `/test/claim/long/`, which made a directory the admission authority — the exact
+// root cause the 2026-08-04 ruling names — and decided at file grain, so one expensive witness
+// took every cheap sibling in its file out of the floor with it. Every witness in the long home
+// already declares `module test.claim.long.<name>` on its own first line, so the fact was
+// authored all along and the host was reading a shadow of it.
 //
-// An annotation cannot carry it: DESIGN §4c admits `//` blocks and no `Accepted` program can
-// read one, so a disposition written there would be invisible to the fold that needs it.
+// That is the whole change. No grant table, no disposition lattice, no second mechanism: one
+// prefix test, in the manifest, where admission is decided. `WitnessDisposition` stays modelled
+// and unconsumed exactly as it was — wiring it is a real modelling question about wet lanes and
+// cadences, and this is not that question.
 //
-// What is left is an authored declaration joined by identity, and the corpus already has one —
-// every witness in the long home declares `module test.claim.long.<name>` on its own first
-// line. That is not the path restated: a module's name is authored and a file could carry any
-// name regardless of where it sits. It is a position in the containment tree, which DESIGN
-// makes the single naming authority, and membership in a subtree is the same prefix relation
-// `⊑` that resolution walks, content-addressing hashes, termination reads as sub-value descent
-// and the effect-grant thread proposes for permission. Disposition becomes the fifth consumer
-// of one structure rather than a sixth mechanism beside it.
-//
-// So the authority is a small table of subtree grants, and a witness opts in by NAMING itself
-// into the subtree — one authored fact, at the declaration, in the same act as declaring the
-// module. Anything outside every granted subtree is `RequiredFloor`, which is the fail-closed
-// default: an unclassified witness runs and is held to the ceiling, rather than disappearing.
-type DispositionGrant {
-  subtree: String
-  disposition: WitnessDisposition
-}
-
-// ONE ROW TODAY, and its emptiness elsewhere is the honest report rather than an oversight.
-// `ScheduledWet` has no granted subtree because no wet lane exists to execute one — the cut
-// deleted it — and a disposition naming no executing consumer is the deferral the 2026-08-04
-// ruling forbids. Wet witnesses therefore stay `RequiredFloor` and refuse loudly against
-// hermetic mocks, which is a visible coverage gap rather than a silent one, and it dissolves
-// when the wet lane is re-added. Same for `KnownRedQuarantine`.
-fn witness_disposition_grants() -> List<DispositionGrant> {
-  Cons {
-    head: DispositionGrant {
-      subtree: "test.claim.long.",
-      disposition: ScheduledLong
-    },
-    tail: Empty {}
-  }
+// These rows are NOT COVERED by anything. The host reports the count every run.
+fn long_home_prefix() -> String {
+  "test.claim.long."
 }
 
 fn string_starts_with(s: String, prefix: String) -> Bool {
@@ -199,17 +172,8 @@ fn string_starts_with(s: String, prefix: String) -> Bool {
   }
 }
 
-fn disposition_for_module(module_path: String) -> WitnessDisposition {
-  fold_list(
-    xs: witness_disposition_grants(),
-    empty: RequiredFloor,
-    cons: fn(acc, grant) {
-      match string_starts_with(s: module_path, prefix: grant.subtree) {
-        true => grant.disposition
-        false => acc
-      }
-    }
-  )
+fn module_is_long_home(module_path: String) -> Bool {
+  string_starts_with(s: module_path, prefix: long_home_prefix())
 }
 
 fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
@@ -347,12 +311,12 @@ fn scan_site(
   site: WitnessSite,
   mode: ExecutionMode
 ) -> ClaimScanReversed {
-  // THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A site whose module names
-  // itself into a granted subtree is not a required-floor claim and produces no row, so the
-  // filtering happens where the disposition is authored rather than in a host-side path test.
-  match disposition_is_required_floor(d: disposition_for_module(module_path: site.module_path)) {
-    false => acc
-    true =>
+  // THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A long-home site produces
+  // no claim row, so the exclusion happens where the module's own name can be read rather than
+  // in a host-side test on its file path.
+  match module_is_long_home(module_path: site.module_path) {
+    true => acc
+    false =>
       ClaimScanReversed {
         claims_reversed: Cons {
           head: RequiredFloorClaim {
