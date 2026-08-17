@@ -101,6 +101,10 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - **CI run 32042842524 @ `5e69f04a` (2026-08-17):** **build** and **ci** both failed at **Set up
   job** with **429** (`rust-cache` and `upload-artifact` archives); regen/heal skipped. No `gunbc`
   signal. Retry via new head.
+- **CI run 32043172820 @ `f64b5aff` (2026-08-17):** **build** and **ci** both failed at **Set up
+  job** with **429** on `upload-artifact` tarball (same hash as prior flakes). No `gunbc` signal.
+  Rapid sessionpush retries may be aggravating codeload rate limits — operator spacing may be
+  required if the next head flakes again.
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
