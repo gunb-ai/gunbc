@@ -45,6 +45,16 @@ import gunbc.spark_serving_membership {
 // what this module supplies, plus the plan that reconciles the two (gunbc.spark_serving_converge_plan
 // `spark_serving_full_membership_plan`).
 //
+// PER-ADDRESS IDENTITIES, NOT ONE FUSED DIGEST. An earlier revision put
+// `serialize_content_hash(loaded.digest)` -- the aggregate over the WHOLE release -- into BOTH the
+// runtime-root and the model-slot member, while desired carries `runtime.closure_digest` and
+// `model.identity` separately. Two consequences, and the first made convergence unreachable: neither
+// observed digest could ever equal its desired counterpart, so a correctly installed host reported
+// both members changed forever and the plan never emptied; and the two observed members carried the
+// SAME value as each other, which is wrong on its face because two distinct addresses cannot share
+// one state. The components were never missing -- `derive_loaded_spark_serving_release` produces
+// them and the observation used to discard them, so the repair was to stop fusing at the source.
+//
 // THE PROJECTION IS FROM AN OBSERVATION, NEVER FROM THE DESIRED STATE. Deriving an observed member's
 // state digest from the desired release would make every member reconcile as converged by
 // construction -- the reconcile would compare a value to itself and the plan would always be empty.
@@ -163,14 +173,14 @@ fn spark_serving_observed_members(
               host: h,
               principal: spark_serving_serving_principal(),
               address: SparkServingRuntimeRootAddress,
-              state_digest: serialize_content_hash(hash: loaded.digest) as NonEmptyStr,
+              state_digest: loaded.runtime.closure_digest,
               ownership: Owned,
             ),
             spark_serving_member(
               host: h,
               principal: spark_serving_serving_principal(),
               address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
-              state_digest: serialize_content_hash(hash: loaded.digest) as NonEmptyStr,
+              state_digest: serialize_content_hash(hash: loaded.model.identity) as NonEmptyStr,
               ownership: Owned,
             ),
           ],

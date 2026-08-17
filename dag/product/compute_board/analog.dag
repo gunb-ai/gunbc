@@ -2,20 +2,19 @@ module product.compute_board.analog
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  TerminalIdentity,
+  net_contains_terminal,
+  terminal_ref,
+  terminal_ref_equal,
+}
 import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
 
 data analog_note: String = "THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This replaces a BoardSlice that the board article used to hold directly — a type imported from the SPICE projection, carrying SPICE NodeRefs, substrate Symbols and value_lexeme strings. The dependency ran article to projection, which is backwards: the supposed authority was shaped by one of its targets, so 'the article feeds every interface' was true only in the sense that one interface had already decided what the article looked like. WHAT CHANGED, CONCRETELY: component values are typed magnitudes on std.measure's existing Resistance, Capacitance and ElectricPotentialDifference quantities — which were already in the corpus, so this needed no new authority and was never blocked on one. '10k' and '100n' are gone from the model; the SPICE projection now derives those spellings, including the scale suffix, because a suffix is target syntax and belongs where the target lives. TERMINALS AND NETS ARE IDENTITIES, not strings: a net references terminals by component and terminal identity, so 'is this terminal on that net' is a decidable join rather than a spelling coincidence between two prose fields."
-
-type ComponentInstanceIdentity = NonEmptyStr where brand("ComponentInstanceIdentity")
-
-type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
-
-type NetIdentity = NonEmptyStr where brand("NetIdentity")
-
-type ElectricalTerminalRef {
-  component: ComponentInstanceIdentity
-  terminal: TerminalIdentity
-}
 
 // A COMPONENT'S KIND AND ITS VALUE ARE ONE FACT, NOT TWO. An earlier revision carried an
 // AnalogComponentRole beside an AnalogComponentValue, which made a resistor rated in nanofarads
@@ -84,11 +83,6 @@ fn component_negative_terminal(c: ElectricalComponentInstance) -> TerminalIdenti
   }
 }
 
-type ElectricalNet {
-  identity: NetIdentity
-  members: List<ElectricalTerminalRef>
-}
-
 type AnalogCircuitIntent {
   title: NonEmptyStr
   components: List<ElectricalComponentInstance>
@@ -116,18 +110,6 @@ type ElectricalModelStanding
 type ComponentModelBinding {
   component: ComponentInstanceIdentity
   standing: ElectricalModelStanding
-}
-
-fn terminal_ref(component: ComponentInstanceIdentity, terminal: TerminalIdentity) -> ElectricalTerminalRef {
-  ElectricalTerminalRef { component: component, terminal: terminal }
-}
-
-fn terminal_ref_equal(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
-  (a.component as String) == (b.component as String) && (a.terminal as String) == (b.terminal as String)
-}
-
-fn net_contains_terminal(net: ElectricalNet, t: ElectricalTerminalRef) -> Bool {
-  fold(net.members, init: false, f: fn(acc, m) { acc || terminal_ref_equal(a: m, b: t) })
 }
 
 // Which net a terminal belongs to. Absent means the terminal is on no net, which is a real and

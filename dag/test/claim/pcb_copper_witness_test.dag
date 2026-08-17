@@ -3,7 +3,10 @@ module test.claim.pcb_copper_witness
 import std.logic { Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { micrometer }
-import product.compute_board.analog { ElectricalNet, NetIdentity }
+import product.electrical.connectivity {
+  ElectricalNet,
+  NetIdentity,
+}
 import product.pcb.stackup {
   AdmittedStackup,
   CopperLayer,
