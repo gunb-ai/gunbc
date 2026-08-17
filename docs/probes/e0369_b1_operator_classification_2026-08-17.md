@@ -67,9 +67,11 @@ missing_trait_impl sites (`dyn Fn ==`, `im::Vector` derive) are a disjoint popul
 not a second mechanism; they are the same algebra-carrier repr fork seen through a wider
 entry closure. Fresh M=11 re-measurement is scripted in `run_e0369_b1_classification.sh`.
 
-## Cross-lane check (keen-ibex-435, negative)
+## Cross-lane check (keen-ibex-435, negative — refined)
 
-**None** of the 112 measured B1-keyword E0369 sites trace to the four `empty_emit_graph_info()` call sites in `emit_operation_method` / `emit_capability_method` (`05_emit_rust.dag:9432,9481,9921,10254`). Every site is in `std_*` emitted modules (`std_measure`, `std_nat`, `std_cache_interface`, `std_realization_*`, `std_verification`) — `PartialEq` derives or body binops on `CommutativeSemiring`/`Measure`, not service return/wire types. A third “blind render” cause does not apply to this population.
+Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05_emit_rust.dag` (shape: `render_rust_type(..., emit_info: empty_emit_graph_info())` on return/wire positions). **None** of the 112 measured B1-keyword E0369 sites are in extdeps service-client code; all seven files are `std_*` (`std_measure`, `std_nat`, `std_cache_interface`, `std_realization_*`, `std_verification`).
+
+**Signature check (bold-lark refined prediction):** if blind generic-scope / applied-binding rendering caused these E0369s, rustc would cite a carrier with `_` or an unresolved type variable where a named generic belongs. **0/112** sites show that signature — every diagnostic names fully concrete algebra carriers (`CommutativeSemiring<Magnitude>`, `Measure<…>`, including the `Rc` vs `Rc<Rc<…>>` repr-fork pair). The third “wrong type from empty `emit_info`” cause is **dead for this lane**; `repr_fork` classification stands.
 
 ## What is NOT claimed
 
