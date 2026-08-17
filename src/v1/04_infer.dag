@@ -3438,10 +3438,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let formals_by_index = fold(value_params |> enumerate, init: empty_map(), f: (m, fp) => map_insert(m, fp.first, fp.second))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
-          let formal_lookup = map_get(formals_by_index, pair.first)
+          let formal_lookup = value_params |> skip(pair.first) |> first
           let formal_raw = match formal_lookup {
             Present { value: p } => param_node_type_expr(n: p)
             Absent => type_variable_node(id: "callable_param")
