@@ -377,3 +377,67 @@ to unrelated future changes.
 
 REMAINING WORK UNDER THE NEW BAR: compile clean; tests green; regen restored.
 Ordinary, and none of it needs the ledger.
+
+## A CONFIRMED live specimen of the unique-arm class, and it is not source-fixable
+
+Found 2026-08-17 while working the residue. This is no longer a predicted class.
+
+    src/v2/std/witness.dag:4    type Witness<C>
+                          5       = Holds { value: C }
+                          6       | Violates { diagnostic: Diagnostic }
+
+`C` on line 5 is the TYPE PARAMETER declared on line 4. The corpus contains
+exactly ONE global declaration spelled `C`:
+
+    dag/extdeps/languages/c/subject.dag:13    type C = | CTarget
+
+-- the C programming language, cited to ISO/IEC JTC1/SC22/WG14. Exactly one
+declarer means the UNIQUE arm, which binds without consulting containment. So the
+type parameter resolves to the C language, and a consumer
+
+    src/v2/std/grammar.dag:1317
+      Holds { value: DeriveGrammarRelationTokensProgress { .. } } =>
+      on a Witness<DeriveGrammarRelationTokensProgress>
+
+produces
+
+    dag/extdeps/languages/c/subject.dag:13:1: error: variant
+      'DeriveGrammarRelationTokensProgress' not found in type 'C'
+
+The compiler is asking whether DeriveGrammarRelationTokensProgress is a variant of
+the C programming language. The diagnostic is located at the DECLARATION it
+wrongly reached, not at the site that asked -- which is why this class was
+mis-filed as "type parameter shadowed by global C" rather than recognised as the
+unique arm. It is the same mechanism, seen from the wrong end.
+
+WHY THIS SETTLES THE DESIGN QUESTION RATHER THAN JUST ADDING A ROW. Every other
+member of the residue can, in principle, be repaired in source by qualifying the
+reference. THIS ONE CANNOT. There is no spelling of a type parameter that
+disambiguates it from a global type: a parameter is lexically bound by its own
+declaration, and qualifying it is not a thing the language permits. So this class
+is closable ONLY by resolution order -- specifically by the rule that lexical
+binders (parameters, generic parameters, lambda and pattern binders, locals) are
+consulted BEFORE any global bare lookup.
+
+That is exactly the order the side-chat design states, and this specimen is its
+positive control:
+
+    lexical identity  ->  language prelude  ->  qualified container.member
+                      ->  bare module-level, VISIBILITY-FILTERED THEN COUNTED
+
+"Cardinality after visibility, never before it" is the one-line statement of the
+defect. Here cardinality is consulted first and it answers ONE, and the answer is
+the wrong type entirely.
+
+CONSEQUENCE FOR THE BLAST-RADIUS ARGUMENT. I had framed applying the visibility
+filter to the unique arm as conditional on the measured population -- turn it on
+if cheap. This specimen refutes that framing: a class that cannot be authored
+around is not optional to fix regardless of its size, and a LARGE measured
+population is evidence that the unsound path is widely relied on, not evidence
+that it should stay. The measurement therefore sizes HOW the migration is
+executed, not WHETHER the semantics are corrected.
+
+NOT CLAIMED: that every residue row shares this mechanism, or that the count is
+known. The whole-tree number is still in flight. What is claimed is that ONE
+confirmed instance exists, that it is the second-largest class's real cause, and
+that it is unreachable by source edits.
