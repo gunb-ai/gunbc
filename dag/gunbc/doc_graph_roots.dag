@@ -1157,6 +1157,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Slice A Clone-bound propagation lands in v1 trait_derive_emit (where-clause + container bounds) and canonical-seven E0599 census reaches tails-only; or doc migrates into a registered gunbc.plan.Plan row") },
   },
   HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "root_d_generic_arity_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "extdeps.languages.rust.types", decl_name: "rust_type_checkpoints", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "lookup_checkpoint stops being keyed on the bare authored leaf name — the arity half is closed by the declared-arity guard this probe measures, and the remaining identity half (7 of 10 rust_type_checkpoints rows name a type src/v2 also declares) is the identity-keyed realization work; when the table is keyed on resolved declaration identity, both halves this probe localises are structurally unreachable and the probe deletes with this row") },
+  },
+  HandAuthoredDocBind {
     home: PlanDoc,
     slug: "e0599-implementation-proposal",
     primary_work: DeclarationRef { module_path: "tools.e0599_probe_census", decl_name: "e0599_probe_census_note", field: WholeDeclaration },
