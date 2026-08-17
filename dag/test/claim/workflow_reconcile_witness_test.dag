@@ -124,11 +124,12 @@ test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberAdded { to: member } =>
+      MemberAdded { at: _, to: member } =>
         member.fact.key.obligation_id == "database"
-      MemberChanged { from: _, to: _ } => false
-      MemberRemoved { from: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => false
       MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     })
     && match report.verdict {
       Unknown { missing } =>
@@ -160,14 +161,15 @@ test fn goal_revision_change_is_modified_not_delete_add() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberChanged { from: prior, to: member } =>
+      MemberChanged { at: _, from: prior, to: member } =>
         member.fact.key.obligation_id == "frontend"
           && member.fact.intent_revision == "frontend-v2"
           && prior.fact.key.obligation_id == "frontend"
           && prior.fact.intent_revision == "frontend-v1"
-      MemberAdded { to: _ } => false
-      MemberRemoved { from: _ } => false
+      MemberAdded { at: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => false
       MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     })
 }
 
@@ -206,7 +208,7 @@ test fn reparented_child_is_one_member_changed() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberChanged { from: prior, to: member } =>
+      MemberChanged { at: _, from: prior, to: member } =>
         member.fact.key.obligation_id == "database"
           && match member.parent {
             WorkflowFactChild { parent_key: parent } =>
@@ -218,9 +220,10 @@ test fn reparented_child_is_one_member_changed() -> Bool {
               parent.obligation_id == "frontend"
             WorkflowFactRoot => false
           }
-      MemberAdded { to: _ } => false
-      MemberRemoved { from: _ } => false
+      MemberAdded { at: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => false
       MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     })
 }
 
@@ -255,9 +258,10 @@ test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool {
     && all(report.plan.actions, action => match action {
       MemberRemovalRefused { from: member, cause: _ } =>
         member.fact.key.obligation_id == "backend"
-      MemberAdded { to: _ } => false
-      MemberChanged { from: _, to: _ } => false
-      MemberRemoved { from: _ } => false
+      MemberAdded { at: _, to: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     })
     && workflow_reconcile_status_key(report: report) == "refused"
 }

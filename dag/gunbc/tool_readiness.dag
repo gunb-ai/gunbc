@@ -1,71 +1,75 @@
 module gunbc.tool_readiness
 
 
+type CliToolPinMemberAt = std.types.NonEmptyStr
+
 type UnpinnedToolFrontierRow {
-  tool: CliTool
-  reason: String
-  trigger: DeclarationRef
+  tool: extdeps.tools.CliTool
+  reason: std.types.String
+  trigger: std.decl_ref.DeclarationRef
 }
 
 type ToolReadinessRefusalCause
-  = ToolObservationMissing { tool_name: NonEmptyStr }
-  | ToolObservationDuplicate { tool_name: NonEmptyStr, count: std.integer.NonNegativeInt }
+  = ToolObservationMissing { tool_name: std.types.NonEmptyStr }
+  | ToolObservationDuplicate { tool_name: std.types.NonEmptyStr, count: std.integer.NonNegativeInt }
   | ToolMembershipNotConverged {
-      plan: MembershipPlan<Pin<CliTool>>,
-      admission: PinAdmission<CliTool>
+      plan: gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt>,
+      admission: extdeps.pin.PinAdmission<extdeps.tools.CliTool>
     }
   | ToolPinIntegrityRefused {
-      cause: PinRefusalCause,
-      plan: MembershipPlan<Pin<CliTool>>
+      cause: extdeps.pin.PinRefusalCause,
+      plan: gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt>
     }
   | UnpinnedToolUndeclared
   | UnpinnedToolFrontierDuplicate { count: std.integer.NonNegativeInt }
 
 type ToolReadinessRefusal {
-  tool: CliTool
+  tool: extdeps.tools.CliTool
   cause: ToolReadinessRefusalCause
 }
 
 type ToolReadiness
   = PinnedAdmitted {
-      pin: Pin<CliTool>,
-      plan: MembershipPlan<Pin<CliTool>>
+      pin: extdeps.pin.Pin<extdeps.tools.CliTool>,
+      plan: gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt>
     }
-  | PinnedRefused { refusals: List<ToolReadinessRefusal> }
+  | PinnedRefused { refusals: std.types.List<ToolReadinessRefusal> }
   | UnpinnedFrontier {
       row: UnpinnedToolFrontierRow,
-      observed: ObservedToolIdentity
+      observed: extdeps.realization.emit_on_demand_host.ObservedToolIdentity
     }
 
 type ToolReadinessRequest
-  = PinnedToolReadinessRequest { pin: Pin<CliTool> }
-  | UnpinnedToolReadinessRequest { tool: CliTool }
+  = PinnedToolReadinessRequest { pin: extdeps.pin.Pin<extdeps.tools.CliTool> }
+  | UnpinnedToolReadinessRequest { tool: extdeps.tools.CliTool }
 
-data tool_readiness_authority_note: String = "Tool readiness is one desired-versus-observed membership reconcile, not another PATH resolver. ToolReadinessRequest is a SUM: the pinned arm carries only the pin and derives its tool from pin.subject; the unpinned arm carries only the tool. A contradictory tool plus pin.subject pair is therefore unwritable rather than checked after construction. A desired Pin<CliTool> is keyed by the subject name and compared with extdeps.pin.pin_value_eq; the observed member is derived only from the named per-tool row returned by extdeps.realization.emit_on_demand_host.observed_tool_identity, never from the aggregate toolchain_identity and never from a second digest probe. Readiness is the CONJUNCTION of two non-redundant answers: membership_reconcile decides whether an ensure/upsert remains, while admit_pin_integrity decides whether the selected pin may be trusted (notably, TrackedChannel refuses even when membership is unchanged). Any reconcile hunk returns ToolMembershipNotConverged before a path/spawn effect, so the plan gates the verdict rather than riding as decorative evidence. Missing and Duplicate are separate typed, located, counted refusals. System tools are Ensured, so removing one refuses through membership_reconcile's existing R5 wall. PinnedRefused carries no spawn/path effect. UnpinnedFrontier is not an admission and not a default: it is reachable only through one declared per-tool frontier row after a Found observation. Zero rows refuses UnpinnedToolUndeclared and multiple rows refuse UnpinnedToolFrontierDuplicate. The frontier count is the honest migration remainder until hermetic provisioning makes stable expected identities authorable."
+data tool_readiness_authority_note: std.types.String = "Tool readiness is one desired-versus-observed membership reconcile, not another PATH resolver. ToolReadinessRequest is a SUM: the pinned arm carries only the pin and derives its tool from pin.subject; the unpinned arm carries only the tool. A contradictory tool plus pin.subject pair is therefore unwritable rather than checked after construction. A desired Pin<CliTool> is keyed by the subject name and compared with extdeps.pin.pin_value_eq; the observed member is derived only from the named per-tool row returned by extdeps.realization.emit_on_demand_host.observed_tool_identity, never from the aggregate toolchain_identity and never from a second digest probe. Readiness is the CONJUNCTION of two non-redundant answers: membership_reconcile decides whether an ensure/upsert remains, while admit_pin_integrity decides whether the selected pin may be trusted (notably, TrackedChannel refuses even when membership is unchanged). Any reconcile hunk returns ToolMembershipNotConverged before a path/spawn effect, so the plan gates the verdict rather than riding as decorative evidence. Missing and Duplicate are separate typed, located, counted refusals. System tools are Ensured, so removing one refuses through membership_reconcile's existing R5 wall. PinnedRefused carries no spawn/path effect. UnpinnedFrontier is not an admission and not a default: it is reachable only through one declared per-tool frontier row after a Found observation. Zero rows refuses UnpinnedToolUndeclared and multiple rows refuse UnpinnedToolFrontierDuplicate. The frontier count is the honest migration remainder until hermetic provisioning makes stable expected identities authorable."
 
-fn tool_pin_ownership(pin: Pin<CliTool>) -> Ownership? {
-  Present { value: Ensured }
+fn tool_pin_ownership(pin: extdeps.pin.Pin<extdeps.tools.CliTool>) -> gunbc.ownership.Ownership? {
+  Present { value: gunbc.ownership.Ensured }
 }
 
 fn tool_pin_reconcile(
-  desired: List<Pin<CliTool>>,
-  observed: List<Pin<CliTool>>,
-) -> MembershipPlan<Pin<CliTool>> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    key_of: cli_tool_pin_key_of,
-    key_eq: (a, b) => a == b,
-    value_eq: pin_value_eq,
-    ownership_of: tool_pin_ownership,
+  desired: std.types.List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
+  observed: std.types.List<extdeps.pin.Pin<extdeps.tools.CliTool>>,
+) -> gunbc.membership_reconcile.MembershipPlan<extdeps.pin.Pin<extdeps.tools.CliTool>, CliToolPinMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: extdeps.tools.pin.cli_tool_pin_key_of,
+      key_eq: (a, b) => a == b,
+      value_eq: extdeps.pin.pin_value_eq,
+      ownership_of: tool_pin_ownership,
+    )
   )
 }
 
 fn observed_pin(
-  desired: Pin<CliTool>,
-  observation: ObservedToolIdentity,
-) -> Pin<CliTool> {
-  Pin {
+  desired: extdeps.pin.Pin<extdeps.tools.CliTool>,
+  observation: extdeps.realization.emit_on_demand_host.ObservedToolIdentity,
+) -> extdeps.pin.Pin<extdeps.tools.CliTool> {
+  extdeps.pin.Pin {
     subject: desired.subject,
     version: desired.version,
     expected_identity: observation.observed_identity,
@@ -73,42 +77,42 @@ fn observed_pin(
   }
 }
 
-data observed_pin_projection_note: String = "ObservedToolIdentity carries the observed digest at per-tool grain, but does not independently carry Pin.version or Pin.selection. observed_pin therefore projects those two policy fields from desired and replaces only expected_identity with the observed digest. On this path pin_value_eq's version and selection arms are intentionally identities; executable/version-probe output is already folded into observed_identity, so host version drift changes the digest and produces a Modified -> upsert hunk. This reconcile does not claim a second independent version observation."
+data observed_pin_projection_note: std.types.String = "ObservedToolIdentity carries the observed digest at per-tool grain, but does not independently carry Pin.version or Pin.selection. observed_pin therefore projects those two policy fields from desired and replaces only expected_identity with the observed digest. On this path pin_value_eq's version and selection arms are intentionally identities; executable/version-probe output is already folded into observed_identity, so host version drift changes the digest and produces a Modified -> upsert hunk. This reconcile does not claim a second independent version observation."
 
-fn tool_refused(tool: CliTool, cause: ToolReadinessRefusalCause) -> ToolReadiness {
+fn tool_refused(tool: extdeps.tools.CliTool, cause: ToolReadinessRefusalCause) -> ToolReadiness {
   PinnedRefused {
     refusals: [ToolReadinessRefusal { tool: tool, cause: cause }]
   }
 }
 
 fn pinned_tool_readiness(
-  pin: Pin<CliTool>,
-  context: ResolvedBuildContext,
+  pin: extdeps.pin.Pin<extdeps.tools.CliTool>,
+  context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext,
 ) -> ToolReadiness {
-  match observed_tool_identity(
+  match extdeps.realization.emit_on_demand_host.observed_tool_identity(
     context: context,
-    tool_name: cli_tool_pin_key_of(pin: pin),
+    tool_name: extdeps.tools.pin.cli_tool_pin_key_of(pin: pin),
   ) {
-    ObservedToolIdentityMissing { tool_name: name } =>
+    extdeps.realization.emit_on_demand_host.ObservedToolIdentityMissing { tool_name: name } =>
       tool_refused(
         tool: pin.subject,
         cause: ToolObservationMissing { tool_name: name },
       )
-    ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
+    extdeps.realization.emit_on_demand_host.ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
       tool_refused(
         tool: pin.subject,
         cause: ToolObservationDuplicate { tool_name: name, count: n },
       )
-    ObservedToolIdentityFound { row: observation } => {
+    extdeps.realization.emit_on_demand_host.ObservedToolIdentityFound { row: observation } => {
       let plan = tool_pin_reconcile(
         desired: [pin],
         observed: [observed_pin(desired: pin, observation: observation)],
       )
-      let admission = admit_pin_integrity(
+      let admission = extdeps.pin.admit_pin_integrity(
         pin: pin,
         observed_identity: observation.observed_identity,
       )
-      let tally = membership_tally(plan: plan)
+      let tally = gunbc.membership_reconcile.membership_tally(plan: plan)
       if (tally.adds + tally.changes) > 0 || tally.removals > 0 || tally.refusals > 0 {
         tool_refused(
           tool: pin.subject,
@@ -119,9 +123,9 @@ fn pinned_tool_readiness(
         )
       } else {
         match admission {
-          PinIntegrityAdmitted { pin: admitted } =>
+          extdeps.pin.PinIntegrityAdmitted { pin: admitted } =>
             PinnedAdmitted { pin: admitted, plan: plan }
-          PinRefused { subject: _, cause: cause } =>
+          extdeps.pin.PinRefused { subject: _, cause: cause } =>
             tool_refused(
               tool: pin.subject,
               cause: ToolPinIntegrityRefused { cause: cause, plan: plan },
@@ -133,16 +137,16 @@ fn pinned_tool_readiness(
 }
 
 fn matching_frontier_rows(
-  tool: CliTool,
-  frontier: List<UnpinnedToolFrontierRow>,
-) -> List<UnpinnedToolFrontierRow> {
+  tool: extdeps.tools.CliTool,
+  frontier: std.types.List<UnpinnedToolFrontierRow>,
+) -> std.types.List<UnpinnedToolFrontierRow> {
   filter(frontier, row => row.tool.name == tool.name)
 }
 
 fn unpinned_tool_readiness(
-  tool: CliTool,
-  frontier: List<UnpinnedToolFrontierRow>,
-  context: ResolvedBuildContext,
+  tool: extdeps.tools.CliTool,
+  frontier: std.types.List<UnpinnedToolFrontierRow>,
+  context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext,
 ) -> ToolReadiness {
   let matching = matching_frontier_rows(tool: tool, frontier: frontier)
   if count(matching) == 0 {
@@ -156,18 +160,18 @@ fn unpinned_tool_readiness(
     match matching |> first {
       Absent => tool_refused(tool: tool, cause: UnpinnedToolUndeclared)
       Present { value: frontier_row } =>
-        match observed_tool_identity(context: context, tool_name: tool.name) {
-          ObservedToolIdentityMissing { tool_name: name } =>
+        match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: context, tool_name: tool.name) {
+          extdeps.realization.emit_on_demand_host.ObservedToolIdentityMissing { tool_name: name } =>
             tool_refused(
               tool: tool,
               cause: ToolObservationMissing { tool_name: name },
             )
-          ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
+          extdeps.realization.emit_on_demand_host.ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
             tool_refused(
               tool: tool,
               cause: ToolObservationDuplicate { tool_name: name, count: n },
             )
-          ObservedToolIdentityFound { row: observation } =>
+          extdeps.realization.emit_on_demand_host.ObservedToolIdentityFound { row: observation } =>
             UnpinnedFrontier { row: frontier_row, observed: observation }
         }
     }
@@ -176,8 +180,8 @@ fn unpinned_tool_readiness(
 
 fn tool_readiness(
   request: ToolReadinessRequest,
-  frontier: List<UnpinnedToolFrontierRow>,
-  context: ResolvedBuildContext,
+  frontier: std.types.List<UnpinnedToolFrontierRow>,
+  context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext,
 ) -> ToolReadiness {
   match request {
     PinnedToolReadinessRequest { pin: desired } =>
@@ -191,7 +195,7 @@ fn tool_readiness(
   }
 }
 
-fn tool_readiness_refusal_count(readiness: ToolReadiness) -> Int {
+fn tool_readiness_refusal_count(readiness: ToolReadiness) -> std.types.Int {
   match readiness {
     PinnedRefused { refusals: rows } => count(rows)
     PinnedAdmitted { pin: _, plan: _ } => 0

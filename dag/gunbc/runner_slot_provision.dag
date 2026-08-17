@@ -7,88 +7,92 @@ module gunbc.runner_slot_provision
 // BEFORE systemctl enable. srv3/srv4 materialization target is 7 slots; srv4 disk binding is
 // apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
 
-data runner_slot_provision_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data runner_slot_provision_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
+type RunnerSlotMemberAt = std.types.NonEmptyStr
+
 type RunnerSlotMember {
-  instance_name: NonEmptyStr
-  slot_dir: NonEmptyStr
+  instance_name: std.types.NonEmptyStr
+  slot_dir: std.types.NonEmptyStr
 }
 
 type RunnerSlotObservation
-  = RunnerSlotsObserved { members: List<RunnerSlotMember> }
-  | RunnerSlotsUnobserved { host: HostIdentity, reason: NonEmptyStr }
+  = RunnerSlotsObserved { members: std.types.List<RunnerSlotMember> }
+  | RunnerSlotsUnobserved { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
-fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
-  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+fn runner_slot_instance_dir(instance_name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", instance_name as std.types.String], "") as std.types.NonEmptyStr
 }
 
-fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
-  let name = instance_name as NonEmptyStr
+fn runner_slot_member_from_instance_name(instance_name: std.types.String) -> RunnerSlotMember {
+  let name = instance_name as std.types.NonEmptyStr
   RunnerSlotMember {
     instance_name: name,
     slot_dir: runner_slot_instance_dir(instance_name: name),
   }
 }
 
-fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
+fn desired_runner_slot_members(deploy: gunbc.runner_host_deploy.RunnerHostDeploy) -> std.types.List<RunnerSlotMember> {
   map(
-    runner_instance_names(deploy: deploy),
+    gunbc.runner_host_deploy.runner_instance_names(deploy: deploy),
     n => runner_slot_member_from_instance_name(instance_name: n),
   )
 }
 
-fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
+fn runner_slot_member_key(m: RunnerSlotMember) -> std.types.NonEmptyStr {
   m.instance_name
 }
 
-fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
+fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
+  a as std.types.String == b as std.types.String
 }
 
-fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool {
-  a.slot_dir as String == b.slot_dir as String
+fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> std.types.Bool {
+  a.slot_dir as std.types.String == b.slot_dir as std.types.String
 }
 
-data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
+data runner_slot_member_ownership_scaffold_note: std.types.String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
 
-fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> gunbc.ownership.Ownership? {
   Absent
 }
 
 fn runner_slot_membership_reconcile(
-  desired: List<RunnerSlotMember>,
-  observed: List<RunnerSlotMember>,
-) -> MembershipPlan<RunnerSlotMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    key_of: runner_slot_member_key,
-    key_eq: runner_slot_member_key_eq,
-    value_eq: runner_slot_member_value_eq,
-    ownership_of: runner_slot_member_ownership,
+  desired: std.types.List<RunnerSlotMember>,
+  observed: std.types.List<RunnerSlotMember>,
+) -> gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: runner_slot_member_key,
+      key_eq: runner_slot_member_key_eq,
+      value_eq: runner_slot_member_value_eq,
+      ownership_of: runner_slot_member_ownership,
+    ),
   )
 }
 
 type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
-      host: HostIdentity
-      declared_count: Int
-      observed_count: Int
+      host: product.placement_supply.HostIdentity
+      declared_count: std.types.Int
+      observed_count: std.types.Int
     }
 
 fn runner_slot_enumeration_postcondition(
-  host: HostIdentity,
-  observed: List<RunnerSlotMember>,
+  host: product.placement_supply.HostIdentity,
+  observed: std.types.List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = declared_runner_count_for(host: host)
+  let declared = gunbc.fleet_host_budget.declared_runner_count_for(host: host)
   let observed_count = length(observed)
   if observed_count == declared {
     RunnerSlotEnumerationMatched
@@ -102,16 +106,16 @@ fn runner_slot_enumeration_postcondition(
 }
 
 type RunnerSlotProvisionPlan {
-  host_label: NonEmptyStr
-  membership: MembershipPlan<RunnerSlotMember>
-  base_dir_script: String
-  upsert_extract_scripts: List<String>
+  host_label: std.types.NonEmptyStr
+  membership: gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
+  base_dir_script: std.types.String
+  upsert_extract_scripts: std.types.List<std.types.String>
 }
 
 fn runner_slot_provision_plan(
-  deploy: RunnerHostDeploy,
-  artifact: ActionsRunnerBinaryArtifact,
-  observed: List<RunnerSlotMember>,
+  deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
+  artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
+  observed: std.types.List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
     desired: desired_runner_slot_members(deploy: deploy),
@@ -120,23 +124,24 @@ fn runner_slot_provision_plan(
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
-    base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    base_dir_script: extdeps.github.actions_runner.actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        MemberAdded { to: m } =>
-          [actions_runner_slot_extract_script(
+        gunbc.membership_reconcile.MemberAdded { at: _, to: m } =>
+          [extdeps.github.actions_runner.actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        MemberChanged { from: _, to: _ } => []
-        MemberRemoved { from: _ } => []
-        MemberRemovalRefused { from: _, cause: _ } => []
+        gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
+        gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []
+        gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
+        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
   }
 }
 
-fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
-  membership_added_count(plan: plan.membership) > 0
+fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> std.types.Bool {
+  gunbc.membership_reconcile.membership_added_count(plan: plan.membership) > 0
 }

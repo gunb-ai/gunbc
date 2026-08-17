@@ -1,5 +1,6 @@
 module test.claim.spark_serving_membership_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn w_host() -> product.placement_supply.HostIdentity {
@@ -41,14 +42,14 @@ fn w_linger_member(state: std.types.NonEmptyStr) -> gunbc.spark_serving_membersh
 }
 
 fn plan_has_change_for_address(
-  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember>,
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
   address: gunbc.spark_serving_membership.SparkServingResourceAddress,
   from_digest: std.types.NonEmptyStr,
   to_digest: std.types.NonEmptyStr,
 ) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberChanged { from: f, to: t } =>
+      gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
         f.address == address
           && t.address == address
           && f.state_digest == from_digest
@@ -59,14 +60,14 @@ fn plan_has_change_for_address(
 }
 
 fn plan_has_add_for_address(
-  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember>,
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
   address: gunbc.spark_serving_membership.SparkServingResourceAddress,
 ) -> std.types.Bool {
-  any(plan.actions, a => match a { gunbc.membership_reconcile.MemberAdded { to: m } => m.address == address  _ => false })
+  any(plan.actions, a => match a { gunbc.membership_reconcile.MemberAdded { at: _, to: m } => m.address == address  _ => false })
 }
 
 fn plan_has_refused_address(
-  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember>,
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
   address: gunbc.spark_serving_membership.SparkServingResourceAddress,
 ) -> std.types.Bool {
   any(plan.actions, a =>
@@ -77,7 +78,7 @@ fn plan_has_refused_address(
   )
 }
 
-data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
+data w_noop_note: std.types.String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> std.types.Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
@@ -195,7 +196,7 @@ test fn w_spark_serving_key_is_host_principal_address_not_value() -> std.types.B
   gunbc.spark_serving_membership.spark_serving_member_key(member: a) == gunbc.spark_serving_membership.spark_serving_member_key(member: b)
     && string_contains(
       s: gunbc.spark_serving_membership.spark_serving_member_key(member: a),
-      pattern: gunbc.spark_serving_membership.spark_serving_serving_principal() as String,
+      pattern: gunbc.spark_serving_membership.spark_serving_serving_principal() as std.types.String,
     )
     && string_contains(s: gunbc.spark_serving_membership.spark_serving_member_key(member: a), pattern: "runtime-root")
 }
@@ -220,7 +221,7 @@ test fn w_spark_serving_key_differs_when_host_changes() -> std.types.Bool {
 }
 
 test fn w_spark_serving_user_unit_path_uses_unit_identity_authority() -> std.types.Bool {
-  string_contains(s: gunbc.spark_serving_install_paths.spark_serving_user_unit_path() as String, pattern: gunbc.spark_serving_unit_identity.spark_serving_unit_name)
+  string_contains(s: gunbc.spark_serving_install_paths.spark_serving_user_unit_path() as std.types.String, pattern: gunbc.spark_serving_unit_identity.spark_serving_unit_name)
 }
 
 test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> std.types.Bool {
@@ -228,7 +229,7 @@ test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> std.types.Bool
   intent.path == gunbc.spark_serving_install_paths.spark_serving_user_unit_path()
     && intent.spec.service_type == ("simple" as std.types.NonEmptyStr)
     && intent.spec.exec_subcommand == ("serve" as std.types.NonEmptyStr)
-    && string_contains(s: intent.spec.bind_host_port as String, pattern: ":")
+    && string_contains(s: intent.spec.bind_host_port as std.types.String, pattern: ":")
 }
 
 test fn w_spark_serving_change_projects_effect_replace() -> std.types.Bool {

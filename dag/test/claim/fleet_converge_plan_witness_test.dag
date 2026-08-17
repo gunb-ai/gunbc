@@ -30,7 +30,7 @@ test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
     TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as NonEmptyStr },
   ]
   let plan = timer_retirement_plan(observed: observed)
-  any(plan.actions, a => match a { MemberRemoved { from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
+  any(plan.actions, a => match a { MemberRemoved { at: _, from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
 }
 
 test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
