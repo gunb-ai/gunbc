@@ -1,0 +1,7 @@
+module gunbc.char_at_scaling_probe_support
+
+data char_at_scaling_probe_support_note: String = "SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / CHARAT-0) — the entry point `src/v1/stage0/src/bin/char_at_scaling_probe.rs` resolves against. A single `char_at` call, isolated from every other primitive, so per-access cost can be fit against position and against string length without JSON-parse list-accumulation noise. NOT floor-enrolled. DISSOLUTION: delete alongside `json_parse_scaling_probe.rs` per CHARAT-0's scaffold marker."
+
+fn char_at_probe(s: String, pos: Int) -> String {
+  char_at(s: s, pos: pos)
+}

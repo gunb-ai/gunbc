@@ -274,9 +274,12 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
-pub fn char_at(s: &str, pos: i64) -> String {
+/// Ascii-aware variant taking a precomputed `is_ascii` flag (the `RcStr` carrier fact)
+/// instead of rescanning the whole string on every call — the per-call `s.is_ascii()`
+/// scan is what made repeated indexing over a large string O(n^2) (STRING-INDEX-0).
+pub fn char_at_ascii_aware(s: &str, is_ascii: bool, pos: i64) -> String {
     let pos = pos.max(0) as usize;
-    if s.is_ascii() {
+    if is_ascii {
         let bytes = s.as_bytes();
         if pos >= bytes.len() {
             return String::new();
@@ -289,21 +292,31 @@ pub fn char_at(s: &str, pos: i64) -> String {
         .unwrap_or_default()
 }
 
-pub fn string_length(s: &str) -> i64 {
-    if s.is_ascii() {
+pub fn char_at(s: &str, pos: i64) -> String {
+    char_at_ascii_aware(s, s.is_ascii(), pos)
+}
+
+/// Ascii-aware variant taking a precomputed `is_ascii` flag; see `char_at_ascii_aware`.
+pub fn string_length_ascii_aware(s: &str, is_ascii: bool) -> i64 {
+    if is_ascii {
         s.len() as i64
     } else {
         s.chars().count() as i64
     }
 }
 
-pub fn substring(s: &str, start: i64, end: i64) -> String {
+pub fn string_length(s: &str) -> i64 {
+    string_length_ascii_aware(s, s.is_ascii())
+}
+
+/// Ascii-aware variant taking a precomputed `is_ascii` flag; see `char_at_ascii_aware`.
+pub fn substring_ascii_aware(s: &str, is_ascii: bool, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
     if end <= start {
         return String::new();
     }
-    if s.is_ascii() {
+    if is_ascii {
         let len = s.len();
         if start >= len {
             return String::new();
@@ -316,6 +329,10 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
     let take_len = end.saturating_sub(start);
     record_substring_chars_walked(s, start, take_len);
     s.chars().skip(start).take(take_len).collect()
+}
+
+pub fn substring(s: &str, start: i64, end: i64) -> String {
+    substring_ascii_aware(s, s.is_ascii(), start, end)
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {
