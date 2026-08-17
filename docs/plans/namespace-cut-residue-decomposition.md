@@ -219,3 +219,44 @@ against main at 611fd027708, replaying main's semantic changes onto the cut's
 version. Until then this branch is behind main IN CONTENT for those two files
 while reporting 0 behind IN COMMITS -- which is precisely the kind of gap that
 looks closed and is not.
+
+## The cut widens every compilation closure (2026-08-17)
+
+Regen run 8 returned 25 diagnostics, and **not one of them is in `src/v1`**. They are in
+`dag/std/observation.dag`, `dag/std/attribution.dag`, `dag/product/pcb/physical.dag`,
+`dag/product/pcb/stackup.dag`, `dag/product/placement_supply.dag`.
+
+Measured against the pre-cut ledger at merge-base `616d34604115498f25ac777d7ccb9b0b5ce759a4`,
+the number of `import` paths from anywhere in `src/v1` to any of those five modules is **zero**.
+Regen's closure never contained them. It does now.
+
+That is not a regression and not an accident. The import graph was the thing that BOUNDED a
+compilation closure; `05_emit_rust.dag` declared 32 imports and regen compiled their transitive
+closure. With imports deleted, the pool is the whole source root, so regen typechecks the entire
+corpus. Every closure in the repository widened the same way, silently, in one commit.
+
+Two consequences, stated separately because they have different owners:
+
+1. **Regen's bar got strictly harder, by construction.** "Regen green" post-cut means the whole
+   corpus typechecks, where pre-cut it meant one 32-import closure did. Progress measured as
+   "diagnostics remaining" is therefore not comparable across the cut boundary; the denominators
+   are different populations.
+2. **These are pre-existing latent defects, newly visible.** They were never wrong-and-caught;
+   they were never compiled. This is DESIGN's second census -- what X was hiding -- and it is the
+   half the rule says deletion cannot discover any other way.
+
+### The Nat class is a binding fact, not a declaration fact
+
+The `expected 'Product(CommutativeSemiring)', got 'Primitive(Int)'` rows were read earlier as a
+wrong `Nat` declaration, and a repair was attempted and reverted (see
+`nat-literal-field-init-refusal.md`). The ledger refutes that reading:
+
+    dag/product/pcb/physical.dag       import std.integer { Int }
+    dag/product/placement_supply.dag   import std.types   { ..., Int }
+
+Two different `Int` declarations, told apart pre-cut by the import line and by nothing else.
+Post-cut a bare `Int` reaches whichever one pool-uniqueness selects. This is the branch's central
+finding -- cardinality consulted before visibility -- appearing inside the class that was blocking
+regen, and it means the repair is **qualification at the reference sites**, never a redeclaration
+of `std.nat.Nat`. The reverted declaration change was aimed at the wrong layer, which is why it
+closed a definitional cycle instead of fixing anything.
