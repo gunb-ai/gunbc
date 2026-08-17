@@ -427,7 +427,7 @@ fn rust_ground_opaque_kernel_type_name(name: String) -> String {
   }
 }
 
-data reference_use_lines_representation_invariant_note: String = "Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. This was formerly gated on corpus_repr_is_faithful, with import-bearing HostNative modules receiving an empty list -- which made import synthesis a function of WHICH SOURCES SHARED THE CLOSURE rather than of what the module actually references. That gate is deleted with the rest of the closure-provenance switch: what a module must import is a derivation from its own resolved reference graph. The former import-free and import-bearing arms called reference_derived_use_lines with byte-identical arguments once the gate was removed, so the conditional collapsed to one call -- the branch existed only to serve the distinction being deleted."
+data reference_use_lines_representation_invariant_note: String = "Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. Import synthesis was formerly gated on the same closure-provenance flag as primitive realization, with import-bearing modules on one arm receiving an EMPTY list -- which made what a module imports a function of WHICH OTHER SOURCES SHARED ITS CLOSURE rather than of what it actually references. Both halves of that fused flag are deleted: what a module must import is a derivation from its own resolved reference graph, exactly as what a type realizes as is a fact about its own declaration. Once the gate was removed the two former arms called reference_derived_use_lines with byte-identical arguments, so the conditional collapsed to one call -- the branch existed only to serve the distinction being deleted."
 
 fn decl_identity_file(item: Node) -> String {
   match item.ident_span {
@@ -466,6 +466,8 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
     none
   }
 }
+
+data checkpoint_table_bypasses_identity_note: String = "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Int has such a row; Nat does not. So the closure-provenance fork is CLOSED for table-absent names -- v2.std.nat.Nat correctly refuses to realize natively -- and remains OPEN for table-present ones, where a v2-declared Int still renders i64 exactly as the deleted HostNative arm would have. This is not a regression introduced here: the table was already bare-name keyed and the global mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is the residue assertion in the checkpoint witness, which asserts the CURRENT wrong-ish answer on purpose so the gap is counted instead of assumed closed. NEXT-RUNG TRIGGER: the checkpoint rows gain a declaring-module column, at which point lookup_checkpoint takes identity, the residue assertion flips to None, and that flip is the dissolution signal rather than a regression. The rows are cited upstream data and are not this lane's to re-key unilaterally."
 
 fn rust_scalar_checkpoint_render_base(dag_name: String, decl_file: String) -> String? {
   match lookup_checkpoint(target: Rust, dag_name: dag_name) {
