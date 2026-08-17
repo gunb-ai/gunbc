@@ -87,8 +87,8 @@ test fn reach_projection_covers_all_arms() -> Bool {
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
   let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
   identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == Converged
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == Drifted
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == Drifted
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeTransportUnavailable { cause: "x" }) == Inaccessible
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
