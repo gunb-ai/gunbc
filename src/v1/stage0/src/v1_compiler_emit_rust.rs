@@ -2000,6 +2000,7 @@ if peel.clone() {
                                         shared_types.clone(),
                                         corpus_repr.clone(),
                                         source_indices.clone(),
+                                        env.clone(),
                                     )
                                 }
                             }
@@ -2205,6 +2206,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            env.clone(),
                         )
                     }
                 }
@@ -2214,6 +2216,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
+                    env.clone(),
                 )
             }
         }
@@ -2222,6 +2225,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
             shared_types.clone(),
             corpus_repr.clone(),
             source_indices.clone(),
+            env.clone(),
         ),
     }
 }
@@ -12664,11 +12668,21 @@ pub fn emit_struct_from_children(
     }
 }
 
+pub fn render_rust_type_applied_binding_env_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the zero-parameter-alias applied-argument class (E0107 'type alias takes 0 generic arguments but N were supplied'). A reference to a closed alias arrives at the emitter carrying the RESOLVED DEFINITION's type arguments as its children while its authored spelling is still the alias name, so a renderer that prints name-plus-children emits ClosedCarrierAlias<Q, S, M> for a Rust alias declared with no parameters. Four renderers already refuse that shape by asking the single peel authority rust_fn_sig_peel_closed_alias: render_rust_applied_type, render_rust_decl_type, render_rust_fn_sig_type and render_rust_alias_rhs_type. This function is the fifth path, and it did NOT lack the guard -- it reached render_rust_applied_type, which asked, and was answered with an EMPTY TypeEnv this function constructed inline plus an empty_emit_graph_info() it passed to render_rust_type. An empty env resolves no binding, and the peel predicate renders 'I could not look this up' identically to 'this declaration has parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened applied form rather than refusing. Every one of this function's callers already holds the TypeEnv it was discarding, so the fix is to stop discarding it: the peel authority stays the single authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag closure. The next rung is upstream and not taken here: an alias reference that preserved its AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no renderer would need to ask at all.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn render_rust_type_with_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -12704,29 +12718,7 @@ pub fn render_rust_type_with_applied_binding(
                                     corpus_repr.clone(),
                                     source_indices.clone(),
                                     v1_rt::rc_empty_map::<String, String>(),
-                                    Rc::new(TypeEnv {
-                                        module_path: "".to_string(),
-                                        bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                                        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(
-                                        ),
-                                        ancestry_str_bindings: v1_rt::rc_empty_map::<
-                                            String,
-                                            Rc<TypeBinding>,
-                                        >(
-                                        ),
-                                        parents: Rc::new(vec![]),
-                                        recursive_types: Rc::new(vec![]),
-                                        recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-                                        inductive_fields: v1_rt::rc_empty_map::<
-                                            String,
-                                            Rc<Vec<Rc<InductiveField>>>,
-                                        >(
-                                        ),
-                                        source_indices: source_indices.clone(),
-                                        intern_table: empty_intern_table(),
-                                        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-                                        symbol_index: empty_symbol_index(),
-                                    }),
+                                    env.clone(),
                                 )
                             }
                         } else {
@@ -12737,26 +12729,7 @@ pub fn render_rust_type_with_applied_binding(
                                 corpus_repr.clone(),
                                 source_indices.clone(),
                                 v1_rt::rc_empty_map::<String, String>(),
-                                Rc::new(TypeEnv {
-                                    module_path: "".to_string(),
-                                    bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                                    str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                                    ancestry_str_bindings: v1_rt::rc_empty_map::<
-                                        String,
-                                        Rc<TypeBinding>,
-                                    >(),
-                                    parents: Rc::new(vec![]),
-                                    recursive_types: Rc::new(vec![]),
-                                    recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-                                    inductive_fields: v1_rt::rc_empty_map::<
-                                        String,
-                                        Rc<Vec<Rc<InductiveField>>>,
-                                    >(),
-                                    source_indices: source_indices.clone(),
-                                    intern_table: empty_intern_table(),
-                                    source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-                                    symbol_index: empty_symbol_index(),
-                                }),
+                                env.clone(),
                             )
                         }
                     }
@@ -12766,7 +12739,11 @@ pub fn render_rust_type_with_applied_binding(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
-                        empty_emit_graph_info(),
+                        emit_info_with_fn_type_context(
+                            empty_emit_graph_info(),
+                            Rc::new(vec![]),
+                            env.clone(),
+                        ),
                     )
                 }
             }
@@ -12775,7 +12752,11 @@ pub fn render_rust_type_with_applied_binding(
                 shared_types.clone(),
                 corpus_repr.clone(),
                 source_indices.clone(),
-                empty_emit_graph_info(),
+                emit_info_with_fn_type_context(
+                    empty_emit_graph_info(),
+                    Rc::new(vec![]),
+                    env.clone(),
+                ),
             ),
         }
     }
@@ -12814,6 +12795,7 @@ pub fn render_rust_field_type_with_applied_binding(
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
+                    env.clone(),
                 )
             } else {
                 if (find_property(
@@ -12827,6 +12809,7 @@ pub fn render_rust_field_type_with_applied_binding(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        env.clone(),
                     )
                 } else {
                     if ((authored_type.connective.clone() == Connective::NoConnective)
@@ -12845,6 +12828,7 @@ pub fn render_rust_field_type_with_applied_binding(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            env.clone(),
                         )
                     }
                 }
@@ -12887,6 +12871,7 @@ pub fn emit_struct_field_from_child(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     env.source_indices.clone(),
+                    env.clone(),
                 )
             } else {
                 if (find_property(
@@ -12900,6 +12885,7 @@ pub fn emit_struct_field_from_child(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         env.source_indices.clone(),
+                        env.clone(),
                     )
                 } else {
                     if (find_property(
@@ -12913,6 +12899,7 @@ pub fn emit_struct_field_from_child(
                             shared_types.clone(),
                             emit_info.corpus_repr.clone(),
                             env.source_indices.clone(),
+                            env.clone(),
                         )
                     } else {
                         if ((is_product_type(rt_child.clone())
@@ -13959,6 +13946,7 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
+                                        env.clone(),
                                     )
                                 } else {
                                     raw_ty.clone()
@@ -29073,6 +29061,7 @@ pub fn emit_data_def(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     scope.type_env.clone().source_indices.clone(),
+                    scope.type_env.clone(),
                 )
             }
         };
