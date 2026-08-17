@@ -396,19 +396,34 @@ fn fleet_ssh_credential_binding_seal(
   credential_identity: ContentHash,
 ) -> FleetSshCredentialBinding
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_public_material"),
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_derived_material"),
   ]
   = FleetSshCredentialBinding { identity_file: identity_file, credential_identity: credential_identity }
 
-fn fleet_ssh_credential_binding_of_public_material(
+// THE ONLY MINT, and it takes material DERIVED FROM THE IDENTITY FILE rather than material a caller
+// declares alongside it. The superseded route (`fleet_ssh_credential_binding_of_public_material`)
+// took `identity_file` and `public_material` as two independent parameters and hashed the second,
+// so the binding asserted a correspondence nothing had observed: rotate the secret behind the file
+// and every receipt naming which credential authenticated stays byte-identical and false. That is
+// the §5 tell exactly -- the check was satisfiable by editing the declaration while the realization
+// lied -- and the corpus already knew it, because `gunbc.ci_spec` `gunbc_ci_fleet_key_agent_script`
+// performs this derivation in hand-authored shell on the OTHER route. Two answers to one question,
+// one of them unfounded; this is the single authority, and that shell fragment's check becomes the
+// second representation (see `fleet_ssh_credential_shell_verification_supersession_note`).
+//
+// Admitted to the classifier alone, which reaches this only on an observed match, so a binding
+// cannot exist without a derivation that produced the material being hashed.
+fn fleet_ssh_credential_binding_of_derived_material(
   identity_file: NonEmptyStr,
-  public_material: NonEmptyStr,
-) -> FleetSshCredentialBinding {
-  fleet_ssh_credential_binding_seal(
+  derived_material: NonEmptyStr,
+) -> FleetSshCredentialBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_ssh_credential_verify", decl_name: "classify_derived_public_key_line"),
+  ]
+  = fleet_ssh_credential_binding_seal(
     identity_file: identity_file,
-    credential_identity: content_hash_of_value(value: public_material),
+    credential_identity: content_hash_of_value(value: derived_material),
   )
-}
 
 // ONE VALUE CARRYING EVERYTHING AN SSH LEG NEEDS TO BE ACCOUNTABLE. Sealed, so it cannot be
 // assembled beside the walls rather than through them, and constructible only from an anchor that
