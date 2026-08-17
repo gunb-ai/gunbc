@@ -3458,11 +3458,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
           ArgGenericFoldState {
-            results: concat([ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }], st.results),
+            results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
             subst: next_subst
           }
         )
-        ArgGenericFoldState { results: final_state.results |> reverse, subst: final_state.subst }
+        final_state
       }
       let arg_infer_results = arg_call.results
 
