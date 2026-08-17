@@ -778,7 +778,9 @@ corpus name. The three-run partition I proposed is cancelled; there was no overl
 claim. **Answer, in one line:** the tail is not a long tail of singletons. It is **six further
 mid-sized roots** (each 1.5–7% of live distinct sites) plus a genuine singleton residue of
 **3.3%** — and the largest root in the whole live corpus is not A, B, C or D but the
-**algebra-carrier representation** family at 27.2%.
+**algebra-carrier representation** family at 27.2%. **— WITHDRAWN 2026-08-17, see §18: that class was
+assigned by a keyword naming a type and is at least three mechanisms; at most 146 sites are the repr
+mechanism. The largest single mechanism in the corpus is NOT this one.**
 
 ### 11.1 Instrument and stamp (every number below is from this run, nothing transcribed)
 
@@ -840,7 +842,7 @@ rather than joining the nearest root.
 
 | root | sites | % | in floor | in delta |
 |---|---:|---:|---:|---:|
-| **B1 — algebra-carrier representation** (`CommutativeSemiring<Magnitude>` / `Measure<…>`) | 509 | 27.2 | 80 | 429 |
+| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 unclassified) | ~~509~~ | ~~27.2~~ | 80 | 429 |
 | **C — Optional collapses to `()`** (owner `gentle-dove-833`) | 167 | 8.9 | 136 | 31 |
 | **A — generic Clone bound not emitted** (owner `smart-ram-730`) | 142 | 7.6 | 98 | 44 |
 | **K — unsynthesized use-line** (E0433/E0425/E0422 unresolved names) | 132 | 7.0 | 13 | 119 |
@@ -944,7 +946,8 @@ Checked because §9.1 says nothing here is current unless it names today's measu
   string `Witness<_>` does not occur in the live corpus at all. What remains under D is
   `missing generics for enum Witness` (33), a different signature.
 - **Root B, as ticketed at ~196, is undersized if the algebra carrier belongs to it.** B1 alone is
-  509 sites. See 11.6 for why I believe B1 and B3 are one mechanism, and what would separate them.
+  509 sites — **but see §18: B1 is withdrawn as one root, so any B1+B3 unification argument must be
+  re-made against the ≤146 repr-shaped subset, not against 509.** See 11.6 for the original argument.
 
 This is the receipt-staleness class §9.1 warns about, caught twice more. Anyone planning against
 the July E0308 bucket shares should stop.
