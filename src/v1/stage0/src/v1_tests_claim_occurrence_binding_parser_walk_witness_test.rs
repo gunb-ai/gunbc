@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
 use self::ObcpwParsed::*;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;

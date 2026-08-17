@@ -11,12 +11,13 @@ pub use crate::v1_compiler_parse::{ParseContext, TokenStream};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::Token;
+use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::TokenShape::{ShCaret, ShEof, ShIdent, ShLParen};
 pub use crate::v1_std_core::{
     diagnostic_to_message, empty_intern_table, expr_call_func_at, is_error_diagnostic,
 };
 pub use crate::v1_std_core::{ErrorNode, NewlineIndex, Node, TokenShape};
+pub use crate::v1_std_core::{ExprData, Token};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

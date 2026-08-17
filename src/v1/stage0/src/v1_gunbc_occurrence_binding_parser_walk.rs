@@ -2,6 +2,7 @@
 // Source module: v1.gunbc.occurrence_binding_parser_walk
 
 use self::ParsedOccurrenceBindingSource::*;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
 pub use crate::std_occurrence_binding_candidates::DeclarationExposure;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::*;

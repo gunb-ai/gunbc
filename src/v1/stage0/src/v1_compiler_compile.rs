@@ -31,6 +31,8 @@ pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 pub use crate::v1_compiler_artifact::default_artifact_plan;
+pub use crate::v1_compiler_artifact::ArtifactKind;
+use crate::v1_compiler_artifact::ArtifactKind::*;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 pub use crate::v1_compiler_artifact::{Artifact, ArtifactPlan, RenderTarget};
 pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
