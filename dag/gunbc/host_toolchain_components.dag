@@ -61,7 +61,7 @@ fn toolchain_completeness_verdict(
   resolved: ResolvedToolchain?,
 ) -> ObservationVerdict {
   match resolved {
-    std.upsert_decision.Absent => UnknownRefused
+    Absent => UnknownRefused
     Present { value: t } =>
       if resolved_toolchain_missing(t: t, reqs: reqs).length() == 0 {
         Converged
@@ -171,7 +171,7 @@ fn gate_finds_component_verdict(
   reachability: ComponentSpawnReachability?,
 ) -> ObservationVerdict {
   match reachability {
-    std.upsert_decision.Absent => UnknownRefused
+    Absent => UnknownRefused
     Present { value: r } =>
       match r {
         NotReachableOnSpawnPath { inherited_path: _ } => std.upsert_decision.Absent
