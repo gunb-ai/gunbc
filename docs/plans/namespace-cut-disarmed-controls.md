@@ -113,6 +113,21 @@ ones were disarmed.
 4. Exclude `**/test/fixture/**` from any future bulk rewrite, and treat a
    specimen edit as an authored decision.
 
+## The merge driver's refusal is a policy, not an observation
+
+    PolicyRefusedBeforeContentMerge    !=    ContentConflict
+
+The generated-artifact driver refusing is a valid automerge POLICY. It is not an
+observation of content overlap, and "no merged content and no conflict markers,
+after no attempt was made" is not evidence about mergeability. A three-way
+preview establishes content standing separately -- and does NOT by itself
+authorize applying that merge, since a generated artifact still owes
+regeneration from the merged authority.
+
+I read the refusal as a finding during this integration and aborted the merge on
+it. That was wrong; the plain three-way showed one twin merged completely clean
+and the other had a single hunk.
+
 ## The general defense, which is the durable part
 
 Two independent cuts hit this in one day — imports here, a resurrected v1 witness
@@ -123,8 +138,46 @@ VIOLATE a cut:
     git's relation:  same path changed incompatibly, relative to the merge base
     a cut's relation: no member of the deleted class may re-enter after the base
 
-On a deletion cut the CLEAN merge is the dangerous case; a conflict at least
-summons a human. The only thing that caught either instance was an invariant
-re-asserted after every merge, independent of whether anything conflicted --
-here `^import ` count == 0 across the .dag corpus, there a derived emit-plan
-path count. That habit is the mechanism, not caution.
+    CONFLICTING IS LOUD, NOT SAFE.
+    CLEAN IS SILENT, NOT GREEN.
+    Only the post-merge invariant decides.
+
+An earlier revision of this section said "a conflict at least summons a human",
+implying the conflicting path is the safe one. That is FALSE and is corrected
+here rather than quietly reworded: a human resolves conflicts incorrectly all the
+time, and summoning a reviewer is not a receipt. Treating a
+conflicted-then-resolved merge as self-verifying is the worse practice the
+sentence licensed. BOTH paths owe the same check.
+
+The only authoritative sequence, and it runs unconditionally on all four cases
+(clean merge, conflicted-then-resolved, generated regeneration, forward merge
+from main):
+
+    merge event -> construct resulting tree -> re-evaluate the exact cut
+    invariant -> mint held-or-violated
+
+Merge status is PROVENANCE. Cut preservation is a SEMANTIC RECEIPT over the
+resulting tree. The only thing that caught either instance today was that receipt
+run regardless of whether anything conflicted -- here `^import ` count == 0 over
+the .dag population, there a derived emit-plan path count. That habit is the
+mechanism, not caution.
+
+WHEN A COUNT STOPS BEING A COMPLETE ANSWER. The general wall is not "the class is
+empty", it is
+
+    observed old-class population on the merged tree == DECLARED ALLOWED RESIDUE
+
+with emptiness as the common special case. This cut's declared residue is
+genuinely {}, so `count == 0` is a complete answer TODAY. The moment a cut
+carries a bounded residue the receipt must carry IDENTITIES, not a count -- two
+different six-member populations must never compare equal because both count to
+six. That is the same identity-join-not-count-equality rule DESIGN already
+applies to completeness claims, and it is the rule this branch's own census
+violated at (file, name) grain.
+
+A NOTE ON SUBJECT CHOICE, because the two detectors were not equally good. The
+floor cut's detector was an emit-plan path count disagreeing 8-vs-7 -- accidental,
+because its subject is NARROWER than the rule, so a future re-entrant absent from
+that emit plan passes silently. `^import ` over the exact *.dag population takes
+the deleted class ITSELF as its subject. A general wall should be modelled on the
+latter shape.
