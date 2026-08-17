@@ -21,7 +21,6 @@ fn main() {
     // v1-compiler compile when alternating cargo build and cargo test. Pointing at
     // the real HEAD path would be worse: every commit would invalidate the shared lib.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/bin/frontier_probe_survey.rs");
 
     let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
     let tree = git_output(&["rev-parse", "HEAD^{tree}"]).unwrap_or_default();
