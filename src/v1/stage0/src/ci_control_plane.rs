@@ -903,7 +903,6 @@ impl CiControlPlane {
             self.write_run(&record)?;
             let result = match stage.as_str() {
                 "build" => self.stage_build(&worktree),
-                "regen" => self.stage_regen(&worktree),
                 "floor" => self.stage_floor(&worktree),
                 other => Err(format!(
                     "unknown execution stage {other} from CiExecutionPlan"
@@ -976,20 +975,6 @@ impl CiControlPlane {
             .status()
             .map_err(|e| format!("cargo build spawn: {e}"))?;
         status_ok(status, "cargo build --workspace --release")
-    }
-
-    fn stage_regen(&self, worktree: &Path) -> Result<(), String> {
-        let bin = worktree.join("target/release/regen_stage0");
-        if !bin.exists() {
-            return Err("regen_stage0 binary missing after build".to_string());
-        }
-        let status = Command::new(&bin)
-            .current_dir(worktree)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("regen_stage0 spawn: {e}"))?;
-        status_ok(status, "regen_stage0")
     }
 
     fn stage_floor(&self, worktree: &Path) -> Result<(), String> {

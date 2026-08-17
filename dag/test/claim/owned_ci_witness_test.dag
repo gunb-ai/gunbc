@@ -11,7 +11,7 @@ import gunbc.ci_execution_plan {
   ci_execution_default_stages,
   owned_ci_executor_stage_labels,
   ci_execution_stage_wire,
-  CiBuildStage, CiRegenStage, CiFloorStage,
+  CiBuildStage, CiFloorStage,
 }
 import gunbc.owned_ci {
   QueueLease,
@@ -255,17 +255,16 @@ test fn witness_publication_completed_is_github_success() -> Bool {
     && !(check_publication_is_pending_honest(state: done))
 }
 
-test fn witness_execution_plan_stages_build_regen_floor() -> Bool {
+test fn witness_execution_plan_stages_build_floor() -> Bool {
   let subject = PushToMain {
     head_sha: "abc123",
     base_tree_hash: sample_tree_hash(),
   }
   let plan = ci_execution_plan_for_subject(subject: subject)
   (plan.check_name == owned_ci_check_name)
-    && (length(plan.stages) == 3)
+    && (length(plan.stages) == 2)
     && (plan.stages.first() == CiBuildStage)
-    && (plan.stages.skip(n: 1).first() == CiRegenStage)
-    && (plan.stages.skip(n: 2).first() == CiFloorStage)
+    && (plan.stages.skip(n: 1).first() == CiFloorStage)
 }
 
 test fn witness_subject_identity_keys_differ_by_sha() -> Bool {
