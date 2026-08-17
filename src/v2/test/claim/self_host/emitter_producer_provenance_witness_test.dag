@@ -5,11 +5,11 @@ import v2.compiler.self_host.emitter_producer_provenance {
   v2_interpreted_emitter_closure_seed_free_holds
 }
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
+  schedule_witness_entries_structurally_equal,
   seed_emitter_behavioral_wet_known_red_entries
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_known_red_entries,
-  schedule_witness_entries_structurally_equal
+  falsifier_self_host_wet_known_red_entries
 }
 import v2.std.logic { Bool }
 
