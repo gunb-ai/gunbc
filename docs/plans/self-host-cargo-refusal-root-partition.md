@@ -2008,3 +2008,59 @@ different occurrences", which is the occurrence-keyed reading (`authored_name_at
 rather than the type identity `build_shared_types` computed membership under). The five bare fields —
 two of them the `SpanIndex` fields of `ParseProvenanceState` — are the whole specimen set for that
 claim, and testing it needs the resolved node rather than the emitted text.
+
+### 11.22 Independent consistency sweep: ten types, fourteen occurrences — and four rows move from T3 to R1
+
+`bold-lark-722` swept their own emitted tree for types answering the wrap question inconsistently and
+reported 921 of 928 consistent with six real offenders. Re-run independently on this session's tree
+(913 types with occurrences), the same question returns **eleven** inconsistent types:
+
+```
+Nat                 sig_rc 197  sig_bare  0   field_rc 2  field_bare 4
+Witness             sig_rc  26  sig_bare 65   field_rc 2  field_bare 6   <- different mechanism
+Finding             sig_rc  26  sig_bare  0   field_rc 0  field_bare 1
+PortReading         sig_rc  16  sig_bare  0   field_rc 0  field_bare 1
+TerminationProof    sig_rc  16  sig_bare  0   field_rc 1  field_bare 1
+Determinism         sig_rc  10  sig_bare  0   field_rc 0  field_bare 1
+SpanIndex           sig_rc  10  sig_bare  0   field_rc 1  field_bare 2
+ScopeRoster         sig_rc   4  sig_bare  0   field_rc 0  field_bare 1
+NarrowingReason     sig_rc   3  sig_bare  0   field_rc 0  field_bare 1
+SubjectRoster       sig_rc   2  sig_bare  0   field_rc 0  field_bare 1
+ConsumerRequirement sig_rc   1  sig_bare  0   field_rc 0  field_bare 1
+```
+
+Their six all appear and agree row for row. **`Witness` must be excluded** — it is the only row with
+bare *signature* occurrences (65), and it is Root D: the checkpoint table carries
+`{ dag_name: "Witness", target_type: "Witness" }`, a row asserting a bare target for a generic
+declaration. Including it would give the population two causes.
+
+That leaves **ten types and fourteen bare field occurrences.** The extras are all the same shape at a
+deeper position — the miss happens at **element position inside a container field**, not only at the
+field's head:
+
+```
+v2_lens_complexity_accumulator_copy_analyze.rs:602   pub findings: Rc<Vec<Finding>>
+v2_lens_complexity_accumulator_copy_analyze.rs:430   pub readings: Rc<Vec<PortReading>>
+v2_lens_enforcement_standing_intent.rs:80            pub allowed_narrowing: Rc<Vec<NarrowingReason>>
+v2_compiler_infer.rs:86                              pub descent: Rc<Witness<TerminationProof>>
+```
+
+The container is wrapped and the element is bare, while every signature naming those types wraps them.
+
+**Partition correction, mine not theirs:** four rows filed under T3's "Vector wrap / element shape"
+bucket are this mechanism, so at mechanism grain **R1 is 59 and T3 is 107**:
+
+```
+expected Rc<Vector<Rc<PortReading>>>, found Rc<Vector<PortReading>>
+expected Rc<Vector<Finding>>,         found Rc<Vector<Rc<Finding>>>
+expected Vector<NarrowingReason>,     found Vector<Rc<NarrowingReason>>
+expected Vector<PortReading>,         found Vector<Rc<PortReading>>
+```
+
+Both directions appear among those four, which is the one-defect-both-signs claim reproducing at a
+second grain.
+
+**Two independently produced trees agree at the specimen** (`ParseProvenanceState` at
+`v2_compiler_parse.rs:78`, `alloc` bare, `index` bare) and two independent instruments converge on the
+same fourteen-occurrence population from opposite ends — 121-vs-5 counted by position here,
+921-vs-7 counted by type there. That convergence is worth more than either count alone.
