@@ -1,12 +1,29 @@
 module test.claim.membership_reconcile_witness
 
 import std.types { String, List, Bool, Int }
+import std.key_relation {
+  KeyRelation,
+  ScopedKey,
+  KeyedResourceRelation,
+  StateRelation,
+  key_relation_scoped_key,
+  key_relation_scoped_key_eq,
+}
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
   MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
-  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
+  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown, RosterDuplicateKey,
+  MemberRosterDuplicateKeyRefused,
+  MembershipReconcileDuplicateKey, MembershipDesiredRoster,
   membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_reconcile_scoped,
+  membership_plan_admitting_scoped_outcome,
+  MembershipReconcileOutcome,
+  MembershipReconcileScopedOutcome,
+  MembershipReconcileScopedReady,
+  MembershipReconcileDuplicateScopedKey,
   membership_write_count, membership_removal_count, membership_refusal_count,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   membership_added_count, membership_change_count,
@@ -18,6 +35,8 @@ import gunbc.membership_reconcile {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type TMemberAt = String
 
 type TMember { mid: String, ver: String, own: Ownership? }
 
@@ -38,50 +57,52 @@ fn t_key_eq(a: String, b: String) -> Bool { a == b }
 fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
 fn t_own(m: TMember) -> Ownership? { m.own }
 
-fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    key_of: t_key,
-    key_eq: t_key_eq,
-    value_eq: t_val_eq,
-    ownership_of: t_own,
+fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember, TMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: t_key,
+      key_eq: t_key_eq,
+      value_eq: t_val_eq,
+      ownership_of: t_own,
+    ),
   )
 }
 
-fn plan_has_add(plan: MembershipPlan<TMember>, mid: String) -> Bool {
-  any(plan.actions, a => match a { MemberAdded { to: m } => m.mid == mid  _ => false })
+fn plan_has_add(plan: MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
+  any(plan.actions, a => match a { MemberAdded { at: _, to: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_change_from_to(plan: MembershipPlan<TMember>, mid: String, from_ver: String, to_ver: String) -> Bool {
+fn plan_has_change_from_to(plan: MembershipPlan<TMember, TMemberAt>, mid: String, from_ver: String, to_ver: String) -> Bool {
   any(plan.actions, a =>
     match a {
-      MemberChanged { from: f, to: t } =>
+      MemberChanged { at: _, from: f, to: t } =>
         f.mid == mid && t.mid == mid && f.ver == from_ver && t.ver == to_ver
       _ => false
     }
   )
 }
 
-fn plan_has_teardown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
-  any(plan.actions, a => match a { MemberRemoved { from: m } => m.mid == mid  _ => false })
+fn plan_has_teardown(plan: MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
+  any(plan.actions, a => match a { MemberRemoved { at: _, from: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_refused_not_owned(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+fn plan_has_refused_not_owned(plan: MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
-        m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false })
+        m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false  RosterDuplicateKey { roster: _ } => false })
       _ => false
     }
   )
 }
 
-fn plan_has_refused_unknown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+fn plan_has_refused_unknown(plan: MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
-        m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false })
+        m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false  RosterDuplicateKey { roster: _ } => false })
       _ => false
     }
   )
@@ -199,7 +220,7 @@ test fn w_effects_refuses_wholesale_on_any_refusal() -> Bool {
       count(rs) == 1
         && any(rs, r =>
              r.member.mid == "e"
-               && (match r.cause { MemberNotOwned => true  OwnershipUnknown => false }))
+               && (match r.cause { MemberNotOwned => true  OwnershipUnknown => false  RosterDuplicateKey { roster: _ } => false }))
     EffectsReady { effects: _ } => false
   }
 }
@@ -225,5 +246,121 @@ test fn w_tally_matches_counts() -> Bool {
     && (t.adds + t.changes) == membership_write_count(plan: plan)
     && t.removals == membership_removal_count(plan: plan)
     && t.refusals == membership_refusal_count(plan: plan)
+}
+
+type ScopedWitnessScope { node: String }
+
+type ScopedWitnessMember { node: String, mid: String, ver: String }
+
+type ScopedWitnessKeyRelation
+
+fn scoped_witness_scope_of(m: ScopedWitnessMember) -> ScopedWitnessScope {
+  ScopedWitnessScope { node: m.node }
+}
+
+fn scoped_witness_scope_eq(a: ScopedWitnessScope, b: ScopedWitnessScope) -> Bool {
+  a.node == b.node
+}
+
+fn scoped_witness_key_of(m: ScopedWitnessMember) -> String {
+  m.mid
+}
+
+fn scoped_witness_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn scoped_witness_val_eq(a: ScopedWitnessMember, b: ScopedWitnessMember) -> Bool {
+  a.ver == b.ver
+}
+
+fn scoped_witness_own(_: ScopedWitnessMember) -> Ownership? {
+  Present { value: Owned }
+}
+
+data scoped_witness_key_relation: KeyRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String> = KeyRelation {
+  scope_of: scoped_witness_scope_of,
+  key_of: scoped_witness_key_of,
+  scope_eq: scoped_witness_scope_eq,
+  key_eq: scoped_witness_key_eq,
+}
+
+fn scoped_witness_state_of(m: ScopedWitnessMember) -> String { m.ver }
+fn scoped_witness_state_eq(a: String, b: String) -> Bool { a == b }
+
+data scoped_witness_resource: KeyedResourceRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String, String> = KeyedResourceRelation {
+  key: scoped_witness_key_relation,
+  state: StateRelation {
+    state_of: scoped_witness_state_of,
+    state_eq: scoped_witness_state_eq,
+  },
+}
+
+data w_same_key_different_scope_note: String = "DISCRIMINATING (P0 #1): two subjects with the same key in DIFFERENT scopes must NOT collapse into one reconcile row. An unscoped key_of seam treats host-a and host-b both owning route 443:/ as one member; ScopedKey carries scope and key together so both stay distinct."
+
+test fn w_same_key_different_scope_stays_distinct() -> Bool {
+  let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
+  let b = ScopedWitnessMember { node: "host-b", mid: "route", ver: "1" }
+  let plan = membership_plan_admitting_scoped_outcome(
+    outcome: membership_reconcile_scoped(
+      desired: [a, b],
+      observed: [a, b],
+      resource: scoped_witness_resource,
+      ownership_of: scoped_witness_own,
+    ),
+  )
+  membership_write_count(plan: plan) == 0
+    && membership_removal_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+    && !key_relation_scoped_key_eq(
+      relation: scoped_witness_key_relation,
+      a: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: a),
+      b: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: b),
+    )
+}
+
+test fn w_duplicate_plain_key_refuses_with_roster_cause() -> Bool {
+  let plan = membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: [tm_owned(mid: "dup", ver: "1"), tm_owned(mid: "dup", ver: "2")],
+      observed: [],
+      key_of: t_key,
+      key_eq: t_key_eq,
+      value_eq: t_val_eq,
+      ownership_of: t_own,
+    ),
+  )
+  any(plan.actions, a =>
+    match a {
+      MemberRosterDuplicateKeyRefused { roster: MembershipDesiredRoster, first: f, duplicate: d } =>
+        f.mid == "dup" && d.mid == "dup" && f.ver == "1" && d.ver == "2"
+      _ => false
+    }
+  )
+    && match membership_effects(plan: plan) {
+      ApplyRefused { refusals: rs } =>
+        count(rs) == 1
+          && any(rs, r =>
+               r.member.mid == "dup"
+                 && (match r.cause { RosterDuplicateKey { roster: MembershipDesiredRoster } => true  _ => false }))
+      EffectsReady { effects: _ } => false
+    }
+}
+
+data w_duplicate_scoped_key_refuses_note: String = "DISCRIMINATING: two desired members sharing one scoped key must refuse at roster build — MembershipReconcileDuplicateScopedKey on the desired roster, never a 1:1 diff."
+
+test fn w_duplicate_scoped_key_refuses() -> Bool {
+  let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
+  let b = ScopedWitnessMember { node: "host-a", mid: "route", ver: "2" }
+  match membership_reconcile_scoped(
+    desired: [a, b],
+    observed: [],
+    resource: scoped_witness_resource,
+    ownership_of: scoped_witness_own,
+  ) {
+    MembershipReconcileDuplicateScopedKey { roster: MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
+      f.value.mid == "route" && d.value.mid == "route" && f.value.ver == "1" && d.value.ver == "2"
+    MembershipReconcileScopedReady { plan: _ } => false
+  }
 }
 
