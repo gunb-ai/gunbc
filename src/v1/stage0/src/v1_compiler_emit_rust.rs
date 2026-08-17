@@ -6765,6 +6765,66 @@ pub fn reference_derived_candidate_spelled_in_module(module_source: String, name
         && v1_rt::string_contains(&module_source, name.clone()))
 }
 
+pub fn reference_derived_variant_induced_parent_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The authored-source gate asks whether a candidate is spelled in the module. For a PARENT ENUM that question is the wrong one, because the emitter qualifies a variant by its parent (Parent::Variant, via variant_pattern_qualified_path and the variant-ctor emit path) at sites where the .dag source spells only the VARIANT — a bare match arm on Accepted, or a nested construction of Unavailable. The parent name is then never in the module text, so the parent use-line was refused and the emitted Parent::Variant had no import (E0433/E0412/E0573 — the root-partition Root K, 109 of 132 sites). Measured on v2.lens.complexity_accumulator_copy.analyze (2026-08-17, gunbc built from this tree): 7 distinct parent enums are used as qualified heads while the .dag source contains zero occurrences of any of their names; opening the gate outright admitted 6 of the 7 (EdgeLabel, NamedEdgeTargetLookup, NodeKind, LetBindingFact, Outcome, ParseSubtreeFind) — so collection was never the wall, the gate was — and ALSO admitted AuthoredTokenOrdinal and FiniteSet, neither of which the module references: exactly the fabrication class the gate exists to refuse, its own note naming the AuthoredTokenOrdinal receipt. So the gate is not relaxed; the question is corrected. A parent-enum candidate is admitted when an authored VARIANT of that same enum is spelled, and the variant-to-parent binding is the UNAMBIGUOUS one: emit_info.variant_to_enum maps a variant name shared by two enums to the empty string (derive_variant_to_enum), so a homonym variant admits NEITHER enum rather than picking one — fail-closed, no plausible guess (DESIGN section 5). Residue, declared not hidden: a variant whose name is ambiguous corpus-wide leaves its parent unimported even where the emitter qualifies it from the scrutinee type, and a parent reached by neither its own spelling nor an unambiguous authored variant (measured: Behavior in that module) stays unsynthesized. Both refuse rather than fabricate. Dissolve-on: the same trigger the text gate carries — derive use-lines from the module bound-reference structure (P2a candidate-producer / BoundReferenceProvider), at which point the spelling question disappears entirely and with it this correction.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_derived_variant_induced_parent_spelled(
+    module_source: String,
+    enum_name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> bool {
+    match v1_rt::map_get(&type_summaries, enum_name.clone()) {
+        Some(summary) => match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { unit_only: _, .. } => {
+                let mut __found = false;
+                for vn in Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
+                    .iter()
+                    .cloned()
+                {
+                    if match v1_rt::map_get(&variant_to_enum, vn.clone()) {
+                        Some(parent) => {
+                            ((parent.clone() == enum_name.clone())
+                                && reference_derived_candidate_spelled_in_module(
+                                    module_source.clone(),
+                                    vn.clone(),
+                                ))
+                        }
+                        None => false,
+                    } {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn reference_derived_candidate_authored(
+    module_source: String,
+    name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> bool {
+    (reference_derived_candidate_spelled_in_module(module_source.clone(), name.clone())
+        || reference_derived_variant_induced_parent_spelled(
+            module_source.clone(),
+            name.clone(),
+            type_summaries.clone(),
+            variant_to_enum.clone(),
+        ))
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -6852,9 +6912,11 @@ pub fn reference_derived_use_lines(
             .iter()
             .cloned()
             {
-                if reference_derived_candidate_spelled_in_module(
+                if reference_derived_candidate_authored(
                     module_source.clone(),
                     name.clone(),
+                    emit_info.type_summaries.clone(),
+                    emit_info.variant_to_enum.clone(),
                 ) {
                     __result.push(name);
                 }
