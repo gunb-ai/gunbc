@@ -168,6 +168,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       kind: GeneratedEmitCoreCrate,
       modules: [
         "v1_compiler_artifact",
+        "v1_compiler_infer_env",
         "v1_compiler_infer_items",
         "v1_compiler_infer_service",
         "v1_compiler_infer_types",
