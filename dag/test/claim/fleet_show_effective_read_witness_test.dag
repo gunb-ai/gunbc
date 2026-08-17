@@ -84,7 +84,7 @@ test fn witness_srv2_slice_cap_converges_after_the_16_gib_ruling() -> Bool {
     property: systemd_memory_max_property,
     expected: gunbc_runner_pool_budget_for(host: operator_host_srv2),
   ) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }
