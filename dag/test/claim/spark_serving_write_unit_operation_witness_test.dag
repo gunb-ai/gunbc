@@ -21,7 +21,6 @@ import gunbc.remote_operation {
   remote_operation_count,
   remote_operation_file_write_count,
   remote_operations_argv_only,
-  remote_operation_is_file_write,
 }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
@@ -91,7 +90,11 @@ test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
         && length(remote_operations_argv_only(operations: ops)) == 1
         && match ops.first() {
           Absent => false
-          Present { value: op } => remote_operation_is_file_write(operation: op)
+          Present { value: op } =>
+            match op {
+              RemoteFileBytes { write: _, mode: _ } => true
+              RemoteArgv { argv: _ } => false
+            }
         }
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }

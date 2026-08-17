@@ -28,20 +28,6 @@ type RemoteOperationOutcome
   = RemoteOperationSucceeded { label: String }
   | RemoteOperationRefused { reason: String }
 
-fn remote_operation_succeeded(outcome: RemoteOperationOutcome) -> Bool {
-  match outcome {
-    RemoteOperationSucceeded { label: _ } => true
-    RemoteOperationRefused { reason: _ } => false
-  }
-}
-
-fn remote_operation_is_file_write(operation: RemoteOperation) -> Bool {
-  match operation {
-    RemoteFileBytes { write: _, mode: _ } => true
-    RemoteArgv { argv: _ } => false
-  }
-}
-
 // A file write has NO single argv on purpose: its realization is four invocations (stage, mode,
 // rename, read-back), so exposing one command for it would be a fiction a reader could mistake for
 // the whole operation.
@@ -77,5 +63,10 @@ fn remote_operations_argv_only(operations: List<RemoteOperation>) -> List<List<S
 }
 
 fn remote_operation_file_write_count(operations: List<RemoteOperation>) -> Int {
-  length(filter(operations, o => remote_operation_is_file_write(operation: o)))
+  length(flat_map(operations, o =>
+    match o {
+      RemoteFileBytes { write: _, mode: _ } => [o]
+      RemoteArgv { argv: _ } => []
+    }
+  ))
 }
