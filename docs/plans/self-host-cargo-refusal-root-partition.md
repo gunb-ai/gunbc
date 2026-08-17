@@ -1145,15 +1145,16 @@ Nothing here is new evidence — every number below is cited to the section that
 
 ### 12.1 The one sentence to carry
 
-**Name-keyed realization is real, is directly attributable to 253 sites, and is NOT the wall.**
+**Name-keyed realization is real, is directly attributable to 286 sites, and is NOT the wall.**
 
 The Rust emitter answers questions about a type from its *authored token* when the resolved
 declaring module is already attached to the node being rendered. Three lanes found this
 independently, from three different symptoms, and it converges on one function —
 `rust_scalar_checkpoint_render_base`, a lookup keyed on a bare `String`.
 
-Then it was bounded, and the bound is the load-bearing half: **253 attributable, 110
-exposed-but-not-caused, ~1,500 not attributable** (§11.10). 13.5%. The remaining sites turn on
+Then it was bounded, and the bound is the load-bearing half: **286 attributable, 110
+exposed-but-not-caused, ~1,500 not attributable** (§11.10). 15.3% — the §11.10 amendment, which
+supersedes the 253 / 13.5% this section carried until T7, K, R5 and D-Witness were counted in. The remaining sites turn on
 shape, ownership, or which traits a declaration needs — cases where the emitter already has the
 right declaration and computes the wrong answer about it.
 
