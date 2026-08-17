@@ -21,29 +21,38 @@ render_cssl_probe_lib_cargo_toml() {
     return 1
   fi
 
-  local probe_lib_toml err_log
-  probe_lib_toml="$(
+  local tmp_toml err_log
+  tmp_toml="$(mktemp "${TMPDIR:-/tmp}/cssl-probe-cargo.XXXXXX")"
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp_toml'" RETURN
+
+  if ! (
     cd "$root"
     "$gunbc" run \
       --source-root dag \
       --source-root src/v2 \
       --entry dag/tools/self_host_curated_probe_cargo.dag \
-      --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
-  )"
-
-  if [[ -z "$probe_lib_toml" ]]; then
+      --function curated_probe_cargo_toml_from_cssl_authority \
+      --arg "out_path=$tmp_toml" >/dev/null
+  ); then
     err_log="$(
       cd "$root"
       "$gunbc" run \
         --source-root dag \
         --source-root src/v2 \
         --entry dag/tools/self_host_curated_probe_cargo.dag \
-        --function curated_probe_cargo_toml_from_cssl_authority 2>&1 >/dev/null
+        --function curated_probe_cargo_toml_from_cssl_authority \
+        --arg "out_path=$tmp_toml" 2>&1 >/dev/null || true
     )"
     echo "curated_cargo_probe: gunbc authority-read failed" >&2
     [[ -n "$err_log" ]] && echo "$err_log" >&2
     return 1
   fi
 
-  printf '%s\n' "$probe_lib_toml" >"$out_path"
+  if [[ ! -s "$tmp_toml" ]]; then
+    echo "curated_cargo_probe: gunbc authority-read produced empty Cargo.toml" >&2
+    return 1
+  fi
+
+  cp "$tmp_toml" "$out_path"
 }

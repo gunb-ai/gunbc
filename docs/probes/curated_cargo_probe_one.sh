@@ -12,6 +12,8 @@
 #                           for per-error census (e0599_census_extract.sh). Emit/assemble always
 #                           use a fresh mktemp OUT per invocation — never reuse this dir as OUT
 #                           (gunbc compile does not clear stale emitted .rs across runs).
+#                           Clears any prior <module>.cargo.log at invocation so a missing log
+#                           after a refuse path is observable (not a stale prior run).
 #   shim_lib_rel (arg 2)  — ONLY the lane's own lib.rs from dag/tools/self_host_<lane>_shims/
 #                           when that lane provides one (see behavioral_transport shim_lib_rel).
 #   Empty = raw cssl-assembled lib.rs (correct default when no lane shim).
@@ -59,9 +61,11 @@ fi
 export GUNBC
 
 KEEP_DIR=""
+PROBE_LOG_STEM="$(basename "$MODULE_PATH" .dag)"
 if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
   KEEP_DIR="$PROBE_KEEP_LOG_DIR"
   mkdir -p "$KEEP_DIR"
+  rm -f "$KEEP_DIR/${PROBE_LOG_STEM}.cargo.log"
 fi
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
 cleanup() { rm -rf "$OUT"; }
@@ -212,14 +216,9 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     else
       MAPPED_GATE="UNKNOWN"
     fi
-    if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
-      mkdir -p "$PROBE_KEEP_LOG_DIR"
-      cp "$BUILD_LOG" "$PROBE_KEEP_LOG_DIR/$(basename "$MODULE_PATH" .dag).cargo.log"
-    fi
   fi
   if [[ -n "$KEEP_DIR" && -f "${BUILD_LOG:-}" ]]; then
-    mod_base="$(basename "$MODULE_PATH" .dag)"
-    cp "$BUILD_LOG" "$KEEP_DIR/${mod_base}.cargo.log"
+    cp "$BUILD_LOG" "$KEEP_DIR/${PROBE_LOG_STEM}.cargo.log"
   fi
 fi
 
