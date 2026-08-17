@@ -709,6 +709,20 @@ fn type_param_is_collection_element_in_values(param_name: String, value_params: 
 // reader at a time. Next rung, and the trigger this repair does NOT reach: ambiguity becomes a
 // typed arm rather than a bare "" (Unowned | OwnedBy | Ambiguous), so a reader that ignores it
 // does not compile.
+//
+// AND THE DEEPER DEFECT, measured while trying to witness this and recorded because it outlives the
+// repair: the sentinel is asking a question the language does not define globally. §1c
+// (v1.compiler.infer constructor_binding_authority) rules that a module's constructor namespace is
+// FLAT -- its own declarations plus its DIRECT imports, never transitive ancestry -- and a name
+// bound to two owners IN ONE FILE is a VariantCollision refused at env construction. So ownership
+// is a PER-FILE fact. derive_variant_to_enum folds the whole TRANSITIVE closure, where no such
+// owner exists. The two populations disagree by construction, and that is exactly what is observed:
+// emitting src/v2/compiler/05_emit.dag reports NO collision and 92 clean files, while the same run
+// records Optional as ambiguously owned 68 times and Absent 91 times. A fixture that imports both
+// claimants DIRECTLY does refuse, which is the wall working correctly on the population it owns.
+// Honoring the sentinel is therefore right but is not the terminal fix: a per-file relation was
+// flattened into a global map, and the ambiguity is that flattening's artifact rather than a defect
+// in any declaration.
 fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
   if generic_param_names |> any(g => g == name) {
     false
