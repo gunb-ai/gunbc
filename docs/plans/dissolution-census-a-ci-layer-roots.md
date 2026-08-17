@@ -15,7 +15,7 @@ re-running a script.
 
 **Scope:** every prose-bearing site inside `dag/gunbc/ci_layer_roots.dag` — the CI floor's single-authority witness-layer, discovery-exclusion, and falsifier-roster carrier (25.3 KiB prose mass per [dag-note-prose-census.md](dag-note-prose-census.md) §1).
 
-**Instrument:** row-level register at `docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv` (263 sites) plus the generated `docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.summary.json`. **Grain key:** a *site* is one `reason`, `dissolve_on`, or `data String` field; a site is *inline prose* when `is_ref=False` (literal string body); template-ref sites (`reason: excl_*`) carry `is_ref=True` and are not prose.
+**Instrument (retired):** the rows below were produced by a row-level register of 263 sites and its generated summary, both deleted 2026-08-16 with the projection script under the operator ruling to delete anything not actively derived. Nothing here is re-derivable from a stored artifact; the numbers are a dated observation and re-deriving them means re-running the census against live `gunbc.ci_layer_roots`. **Grain key:** a *site* is one `reason`, `dissolve_on`, or `data String` field; a site is *inline prose* when `is_ref=False` (literal string body); template-ref sites (`reason: excl_*`) carry `is_ref=True` and are not prose.
 
 ---
 
