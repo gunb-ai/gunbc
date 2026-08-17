@@ -2109,47 +2109,80 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
 
-## 12. The finding above the findings: a site count measures where the compiler pointed
+## 16. The finding above the findings: a site count measures where the compiler pointed
 
-Every root in this partition was sized by counting distinct diagnostic sites, and in every root that
-was then characterized, the count turned out to be a poor description of the work. The ratio is not a
-rhetorical flourish; it is measurable, and I measured it rather than adopting the round number it was
-suggested with.
+**Corrected 2026-08-17, and the correction is the same class this section is about.** The first
+version of this section published a pooled aggregate (37×) and median (64×) that **silently
+included Root C — the row the sentence beneath the table said was excluded.** 167 sites and 1 unit,
+carried over from an earlier draft whose population included C, surviving a change of population
+that the prose recorded and the arithmetic did not. It also sized Root A at 142, the classifier's
+gross bucket, while §13 of this document establishes **A = 133** after nine concrete `Nat` receiver
+rows move to the repr family. Found in review, not by me. The pooled statistics are **deleted**
+rather than repaired, for the reason in 16.2.
 
-| root | sites | units of work | ratio | what one unit is |
+### 16.1 The per-root observations
+
+| root | sites | authored decisions | ratio | what one decision is |
 |---|---:|---:|---:|---|
 | B1 algebra carrier | 509 | 1 | 509× | one closure-shape flag deciding the numeric representation |
 | K unsynthesized use-line | 132 | 1 | 132× | one collector that does not reach pattern / nested-argument positions |
 | T7 `Hash` collision | 105 | 1 | 105× | one row in `rust_type_checkpoints` |
-| A generic clone bound | 142 | 2 | 71× | two axes with complementary blind spots |
+| A generic clone bound | 133 | 2 | 67× | two axes with complementary blind spots |
 | D generic argument count | 116 | 2 | 58× | one checkpoint row + one alias-arity drop |
 | T3 collection carrier | 107 | 5 | 21× | five mechanisms over two alias declarations |
 | T5a Hash/Eq | 27 | 3 | 9× | three declarations |
 | R1 wrap decision | 59 | 10 | 6× | ten types, fourteen bare occurrences |
 | T5b serde/Debug | 44 | 12 | 4× | twelve demanding declarations |
 
-Median **64×**; aggregate 1,408 sites over 38 units, **37×**; range **4× to 509×**. (Root C is
-excluded — it is owned elsewhere and I did not characterize it. "Units of work" is a judgment about
-what one edit is, not a measurement; the site counts are measurements.)
+Root C is not in this table and is not in any figure derived from it — it is owned elsewhere and I
+did not characterize it.
 
-**So the stated rule is: a root's site count measures where the compiler pointed, never what has to
-change — and here that gap has run between fourfold and five-hundred-fold.** A burn-down quoted in
-sites is a statement about rustc's reporting density.
+### 16.2 No population ratio is claimed, and the reason is dimensional
 
-**The variation is the more useful half, and it is not noise.** The largest ratios are single
-*authored rows* — a checkpoint row, a closure-shape flag — where one line of data fans out across the
-corpus through a table lookup. The smallest are *populations of declarations*, where each site's cause
-was authored separately and each needs its own decision. So the ratio predicts the shape of the fix
-before anyone opens the file: a root at 100× is one edit and a large verification; a root at 4× is a
-dozen decisions and a small diff. Sizing a root without knowing which kind it is produces exactly the
-two errors seen tonight — a fix aimed at 5% of its population, and a plan to add 44 derives that
-cannot exist.
+**In these nine characterized specimens, diagnostic sites substantially outnumbered the
+independently identified authored causes, by amounts ranging from 4× to 509×. No population-level
+ratio is claimed.**
 
-**And the corollary for the measurement law in §11.14:** distinct sites at a fixed M is the right unit
-for *comparing runs*, and the wrong unit for *estimating work*. Both numbers are needed and they are
-not interchangeable.
+A median or aggregate over that column would require the denominators to be one kind of thing, and
+they are not: one lookup row, one collector, one checkpoint row, two conceptual axes, five
+mechanisms, three declarations, ten types, twelve demanding declarations. Averaging those is
+inventing a common currency for work. Stating that the denominator is judgment — which the first
+version did — does not license aggregating across the judgments; a caveat is not a unit.
 
-## 13. Two-arm provenance: three controls that run BEFORE the measurement
+A defensible unit would have an operational identity: **one independently disposable authored
+decision, with one named authority, one disposition, and one acceptance result** — enumerated as
+IDs, not asserted as a count. Until that exists the table above is a qualitative characterization
+of nine specimens and nothing is derived from it.
+
+### 16.3 Three grains, and which of them may appear before characterization
+
+The claim this section originally made — that the ratio predicts fix shape *before anyone opens the
+file* — is **withdrawn**. It cannot: the denominator is produced BY characterization, so it is a
+handback result and never a dispatch input. Quoting a predicted ratio in a work-item title would put
+an unverifiable number in the one place a fresh owner is most likely to trust it.
+
+| grain | what it is | may appear at dispatch |
+|---|---|---|
+| site count | observed refusal surface under a stamped census | yes, with M |
+| diagnostic-signature count | syntactic diversity of the rustc observations | yes |
+| authored-decision count, and any ratio over it | post-characterization causal decomposition | **no** |
+
+So a dispatch title carries raw census facts only — `Root K — 132 sites @ M=11 · N diagnostic
+signatures · uncharacterized` — and no predicted shape.
+
+**Terminology correction while restating this:** what the instrument computes is a **diagnostic
+signature** (expected/found pair, receiver+method, trait+self-type, else message), not a cause. One
+mechanism emits several signatures and one signature can conceal several mechanisms; §11 uses
+"cause signature" throughout and the instrument definition there is what is authoritative.
+
+### 16.4 What survives
+
+The direction, which every specimen agrees on and which is the part that changes how work is
+planned: **a root's site count measures where the compiler pointed, never what has to change.** A
+burn-down quoted in sites is a statement about rustc's reporting density. That is worth saying
+without a number attached to it, and the number attached to it is exactly what had to be retracted.
+
+## 17. Two-arm provenance: three controls that run BEFORE the measurement
 
 Established while standing up the after-arm service for Root B's `RustCorpusRepr` cut. The
 measurement itself is pending; **these three controls are not** — each is complete on its own and
