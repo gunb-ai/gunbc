@@ -1,0 +1,118 @@
+module test.claim.systemd_unit_file_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile,
+  SystemdUnitDirective,
+  Description,
+  After,
+  Wants,
+  SystemdServiceDirective,
+  ServiceType,
+  ExecStart,
+  Restart,
+  Environment,
+  WorkingDirectory,
+  SystemdInstallDirective,
+  WantedBy,
+  RequiredBy,
+  systemd_unit_directive_line,
+  systemd_service_directive_line,
+  systemd_install_directive_line,
+  serialize_systemd_unit_file,
+}
+
+fn sample() -> SystemdUnitFile {
+  SystemdUnitFile {
+    unit: [
+      Description { text: "gunbc Spark serving" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ExecStart { command: "/opt/x/bin/ollama serve" as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: [WantedBy { target: "default.target" as NonEmptyStr }],
+  }
+}
+
+// THE KEYSTONE: exact bytes, not a shape or a substring.
+//
+// This is the file that gets delivered to a host and, byte for byte, the value an already-delivered
+// unit is compared against to decide convergence. A `string_contains` check would pass on a file with
+// its sections transposed, a missing trailing newline, or CRLF endings -- all of which are real
+// systemd failures or permanent false diffs. So the claim is equality with a literal written out
+// here independently of the serializer's own composition.
+test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
+  serialize_systemd_unit_file(file: sample()) ==
+    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n[Install]\nWantedBy=default.target\n"
+}
+
+// systemd's parser is line-oriented; a final directive with no newline is the classic silently
+// truncated last line. It is also load-bearing for convergence: the observed-vs-rendered byte
+// comparison would differ forever against every correctly written file on disk.
+test fn the_rendered_unit_file_ends_with_a_newline() -> Bool {
+  ends_with(s: serialize_systemd_unit_file(file: sample()), suffix: "default.target\n")
+}
+
+// Section order is systemd's, and it is asserted rather than assumed: the sections are three
+// separate fields, so nothing about the record's shape forces the emission order.
+test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
+  let out = serialize_systemd_unit_file(file: sample())
+  starts_with(s: out, prefix: "[Unit]\n")
+    && string_contains(out, "\n[Service]\n")
+    && string_contains(out, "\n[Install]\n")
+}
+
+// An empty section still emits its header. A unit file with no [Install] directives is legitimate
+// (a unit started by another unit rather than enabled), and the header's presence is what makes the
+// rendered bytes a function of the record alone rather than of which fields happened to be nonempty.
+test fn an_empty_section_still_emits_its_header() -> Bool {
+  serialize_systemd_unit_file(
+    file: SystemdUnitFile {
+      unit: [Description { text: "d" as NonEmptyStr }],
+      service: [],
+      install: [],
+    },
+  ) == "[Unit]\nDescription=d\n[Service]\n[Install]\n"
+}
+
+// ── The directive names are systemd's, and each is pinned to a distinct constant ────────────────
+
+// `ServiceType` renders as `Type=`, NOT `ServiceType=`. The variant is named for what it is in the
+// model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
+// constructor name leaked into the emitted bytes.
+test fn service_type_renders_as_the_type_directive() -> Bool {
+  systemd_service_directive_line(directive: ServiceType { mode: "notify" as NonEmptyStr })
+    == "Type=notify"
+}
+
+test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
+  systemd_unit_directive_line(directive: Description { text: "a" as NonEmptyStr }) == "Description=a"
+    && systemd_unit_directive_line(directive: After { target: "b" as NonEmptyStr }) == "After=b"
+    && systemd_unit_directive_line(directive: Wants { target: "c" as NonEmptyStr }) == "Wants=c"
+}
+
+test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
+  systemd_service_directive_line(directive: ExecStart { command: "a" as NonEmptyStr }) == "ExecStart=a"
+    && systemd_service_directive_line(directive: Restart { policy: "b" as NonEmptyStr }) == "Restart=b"
+    && systemd_service_directive_line(directive: Environment { assignment: "K=v" as NonEmptyStr })
+      == "Environment=K=v"
+    && systemd_service_directive_line(directive: WorkingDirectory { path: "/d" as NonEmptyStr })
+      == "WorkingDirectory=/d"
+}
+
+test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
+  systemd_install_directive_line(directive: WantedBy { target: "a" as NonEmptyStr }) == "WantedBy=a"
+    && systemd_install_directive_line(directive: RequiredBy { target: "b" as NonEmptyStr })
+      == "RequiredBy=b"
+}
+
+// An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
+// wrong implementation, and this pins the whole assignment through.
+test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
+  systemd_service_directive_line(
+    directive: Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as NonEmptyStr },
+  ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
+}
