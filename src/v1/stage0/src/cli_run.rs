@@ -18263,6 +18263,46 @@ pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
 }
 
+/// Return freed-but-retained heap to the OS, and report how much came back.
+///
+/// WHY THIS IS A MEASUREMENT AND NOT ONLY A FIX. The fold's resident set climbs from 9.7GB to
+/// 15.5GB across ten thousand claims while only TWO individual claims grow it by more than
+/// 256MB. So the growth is diffuse — roughly half a megabyte per claim that never comes back —
+/// and diffuse growth has two candidate causes with opposite remedies: memory still LIVE
+/// (something retains per-claim state across claims, which is a defect in the fold) or memory
+/// freed but not RETURNED (glibc keeps the arena, which is an allocator behaviour and not a
+/// leak at all).
+///
+/// Those two are indistinguishable from RSS alone, and guessing between them is how a real
+/// retention gets papered over by a trim that appears to work. `malloc_trim` distinguishes
+/// them by construction: it can only release memory the allocator already considers free, so
+/// what it gives back is exactly the freed-but-retained half, and what it does NOT give back
+/// is live. Reporting the reclaimed figure therefore answers the question in the same motion
+/// as it acts on it — a large number says the fold was fine and glibc was hoarding, a small
+/// one says something is genuinely held and the trim is not the fix.
+///
+/// Returns the kibibytes reclaimed, or None where the call does not exist. It is glibc-only;
+/// musl and macOS have no equivalent and get None rather than a fabricated zero, because zero
+/// is a real measurement here (nothing was retained) and must not also mean "not measured".
+fn trim_retained_heap() -> Option<u64> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        let before = current_rss_bytes()? / 1024;
+        // SAFETY: malloc_trim takes a pad in bytes and touches only allocator bookkeeping. It
+        // does not invalidate any live pointer, which is precisely why it cannot release live
+        // memory and therefore why its result is readable as a measurement.
+        unsafe {
+            libc::malloc_trim(0);
+        }
+        let after = current_rss_bytes()? / 1024;
+        Some(before.saturating_sub(after))
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
+}
+
 /// Peak resident set (high water mark) in bytes, read the PORTABLE way.
 ///
 /// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
@@ -41964,6 +42004,9 @@ pub fn run_required_floor(
     let mut known_red_now_passing: usize = 0;
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
+    let mut trim_reclaimed_kb_total: u64 = 0;
+    let mut trim_reclaimed_kb_max: u64 = 0;
+    let mut trims_performed: u64 = 0;
     let mut scope_kb_total: u64 = 0;
     let mut scope_kb_max: u64 = 0;
     let mut scope_kb_max_module = String::new();
@@ -42060,6 +42103,22 @@ pub fn run_required_floor(
                 claim_rss_kb as f64 / 1048576.0,
                 claim_rss_after as f64 / 1048576.0
             );
+        }
+        // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
+        //
+        // The frame is dropped at the end of this iteration, so by the next trim its caches are
+        // free as far as Rust is concerned; whether they are free as far as the KERNEL is
+        // concerned is the question above. Every 200 claims is a deliberate compromise: often
+        // enough that the resident set cannot drift far between samples, rare enough that the
+        // trim's own cost (it walks the arena) is not paid ten thousand times. Nothing refuses
+        // on the result and nothing is skipped because of it — this only gives memory back and
+        // says how much, so a run that reclaims nothing is strictly the run we already had.
+        if index % 200 == 199 {
+            if let Some(reclaimed_kb) = trim_retained_heap() {
+                trim_reclaimed_kb_total += reclaimed_kb;
+                trim_reclaimed_kb_max = trim_reclaimed_kb_max.max(reclaimed_kb);
+                trims_performed += 1;
+            }
         }
         outcome.claims_executed += 1;
         receipted.insert(claim.qualified.clone());
@@ -42207,6 +42266,20 @@ pub fn run_required_floor(
             claim_rss_kb_max_row.as_str()
         }
     );
+    // WHAT THE ALLOCATOR WAS HOLDING. Read this beside the claim-memory line above: together
+    // they split the fold's resident growth into the part one expensive row caused and the part
+    // that was merely never returned. A large total here means the growth was glibc keeping
+    // arenas and the fold's own retention is small; a total near zero means the memory is LIVE
+    // and the next question is what holds it — the trim cannot release live memory, so it
+    // cannot flatter that answer.
+    if trims_performed > 0 {
+        eprintln!(
+            "[floor-heap-trim] {} trim(s) returned {:.2}GB total, {:.2}GB worst single trim",
+            trims_performed,
+            trim_reclaimed_kb_total as f64 / 1048576.0,
+            trim_reclaimed_kb_max as f64 / 1048576.0
+        );
+    }
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently
     // narrowed, which is the failure this whole path exists to make unwritable; reporting the
