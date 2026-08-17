@@ -13286,10 +13286,12 @@ pub fn eval_profile_reset() {
 /// bypassing `free_monoid_to_vec`'s O(n) materialization. `parse_current_position`
 /// (v2 02_parse.dag) calls `length` on the full token stream every parse
 /// attempt; without this fast path that is an O(n) clone per attempt, an
-/// O(n^2) tax the compiled (Rust-emitted) realization never pays. Native
-/// `Value::Str` uses the same `string_length_ascii_aware` authority as the
-/// `length`/`string_length` free-call arms so method `.length()` does not
-/// flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 / materialize OOM).
+/// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
+/// `.length()` on native `Value::Str` routes through `string_length_ascii_aware`
+/// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
+/// materialize OOM). Free-call `length`/`string_length` already avoided
+/// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
+/// method-call gap only.
 pub(crate) fn native_len(val: &Value) -> Option<i64> {
     match val {
         Value::List(items) => Some(items.len() as i64),
