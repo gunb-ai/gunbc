@@ -25,6 +25,7 @@ import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusD
 import std.disposition { Disposition, Terminal }
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.observation {
   ClassDone,
   ClassFailed,
@@ -694,4 +695,69 @@ fn ci_batch_summary_text(
     },
     tier: Ascii,
   )
+}
+
+// ---------------------------------------------------------------------------
+// Per-witness claim-result lines — the ONE presentation authority for floor output.
+// ---------------------------------------------------------------------------
+
+data ci_witness_claim_result_note: String = "Bazel-shaped claim-result lines for every witness the floor executes. The seed transports subject, function, verdict and wall time; every choice about how the line READS lives here. Subject is either a dotted module path (test.claim.foo) or a repo-relative entry path (dag/test/claim/foo_test.dag); both normalize to a //package:target label. Column width is a display policy, not a semantic fact — the outcome and duration are always present so a fast green and a slow green read differently at arm's length."
+
+data ci_witness_claim_column_width: Nat = 60
+
+fn ci_witness_package_from_entry_path(path: String) -> String {
+  if path.ends_with(suffix: ".dag") {
+    substring(s: path, start: 0, end: string_length(s: path) - 4)
+  } else {
+    path
+  }
+}
+
+fn ci_witness_package_path(subject: String) -> String {
+  if string_contains(s: subject, pattern: "/") {
+    ci_witness_package_from_entry_path(path: subject)
+  } else {
+    join(subject.split(delimiter: "."), "/")
+  }
+}
+
+fn ci_witness_bazel_target_label(subject: String, function: String) -> String {
+  concat("//", concat(ci_witness_package_path(subject: subject), concat(":", function)))
+}
+
+fn ci_witness_outcome_token(passed: Bool) -> String {
+  if passed {
+    "PASSED"
+  } else {
+    "FAILED"
+  }
+}
+
+fn ci_witness_claim_suffix(passed: Bool, wall: Nanosecond) -> String {
+  concat(
+    ci_witness_outcome_token(passed: passed),
+    concat(" in ", ci_human_elapsed(d: wall))
+  )
+}
+
+fn ci_witness_pad_to_column(label: String, width: Nat) -> String {
+  let len = string_length(s: label)
+  if len >= width {
+    label
+  } else {
+    concat(label, repeat_string(s: " ", n: width - len))
+  }
+}
+
+// THE SEED'S ONE SEAM for per-witness floor output. Scalars in, one finished line out — the same
+// shape as ci_batch_summary_text, so the floor never owns a second formatter for claim results.
+fn ci_witness_claim_result_text(
+  subject: String,
+  function: String,
+  passed: Bool,
+  wall: Nanosecond,
+) -> String {
+  let label = ci_witness_bazel_target_label(subject: subject, function: function)
+  let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
+  concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
 }
