@@ -12,6 +12,10 @@ import product.electrical.connectivity {
   ElectricalNet,
   ElectricalTerminalRef,
   NetIdentity,
+  component_identity_eq,
+  component_local_label,
+  net_identity_eq,
+  net_local_label,
   terminal_ref_equal,
 }
 import product.compute_board.digital_control {
@@ -81,7 +85,7 @@ type BoardArticleAdmission
   | BoardArticleRefused { causes: BoardArticleRefusalSet }
 
 fn count_matching(names: List<NonEmptyStr>, name: NonEmptyStr) -> Nat {
-  fold(names, init: 0, f: fn(acc, n) { if (n as String) == (name as String) { acc + 1 } else { acc } })
+  fold(names, init: 0, f: fn(acc, n) { if n == name { acc + 1 } else { acc } })
 }
 
 fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
@@ -103,20 +107,20 @@ fn terminal_exists(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Boo
 }
 
 fn net_declared(intent: AnalogCircuitIntent, n: NetIdentity) -> Bool {
-  fold(intent.nets, init: false, f: fn(acc, net) { acc || (net.identity as String) == (n as String) })
+  fold(intent.nets, init: false, f: fn(acc, net) { acc || net_identity_eq(a: net.identity, b: n) })
 }
 
 // ----- analog structure -----
 
 fn duplicate_component_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_identity(c: c) as NonEmptyStr]) })
+  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_local_label(c: component_identity(c: c))]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateComponentIdentity { component: n }])
   })
 }
 
 fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net.identity as NonEmptyStr]) })
+  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net_local_label(n: net.identity)]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateNetIdentity { net: n }])
   })
@@ -132,8 +136,8 @@ fn dangling_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticl
         inner
       } else {
         concat(inner, [NetMemberNamesNoTerminal {
-          net: net.identity as NonEmptyStr,
-          component: m.component as NonEmptyStr,
+          net: net_local_label(n: net.identity),
+          component: component_local_label(c: m.component),
           terminal: m.terminal as NonEmptyStr,
         }])
       }
@@ -158,14 +162,14 @@ fn bond_refusals(intent: AnalogCircuitIntent, bonds: List<ElectricalBond>) -> Li
 }
 
 fn net_refusal(intent: AnalogCircuitIntent, n: NetIdentity) -> List<BoardArticleRefusal> {
-  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: n as NonEmptyStr }] }
+  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: net_local_label(n: n) }] }
 }
 
 fn terminal_refusal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> List<BoardArticleRefusal> {
   if terminal_exists(intent: intent, t: t) {
     []
   } else {
-    [BondTerminalNamesNoTerminal { component: t.component as NonEmptyStr, terminal: t.terminal as NonEmptyStr }]
+    [BondTerminalNamesNoTerminal { component: component_local_label(c: t.component), terminal: t.terminal as NonEmptyStr }]
   }
 }
 
@@ -173,7 +177,7 @@ fn reference_net_refusals(intent: AnalogCircuitIntent, reference: NetIdentity) -
   if net_declared(intent: intent, n: reference) {
     []
   } else {
-    [ReferenceNetNotDeclared { net: reference as NonEmptyStr }]
+    [ReferenceNetNotDeclared { net: net_local_label(n: reference) }]
   }
 }
 
