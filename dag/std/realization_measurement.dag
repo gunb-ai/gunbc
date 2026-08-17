@@ -18,7 +18,7 @@ data elapsed_observation_realization_note: String = "ObserveElapsedAtSubject rea
 data elapsed_observation_hand_rust_deferral_note: String = "HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject effect, not a new decision authority. Lane: v1-hand-queue-drain. Concrete ROADMAP row: 'Get hand-written Rust in this repository down to zero' (authority dag/gunbc/v1_deletion_plan.dag). Dissolve-on: the emitted runtime owns the host monotonic-observation realization and v1-interpreter-delete removes this seed arm; the .dag effect and receipts remain. Until then the arm is counted here, covered by the selected-witness bundle's monotonic positive control, and exercised by the cold/warm plus interpreter/native execution receipts."
 
 fn space_measure_seq(a: ByteSize, b: ByteSize) -> ByteSize {
-  byte_size(count: nat_max(a: measure_count(m: a), b: measure_count(m: b)))
+  byte_size(count: std.nat.nat_max(a: measure_count(m: a), b: measure_count(m: b)))
 }
 
 fn space_measure_par(a: ByteSize, b: ByteSize) -> ByteSize {
@@ -91,7 +91,7 @@ fn time_measure_par<S>(a: Measure<Time, S, std.nat.Nat>, b: Measure<Time, S, std
     a
   } else {
     time_measure(
-      count: nat_max(a: measure_count(m: a), b: measure_count(m: b))
+      count: std.nat.nat_max(a: measure_count(m: a), b: measure_count(m: b))
     )
   }
 }
