@@ -248,6 +248,21 @@ fn rel_path_from_node(node: &Rc<Node>) -> String {
     node.span.file.clone()
 }
 
+/// The declared type's AUTHORED name, qualification intact.
+///
+/// `declared_type_bare_name` deliberately keeps returning the tail, because variant matching
+/// and field lookup are bare-name operations. Only the type-item LOOKUP needs the prefix, and
+/// discarding it there is what made a cross-module declared type unresolvable.
+fn declared_type_authored_name(item: &Rc<Node>, si: &SourceIndices) -> Option<String> {
+    let ann = item.type_annotation.as_ref()?;
+    let name = authored_name_at(si.clone(), ann.clone());
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 fn declared_type_bare_name(item: &Rc<Node>, si: &SourceIndices) -> Option<String> {
     let ann = item.type_annotation.as_ref()?;
     let name = authored_name_at(si.clone(), ann.clone());
@@ -790,24 +805,53 @@ fn inferred_field_type_bare(si: &SourceIndices, field_init: &Rc<Node>) -> Option
     }
 }
 
+/// Resolve a declared type to its item and its DECLARING module.
+///
+/// The referencing module's type env is tried first, which is where a module's own
+/// declarations live and where an imported name used to be bound. When that fails, the
+/// authored name's qualified prefix names the declaring module directly -- which is what
+/// replaces the import, and without it every cross-module declared type is unresolvable.
+///
+/// The module returned is the one that DECLARES the type, because it is what the parent
+/// identity is built from: attributing a cross-module type to the referencing module would
+/// produce a confidently wrong qualified name rather than a refusal.
+fn type_item_and_home(
+    ctx: &InterpContext,
+    tm: &TypedModule,
+    declared_type_bare: &str,
+    declared_type_authored: &str,
+    si: &SourceIndices,
+) -> Option<(Rc<Node>, String)> {
+    if let Some(node) = type_item_from_importing_module_type_env(tm, declared_type_bare, si) {
+        return Some((node, authored_name_at(si.clone(), tm.module.clone())));
+    }
+    let (prefix, _) = declared_type_authored.rsplit_once('.')?;
+    let declaring = typed_module_for_path(ctx, prefix)?;
+    let node = type_item_from_importing_module_type_env(&declaring, declared_type_bare, si)?;
+    Some((node, prefix.to_string()))
+}
+
 fn marshal_record_literal_projection(
     ctx: &InterpContext,
     importing_module: &str,
     body: &Rc<Node>,
     declared_type_bare: &str,
+    declared_type_authored: &str,
     si: &SourceIndices,
     tm: &TypedModule,
 ) -> Value {
-    let type_item = match type_item_from_importing_module_type_env(tm, declared_type_bare, si) {
-        Some(node) => node,
-        None => return constructor_resolution_refused_projection(ctx),
-    };
+    let (type_item, type_home_module) =
+        match type_item_and_home(ctx, tm, declared_type_bare, declared_type_authored, si) {
+            Some(found) => found,
+            None => return constructor_resolution_refused_projection(ctx),
+        };
     // Classification uses the importing module type env + resolved connective only.
     // A failed lookup must refuse — never fall through to the coproduct arm.
     if type_item.connective == Connective::Disj {
         marshal_coproduct_record_projection(
             ctx,
             importing_module,
+            &type_home_module,
             body,
             declared_type_bare,
             si,
@@ -817,6 +861,7 @@ fn marshal_record_literal_projection(
         marshal_plain_record_projection(
             ctx,
             importing_module,
+            &type_home_module,
             body,
             declared_type_bare,
             si,
@@ -882,6 +927,7 @@ fn marshal_field_initializer_projection(
                 importing_module,
                 field_value,
                 &type_bare,
+                &type_bare,
                 si,
                 &tm,
             )
@@ -903,6 +949,7 @@ fn marshal_field_initializer_projection(
 fn marshal_plain_record_projection(
     ctx: &InterpContext,
     importing_module: &str,
+    type_home_module: &str,
     body: &Rc<Node>,
     type_bare: &str,
     si: &SourceIndices,
@@ -911,7 +958,7 @@ fn marshal_plain_record_projection(
     if type_item.connective == Connective::Disj {
         return constructor_resolution_refused_projection(ctx);
     }
-    let parent_id = declaration_identity_for_type_item(ctx, &type_item, si, importing_module);
+    let parent_id = declaration_identity_for_type_item(ctx, &type_item, si, type_home_module);
 
     let mut edges: Vec<(String, Value)> = vec![(
         "parent_type".to_string(),
@@ -941,6 +988,7 @@ fn marshal_plain_record_projection(
 fn marshal_coproduct_record_projection(
     ctx: &InterpContext,
     importing_module: &str,
+    type_home_module: &str,
     body: &Rc<Node>,
     declared_type_bare: &str,
     si: &SourceIndices,
@@ -954,7 +1002,7 @@ fn marshal_coproduct_record_projection(
         return marshal_value_identity_node(ctx, &DataInitializerValueResolution::Missing);
     }
 
-    let parent_id = declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
+    let parent_id = declaration_identity_for_type_item(ctx, &coproduct_item, si, type_home_module);
     let variant_id = match declaration_identity_for_variant_arm(
         ctx,
         &coproduct_item,
@@ -1044,6 +1092,8 @@ pub fn marshal_data_initializer_projection_for_item(
         Some(name) => name,
         None => return Ok(constructor_resolution_refused_projection(ctx)),
     };
+    let declared_type_authored =
+        declared_type_authored_name(&item, &si).unwrap_or_else(|| declared_type_bare.clone());
 
     let tm = match typed_module_for_path(ctx, &importing_module) {
         Some(tm) => tm,
@@ -1056,6 +1106,7 @@ pub fn marshal_data_initializer_projection_for_item(
             &importing_module,
             body,
             &declared_type_bare,
+            &declared_type_authored,
             &si,
             &tm,
         )),
