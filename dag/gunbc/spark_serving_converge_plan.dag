@@ -151,6 +151,12 @@ fn spark_serving_fleet_converge_apply_shell(
   fleet_converge_apply_shell(timer_plan: timer_plan)
 }
 
+// DECLARED RESIDUE, named rather than left to be found. This function propagates a typed-action
+// refusal but not its CAUSE: `FleetConvergePlanArtifact?` has no arm to carry one, so the wet slice
+// renders the generic `plan-refused` verdict and a reader cannot tell a dropped member from a
+// non-Spark host. The arm is unreachable under the linger-only plan, so this is a bounded gap and
+// not a live one. Trigger: it dissolves with the artifact return type, which the full-population
+// cutover has to widen anyway -- that is the commit where the cause gets somewhere to go.
 fn spark_serving_fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -166,12 +172,6 @@ fn spark_serving_fleet_converge_plan_artifact(
       host: host_identity,
       linger_enabled: linger_enabled,
     )
-    // DECLARED RESIDUE, named rather than left to be found. The refusal is propagated but its CAUSE
-    // is not: `FleetConvergePlanArtifact?` has no arm to carry one, so the wet slice renders the
-    // generic `plan-refused` verdict and a reader cannot tell a dropped member from a non-Spark host.
-    // The arm is unreachable under the linger-only plan, so this is a bounded gap and not a live one.
-    // Trigger: it dissolves with the artifact return type, which the full-population cutover has to
-    // widen anyway -- that is the commit where the cause gets somewhere to go.
     match fleet_converge_spark_serving_typed_actions(plan: linger_plan) {
       SparkServingTypedActionsRefused { cause: _ } => none
       SparkServingTypedActionsProjected { rows: spark_rows } =>
