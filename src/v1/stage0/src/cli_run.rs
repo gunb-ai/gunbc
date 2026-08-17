@@ -41088,6 +41088,66 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
     }
 }
 
+// ONE CARRIER, TWO REALIZATIONS -- decoded here rather than assumed to be one of them.
+//
+// `v2.std.collection` declares `List<T> = std.algebra.FreeMonoid<T>`, an `Empty | Cons` chain.
+// The interpreter ALSO represents some sequences natively as `Value::List`. Which one arrives at
+// a given seam depends on whether the value was produced by a `.dag` fold or handed over by the
+// host, and that is the model/realization fork DESIGN names as systemic and unfinished -- not a
+// choice this decode gets to make.
+//
+// So the decode reads the carrier in either realization and REFUSES anything else, naming what
+// it saw. What it must not do is assume one realization: the previous decode matched
+// `Value::List` alone and rendered a perfectly well-formed `Cons` chain as "the attempt carries
+// no claim list", which reports a representation mismatch as an absent population.
+//
+// The walk is ITERATIVE. A `Cons` chain of one element per claim is 10,444 deep on the measured
+// subject, and the recursive spelling already in this file for dependency edges would recurse
+// once per element -- fine for a handful of edges, a stack overflow here. Depth belongs on the
+// heap when the depth is the population size.
+fn floor_decode_list<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    v: Option<&'a v1_interpreter::Value>,
+) -> Result<Vec<&'a v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut cursor = match v {
+        None => return Err("<field absent>".to_string()),
+        Some(v1_interpreter::Value::List(xs)) => {
+            return Ok(xs.iter().collect());
+        }
+        Some(other) => other,
+    };
+    loop {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = cursor
+        else {
+            return Err(format!(
+                "expected a FreeMonoid Empty/Cons chain, observed {}",
+                floor_value_shape(Some(cursor))
+            ));
+        };
+        if ctx.sym_eq(*variant_name, "Empty") {
+            return Ok(out);
+        }
+        if !ctx.sym_eq(*variant_name, "Cons") {
+            return Err(format!(
+                "expected a FreeMonoid Empty/Cons chain, observed Variant({variant_name:?})"
+            ));
+        }
+        let Some(head) = ctx.field(fields, "head") else {
+            return Err("Cons carries no head".to_string());
+        };
+        let Some(tail) = ctx.field(fields, "tail") else {
+            return Err("Cons carries no tail".to_string());
+        };
+        out.push(head);
+        cursor = tail;
+    }
+}
+
 fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
     match v {
         v1_interpreter::Value::Int(_) => "Int",
@@ -41716,11 +41776,9 @@ fn required_floor_claims_from_admission(
         claims_shape,
         floor_resource_sample()
     );
-    let Some(v1_interpreter::Value::List(rows)) = claims_field else {
-        return Err(format!(
-            "the attempt's `claims` field is not a list — observed {claims_shape}"
-        ));
-    };
+    let rows = floor_decode_list(ctx, claims_field).map_err(|why| {
+        format!("the attempt's `claims` field is not a list — {why} (field shape {claims_shape})")
+    })?;
     // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
     // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
     // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
