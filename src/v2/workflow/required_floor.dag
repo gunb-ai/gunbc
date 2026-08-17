@@ -130,6 +130,18 @@ type WitnessDisposition
 
 // LONG-HOME EXCLUSION, and it is a hack rather than a model (operator, 2026-08-17).
 //
+// THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
+// excluded 42 rows of an expected ~310, because the long home is not one namespace: 64 modules
+// there declare `v2.test.long.`, 10 declare `test.claim.long.`, and one declares
+// `v2.test.claim.long.`. The directory looks uniform and the authored names are not.
+//
+// One file in that directory declares no long namespace at all —
+// `qualified_declaration_reference_emit_cross_module_witness_test.dag` declares
+// `test.claim.qualified_declaration_reference_emit_cross_module_witness` — so it stays in the
+// floor. That is the honest consequence of reading the declaration instead of the path, and it
+// is the right consequence: the file sits in a directory claiming one thing while its module
+// says another, and only one of those is a fact the program can read.
+//
 // The one thing worth keeping from the version this replaces: the test is on the module's
 // AUTHORED NAME, not on the file path. `is_long_home` in the host tested whether a path
 // contained `/test/claim/long/`, which made a directory the admission authority — the exact
@@ -144,8 +156,17 @@ type WitnessDisposition
 // cadences, and this is not that question.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefix() -> String {
-  "test.claim.long."
+fn long_home_prefixes() -> List<String> {
+  Cons {
+    head: "test.claim.long.",
+    tail: Cons {
+      head: "v2.test.long.",
+      tail: Cons {
+        head: "v2.test.claim.long.",
+        tail: Empty {}
+      }
+    }
+  }
 }
 
 fn string_starts_with(s: String, prefix: String) -> Bool {
@@ -173,7 +194,16 @@ fn string_starts_with(s: String, prefix: String) -> Bool {
 }
 
 fn module_is_long_home(module_path: String) -> Bool {
-  string_starts_with(s: module_path, prefix: long_home_prefix())
+  fold_list(
+    xs: long_home_prefixes(),
+    empty: false,
+    cons: fn(acc, prefix) {
+      match acc {
+        true => true
+        false => string_starts_with(s: module_path, prefix: prefix)
+      }
+    }
+  )
 }
 
 fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
