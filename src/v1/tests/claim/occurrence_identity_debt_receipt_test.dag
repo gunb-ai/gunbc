@@ -26,7 +26,7 @@ fn oid_receipt_parse(
 
 fn oid_receipt_name_for_occurrence(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> String? {
   match transport.index.entries
     |> filter(entry => entry.projection.occurrence.value == occurrence.value)
@@ -191,7 +191,7 @@ fn oid_receipt_single_populations_have_distinct_ids(
 }
 
 fn oid_receipt_occurrence_ids_are_pairwise_distinct(
-  occurrences: List<OccurrenceId>
+  occurrences: List<std.occurrence_identity.OccurrenceId>
 ) -> Bool {
   occurrences |> enumerate |> all(left =>
     occurrences |> enumerate |> all(right =>

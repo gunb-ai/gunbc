@@ -84,7 +84,7 @@ fn occurrence_category_binding_verdict(
 
 fn occurrence_containment_to_binding_path(
   path: OccurrenceContainmentPath
-) -> ContainmentPath<OccurrenceId> {
+) -> ContainmentPath<std.occurrence_identity.OccurrenceId> {
   ContainmentPath {
     ancestors: path.ancestors,
     terminal: path.terminal,
@@ -93,7 +93,7 @@ fn occurrence_containment_to_binding_path(
 
 fn binding_occurrence_from_reference(
   reference: ReferenceOccurrence
-) -> BindingOccurrence<OccurrenceId> {
+) -> BindingOccurrence<std.occurrence_identity.OccurrenceId> {
   BindingOccurrence {
     containment: occurrence_containment_to_binding_path(
       path: reference.containment,
@@ -103,7 +103,7 @@ fn binding_occurrence_from_reference(
 
 fn binding_candidate_from_declaration(
   declaration: DeclarationOccurrence
-) -> BindingCandidate<OccurrenceId> {
+) -> BindingCandidate<std.occurrence_identity.OccurrenceId> {
   BindingCandidate {
     containment: occurrence_containment_to_binding_path(
       path: declaration.containment,
@@ -112,15 +112,15 @@ fn binding_candidate_from_declaration(
 }
 
 type OccurrenceCandidatePopulationBuild {
-  candidates: FreeMonoid<BindingCandidate<OccurrenceId>>
-  seen_candidate_ids: Map<Int, OccurrenceId>
+  candidates: FreeMonoid<BindingCandidate<std.occurrence_identity.OccurrenceId>>
+  seen_candidate_ids: Map<Int, std.occurrence_identity.OccurrenceId>
   refusal: OccurrenceTransportRefusal?
 }
 
 fn binding_candidates_from_supplied_declarations(
   validated: ValidatedOccurrenceTransport,
   reference: ReferenceOccurrence,
-  supplied_candidates: List<OccurrenceId>
+  supplied_candidates: List<std.occurrence_identity.OccurrenceId>
 ) -> OccurrenceCandidatePopulationBuild {
   fold(
     supplied_candidates,
@@ -237,7 +237,7 @@ fn binding_candidates_from_supplied_declarations(
 
 type OccurrenceReferenceBindingOutcome
   = OccurrenceReferenceBindingDecided {
-      result: OccurrenceBindingResult<OccurrenceId>,
+      result: OccurrenceBindingResult<std.occurrence_identity.OccurrenceId>,
     }
   | OccurrenceReferenceBindingTransportRefused {
       refusal: OccurrenceTransportRefusal,
@@ -245,15 +245,15 @@ type OccurrenceReferenceBindingOutcome
 
 fn reference_occurrence_by_id(
   validated: ValidatedOccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> ReferenceOccurrence? {
   map_get(validated.references_by_id, occurrence.value)
 }
 
 fn resolve_reference_occurrence_binding_validated(
   validated: ValidatedOccurrenceTransport,
-  occurrence: OccurrenceId,
-  supplied_candidates: List<OccurrenceId>
+  occurrence: std.occurrence_identity.OccurrenceId,
+  supplied_candidates: List<std.occurrence_identity.OccurrenceId>
 ) -> OccurrenceReferenceBindingOutcome {
   match map_get(validated.entries_by_id, occurrence.value) {
     Absent =>
@@ -316,8 +316,8 @@ fn resolve_reference_occurrence_binding_validated(
 
 fn resolve_reference_occurrence_binding(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId,
-  supplied_candidates: List<OccurrenceId>
+  occurrence: std.occurrence_identity.OccurrenceId,
+  supplied_candidates: List<std.occurrence_identity.OccurrenceId>
 ) -> OccurrenceReferenceBindingOutcome {
   match occurrence_transport_validate(transport: transport) {
     OccurrenceTransportRefused { refusal: refusal } =>
