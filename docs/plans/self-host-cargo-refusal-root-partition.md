@@ -2189,7 +2189,7 @@ Established while standing up the after-arm service for Root B's `RustCorpusRepr
 measurement itself is pending; **these three controls are not** — each is complete on its own and
 each closes a route by which a two-arm receipt reports a clean result while measuring nothing.
 
-**13.1 Discriminate the binary, not its mtime.** The stale-binary hazard is usually answered by
+**17.1 Discriminate the binary, not its mtime.** The stale-binary hazard is usually answered by
 checking that a rebuild happened. That is a proxy. On a self-hosting compiler the direct check is
 available: the arms differ in named symbols, so read them out of the binary.
 
@@ -2205,9 +2205,16 @@ The after-arm must invert this, and if it does not I stop rather than probe. Thi
 this binary carry the change" positively, in both directions, without depending on a timestamp —
 and a timestamp is what moves when a build recompiles something unrelated.
 
-**13.2 Run the determinism control before you have a diff to explain.** Same binary, same sources,
-`04_infer` re-emitted: **85 files, 0 differing.** Emission is deterministic on this path, so any
-later diff is caused.
+**17.2 Run the determinism control before you have a diff to explain.** Same binary, same sources,
+`04_infer` re-emitted: **85 files, 0 differing.**
+
+**Scope of that claim, stated because it is narrower than the sentence I first wrote.** The original
+read "emission is deterministic on this path". The evidence is **one module, one repeat** — n=1 in
+both dimensions. What it supports is: *this entry, re-emitted once under identical inputs, produced
+identical bytes.* A single agreeing repeat cannot distinguish a deterministic emitter from a
+nondeterministic one that happened to agree, and the other ten modules are unmeasured. It is enough
+to remove nondeterminism as a ready explanation **for a diff in this module**, which is what it was
+run for; it is not a determinism receipt for the emitter.
 
 The sequencing carries more than the result. Run *after* an inconvenient diff appears, this is a
 check you chose to perform on a result you did not like, and "that is just emission
@@ -2216,7 +2223,7 @@ Run *first*, **you have destroyed your own escape route before you know whether 
 it.** Same discipline as writing the prediction down before the run, applied to the excuse rather
 than to the claim.
 
-**13.3 Vary the compiler; hold the emitted subject byte-identical.** The natural two-arm design —
+**17.3 Vary the compiler; hold the emitted subject byte-identical.** The natural two-arm design —
 BEFORE = binary+sources at merge-base, AFTER = binary+sources at branch head — varies the
 compiler *and* the subject corpus together, so its diff cannot say which one moved the artifact.
 An emitter change is both cases at once: it edits `.dag` authorities *and* lives in the binary,
