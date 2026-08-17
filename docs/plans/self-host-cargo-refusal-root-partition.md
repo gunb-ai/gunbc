@@ -367,7 +367,9 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 
 > **ROOT-CAUSED AND MEASURED LIVE, 2026-08-16 (`eager-deer-389`). The table above is superseded
 > as sizing; the mechanism below replaces it.** Full receipt with method and controls:
-> [Root B primitive repr fork](../probes/root_b_primitive_repr_fork_2026-08-16.md).
+> `docs/probes/root_b_primitive_repr_fork_2026-08-16.md`, carried on gunbc#8337 and not yet on
+> main — named rather than linked, because a link to a file this branch does not contain is a
+> dangling edge in the doc graph and the reachability lens refuses it.
 >
 > **The mechanism is one switch.** `v1.compiler.04_infer` `rust_corpus_repr` chooses
 > `HostNative` vs `FaithfulFreeMonoid` from `corpus_has_v1_seed_source_indices`, a **path
