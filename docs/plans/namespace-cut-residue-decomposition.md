@@ -173,3 +173,49 @@ editing correct authoring to satisfy an incorrect resolution order, the same sha
 the Nat repair rejected. So the residue is substantially a RESOLVER population,
 not a SOURCE population, and the remaining work is smaller than 101 suggests but
 concentrated in one place.
+
+## MERGE DEBT from the post-#8283 integration (2026-08-17) — NOT a clean merge
+
+Recorded because the merge commit reads as resolved and two of its resolutions are
+deferrals wearing a resolution's clothes.
+
+WHAT HAPPENED. Three uniform rules were applied to 131 conflicts. Two of them had
+the same flaw, discovered only by building:
+
+  "take main's version for generated .rs"
+      -> produced a seed assembled from TWO .dag corpora. Main's seed files
+         reference resolved_imports / ResolvedImport / source_visible_names, which
+         this branch's seed removed. 17 build errors, all one class. Fixed by
+         restoring src/v1/stage0/src/ wholesale from the pre-merge tip.
+
+  "take main's .dag content minus import statements"
+      -> stripped the import STATEMENTS and re-admitted the import MACHINERY.
+         src/v1/04_infer.dag went from 0 references to resolved_imports/
+         ResolvedImport pre-merge to 24 after. Regen then failed on exactly those.
+
+The general lesson, and it is the third instance today: removing the SYNTAX of a
+deleted class is not removing the class. A one-sided add re-enters through
+anything that carries the class's vocabulary -- an import line, a diagnostic
+variant, a field name, a helper. Only an invariant that names the CLASS catches
+it; conflict detection never will, because there is no conflict.
+
+THE DEBT, stated exactly. Both sides made large independent changes to two files:
+
+    src/v1/04_infer.dag     main +400/-32     this branch +427/-717
+    src/v1/05_emit_rust.dag (same shape)
+
+Both are restored to THIS BRANCH's version, so main's ~400 lines of #8283 work in
+04_infer.dag are NOT in the tree. That is a real loss, not a formality: they are
+authored compiler changes, not derived artifacts, so nothing regenerates them.
+
+WHY THAT CHOICE: taking main's version re-admits the import machinery the cut
+exists to remove, and regen refuses on it -- so main's version is not merely
+undesirable here, it does not function. Re-applying main's 400 lines onto a file
+whose own delta is +427/-717 requires understanding both changes, which is real
+reconciliation work and not a merge rule.
+
+OWED: a deliberate reconciliation of src/v1/04_infer.dag and 05_emit_rust.dag
+against main at 611fd027708, replaying main's semantic changes onto the cut's
+version. Until then this branch is behind main IN CONTENT for those two files
+while reporting 0 behind IN COMMITS -- which is precisely the kind of gap that
+looks closed and is not.
