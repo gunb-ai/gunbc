@@ -42509,6 +42509,35 @@ pub fn run_required_floor(
     Ok(outcome)
 }
 
+fn floor_decode_positive_millisecond(
+    ctx: &v1_interpreter::InterpContext,
+    value: Option<&v1_interpreter::Value>,
+    owner: &str,
+) -> Result<u64, String> {
+    let fields = match value {
+        Some(v1_interpreter::Value::Record { fields, .. })
+        | Some(v1_interpreter::Value::Variant { fields, .. }) => fields,
+        Some(other) => {
+            return Err(format!(
+                "{owner} must be a std.measure Millisecond, got {}",
+                other.type_label_public()
+            ));
+        }
+        None => return Err(format!("{owner} is absent")),
+    };
+    match ctx.field(fields, "count") {
+        Some(v1_interpreter::Value::Int(n)) if *n > 0 => {
+            u64::try_from(*n).map_err(|_| format!("{owner}.count exceeds the executor's u64 range"))
+        }
+        other => Err(format!(
+            "{owner}.count must be a positive Int, got {}",
+            other
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_else(|| "<absent>".to_string())
+        )),
+    }
+}
+
 /// Read the `.dag` admission. A refusal is reported with every offending row rather than the
 /// first, because a manifest with three conflicting declarations should take one round-trip to
 
@@ -42678,25 +42707,16 @@ fn required_floor_claims_from_admission(
             Some(v1_interpreter::Value::Str(s)) => s.to_string(),
             _ => return Err("a claim identity carries no function name".to_string()),
         };
-        let budget_ms = match ctx.field(cf, "budget_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            // A non-positive budget is refused rather than defaulted: a zero deadline that
-            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
-            // instantly" fails every claim for a reason unrelated to the claim.
-            other => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
-                ))
-            }
-        };
-        let warn_ms = match ctx.field(cf, "warn_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            other => {
-                return Err(format!(
-                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
-            ))
-            }
-        };
+        let budget_ms = floor_decode_positive_millisecond(
+            ctx,
+            ctx.field(cf, "budget"),
+            &format!("claim {module_path}.{function}.budget"),
+        )?;
+        let warn_ms = floor_decode_positive_millisecond(
+            ctx,
+            ctx.field(cf, "warn"),
+            &format!("claim {module_path}.{function}.warn"),
+        )?;
         let execution_mode = match ctx.field(cf, "execution_mode") {
             Some(v1_interpreter::Value::Variant {
                 variant_name: m, ..

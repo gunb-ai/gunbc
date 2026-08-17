@@ -18,6 +18,7 @@ import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.std.logic { Bool }
 import v2.std.text { CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
+import std.measure { Millisecond, millisecond }
 import v2.workflow.floor2_prepared_subject {
   WitnessIdentity,
   WitnessSite,
@@ -114,14 +115,14 @@ type RequiredFloorAttempt {
 // A row that remembers its batch invites a consumer to group by it, and the grouping is the
 // thing being deleted.
 //
-// The budget is milliseconds because that is the currency the host's evaluate primitive
-// reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
-// the seam would put a unit change between the authority and the mechanism that enforces it.
+// Budget and warn thresholds are std.measure.Millisecond carriers — the unit lives in the
+// type, not in a bare Int field name. The host decode seam in cli_run converts to the
+// evaluate primitive's u64 millisecond shape (`EvaluatePreparedClaimRequest.budget_ms`).
 type RequiredFloorClaim {
   declaration: WitnessIdentity
   execution_mode: ExecutionMode
-  budget_ms: Int
-  warn_ms: Int
+  budget: Millisecond
+  warn: Millisecond
 }
 
 // THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
@@ -282,12 +283,12 @@ data no_seen_qualified_names: List<String> = []
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
-fn required_floor_claim_budget_ms() -> Int {
-  500
+fn required_floor_claim_budget() -> Millisecond {
+  millisecond(count: 500)
 }
 
-fn required_floor_claim_warn_ms() -> Int {
-  100
+fn required_floor_claim_warn() -> Millisecond {
+  millisecond(count: 100)
 }
 
 fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
@@ -384,8 +385,8 @@ fn scan_site(
               function: site.function
             },
             execution_mode: mode,
-            budget_ms: required_floor_claim_budget_ms(),
-            warn_ms: required_floor_claim_warn_ms()
+            budget: required_floor_claim_budget(),
+            warn: required_floor_claim_warn()
           },
           tail: acc.claims_reversed
         },
