@@ -3,6 +3,18 @@ module v2.workflow.required_floor
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, length, list_append, list_map, list_reverse, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+// THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
+//
+// The host evaluates the expected-red roster in the SAME frame it evaluates this manifest in,
+// and that frame's scope is this module's closure. Without this edge the roster module is
+// simply not in the world the frame was built from, and the call fails with `no such function`
+// — which is what happened on the first run that reached admission-decode.
+//
+// The import names the roster's own function and nothing wraps it: the host still calls
+// `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
+// thin accessor here would be a second name for one authority, and this module would then own
+// a fact it does not produce.
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.std.logic { Bool }
 import v2.std.text { CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
