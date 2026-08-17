@@ -1969,3 +1969,42 @@ M=11; **54** of those appear in the `03_ingest` run, which is the only closure w
 kept, so the position classification is over 54. The absent one is `v2_compiler_emit_host.rs:417`.
 And `v2_compiler_parse.rs:582:12` carries **both** signs at one file:line:column, so 55 counts
 diagnostics-at-sites, not distinct source positions.
+
+### 11.21 The field/signature split is ALSO refuted — and the way it failed is a method warning
+
+11.20's amendment reported that signature positions wrap and field positions are mostly bare, on five
+types. `bold-lark-722` then proposed a third prediction — a shared type in a *generic* fn or struct
+comes out bare regardless of position — and testing it broke both claims.
+
+Measured over the emitted `03_ingest` tree, occurrences of shared types by enclosing item:
+
+```
+GENERIC fn signatures     Node 12 · Diagnostic 5                    17 WRAPPED,   0 bare
+PLAIN   fn signatures     Node 2404 · Diagnostic 212 · Edge 215 ·
+                          ParseProvenanceState 22 · SpanIndex 10 · …    ALL WRAPPED, 0 bare
+GENERIC struct fields                                                6 WRAPPED,   0 bare
+PLAIN   struct fields                                              121 WRAPPED,   5 bare
+```
+
+**Prediction 3 is refuted** in its unconditional form: zero bare occurrences in any generic signature
+or generic struct field. The honest bound: 17 and 6 are small denominators, and the test keyed on the
+*enclosing item's* generics, so a narrower condition (the occurrence itself being a type argument, or
+its resolved node carrying `__applied_type_args`) is untested.
+
+**And my own field/signature split is refuted by the same run.** Struct fields are **121 wrapped
+against 5 bare** — fields overwhelmingly DO wrap. The "fields are bare" reading came from five types
+I had picked *because their bare occurrences appeared in the R1 diagnostics*, i.e. a sample selected
+by the sites that failed.
+
+**The method warning, which is the transferable part:** an error census tells you where disagreement
+occurred; it never tells you what the majority behaviour is. Using the failing population to infer
+the emitter's general rule inverted the ratio — 5 exceptions read as the rule against 121 that were
+not in the sample because they worked. Any claim of the form "the emitter does X" drawn from a
+diagnostic census needs a denominator drawn from the emitted corpus instead.
+
+What survives, and is now better supported than any position rule: **121 wrapped vs 5 bare inside one
+position** is exactly "the same semantic type answers the membership question differently at
+different occurrences", which is the occurrence-keyed reading (`authored_name_at(rt_child)` at fields
+rather than the type identity `build_shared_types` computed membership under). The five bare fields —
+two of them the `SpanIndex` fields of `ParseProvenanceState` — are the whole specimen set for that
+claim, and testing it needs the resolved node rather than the emitted text.
