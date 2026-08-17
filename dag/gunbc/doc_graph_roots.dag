@@ -1238,13 +1238,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
-    slug: "root_b_primitive_repr_fork_2026-08-16",
-    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rust_corpus_repr", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v1.compiler.infer", decl_name: "corpus_has_v1_seed_source_indices", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "rust_corpus_repr ceases to discriminate HostNative vs FaithfulFreeMonoid by v1 path substring — the modeled fact grounds the representation and this probe receipt deletes with the row") },
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     primary_work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     additional_works: [],
