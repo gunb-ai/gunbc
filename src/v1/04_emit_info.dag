@@ -72,8 +72,6 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, N
   dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
 }
 
-type RustCorpusRepr = HostNative | FaithfulFreeMonoid
-
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   type_decl_items: Map<String, Node>
@@ -92,7 +90,6 @@ type EmitGraphInfo {
 
   clone_bounded_type_params: Map<String, Set<String>>
 
-  corpus_repr: RustCorpusRepr
 
   fn_generic_param_names: List<String>
   fn_type_env: TypeEnv
@@ -122,7 +119,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     read_only_params: empty_set(),
     clone_bounded_type_params: empty_map(),
 
-    corpus_repr: FaithfulFreeMonoid,
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
     fn_return_type: none
@@ -144,7 +140,6 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
-    corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
     fn_return_type: emit_info.fn_return_type
@@ -166,7 +161,6 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
-    corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: fn_return_type

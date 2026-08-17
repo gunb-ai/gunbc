@@ -10,6 +10,7 @@ use crate::std_occurrence_binding_candidates::BoundReferencePopulation::AllRefer
 use crate::std_occurrence_binding_candidates::DeclarationExposure::LexicalExposure;
 use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::MissingDeclarationExposure;
 use crate::std_occurrence_binding_candidates::DirectModuleDependencyBuild::DirectModuleDependencyListReady;
+pub use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndex;
 use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady;
 use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionAmbiguous, ReferenceBindingProjectionAuthoredOrderRefused,
@@ -33,6 +34,7 @@ pub use crate::std_occurrence_binding_candidates::{
     DirectModuleDependencyBuild, OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild,
     ReferenceBindingProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
 };
+pub use crate::std_occurrence_identity::OccurrenceIndex;
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
     OccurrenceTransport, ReferenceOccurrence,

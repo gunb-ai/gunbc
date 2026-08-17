@@ -2285,7 +2285,6 @@ mod compiler_tests {
             crate::v1_compiler_emit_rust::render_rust_type(
                 diagnostics_node,
                 empty_shared,
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative,
                 source_indices,
                 empty_emit
             ),
@@ -2294,37 +2293,114 @@ mod compiler_tests {
     }
 
     #[test]
-    fn groupcompletion_int_checkpoint_fires_under_faithful_corpus() {
+    fn groupcompletion_int_checkpoint_fires_for_std_declaration() {
         // Discriminating witness for the (b) checkpoint-order fix (sharp-bee-290 sign-off,
         // msg_6fc2ba88-549b-491e-9b6f-ab949539d682): emit_typed_item's zero-param alias-decl
         // branch calls rust_scalar_checkpoint_render_base (the single-authority checkpoint
-        // lookup), not the HostNative-only rust_seed_host_numeric_alias, so the Int -> i64
-        // checkpoint row (dag/extdeps/languages/rust/types.dag) fires BEFORE the RHS
-        // (GroupCompletion<Nat>) is unfolded — under BOTH corpus representations. A
-        // regression that narrows this back to the HostNative-only alias makes the
-        // FaithfulFreeMonoid arm return None, which is what this witness guards.
+        // lookup), so the Int -> i64 checkpoint row (dag/extdeps/languages/rust/types.dag)
+        // fires BEFORE the RHS (GroupCompletion<Nat>) is unfolded.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+                "dag/std/integer.dag".to_string()
+            ),
+            Some("i64".to_string())
+        );
+        // MIGRATED off RustCorpusRepr (eager-deer-389). Realization is keyed on the
+        // DECLARING MODULE, so the discriminating question is identity, not corpus mode.
+        // Nat carries NO checkpoint row, so it reaches the identity-keyed arm and
+        // discriminates: the std declaration realizes natively, a same-spelled declaration
+        // elsewhere does not, and an unknown identity refuses rather than guessing.
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Nat".to_string(),
+                "dag/std/nat.dag".to_string()
             ),
             Some("i64".to_string())
         );
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Nat".to_string(),
+                "src/v2/std/nat.dag".to_string()
+            ),
+            None
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Nat".to_string(),
+                "".to_string()
+            ),
+            None
+        );
+        // RESIDUE, ASSERTED SO IT IS COUNTED RATHER THAN ASSUMED CLOSED: the checkpoint
+        // TABLE is keyed on the bare dag_name and is consulted BEFORE identity, so any
+        // name carrying a row bypasses declaration keying entirely -- the fork is closed
+        // for table-absent names (Nat, above) and OPEN for table-present ones.
+        //
+        // These assert the CURRENT bypassing answers on purpose. They flip to None when
+        // identity reaches the table; that flip is the dissolution signal, NOT a
+        // regression -- do not make them pass again.
+        //
+        // The three asserted are the population vivid-wren-870 separated as the same
+        // SHAPE as Int: the src/v2 declaration is a genuinely different STRUCTURE, not a
+        // spelling coincidence. Int = GroupCompletion<Nat>, String = FreeMonoid<Char>,
+        // Bool = a two-variant coproduct, Hash = a single-field RECORD. Their census found
+        // SEVEN table names also
+        // declared under src/v2 (adding Float, Symbol, Unit, Hash), as a LOWER BOUND from
+        // a line-start `type` grep. The other three are unasserted: Symbol and Unit are
+        // bodyless and may be declared-abstract rather than competing realizations, and I
+        // have not measured Float. Absence here is UNMEASURED, never cleared.
+        //
+        // HASH IS THE ONE THAT COSTS A GUARANTEE, not merely a representation. The row
+        // targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2
+        // declaration of Fnv1a64Structural -- a single-field record whose digest field is
+        // `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note
+        // states the public forgeable record constructors are DELETED and that the
+        // where-refinement IS the construction wall. So realizing that type as a bare String
+        // alias renders away the carrier the wall is attached to -- a §4b construction rung
+        // a name-keyed spelling row can silently drop. Verified from declarations by
+        // vivid-wren-870 and re-read here; NO live site is claimed, because neither of us
+        // emitted a closure that reaches a v2-declared Hash through lookup_checkpoint.
+        //
+        // This needs no emitting closure -- the probe is a pure function, so it asks a
+        // question the corpus does not currently exercise. That is why it caught what the
+        // two-arm artifact diff could not: nothing in those closures declares a competing
+        // Int, so the emitted bytes were identical either way.
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative
+                "src/v2/std/integer.dag".to_string()
             ),
             Some("i64".to_string())
         );
-        // GroupCompletion itself has no checkpoint row and is not the seed host numeric
-        // alias, so the checkpoint correctly declines to render it directly (the RHS
-        // unfolding path handles it as a real 2-field struct) — the checkpoint fires ONLY
-        // for the Int/Nat leaf name, never widening to the container type.
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "String".to_string(),
+                "src/v2/std/text.dag".to_string()
+            ),
+            Some("String".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Bool".to_string(),
+                "src/v2/std/logic.dag".to_string()
+            ),
+            Some("bool".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Hash".to_string(),
+                "src/v2/std/node.dag".to_string()
+            ),
+            Some("v1_rt::Hash".to_string())
+        );
+        // GroupCompletion has no checkpoint row and is not the seed host numeric alias,
+        // so the checkpoint declines to render it directly -- it fires ONLY for the
+        // Int/Nat leaf name, never widening to the container type.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "GroupCompletion".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
+                "dag/std/algebra.dag".to_string()
             ),
             None
         );
@@ -2347,7 +2423,6 @@ mod compiler_tests {
             applied,
             generics,
             shared,
-            crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid,
             source_indices,
             variant_to_enum,
             env,
