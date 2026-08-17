@@ -1215,7 +1215,7 @@ cause.
 |---|---|---|---|
 | B — algebra/numeric carrier, closure flag | ~~509~~ → **at most 146 repr-shaped (§18)**, and narrower still: sites whose type carries a checkpoint row do not move | `eager-deer-389` | identity-keying design; flip control executed both directions |
 | C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
-| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` | **both halves LANDED** — half 1 merged as `bbb52138b25` ([PR #8350](https://github.com/gunb-ai/gunbc/pull/8350)), which also retired an enrolled witness that had been asserting the broken shape |
+| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` | **both halves LANDED** — half 1 as `bbb52138b25` ([PR #8350](https://github.com/gunb-ai/gunbc/pull/8350)), which also retired an enrolled witness that had been asserting the broken shape; half 2 as `7cfeb6f0fd7` ([PR #8341](https://github.com/gunb-ai/gunbc/pull/8341)), deleting the `Witness` checkpoint-scalar rows so scalar arity derives from its single authority |
 | A — derive/bounds | **LANDED**, [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as `c4e9cc918c5` | this session | see 12.5 for what the diagnosis got wrong on the way |
 | tail — six mid-sized roots + 62 singletons | 1,874 distinct total | `smart-ibex-716` | partitioned, §11 |
 
@@ -1241,8 +1241,11 @@ suspicious independent of which trigger scopes what. A's split into CloneSharedR
 TargetApiRequirement 168 / OwnedDeconstructionRequirement 63 came from the same July TSV that
 produced two of the dead claims in 12.2.
 
-**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
-land, treat A as unpartitioned, not as diagnosed.**
+~~**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
+land, treat A as unpartitioned, not as diagnosed.**~~ — **SUPERSEDED by the RESOLVED block below;
+A is landed, not open.** Struck rather than deleted because the instruction was correct when
+written and the paragraph above it records *why* the then-current diagnosis was refused, which is
+the part that still governs.
 
 **RESOLVED 2026-08-17 — and the challenge above was right, which is why what landed is not what
 this section proposed.** [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as
