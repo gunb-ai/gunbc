@@ -40906,20 +40906,7 @@ pub fn claim_scope_for(
         .iter()
         .map(|m| (m.func_env.name.as_str(), &m.func_env))
         .collect();
-    // THE FRONTIER IS SEEDED WITH EVERY MODULE ALREADY IN SCOPE, not with the entry alone.
-    //
-    // `order` and `seen` are populated with the entry AND its import closure above, before this
-    // walk starts. Seeding only the entry meant every one of those imported modules was in scope
-    // and never traversed: whatever they reached by bare reference was never followed, because
-    // the walk's `seen` check treats them as already visited and so nothing ever expands them.
-    //
-    // The entry's own imports were therefore carried at full depth while an imported module's
-    // bare references were carried at depth zero — visibility depending on which side of the
-    // seed a module landed on, which is not a distinction anything in the model makes. The
-    // residual `no such function` rows are this: `srv3_install_hang_no_router_lease_ms` IS
-    // declared, in `gunbc.srv3_os_install_diagnostic`, and the module referencing it sat in an
-    // import closure the walk never expanded.
-    let mut frontier: Vec<String> = order.clone();
+    let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
         let mut reached: Vec<String> = reference_targets_of(&ref_index, &current);
         if let Some(env) = parents_of.get(current.as_str()) {
