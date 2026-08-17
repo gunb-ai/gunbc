@@ -17,7 +17,6 @@ pub use crate::std_occurrence_identity::{
 };
 pub use crate::std_types::Bool;
 use crate::std_types::Bool::*;
-pub use crate::std_types::List;
 pub use crate::v1_compiler_parse::parse_with_table_in_occurrence_scope;
 pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_tokenize::tokenize;

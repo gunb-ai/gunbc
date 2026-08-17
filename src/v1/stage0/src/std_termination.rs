@@ -8,7 +8,6 @@ use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{BoundedLattice, Ordering};
-pub use crate::std_types::Map;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

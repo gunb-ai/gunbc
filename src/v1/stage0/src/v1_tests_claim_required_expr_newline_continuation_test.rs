@@ -4,7 +4,6 @@
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_types::List;
 pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_parse::ParseContext;
 pub use crate::v1_compiler_tokenize::tokenize;

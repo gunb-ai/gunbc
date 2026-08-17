@@ -71,7 +71,6 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_roster_frontier::declaration_ref_eq;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
-pub use crate::std_types::{Map, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

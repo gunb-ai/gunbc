@@ -26,7 +26,6 @@ use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
-pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
@@ -79,6 +78,7 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{
     is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
 };
@@ -6755,6 +6755,19 @@ pub fn reference_derived_candidate_spelled_in_module(module_source: String, name
         && v1_rt::string_contains(&module_source, name.clone()))
 }
 
+pub fn host_realized_builtin_needs_no_import_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A derived use-line must name a provider the EMITTED code actually paths into, and a host-realized builtin is not one. emit_typed_call intercepts a family of free calls by name -- to_string, discriminant, get, with, empty_set among them -- and renders each as a host expression: to_string(value: e) becomes (e.clone()).to_string(), the Rust METHOD, never a path to v1.compiler.emit_core_support. So the SOURCE reference is real and resolves to a real provider module, while the EMITTED module never mentions that provider. Importing it is dead in a single-crate build and FATAL under the seven-crate stage0 partition, where the provider is not even a member of the consuming crate -- which is exactly how this surfaced: E0432 unresolved import crate::v1_compiler_emit_core_support in v1-stage0-std-core, from a `pub use` this derivation emitted for v1.std.core's to_string calls. Two authorities are READ rather than duplicated, and both answer the same question -- does this name's emitted form contain a path to another module. v1.compiler.infer_method builtin_function_registry: a name it resolves is a host builtin, realized as a host expression. std.types is_container_type: List, Set and Map are structural containers rendered inline as Vec and HashMap, so a `pub use crate::std_types::` List-and-Map re-export names a provider the emitted code never paths into either -- dead in one crate, and E0432 in v1-stage0-emit-core where std_types is a member of v1-stage0-extdeps-languages instead. That second half is the same defect one level out: the first filter fixed a host-realized CALL, this one a host-realized TYPE, and the shared property is realization-without-a-path rather than anything about calls or types. LATENT, NOT NEW: import-free modules always received derived use-lines, so the defect predates this cut; deleting the corpus_repr gate merely extended the derivation to import-bearing modules, where v1.std.core is the first member to carry an intercepted free call. CEILING: the roster this consults covers five of the eight names the call emitter intercepts (empty_map, map and utf8_decode_bytes are absent from it), so a module that both references one of those three across a module boundary AND lands in a different partition crate would still refuse. None exists today. The right terminal shape is the one the closure-stub note already names -- derive use-lines from the EMITTED reference set rather than from source references, which needs no roster of intercepts at all because an intercepted call emits no path.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_is_host_realized_builtin(name: String) -> bool {
+    ((infer_builtin_call_type(name.clone()) != None) || is_container_type(name.clone()))
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -6829,23 +6842,34 @@ pub fn reference_derived_use_lines(
         );
         let candidates = Rc::new({
             let mut __result = Vec::new();
-            for name in unique_strings(v1_rt::concat(
-                v1_rt::concat(
+            for name in Rc::new({
+                let mut __result = Vec::new();
+                for name in unique_strings(v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                        type_surface_names.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                            type_surface_names.clone(),
+                        ),
+                        field_surface_names.clone(),
                     ),
-                    field_surface_names.clone(),
-                ),
-                variant_payload_structs.clone(),
-            ))
+                    variant_payload_structs.clone(),
+                ))
+                .iter()
+                .cloned()
+                {
+                    if reference_derived_candidate_spelled_in_module(
+                        module_source.clone(),
+                        name.clone(),
+                    ) {
+                        __result.push(name);
+                    }
+                }
+                __result
+            })
             .iter()
             .cloned()
             {
-                if reference_derived_candidate_spelled_in_module(
-                    module_source.clone(),
-                    name.clone(),
-                ) {
+                if !reference_is_host_realized_builtin(name.clone()) {
                     __result.push(name);
                 }
             }

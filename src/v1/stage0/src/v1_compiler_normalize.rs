@@ -2,7 +2,6 @@
 // Source module: v1.compiler.normalize
 
 pub use crate::std_types::container_expected_arity;
-pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

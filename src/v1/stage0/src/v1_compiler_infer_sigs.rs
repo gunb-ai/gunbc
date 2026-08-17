@@ -4,7 +4,6 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
 pub use crate::v1_compiler_infer_occurrence_binding::{

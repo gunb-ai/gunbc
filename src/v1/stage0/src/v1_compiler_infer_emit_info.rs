@@ -5,7 +5,6 @@ use self::TypeRepr::*;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
-pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{

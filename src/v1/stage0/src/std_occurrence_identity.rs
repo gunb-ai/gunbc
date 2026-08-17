@@ -14,7 +14,6 @@ pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

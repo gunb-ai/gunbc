@@ -38,7 +38,6 @@ pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};

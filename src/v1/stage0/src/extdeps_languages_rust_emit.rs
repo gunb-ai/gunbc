@@ -28,7 +28,6 @@ pub use crate::std_trait_derive_shape::{
     PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
     PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm, ReprGroundingDeriveTrait,
 };
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

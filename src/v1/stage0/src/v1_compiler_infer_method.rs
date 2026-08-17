@@ -2,7 +2,6 @@
 // Source module: v1.compiler.infer_method
 
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_types::{
     make_container_type, make_kernel_record_field, make_kernel_record_type, make_map_type,
 };

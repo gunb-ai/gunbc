@@ -48,7 +48,6 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
-pub use crate::std_types::{List, Map, Set};
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
@@ -145,7 +144,6 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_resolve::map_has;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

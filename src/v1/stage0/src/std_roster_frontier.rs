@@ -21,7 +21,6 @@ pub use crate::std_keyed_roster::keyed_roster_build;
 pub use crate::std_keyed_roster::KeyedRosterBuild;
 use crate::std_keyed_roster::KeyedRosterBuild::{KeyedRosterBuildDuplicateKey, KeyedRosterBuilt};
 pub use crate::std_keyed_row::KeyedRow;
-pub use crate::std_types::List;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

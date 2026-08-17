@@ -10,7 +10,6 @@ use self::Ordering::*;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

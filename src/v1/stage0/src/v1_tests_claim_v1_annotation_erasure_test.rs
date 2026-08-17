@@ -13,7 +13,6 @@ use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_annotation_bind::bind_annotations;
 pub use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
-pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_parse::parse_with_table_in_occurrence_scope;
 pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;

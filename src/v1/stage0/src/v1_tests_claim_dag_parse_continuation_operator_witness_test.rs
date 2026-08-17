@@ -2,7 +2,6 @@
 // Source module: v1.tests.claim.dag_parse_continuation_operator_witness_test
 
 pub use crate::extdeps_languages_dag_syntax::dag_operators;
-pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_dag_collect_support::expr_data_variant;
 pub use crate::v1_compiler_parse::{
     find_operator_bp, operator_continuation_dual_role_excluded_symbols, parse_module,

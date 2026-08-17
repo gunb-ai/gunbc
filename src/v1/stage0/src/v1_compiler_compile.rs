@@ -29,7 +29,6 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 pub use crate::v1_compiler_artifact::default_artifact_plan;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
@@ -42,7 +41,6 @@ pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_mod
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
-pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;

@@ -29,7 +29,6 @@ pub use crate::std_occurrence_identity::{
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
 pub use crate::std_types::List;
-pub use crate::std_types::Map;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

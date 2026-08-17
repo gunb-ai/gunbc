@@ -29,7 +29,6 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
-pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
