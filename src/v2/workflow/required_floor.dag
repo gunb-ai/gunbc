@@ -306,14 +306,14 @@ data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
 //
 // `refusals_reversed` survives because duplicate enrollment is a real refusal, discovered after
 // the scan rather than during it.
+// THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A long-home site produces no
+// claim row, so the exclusion happens where the module's own name can be read rather than in a
+// host-side test on its file path.
 fn scan_site(
   acc: ClaimScanReversed,
   site: WitnessSite,
   mode: ExecutionMode
 ) -> ClaimScanReversed {
-  // THE MANIFEST DECIDES ADMISSION, not the discovery that fed it. A long-home site produces
-  // no claim row, so the exclusion happens where the module's own name can be read rather than
-  // in a host-side test on its file path.
   match module_is_long_home(module_path: site.module_path) {
     true => acc
     false =>
