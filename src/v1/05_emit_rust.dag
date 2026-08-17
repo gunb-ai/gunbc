@@ -687,11 +687,61 @@ fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, t
   }
 }
 
-fn alias_base_is_zero_param_decl(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
-  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-    Present { value: item } => (item.params |> count) == 0
-    Absent => false
+type ClosedAliasPeelVerdict
+  = ClosedAliasBindingAbsent
+  | ClosedAliasHasParams
+  | ClosedAliasPeelZeroParam
+
+fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
+  ClosedAliasHasParams
+}
+
+fn closed_alias_peel_verdict(env: TypeEnv, n: Node) -> ClosedAliasPeelVerdict {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  if name == "String" {
+    return closed_alias_verdict_do_not_peel()
   }
+  let binding = match lookup_type_for(env: env, node: n) {
+    Present { value: b } => b
+    Absent =>
+      match lookup_type_by_name(env: env, name: name) {
+        Present { value: b } => b
+        Absent => return ClosedAliasBindingAbsent
+      }
+  }
+  if (binding.params |> count) == 0 { ClosedAliasPeelZeroParam } else { closed_alias_verdict_do_not_peel() }
+}
+
+type AliasDeclArityVerdict
+  = AliasDeclArityAbsent
+  | AliasDeclArityZeroParam
+  | AliasDeclArityHasParams
+
+fn closed_alias_peels_zero_param(env: TypeEnv, n: Node) -> Bool {
+  match closed_alias_peel_verdict(env: env, n: n) {
+    ClosedAliasPeelZeroParam => true
+    ClosedAliasHasParams => false
+    ClosedAliasBindingAbsent => false
+  }
+}
+
+fn closed_alias_peel_refusal_expr(type_name: String) -> String {
+  emit_rust_compile_error_expr(message: concat("closed alias peel: binding absent for ", type_name))
+}
+
+fn alias_decl_arity_verdict(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, env: TypeEnv) -> AliasDeclArityVerdict {
+  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: item } => if (item.params |> count) == 0 { AliasDeclArityZeroParam } else { AliasDeclArityHasParams }
+    Absent =>
+      match lookup_type_by_name(env: env, name: type_name) {
+        Present { value: binding } => if (binding.params |> count) == 0 { AliasDeclArityZeroParam } else { AliasDeclArityHasParams }
+        Absent => AliasDeclArityAbsent
+      }
+  }
+}
+
+fn alias_decl_arity_refusal_expr(type_name: String) -> String {
+  emit_rust_compile_error_expr(message: concat("alias decl arity absent for ", type_name))
 }
 
 fn type_param_is_collection_element_in_values(param_name: String, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -818,13 +868,15 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     match rust_scalar_checkpoint_render_base(dag_name: base_name, corpus_repr: corpus_repr) {
       Present { value: scalar } => scalar
       Absent =>
-    if rust_fn_sig_peel_closed_alias(env: env, n: n) {
+    match closed_alias_peel_verdict(env: env, n: n) {
+      ClosedAliasPeelZeroParam => {
       let bare = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
         Present { value: host } => host
         Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
       }
       render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
-    } else {
+      }
+      ClosedAliasHasParams => {
     let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
@@ -838,6 +890,22 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
+      }
+      ClosedAliasBindingAbsent => {
+    let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+      Present { value: host } => host
+      Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
+    }
+    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      } else {
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      }
+    ) |> join(separator: ", ")
+    concat(base, "<", args, ">")
+      }
     }
     }
   }
@@ -876,8 +944,17 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   match applied_overlay {
     Present { value: applied } =>
       let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-      if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
-        render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+      if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 {
+        match closed_alias_peel_verdict(env: env, n: n) {
+          ClosedAliasPeelZeroParam =>
+            if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
+              render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+            } else {
+              render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+            }
+          ClosedAliasHasParams => render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          ClosedAliasBindingAbsent => render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        }
       } else {
         render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       }
@@ -894,7 +971,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         match rust_render_checkpoint_scalar_bare(n: n, corpus_repr: corpus_repr, source_indices: source_indices, shared_types: shared_types) {
           Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types)
           Absent =>
-        if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+        if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
           render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
@@ -941,23 +1018,6 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
 }
 
-fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
-  if name == "String" {
-    return false
-  }
-  let binding = match lookup_type_for(env: env, node: n) {
-    Present { value: b } => b
-    Absent =>
-      let name = authored_name_at(source_indices: env.source_indices, node: n)
-      match lookup_type_by_name(env: env, name: name) {
-        Present { value: b } => b
-        Absent => return false
-      }
-  }
-  (binding.params |> count) == 0
-}
-
 fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorpusRepr) -> Bool {
   if is_kernel_type(name: name) {
     false
@@ -993,10 +1053,23 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
-    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
+  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) {
+    match closed_alias_peel_verdict(env: env, n: n) {
+      ClosedAliasPeelZeroParam =>
+        if rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
+          render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
+        } else {
+          render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+        }
+      ClosedAliasHasParams => render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+      ClosedAliasBindingAbsent => render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+    }
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) {
+    match closed_alias_peel_verdict(env: env, n: n) {
+      ClosedAliasPeelZeroParam => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
+      ClosedAliasHasParams => render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+      ClosedAliasBindingAbsent => render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+    }
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
@@ -1009,8 +1082,17 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
     Present { value: applied } =>
       if applied.children |> count > 0 {
         let outer_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-        if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
-          render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+        if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 {
+          match closed_alias_peel_verdict(env: env, n: n) {
+            ClosedAliasPeelZeroParam =>
+              if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
+                render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+              } else {
+                render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+              }
+            ClosedAliasHasParams => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+            ClosedAliasBindingAbsent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
+          }
         } else {
           render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
         }
@@ -1024,7 +1106,10 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
 fn rust_decl_type_container_arg_needs_resolved_overlay(arg: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   let authored_is_leaf = arg.connective == NoConnective && (arg.children |> count) == 0
   let closed_alias = if authored_is_leaf {
-    rust_fn_sig_peel_closed_alias(env: env, n: arg)
+    match closed_alias_peel_verdict(env: env, n: arg) {
+      ClosedAliasPeelZeroParam => true
+      _ => false
+    }
   } else {
     false
   }
@@ -1080,11 +1165,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       if n.connective == Conj && (n.children |> count) == 1 {
         match n.children |> first {
           Present { value: base_te } =>
-            if rust_seed_host_numeric_alias(name: authored_name_at(source_indices: source_indices, node: base_te), corpus_repr: corpus_repr) != none {
-              return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
-            } else {
-              return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
-            }
+            return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
           Absent => {}
         }
       }
@@ -1124,10 +1205,14 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         leaf
       }
     }
-    let base_is_zero_param = rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    if base_is_zero_param {
-      return if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
-    }
+    match closed_alias_peel_verdict(env: scope.type_env, n: n) {
+      ClosedAliasPeelZeroParam =>
+        if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+      ClosedAliasBindingAbsent =>
+        match alias_decl_arity_verdict(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, env: scope.type_env) {
+          AliasDeclArityZeroParam =>
+            if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+          AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
       if peel {
@@ -1141,6 +1226,26 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
       applied_ty
+    }
+          }
+          AliasDeclArityAbsent => alias_decl_arity_refusal_expr(type_name: leaf)
+        }
+      ClosedAliasHasParams => {
+    let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      } else {
+        render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      }
+    ) |> join(separator: ", ")
+    let applied_ty = concat(base, "<", args, ">")
+    if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+      wrap_shared_type(target: Rust, inner: applied_ty)
+    } else {
+      applied_ty
+    }
+      }
     }
   } else {
     render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
@@ -3681,7 +3786,7 @@ fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: L
   let local_mod = module_to_filename(name: alias_module)
   match lookup_item(registry: scope.item_registry, name: name) {
     Present { value: info } =>
-      if info.module_name == alias_module && (info.kind == TypeItem || info.kind == OtherItem) {
+      if info.module_name == alias_module && (info.kind == TypeItem || info.kind == OtherItem) && has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: local_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
         local_mod
       } else {
         alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
@@ -10471,9 +10576,8 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus
 }
 
 fn rust_test_signature_comment(projection: TestProjection, corpus_repr: RustCorpusRepr) -> String {
-  let stub_env = TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), corpus_repr: corpus_repr, source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), corpus_repr: corpus_repr, source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
