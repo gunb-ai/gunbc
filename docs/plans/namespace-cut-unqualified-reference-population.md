@@ -97,6 +97,72 @@ shared one leaf name and the runtime picked by map insertion order. That
 particular winner had incompatible parameters, so it complained. A
 compatible wrong winner would have executed.
 
+## What this deletion's census is allowed to claim: a LOWER BOUND
+
+DESIGN says "the deletion is the census -- every real dependent refuses loudly."
+That is REFUTED as an unconditional rule, and this lane is the evidence. The
+corrected form (tidy-pike-117, converged independently with the measurements
+below):
+
+    Deletion is a complete census ONLY for dependencies whose binding, dispatch
+    and evidence paths are fail-closed and structurally coupled to the deleted
+    authority. Otherwise deletion exposes only a LOWER BOUND on the load.
+
+Two silent-survivor mechanisms, both measured in this repository rather than
+supposed:
+
+    compile time   AmbientPoolUnique      `global_bare_lookup` resolves a
+                                          pool-unique name from anywhere with no
+                                          chain check, so identity depends on
+                                          unrelated pool membership
+    runtime        LastWriteWinsBareMap   `fn_nodes` carries bare and qualified
+                                          keys in one map; the bare slot is
+                                          overwritten by traversal order and
+                                          `lookup_fn` never consults the
+                                          ambiguity set it computes
+
+In neither case must deleting the import authority produce a refusal. It may
+instead produce a DIFFERENT binding, a different executable function, or
+apparently successful execution. The corpus can therefore become GREENER because
+the cut removed the evidence of ambiguity -- the exact inverse of the loudness
+assumption, and the same shape as this note's opening finding that the diagnostic
+count only ever saw the ambiguous bindings that also happened to be type errors.
+
+So the standing this branch may claim is
+
+    DeletionCensusLowerBound { observed_refusals, known_silent_classes,
+                               invalidated_controls }
+
+never DeletionCensusComplete. The complete arm requires four properties, and this
+branch satisfies none of them yet:
+
+    1. binding identity independent of ambient pool residency
+    2. ambiguity REFUSES BEFORE SELECTION
+    3. the census ranges over ALL candidate occurrences, not only
+       diagnostic-producing ones
+    4. the cut PRESERVES OR DISPOSITIONS its evidence controls
+
+Property 4 is the one this branch demonstrably violated, and its rule is sharper
+than "keep the fixture": A CONTROL MUST STILL REDDEN UNDER THE MUTATION IT EXISTS
+TO DETECT. A control surviving as a FILE while no longer discriminating is worse
+than a deleted one, because it reads as coverage --
+`module_graph_edge_source_witness_test` exactly. Note also that such a control
+need not import or call the deleted authority at all, so a direct-consumer census
+cannot find it.
+
+Property 2 carries a named general defect worth checking every gate against:
+
+    PostSelectionAmbiguityObservation, under GuardDoesNotDominateActuation
+    A check guards an operation only when an admitted result is REQUIRED BEFORE
+    the first selection or actuation. A field attached to a receipt AFTER
+    selection is evidence about what happened, not a construction wall.
+
+None of this makes delete-first wrong. It survives with a precondition: prove the
+substrate cannot silently survive the deletion by rebinding, overwriting, falling
+back, or losing its own controls, BEFORE using breakage as an exhaustive
+measurement. Where that is unproven, deletion remains the right discovery
+instrument -- it just yields a lower bound, and must say so.
+
 ## The oracle that does hold
 
 For each authored occurrence o:
