@@ -40886,9 +40886,33 @@ pub fn claim_scope_for(
     // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
     // every cache keyed on it.
     let ref_index = reference_closure_index(prepared)?;
+    // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
+    //
+    // The entry module's closure is taken from `func_env.parents` above precisely because a
+    // module's body needs everything that module imports in order to execute. That is no less
+    // true of a module reached by reference: when the entry bare-references M, M's body runs in
+    // this same flat scope, so whatever M imported has to be here too. The walk was following
+    // M's REFERENCES and dropping M's IMPORTS, which is half of what M needs and no principled
+    // half — a module that reaches its dependencies by bare reference was carried and one that
+    // reaches them by `import` was not.
+    //
+    // Measured specimen: `test.claim.host_phase_status` declares no imports at all, reaches its
+    // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
+    // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
+    // The definer was one edge away the whole time, across an edge this walk did not traverse.
+    let parents_of: HashMap<&str, &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> = prepared
+        .graph
+        .modules
+        .iter()
+        .map(|m| (m.func_env.name.as_str(), &m.func_env))
+        .collect();
     let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
-        for target in reference_targets_of(&ref_index, &current) {
+        let mut reached: Vec<String> = reference_targets_of(&ref_index, &current);
+        if let Some(env) = parents_of.get(current.as_str()) {
+            reached.extend(env.parents.iter().map(|p| p.name.clone()));
+        }
+        for target in reached {
             if seen.insert(target.clone()) {
                 order.push(target.clone());
                 frontier.push(target);
