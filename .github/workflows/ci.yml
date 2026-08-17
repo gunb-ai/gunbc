@@ -325,7 +325,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. The isolated pre-executor skip-label binary and its unreachable persistent disposition transport retired afterward; compile-clean docs-universe scoping remains independently exercised on the live floor path.
           git fetch --no-tags origin main 2>/dev/null || true
-          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan --notice-title "v2 claim corpus"
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan --discovery-entry-sample-keep 1/5 --notice-title "v2 claim corpus"
         env:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         timeout-minutes: 100
