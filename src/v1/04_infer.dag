@@ -5034,10 +5034,11 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     Absent => ""
   }
   let si_presence = scope.type_env.source_indices
+  let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
   let presence_fields = if tn_str == "" {
     []
   } else {
-    match variant_owner_node(scope: scope, name: tn_str) {
+    match presence_variant_owner {
       Present { value: variant_owner } =>
         match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == qualified_last_segment(name: tn_str)) |> first {
           Present { value: variant_node } => variant_node.children
@@ -5047,7 +5048,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
         match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
           Present { value: variant_node } => variant_node.children
           Absent =>
-        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+        match instantiated_struct_fields {
           Present { value: inst_fields } => inst_fields
           Absent =>
             match lookup_type_by_name(env: scope.type_env, name: tn_str) {
@@ -5064,7 +5065,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     }
   }
   let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
-    && variant_owner_node(scope: scope, name: tn_str) != none
+    && presence_variant_owner != none
   let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
     && map_get(scope.type_env.str_bindings, tn_str) == none
   let presence_ambiguity_refusal_diags = if tn_str != "" && map_get(scope.type_env.str_bindings, tn_str) == none {
