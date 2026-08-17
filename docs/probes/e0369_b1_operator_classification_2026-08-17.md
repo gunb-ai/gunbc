@@ -105,6 +105,11 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
   job** with **429** on `upload-artifact` tarball (same hash as prior flakes). No `gunbc` signal.
   Rapid sessionpush retries may be aggravating codeload rate limits — operator spacing may be
   required if the next head flakes again.
+- **CI run 32043422515 @ `26882b74` (2026-08-17):** **build** and **ci** both failed at **Set up
+  job** with **429** (`rust-cache` + `upload-artifact`). Eighth consecutive setup flake on this
+  branch; no `gunbc` signal. **Do not sessionpush another head immediately** — further pushes
+  enqueue more archive downloads and extend the 429 window. Remedy: cooldown then `gh run rerun`
+  on a green-adjacent run, or operator spacing before the next head.
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
