@@ -45,10 +45,11 @@ fn write_fixture(dir: &std::path::Path) -> (Vec<String>, String) {
         fn boxed(n: Int) -> Box { Box { v: n } }\n\
         fn unbox(b: Box) -> Int { b.v }\n";
     let shared1 = "module test.shared1\nfn val() -> Int { 10 }\n";
+    // No import statements: this branch's parser refuses them outright, so a
+    // cross-module reference is written container.member and THAT reference is
+    // the dependency edge.
     let entry_a = "module test.a\n\
-        import test.common { boxed, unbox }\n\
-        import test.shared1 { val }\n\
-        fn witness_a_true() -> Bool { (unbox(boxed(val())) + 0) == 10 }\n";
+        fn witness_a_true() -> Bool { (test.common.unbox(test.common.boxed(test.shared1.val())) + 0) == 10 }\n";
     for (name, src) in [
         ("common.dag", common),
         ("shared1.dag", shared1),
