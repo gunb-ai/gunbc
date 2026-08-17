@@ -19,7 +19,7 @@ fn validate_grammar_fixture_well_formed() -> FormalGrammar {
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     start: start
   }
@@ -37,7 +37,7 @@ fn validate_grammar_fixture_start_not_in_nonterminals() -> FormalGrammar {
         lhs: ^validate_grammar_fixture_other_nt,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     start: start
   }
@@ -54,7 +54,7 @@ fn validate_grammar_fixture_lhs_not_in_nonterminals() -> FormalGrammar {
         lhs: ^validate_grammar_fixture_bad_lhs,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     start: start
   }
@@ -71,7 +71,7 @@ fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_orphan_terminal)]
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     start: start
   }

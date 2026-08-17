@@ -23,7 +23,7 @@ fn variant_vis_ingest_for(src: String) -> SourceRootIngest {
 
 fn variant_vis_admission() -> Admission {
   Admission {
-    subject: ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: Empty } },
+    subject: ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: std.algebra.Empty } },
     imports: Empty
   }
 }

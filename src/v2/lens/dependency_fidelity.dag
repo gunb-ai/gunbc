@@ -29,7 +29,7 @@ fn verdict_is_faithful(v: FidelityVerdict) -> Bool {
 }
 
 fn input_reachability_discrepancies(fact: UnusedParametersFact) -> List<FidelityDiscrepancy> {
-  fold(fact.unused, init: Empty, f: fn(acc, u) {
+  fold(fact.unused, init: std.algebra.Empty, f: fn(acc, u) {
     list_snoc_item(xs: acc, item: UnreachedDeclaredInput { declaration: u.declaration })
   })
 }

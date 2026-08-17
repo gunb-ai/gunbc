@@ -12,8 +12,8 @@ fn current() -> ObservationCurrency {
   ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr }
 }
 
-fn live_owner() -> ProcessIdentity {
-  ProcessIdentity {
+fn live_owner() -> gunbc.build_cache_instance.ProcessIdentity {
+  gunbc.build_cache_instance.ProcessIdentity {
     boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
     pid: 3975946,
     start_time: "79870020" as NonEmptyStr,

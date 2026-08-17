@@ -14,16 +14,16 @@ data synthetic_intent: StandingIntent = {
   receiptable: true,
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: EnrolledInFloorRoster },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
-  fallback_when_unavailable: Refuse
+  fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
 data synthetic_contract: LensContract = {
   entry: lens_registry_v0_parallelism,
-  mode: Blocking,
+  mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
@@ -91,11 +91,11 @@ data synthetic_intent_with_subject: StandingIntent = {
   receiptable: true,
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: EnrolledInFloorRoster },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
-  fallback_when_unavailable: Refuse
+  fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
 data synthetic_intent_missing_subject: StandingIntent = {
@@ -107,11 +107,11 @@ data synthetic_intent_missing_subject: StandingIntent = {
   receiptable: true,
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.not_discovered")] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: EnrolledInFloorRoster },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
-  fallback_when_unavailable: Refuse
+  fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
 data synthetic_intent_permuted_subject: StandingIntent = {
@@ -123,11 +123,11 @@ data synthetic_intent_permuted_subject: StandingIntent = {
   receiptable: true,
   desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "fixture.synthetic.subject_alpha")] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: EnrolledInFloorRoster },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
   allowed_narrowing: [],
-  fallback_when_unavailable: Refuse
+  fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
 data synthetic_contracts: List<LensContract> = [synthetic_contract]
@@ -188,16 +188,16 @@ test fn all_standing_intents_are_admissible() -> Bool {
 }
 
 test fn consumer_requirement_discriminates() -> Bool {
-  return !consumer_satisfies(actual: WitnessOnly, required: Exact { kind: EnrolledInFloorRoster })
-    && consumer_satisfies(actual: EnrolledInFloorRoster, required: Exact { kind: EnrolledInFloorRoster })
+  return !consumer_satisfies(actual: WitnessOnly, required: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster })
+    && consumer_satisfies(actual: EnrolledInFloorRoster, required: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster })
     && consumer_satisfies(actual: MergeAdmission, required: AnyLiveConsumer)
     && !consumer_satisfies(actual: WitnessOnly, required: AnyLiveConsumer)
     && consumer_satisfies(actual: MergeAdmission, required: OneOf { acceptable: [EnrolledInFloorRoster, MergeAdmission] })
 }
 
 test fn enforcement_mode_order_discriminates() -> Bool {
-  return !enforcement_mode_satisfies(actual: AuditOnly, required: Blocking)
-    && enforcement_mode_satisfies(actual: Blocking, required: AuditOnly)
+  return !enforcement_mode_satisfies(actual: AuditOnly, required: v2.lens.enforcement.vocab.Blocking)
+    && enforcement_mode_satisfies(actual: v2.lens.enforcement.vocab.Blocking, required: AuditOnly)
     && !enforcement_mode_satisfies(actual: Advisory, required: AuditOnly)
     && enforcement_mode_satisfies(actual: AuditOnly, required: Advisory)
 }

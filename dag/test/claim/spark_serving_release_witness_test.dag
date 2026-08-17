@@ -149,17 +149,17 @@ data no_prereqs: List<SparkServingPrerequisite> = []
 data grounded_prereqs_srv6: List<SparkServingPrerequisite> = [HostIdentityBindingAdmitted { host: "srv6" }, ManagedHostAccessGrounded { host: "srv6" }]
 
 fn observed_on_srv6() -> SparkServingObservation {
-  SparkServingObserved { host: "srv6", loaded_release: spark_serving_release_identity(spec: release_base()) }
+  SparkServingObserved { host: "srv6", loaded_release: release_base() }
 }
 
 data absent_prereqs: List<SparkServingPrerequisite> = [PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
 
 fn observed_matching() -> SparkServingObservation {
-  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_base()) }
+  SparkServingObserved { host: "srv5", loaded_release: release_base() }
 }
 
 fn observed_other() -> SparkServingObservation {
-  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_other_revision()) }
+  SparkServingObserved { host: "srv5", loaded_release: release_other_revision() }
 }
 
 fn observation_absent() -> SparkServingObservation {

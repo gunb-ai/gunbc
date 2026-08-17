@@ -91,7 +91,7 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
 
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
-    unused: fold(use_fact.uses, init: Empty, f: fn(acc, classified) {
+    unused: fold(use_fact.uses, init: std.algebra.Empty, f: fn(acc, classified) {
       if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
         let candidate = classified.dependency.dependent
         if already_in_unused(unused: acc, declaration: candidate) {

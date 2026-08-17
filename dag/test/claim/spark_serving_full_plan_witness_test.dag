@@ -3,9 +3,10 @@ module test.claim.spark_serving_full_plan_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
-import gunbc.spark_serving_membership { spark_serving_membership_reconcile }
+import gunbc.spark_serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark_serving_release {
   SparkServingObservation,
+  RuntimeArtifactIdentity,
   SparkServingObserved,
   SparkServingAbsent,
   SparkServingObservationRefused,
@@ -271,5 +272,78 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
   ) {
     SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
     SparkServingTypedActionsRefused { cause: _ } => false
+  }
+}
+
+// ── Convergence is reachable ────────────────────────────────────────────────────────────────────
+
+// THE MISSING PROOF. Every claim above measures what happens when something DIFFERS. None of them
+// asked the one question that decides whether this machinery can ever finish: given a host in
+// exactly the desired state, does the plan write nothing?
+//
+// It did not. The observed runtime-root and model-slot members both carried the aggregate digest
+// over the whole release, while desired carries the runtime closure digest and the model identity
+// separately, so neither could ever match and a correctly installed host replanned both members on
+// every run. The defect survived review precisely because no witness asserted the zero case -- a
+// roster full of drift-detection claims is satisfied by a projection that reports drift always.
+fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    observation: SparkServingObserved { host: subject_host, loaded_release: r },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    linger: LingerObservedEnabled,
+  )
+}
+
+test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match spark_serving_full_membership_plan(
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+        serving_release: r,
+        projection: observed_exactly_desired(r: r),
+      ) {
+        SparkServingFullMembershipPlanRefused { cause: _ } => false
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed } =>
+          membership_write_count(plan: plan) == 0 && observed
+      }
+  }
+}
+
+// And the same observation must support an empty replan -- the property that distinguishes "nothing
+// to do" from "we never looked at the unit".
+test fn an_exactly_desired_host_supports_an_empty_replan() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      spark_serving_projection_supports_empty_replan(projection: observed_exactly_desired(r: r))
+  }
+}
+
+// The two components must be independently discriminating: if the projection fused them again, a
+// runtime-only drift would move the model member too. Four members, exactly one changed.
+test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match spark_serving_full_membership_plan(
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+        serving_release: r,
+        projection: spark_serving_observed_members(
+          observation: SparkServingObserved {
+            host: subject_host,
+            loaded_release: SparkServingRelease {
+              runtime: RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as NonEmptyStr },
+              model: r.model,
+            },
+          },
+          unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+          linger: LingerObservedEnabled,
+        ),
+      ) {
+        SparkServingFullMembershipPlanRefused { cause: _ } => false
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+          membership_write_count(plan: plan) == 1
+      }
   }
 }
