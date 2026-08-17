@@ -2,7 +2,9 @@ module extdeps.cpu.amd
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cpu.types { CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SocketFactCitation }
+import extdeps.cpu.types {
+  SocketedPinGrid,
+  SocketedLandGrid, CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SocketFactCitation }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
@@ -155,7 +157,7 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 6,
   threads: hardware_thread_count(12),
   nominal_sustained_per_thread_hz: hertz(3600000000),
-  socket: CpuSocket { platform_owner: amd, package: PinGridArray, contact_count: 1331 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1331 },
   socket_citations: socket_am4_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
@@ -174,7 +176,7 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 8,
   threads: hardware_thread_count(16),
   nominal_sustained_per_thread_hz: hertz(3300000000),
-  socket: CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 },
   socket_citations: socket_am5_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
@@ -193,7 +195,7 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 16,
   threads: hardware_thread_count(32),
   nominal_sustained_per_thread_hz: hertz(4200000000),
-  socket: CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 },
+  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718 },
   socket_citations: socket_am5_citations,
   tdp_watts: watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,
