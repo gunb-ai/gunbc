@@ -41063,6 +41063,41 @@ pub fn floor_seam(name: &str) {
     }
 }
 
+// THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
+//
+// A decode arm that reports only "not the expected shape" identifies its seam and nothing else:
+// an absent field, a variant, a record and a scalar all render the same, and they have different
+// remedies. This names the constructor and, where the constructor is a container, its arity --
+// enough to discriminate "the field is missing" from "the field holds an empty list" from "the
+// producer answered a variant" without dumping a value whose size is the reason the run is slow.
+//
+// It deliberately does NOT recurse or print contents. A shape reporter that renders values
+// becomes a second serializer, and on this path the values in question are the ones large enough
+// to have made the phase expensive in the first place.
+fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
+    match v {
+        None => "<field absent>".to_string(),
+        Some(v1_interpreter::Value::List(xs)) => format!("List(len={})", xs.len()),
+        Some(v1_interpreter::Value::Record { fields, .. }) => {
+            format!("Record(fields={})", fields.len())
+        }
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            format!("Variant({variant_name:?})")
+        }
+        Some(other) => floor_value_constructor(other).to_string(),
+    }
+}
+
+fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
+    match v {
+        v1_interpreter::Value::Int(_) => "Int",
+        v1_interpreter::Value::Str(_) => "Str",
+        v1_interpreter::Value::Bool(_) => "Bool",
+        v1_interpreter::Value::Null => "Null",
+        _ => "<other constructor>",
+    }
+}
+
 // A HEARTBEAT, BECAUSE A BLANK INTERVAL AND A FOUR-HOUR INTERVAL LOOK IDENTICAL FROM OUTSIDE.
 //
 // GitHub does not serve a job's log until the job reaches a terminal state, so a run that does not
@@ -41666,16 +41701,25 @@ fn required_floor_claims_from_admission(
     }) else {
         return Err("RequiredFloorRunnable carries no attempt record".to_string());
     };
-    let Some(v1_interpreter::Value::List(rows)) = ({
-        let r = ctx.field(af, "claims");
-        eprintln!(
-            "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} {}",
-            entered.elapsed().as_millis(),
-            floor_resource_sample()
-        );
-        r
-    }) else {
-        return Err("the attempt carries no claim list".to_string());
+    // THE REFUSAL NAMES THE SHAPE IT OBSERVED, not merely that the shape was wrong.
+    //
+    // "the attempt carries no claim list" is true of an absent field, of a record, of a variant
+    // and of a scalar alike, so it identifies the seam and nothing else. Reaching this arm costs
+    // a full preparation plus manifest evaluation — measured at 28 minutes on the first run that
+    // ever got here — and spending that to learn only that the field was not a list makes the
+    // next attempt cost the same again. What discriminates the causes is the constructor.
+    let claims_field = ctx.field(af, "claims");
+    let claims_shape = floor_value_shape(claims_field);
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} observed={} {}",
+        entered.elapsed().as_millis(),
+        claims_shape,
+        floor_resource_sample()
+    );
+    let Some(v1_interpreter::Value::List(rows)) = claims_field else {
+        return Err(format!(
+            "the attempt's `claims` field is not a list — observed {claims_shape}"
+        ));
     };
     // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
     // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
