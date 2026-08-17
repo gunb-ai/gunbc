@@ -1871,4 +1871,24 @@ signature is internally consistent, the argument expression is not — and the s
 blanket rule ("always wrap", "never wrap") describes it. `whole_corpus_scope()` returning
 `Rc<ScopeRoster>` into a parameter typed `ScopeRoster` is the canonical specimen.
 
+**CORRECTION to the paragraph above, made before it propagated (2026-08-17).** "Inconsistent, no
+blanket rule" is a population-level reading, and I published it without asking whether the two
+directions involve the SAME types. They do not: **only 2 of ~20 types appear in both directions**
+(`SpanIndex` 7/7, `Determinism` 1/1). The rest are one-directional —
+`ScopeRoster` 6, `SubjectRoster` 6, `ConsumerRequirement` 6 over-wrapped; `DecimalDigitsStep` 4,
+`Edge` 2, `Diagnostic` 1 and others under-wrapped. So R1 is **two largely disjoint populations**, and
+per type the decision is mostly stable.
+
+Consequence for the DESIGN open thread *Rc-ownership wrap-decision* and its note
+(`docs/plans/rc-ownership-wrap-decision-design.md`), whose premise is a uniform over-wrap of
+`shared_types` members: that premise is **incomplete, not refuted**. It remains a good candidate
+explanation for the 28 over-wraps — `pub fn whole_corpus_scope() -> Rc<ScopeRoster>` is a data anchor
+emitted wrapped, flowing into a parameter emitted bare, which is exactly a definition-side rule not
+carried to parameter positions — and it is silent on the 27 under-wraps. Demoting the note wholesale
+on the symmetry number would discard a possibly-correct mechanism.
+
+**What would settle it, unrun and outside this instrument:** whether `ScopeRoster` / `SubjectRoster` /
+`ConsumerRequirement` / `SpanIndex` are `shared_types` members at emission. That is a read of
+`build_shared_types`' input, not of diagnostics.
+
 Both roots are floor-heavy and cheap to re-measure at M=11 after any fix.
