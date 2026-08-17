@@ -105,6 +105,27 @@ On the v2 emit path, which produced none of these sites, `rust_sg_rc_use_site_ow
 
 **What (b) costs, declared rather than discovered later:** the v1 image stays red on these sites, the burn-down is **unmeasurable** until the emitter flips, and the after-measurement is synthetic-control-only. That is a real coverage gap in the acceptance evidence, stated here as a declared one.
 
+### What landed under (b)
+
+`v2.compiler.wrap_decision` `wrap_decision_flow_gate` — the flow, not the position, as the decided unit. It projects `wrap_decision_gate` at the producer site and at the consumer site through the **same** authority (never a second lookup, so the two ends cannot disagree about the catalog), and refuses — typed, located, naming the carrier — when the catalog's own answers for the two positions differ. `wrap_decisions_equal` compares reference *layers*, not merely by-value against by-reference.
+
+**Deliberately not built: a fifth `TargetOwnershipUseSite` inhabitant.** Adding `OwnershipAtCallArgument` would be a fifth position opinion about a defect whose cause is that every position already holds its own. A missing inhabitant is the right fix only when the missing position is the one that should decide; here no position should decide alone. This is also why *53 of 54 at call-argument position* does not locate the defect: that is where rustc points, and the cause is in the field declaration.
+
+**Rung (§4b), stated with its distance to the ceiling.** This moves the class from silent wrongness — outside the ladder, emitted and compiled and wrong — to **mitigatable**: the line stops with a located refusal. It does **not** reach structural impossibility and must not be read as doing so; the invalid state stays writable, because a catalog may still state different layers at two positions and this function's only answer is to refuse the flow. The next rung is a modeled layer **transition** — `TargetValueExpression` carrying its current layer plus a total raise/lower/refuse over `(from, to)` — at which point an agreeing flow is *derived* rather than checked and the refusal narrows to genuinely unconvertible pairs. That is a carrier change, and model-before-implement puts it ahead of the pipeline edit rather than inside it.
+
+**Not wired into `06_translate` by this change.** The authority and its executing controls land; wiring the consuming seams is a separate motion with its own evidence.
+
+**Evidence, by execution.** Six new witnesses in `wrap_decision_predicate_test.dag`, green, alongside the six pre-existing ones unregressed. Both error directions are drawn from the live rust catalog by varying only flow direction over `Diagnostics`, whose rows already disagree by position (`OwnershipAtBindingProjection → ReferenceLayerRc`, `OwnershipAtFunctionParameter → ReferenceLayerOwned`): binding→param is the over shape, param→binding the under shape, and both must refuse.
+
+Two mutations were executed rather than asserted, and the profile is **not uniform**, so it is reported as measured:
+
+| mutation | RED | GREEN |
+|---|---|---|
+| `wrap_decision_gates_agree` forced `true` | over-wrap, under-wrap, distinct-layer | missing-row, both accept controls |
+| `wrap_decisions_equal` made layer-blind | distinct-layer only | everything else |
+
+The missing-row witness therefore does **not** discriminate this reconciliation — it is a regression control proving an underlying catalog miss still propagates through the flow gate rather than being swallowed by it. Calling it a disagreement control would be rung inflation. The distinct-layer witness earns its place from mutation two: `Rc` against `Box` is a real disagreement that a by-value-versus-by-reference comparison calls agreement, and every other witness passes under that bug.
+
 **The acceptance condition is two numbers, never one.** The populations are largely disjoint and oppositely signed, so a fix validated on a sample drawn from one direction will look correct, move about half the population, and make the other half worse. Any candidate must carry a discriminating control **in each direction**, and the after-measurement must show **both** counts falling, reported separately. 28→0 while 27→40 is a regression wearing a burn-down.
 
 ### Status of the reproduction

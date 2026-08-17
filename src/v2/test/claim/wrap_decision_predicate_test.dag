@@ -1,7 +1,7 @@
 module v2.test.claim.wrap_decision_predicate
 
 import v2.compiler.translate { translate_apply_use_site_ownership_to_projected_boundary }
-import v2.compiler.wrap_decision { wrap_decision_gate }
+import v2.compiler.wrap_decision { wrap_decision_gate, wrap_decision_flow_gate }
 import v2.extdeps.languages.rust {
   rust_named_edge,
   rust_sg2_type_expr_target_model,
@@ -15,6 +15,7 @@ import v2.std.compilers.target_model {
   TargetReferenceLayer,
   TargetTypeExprAtom,
   TargetTypeExprInstantiation,
+  OwnershipAtBindingProjection,
   OwnershipAtFunctionParameter,
   OwnershipAtFunctionReturn,
   OwnershipAtStructField,
@@ -248,7 +249,114 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
   )
 }
 
-data wrap_decision_composite_note: String = "Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."
+data wrap_decision_flow_note: String = "R1's two-direction controls. The acceptance condition for R1 is that a fix moves BOTH error directions, because the measured defect is ONE inconsistency producing opposite signs -- a producer's Rc<T> reaching a bare consumer over-wraps, a bare producer reaching an Rc<T> consumer under-wraps -- so a control drawn from one direction alone cannot distinguish the right fix from the position-based fix that moves half the population and worsens the other half. Both directions are drawn from the LIVE rust catalog rather than a synthetic fixture, by varying only the flow's direction over one carrier whose rows already disagree by position: Diagnostics is ReferenceLayerRc at OwnershipAtBindingProjection and ReferenceLayerOwned at OwnershipAtFunctionParameter, so binding-to-param is the over shape and param-to-binding is the under shape. wrap_decision_flow_gate must refuse BOTH; today's per-position gate accepts both and emits the producer's layer, which is the silent wrongness. The layer-discrimination control is the one that keeps wrap_decisions_equal honest: Node is ReferenceLayerRc at binding and ReferenceLayerBox at struct field, two DIFFERENT reference layers, and an implementation comparing only by-value against by-reference would call that agreement and pass every other control here. RED, executed rather than asserted, and the profile is reported exactly as measured because it is not uniform. Mutation one, wrap_decision_gates_agree forced to true: the over-wrap, under-wrap and distinct-layer witnesses all go RED; the missing-row witness and both accept witnesses stay GREEN. So the missing-row witness does NOT discriminate this reconciliation -- it is a regression control proving an underlying catalog miss still propagates through the flow gate rather than being swallowed by it, and saying it discriminates disagreement would be inflation. Mutation two, wrap_decisions_equal made layer-blind so any two WrapByReference count as equal: ONLY the distinct-layer witness goes RED, which is what earns that witness its place -- Rc against Box is a real disagreement that a by-value-versus-by-reference comparison calls agreement, and every other witness here passes under that bug. The agreement and inapplicable witnesses are the positive controls that stop a refuse-always implementation from earning a degenerate pass on the refusal half."
+
+fn wrap_decision_flow_rejects(
+  target: TargetModel,
+  source_carrier: Node,
+  producer_site: TargetOwnershipUseSite,
+  consumer_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_flow_gate(
+    target: target,
+    source_carrier: source_carrier,
+    producer_site: producer_site,
+    consumer_site: consumer_site
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn wrap_decision_flow_is_by_value(
+  target: TargetModel,
+  source_carrier: Node,
+  producer_site: TargetOwnershipUseSite,
+  consumer_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_flow_gate(
+    target: target,
+    source_carrier: source_carrier,
+    producer_site: producer_site,
+    consumer_site: consumer_site
+  ) {
+    Accepted { value: WrapGateDecided { decision: WrapByValue }, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+fn wrap_decision_flow_is_inapplicable(
+  target: TargetModel,
+  source_carrier: Node,
+  producer_site: TargetOwnershipUseSite,
+  consumer_site: TargetOwnershipUseSite
+) -> Bool {
+  match wrap_decision_flow_gate(
+    target: target,
+    source_carrier: source_carrier,
+    producer_site: producer_site,
+    consumer_site: consumer_site
+  ) {
+    Accepted { value: WrapGateInapplicable, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
+  wrap_decision_flow_rejects(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    producer_site: OwnershipAtBindingProjection,
+    consumer_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
+  wrap_decision_flow_rejects(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    producer_site: OwnershipAtFunctionParameter,
+    consumer_site: OwnershipAtBindingProjection
+  )
+}
+
+test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
+  wrap_decision_flow_rejects(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_node_node(),
+    producer_site: OwnershipAtBindingProjection,
+    consumer_site: OwnershipAtStructField
+  )
+}
+
+test fn wrap_decision_flow_missing_row_refuses() -> Bool {
+  wrap_decision_flow_rejects(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_probe_heap_node(),
+    producer_site: OwnershipAtFunctionReturn,
+    consumer_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
+  wrap_decision_flow_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_use_site_verdict_node(),
+    producer_site: OwnershipAtFunctionReturn,
+    consumer_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
+  wrap_decision_flow_is_inapplicable(
+    target: wrap_decision_bundle_absent_target(),
+    source_carrier: target_carrier_diagnostics_node(),
+    producer_site: OwnershipAtBindingProjection,
+    consumer_site: OwnershipAtFunctionParameter
+  )
+}
+
+data wrap_decision_composite_note: String ="Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."
 
 fn wrap_decision_composite_projected_arg() -> Node {
   target_type_expr_atom_emitted(

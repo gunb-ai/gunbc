@@ -3,6 +3,8 @@ module v2.compiler.wrap_decision
 import v2.std.compilers.target_model {
   TargetModel,
   TargetOwnershipUseSite,
+  WrapByReference,
+  WrapByValue,
   WrapDecision,
   WrapDecisionGate,
   WrapGateDecided,
@@ -142,6 +144,87 @@ fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagno
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+data wrap_decision_flow_reconciliation_note: String = "R1's construction half. wrap_decision_gate answers ONE position at a time, and every consumer of it -- here and in v1's seed emitter -- then acts on that answer alone. A value does not live at one position: it is produced at one and consumed at another, and when the two answers differ the emitted program carries a type error that no compiler stage located, because no stage ever compared them. Measured on the emitted corpus that defect is ten types and fourteen occurrences, every one wrapped at every signature occurrence and bare at one or more field occurrences, and it produces BOTH error directions from one inconsistency: a producer's Rc<T> assigned into a bare consumer is the over-wrap, a bare producer read into an Rc<T> consumer is the under-wrap. So the flow, not the position, is the unit that has to be decided. wrap_decision_flow_gate is that unit: it projects the SAME authority at both ends -- never a second lookup, so the two ends cannot disagree about the catalog -- and refuses, typed and located, when the catalog's own answers for the two positions differ. RUNG (DESIGN 4b), stated honestly because the distance to the ceiling is the point: this moves the class from silent wrongness (outside the ladder -- emitted, compiled, wrong, discovered only if rustc happens to catch it downstream) to MITIGATABLE -- the line stops with a located refusal naming the carrier. It does NOT reach structural impossibility and must not be read as doing so: the invalid state is still writable, because a catalog may still legitimately state different layers at two positions and this function's only answer to that is to refuse the flow. The next rung is a modeled layer TRANSITION -- the value expression carrying its current layer, and a total raise/lower/refuse function over (from, to) -- at which point an agreeing flow is derived rather than checked and this refusal narrows to the genuinely unconvertible pairs. That is deliberately not built here: it needs TargetValueExpression to carry its layer, which is a carrier change, and DESIGN's model-before-implement discipline puts that ahead of the pipeline edit rather than inside it. NOT WIRED INTO 06_translate BY THIS CHANGE: the seams that would consume it are the ones the ruling scoped, and wiring them is a separate motion with its own emitted-corpus evidence. What lands here is the authority and its executing controls in both directions."
+
+fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^wrap_decision_position_disagreement,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn wrap_decision_gates_agree(
+  producer: WrapDecisionGate,
+  consumer: WrapDecisionGate
+) -> Bool {
+  match producer {
+    WrapGateInapplicable =>
+      match consumer {
+        WrapGateInapplicable => true
+        WrapGateDecided { decision: _ } => false
+      }
+    WrapGateDecided { decision: p } =>
+      match consumer {
+        WrapGateInapplicable => false
+        WrapGateDecided { decision: c } => wrap_decisions_equal(a: p, c: c)
+      }
+  }
+}
+
+fn wrap_decisions_equal(a: WrapDecision, c: WrapDecision) -> Bool {
+  match a {
+    WrapByValue =>
+      match c {
+        WrapByValue => true
+        WrapByReference { layer: _ } => false
+      }
+    WrapByReference { layer: al } =>
+      match c {
+        WrapByValue => false
+        WrapByReference { layer: cl } => al == cl
+      }
+  }
+}
+
+fn wrap_decision_flow_gate(
+  target: TargetModel,
+  source_carrier: Node,
+  producer_site: TargetOwnershipUseSite,
+  consumer_site: TargetOwnershipUseSite
+) -> Outcome<WrapDecisionGate> {
+  bind_outcome(
+    o: wrap_decision_gate(
+      target: target,
+      source_carrier: source_carrier,
+      use_site: producer_site
+    ),
+    f: fn(producer_gate) {
+      bind_outcome(
+        o: wrap_decision_gate(
+          target: target,
+          source_carrier: source_carrier,
+          use_site: consumer_site
+        ),
+        f: fn(consumer_gate) {
+          if wrap_decision_gates_agree(
+            producer: producer_gate,
+            consumer: consumer_gate
+          ) {
+            outcome_accepted(producer_gate)
+          } else {
+            outcome_rejected(
+              wrap_decision_position_disagreement_diagnostic(
+                source_carrier: source_carrier
+              )
+            )
+          }
+        }
+      )
+    }
+  )
 }
 
 fn wrap_decision_sg_rc_bundle_apply_disposition(
