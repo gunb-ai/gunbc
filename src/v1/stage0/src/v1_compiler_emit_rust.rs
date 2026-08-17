@@ -60,7 +60,8 @@ pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, corpus_has_v1_seed_source_indices,
-    expand_type_for_field_access, expr_span, extend_scope, resolved_type_name,
+    expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
+    resolved_type_name,
 };
 use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
@@ -2519,8 +2520,7 @@ pub fn render_rust_alias_rhs_type(
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 1))
-        {
+        if is_where_refinement_type(n.clone()) {
             match n.children.clone().first().cloned() {
                 Some(base_te) => {
                     return render_rust_alias_rhs_type(
