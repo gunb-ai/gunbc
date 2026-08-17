@@ -3341,6 +3341,20 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
         .collect();
     let closure_index = build_multi_entry_index(&root_strings);
     for path in &entry_paths {
+        // A `.dag` file with no module declaration is not a module, so it has no
+        // dependency closure to derive and is not a regen entry. This is a structural
+        // fact, NOT a suppression of the loader's refusal: the entry-seed loop above
+        // already skips such a file for the same reason (`extract_module_path` is None),
+        // and the previous import walk likewise never admitted one. A file that DOES
+        // declare a module and still has no provenance keeps refusing, loudly.
+        //
+        // Live subject: src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag,
+        // a parser fixture fragment that is a bare `data` declaration.
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
         let entry = path.to_string_lossy().into_owned();
         for source in load_sources_for_entry_with_pool(&closure_index, &entry)? {
             let Some(module_path) = extract_module_path(&source.content) else {
