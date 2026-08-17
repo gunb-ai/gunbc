@@ -1,0 +1,25 @@
+module test.claim.char_at_unicode_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data char_at_unicode_witness_note: String = "CHARAT-0 discriminating control: char_at indexes Unicode code points, not UTF-8 bytes. A byte-offset implementation returns the wrong character at index 1 on \"aéb\" (continuation byte U+00A9 misread as ©) while code-point indexing returns U+00E9."
+
+fn ae_b_sample() -> String {
+  concat("a", concat(from_code_point(cp: 233), "b"))
+}
+
+test fn char_at_indexes_code_points_on_multibyte_text() -> Bool {
+  let s = ae_b_sample()
+  char_at(s: s, pos: 0) == "a"
+    && code_point(c: char_at(s: s, pos: 1)) == 233
+    && char_at(s: s, pos: 2) == "b"
+}
+
+test fn char_at_byte_offset_would_mismatch_at_index_one() -> Bool {
+  let s = ae_b_sample()
+  code_point(c: char_at(s: s, pos: 1)) != code_point(c: "©")
+}
+
+test fn string_length_counts_code_points_not_bytes() -> Bool {
+  string_length(s: ae_b_sample()) == 3
+}

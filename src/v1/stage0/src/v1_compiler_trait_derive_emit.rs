@@ -1778,6 +1778,75 @@ pub fn v1_clone_bounded_type_params(
     }
 }
 
+pub fn clone_impl_required_type_params_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.\n\nThey differ exactly on generic coproducts. An enum's declaration must NOT print a bound it earns from derive (derive supplies it per-impl, and w_coproduct_bare_payload_param_stays_bare pins that), while a CONSUMER cloning that enum must still be told the parameter is required. One map cannot hold both answers: seeding coproducts into the declaration record would print spurious enum bounds, and not seeding them anywhere leaves consumers with nothing to propagate from. So the seed differs and the fixpoint is shared.\n\nWHY THE GAP WAS INVISIBLE. The two axes have complementary blind spots. v1_type_expr_wf_needs_clone_param opens on a zero-children test, so well-formedness structurally cannot bound a BARE parameter — it only fires on a parameter occupying an argument position of an already-bounded declared type. The seed exists to cover the bare case and was switched off for coproducts. A generic coproduct with a bare payload fell between them and was bounded by nothing. Neither predicate is wrong read alone; the defect is the relation.\n\nMEASURED, at distinct-site grain over eleven entries. 142 A-class sites, of which 104 are fn signatures and only 6 are type declarations — so this is a fn-bound defect, not a declaration one. Thirteen signatures fail PARTIALLY, and they discriminate the mechanism: fold_list<T, A: Clone> misses T via Rc<im::Vector<T>>, resolve_probe<A: Clone, B> misses B via CacheProbe<B>, reconcile_grounded<A: Clone, R, E> misses R via ShowEffectiveRead<R>. Every parameter that earned its bound flows through a carrier that has one; every parameter that missed flows through a carrier that has none.\n\nWHY NO USAGE GATE. Bounding a fn that names Outcome<T> and never clones it would fabricate a requirement, since enum Outcome<T> declares no bound and the well-formedness justification does not transfer. Measured over the 03_ingest closure: of 21 generic fns taking one of these carriers in PARAMETER position, 21 clone that parameter. Zero would be spuriously bounded. The proxy is exact rather than approximate — derive emits impl<T: Clone>, so cloning the carrier IS the obligation. The one fn with no clone in its body has the carrier in return position only. A usage gate is therefore a later refinement, not a prerequisite; re-open it if the return-position population grows.\n\nNOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has no corpus declaration to seed from, so its Clone requirement must come from the target API's own impl requirements — trait_derive_emit_item_clone_bound_contract_fork_note, whose dissolution is that grounding. Of A's 64 generic-receiver sites, 30 are im::Vector and stay standing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_clone_impl_seed_for_item(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CloneBoundRound> {
+    {
+        let field_type_exprs = v1_item_field_type_exprs(item.clone());
+        item.params.clone().iter().cloned().fold(
+            round.clone(),
+            |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+                let param_name = generic_param_name_at(p.clone(), source_indices.clone());
+                if v1_item_type_param_needs_clone_bound_struct(
+                    param_name.clone(),
+                    field_type_exprs.clone(),
+                    source_indices.clone(),
+                ) {
+                    v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+    }
+}
+
+pub fn v1_clone_impl_required_type_params(
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    {
+        let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
+        let seeded = generic_type_names.clone().iter().cloned().fold(
+            Rc::new(CloneBoundRound {
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                added: 0,
+            }),
+            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                &type_decl_items,
+                type_name.clone(),
+            ) {
+                Some(item) => v1_clone_impl_seed_for_item(
+                    acc.clone(),
+                    type_name.clone(),
+                    item.clone(),
+                    source_indices.clone(),
+                ),
+                None => acc.clone(),
+            },
+        );
+        v1_clone_bound_fixpoint_loop(
+            generic_type_names.clone(),
+            type_decl_items.clone(),
+            seeded.bounds.clone(),
+            ((generic_type_names.clone().len() as i64) + 1),
+            source_indices.clone(),
+        )
+    }
+}
+
 pub fn v1_item_clone_bounded_param_names(
     item_name: String,
     generic_param_names: Rc<Vec<String>>,

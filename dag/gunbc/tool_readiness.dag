@@ -25,9 +25,12 @@ import extdeps.realization.emit_on_demand_host {
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
+  membership_plan_admitting_outcome,
   membership_tally,
 }
 import gunbc.ownership { Ownership, Ensured }
+
+type CliToolPinMemberAt = NonEmptyStr
 
 type UnpinnedToolFrontierRow {
   tool: CliTool
@@ -39,12 +42,12 @@ type ToolReadinessRefusalCause
   = ToolObservationMissing { tool_name: NonEmptyStr }
   | ToolObservationDuplicate { tool_name: NonEmptyStr, count: NonNegativeInt }
   | ToolMembershipNotConverged {
-      plan: MembershipPlan<Pin<CliTool>>,
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>,
       admission: PinAdmission<CliTool>
     }
   | ToolPinIntegrityRefused {
       cause: PinRefusalCause,
-      plan: MembershipPlan<Pin<CliTool>>
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>
     }
   | UnpinnedToolUndeclared
   | UnpinnedToolFrontierDuplicate { count: NonNegativeInt }
@@ -57,7 +60,7 @@ type ToolReadinessRefusal {
 type ToolReadiness
   = PinnedAdmitted {
       pin: Pin<CliTool>,
-      plan: MembershipPlan<Pin<CliTool>>
+      plan: MembershipPlan<Pin<CliTool>, CliToolPinMemberAt>
     }
   | PinnedRefused { refusals: List<ToolReadinessRefusal> }
   | UnpinnedFrontier {
@@ -78,14 +81,16 @@ fn tool_pin_ownership(pin: Pin<CliTool>) -> Ownership? {
 fn tool_pin_reconcile(
   desired: List<Pin<CliTool>>,
   observed: List<Pin<CliTool>>,
-) -> MembershipPlan<Pin<CliTool>> {
-  membership_reconcile(
-    desired: desired,
-    observed: observed,
-    key_of: cli_tool_pin_key_of,
-    key_eq: (a, b) => a == b,
-    value_eq: pin_value_eq,
-    ownership_of: tool_pin_ownership,
+) -> MembershipPlan<Pin<CliTool>, CliToolPinMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: cli_tool_pin_key_of,
+      key_eq: (a, b) => a == b,
+      value_eq: pin_value_eq,
+      ownership_of: tool_pin_ownership,
+    )
   )
 }
 
