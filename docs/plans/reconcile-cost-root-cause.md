@@ -64,13 +64,52 @@ gunbc.live_deploy.apply      4922ms  31 items  anc=15239 feN=620 feSig=8736 feVi
 cross product, a *symptom* of the type sizes; it ranks only 4th within its own module
 (20.2s) behind `host_effect_apply_gated` (44.6s), which has 34 arms.
 
-**Established** = the four measurements above. **Inferred, not yet proven** = that the per-call
-cost is structural work proportional to type size (unification / type equality walking the
-coproduct). The next measurement is a direct correlation of per-call ms against type node
-count across modules; it has not been run.
+**Type size contributes, and does NOT explain the outlier.** Two controlled fixtures, identity
+function so expression count is fixed at one call, only the type varying:
 
-Note `TypeEnv` already carries an `intern_table`, so identity-based comparison exists in the
-design. Whether the hot paths use it is exactly the open question.
+```
+ARITY   n variants      2    4    8   16   32   64  128
+        us/call        50   56   99   93  160  296  701     grows, ~linear above n=32
+
+BREADTH 32 variants x K Int fields   K=1    2    4    8   16
+        us/call                     175  205  333  636 1177   linear in total fields
+
+DEPTH   32 variants, payload nested D   D=0    2    4    8   16
+        us/call                        195  168  215  165  215   FLAT — no effect at all
+```
+
+So the traversal is a flat walk over immediate fields, not a recursive descent. But the largest
+type synthesizable here — 32 variants x 16 fields = 512 fields — costs **1.18 ms/call**, while
+`host_effect_realize` costs **113.3 ms/call** and its variants carry ~1-3 fields (~100 fields,
+predicting ~0.3 ms). **Arity is 670x short; breadth and depth together ~90x short.** Type size is
+true and insufficient; it is not the root cause.
+
+**The cost IS inside expression inference** (this was checked, because "ms per call" had been
+computed as module wall / call count, which would attribute item-level work to expressions):
+
+```
+gunbc.host_effect_realize   wall_us=259697135  rootIncl=259685651  OUTSIDE=11484 (0.004%)
+```
+
+`sum(exclusive)` equals `sum(root inclusive)` exactly, which is the arithmetic identity for a call
+tree and confirms the partition neither double-counts nor loses recursion time.
+
+**Two factors, one still unidentified.** Per-call cost by environment:
+
+```
+fixture (anc=165)                       0.2 - 1.2 ms/call
+gunbc.live_deploy.apply (anc=15239)    11.6 ms/call     ~50x above fixtures
+gunbc.host_effect_realize (anc=15056) 113.3 ms/call     ~9x above that
+```
+
+The earlier "environment size refuted" claim was scoped to the gap BETWEEN two real modules with
+near-identical environments, and stands at that scope. It does not license concluding environment
+is irrelevant: the fixture-to-corpus step is ~50x and is the larger factor. What remains genuinely
+open is the ~9x that separates this module from its control.
+
+**Scope of `amp = 1.0`:** no expression NODE is re-entered. It says nothing about repeated type
+comparisons, generic substitutions, or name lookups across different expressions; a relation-level
+amplification of 100x is fully compatible with it. That census has not been run.
 
 ## Hypotheses withdrawn, each by measurement
 
