@@ -9158,10 +9158,6 @@ fn corpus_has_v1_seed_source_indices(modules: List<TypedModule>) -> Bool {
     map_keys(m.type_env.source_indices) |> any(k => contains(k, "/v1/") || contains(k, "src/v1")))
 }
 
-fn rust_corpus_repr(has_v1_seed: Bool) -> RustCorpusRepr {
-  if has_v1_seed { HostNative } else { FaithfulFreeMonoid }
-}
-
 fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
@@ -9196,7 +9192,6 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
     clone_bounded_type_params: empty_map(),
     map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
-    corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed),
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
     fn_return_type: none
