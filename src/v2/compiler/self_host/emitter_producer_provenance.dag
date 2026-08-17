@@ -14,8 +14,32 @@ import v2.std.optional {
 }
 import v2.std.text { String }
 
-data emitter_producer_provenance_note: String = "Producer/qualification authority for emitted Rust: orthogonal EmitterProducer x EmissionQualification axes, replacing the SelfEmitted state-space conflation (session valiant-crab-382, calm-badger-682 ruling 2026-07-29). A ProducerEmissionReceipt is reachable only through mint_producer_emission_receipt, never as a hand-authored literal in a data row (review 44333), and a receipt advances along the qualification axis only through an admission its current state permits. Structural wall: a V2Emitter* producer is unwritable when v1.compiler.emit_rust is in the realized closure, which is what makes the closure carriers load-bearing rather than descriptive. The roster-authorization half of this module was deleted with the self-host frontier roster — see emitter_producer_provenance_roster_half_deleted_note."
+data emitter_producer_provenance_note: String = "Producer/qualification authority for emitted Rust: orthogonal EmitterProducer x EmissionQualification axes, replacing the SelfEmitted state-space conflation (session valiant-crab-382, calm-badger-682 ruling 2026-07-29). A ProducerEmissionReceipt is reachable only through mint_producer_emission_receipt, never as a hand-authored literal in a data row (review 44333), and a receipt advances along the qualification axis only through an admission its current state permits. Structural wall: a V2Emitter* producer is unwritable when v1.compiler.emit_rust is in the realized closure, which is what makes the closure carriers load-bearing rather than descriptive. The roster-authorization half of this module was deleted with the self-host frontier roster; the annotation above type EmitterProducer records what went and what survived."
 
+// HALF OF THIS MODULE WAS DELETED with v2.compiler.self_host.frontier, because that half had
+// exactly one subject: authorizing an EmitterProduced row on the 27-row self-host frontier
+// roster. Gone are the ProducerEmissionOracleRow population and its enrollment/transport-roster
+// joins, the executed-verdict authorization pipeline, AuthorizedEmitterProducedDisposition and
+// its registry bindings, the hand-forgery refusal controls, the ProducerQualifiedCountAxis
+// projections, and the five producer-qualified baselines. Every one of them answered a question
+// about roster rows; with no roster there are no rows to authorize, and the machinery could not
+// be reached even in principle.
+//
+// What survives is the part that was never about the roster: the EmitterProducer x
+// EmissionQualification axes, the realized-closure carriers and the seed-reachability wall over
+// them, the receipt type with its admission-gated advances, the single mint, and the structural
+// equalities. Its live consumers are v2.compiler.self_host.candidate_generation,
+// v2.compiler.self_host.v2_emitter_direct_rust_door_contract and
+// v2.lens.production_qualification_origin_probe — none of which ever read a roster row.
+//
+// An honest note on what the deletion removed in evidence terms: the forgery controls
+// (hand_forged_emitter_produced_authorization_fails_mint_consistency_holds and its siblings)
+// proved that an unauthorized EmitterProduced disposition was unwritable. That claim is not
+// weakened, it is RETIRED — the disposition type it guarded no longer exists, so there is no
+// state left to forge. DESIGN section 4b permits retiring evidence whose only subject is gone;
+// it forbids retiring evidence for a claim that survives. The surviving claims here — that a
+// V2Emitter receipt cannot be minted with the seed emitter in its realized closure, and that a
+// receipt cannot advance past its admission — keep their controls.
 type EmitterProducer
   = V1SeedEmitter
   | V2EmitterInterpreted
@@ -504,8 +528,3 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     Present { value: _ } => false
   }
 }
-data emitter_producer_provenance_roster_half_deleted_note: String = "HALF OF THIS MODULE WAS DELETED with v2.compiler.self_host.frontier, because that half had exactly one subject: authorizing an EmitterProduced row on the 27-row self-host frontier roster. Gone are the ProducerEmissionOracleRow population and its enrollment/transport-roster joins, the executed-verdict authorization pipeline, AuthorizedEmitterProducedDisposition and its registry bindings, the hand-forgery refusal controls, the ProducerQualifiedCountAxis projections, and the five producer-qualified baselines. Every one of them answered a question about roster rows; with no roster there are no rows to authorize, and the machinery could not be reached even in principle.
-
-What survives is the part that was never about the roster: the EmitterProducer x EmissionQualification axes, the realized-closure carriers and the seed-reachability wall over them, the receipt type with its admission-gated advances, the single mint, and the structural equalities. Its live consumers are v2.compiler.self_host.candidate_generation, v2.compiler.self_host.v2_emitter_direct_rust_door_contract and v2.lens.production_qualification_origin_probe — none of which ever read a roster row.
-
-An honest note on what the deletion removed in evidence terms: the forgery controls (hand_forged_emitter_produced_authorization_fails_mint_consistency_holds and its siblings) proved that an unauthorized EmitterProduced disposition was unwritable. That claim is not weakened, it is RETIRED — the disposition type it guarded no longer exists, so there is no state left to forge. DESIGN section 4b permits retiring evidence whose only subject is gone; it forbids retiring evidence for a claim that survives. The surviving claims here — that a V2Emitter receipt cannot be minted with the seed emitter in its realized closure, and that a receipt cannot advance past its admission — keep their controls."
