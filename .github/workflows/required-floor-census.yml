@@ -1,0 +1,38 @@
+name: required-floor-census
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: required-floor-census
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  census:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      - name: Build census binary
+        run: cargo build --release -p v1-compiler --bin required_floor_failure_census
+      - name: Run expected-red failure census
+        run: |
+          ROOT=$(git rev-parse --show-toplevel)
+          cd "$ROOT"
+          ./target/release/required_floor_failure_census docs/probes/floor_cut_name_resolution_census.tsv
+          python3 docs/probes/floor_cut_name_resolution_partition.py \
+            docs/probes/floor_cut_name_resolution_census.tsv \
+            -o docs/probes/floor_cut_name_resolution_partition.tsv
+      - name: Upload partition artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-cut-name-resolution-partition
+          path: |
+            docs/probes/floor_cut_name_resolution_census.tsv
+            docs/probes/floor_cut_name_resolution_partition.tsv
