@@ -3410,6 +3410,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: s } => s.params
         Absent => []
       }
+      let call_sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
@@ -3435,12 +3436,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } }
       } else {
 
-        let sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
-        let value_params = sig_split.value_params
-        let generic_names = sig_split.generic_names
+        let value_params = call_sig_split.value_params
+        let generic_names = call_sig_split.generic_names
+        let formals_by_index = fold(value_params |> enumerate, init: empty_map(), f: (m, fp) => map_insert(m, fp.first, fp.second))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
-          let formal_lookup = value_params |> skip(pair.first) |> first
+          let formal_lookup = map_get(formals_by_index, pair.first)
           let formal_raw = match formal_lookup {
             Present { value: p } => param_node_type_expr(n: p)
             Absent => type_variable_node(id: "callable_param")
@@ -3457,11 +3458,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
           ArgGenericFoldState {
-            results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+            results: concat([ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }], st.results),
             subst: next_subst
           }
         )
-        final_state
+        ArgGenericFoldState { results: final_state.results |> reverse, subst: final_state.subst }
       }
       let arg_infer_results = arg_call.results
 
@@ -3484,7 +3485,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
-        let value_params_for_check = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices).value_params
+        let value_params_for_check = call_sig_split.value_params
         let arg_shape_diags = direct_call_shape_diags(
           func_name: func_name,
           sig_params: sig_params,
