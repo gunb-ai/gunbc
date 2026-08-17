@@ -11,6 +11,8 @@ import product.compute_board.admission {
 import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
 import product.compute_board.analog {
   AnalogCircuitIntent,
+}
+import product.electrical.connectivity {
   ElectricalNet,
 }
 import product.compute_board.spice_projection {

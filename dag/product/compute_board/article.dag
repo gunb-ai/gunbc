@@ -16,16 +16,18 @@ import product.compute_board.digital_control {
 import product.compute_board.analog {
   AnalogCircuitIntent,
   CapacitorInstance,
-  ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
   ElectricalModelCited,
-  ElectricalNet,
-  ElectricalTerminalRef,
   IdealLumped,
   IndependentVoltageSourceInstance,
-  NetIdentity,
   ResistorInstance,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
   TerminalIdentity,
   terminal_ref,
 }
