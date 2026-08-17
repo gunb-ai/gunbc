@@ -19,8 +19,9 @@
 //! CHECKABLE RECEIPT: for each (length, position) pair, mean per-call elapsed time over
 //! `CHAR_AT_PROBE_REPS` repeated calls through the interpreter — printed as TSV.
 //!
-//! DISSOLUTION: delete this bin alongside `json_parse_scaling_probe.rs` (see its scaffold
-//! marker `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER`) when CHARAT-0 acceptance is
+//! DISSOLUTION (own trigger, independent of `json_parse_scaling_probe.rs`'s — see
+//! `char_at_scaling_probe_dissolution` in `dag/gunbc/char_at_scaling_probe_support.dag`,
+//! DESIGN §5's same-unit rule): delete this bin when CHARAT-0's `char_at` O(1) property is
 //! floor-enrolled with a modeled witness, or when this measurement refutes the hypothesis.
 //! Receipt: `rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER src/v1/stage0` until deletion.
 
