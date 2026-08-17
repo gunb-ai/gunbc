@@ -1,7 +1,8 @@
 # Root B — primitive representation fork: live measurement and root cause (2026-08-16)
 
-Session `eager-deer-389`, working the Root B lane of
-[the self-host cargo refusal root partition](../plans/self-host-cargo-refusal-root-partition.md).
+Session `eager-deer-389`, working the Root B lane of the self-host cargo-refusal root partition.
+(That partition has no document in this tree; it is carried as dashboard work items, so it is named
+here rather than linked — a link to a document that does not exist is a dangling doc-graph edge.)
 
 **Every number here was measured today** with the instrument that section names
 (`gunbc compile --target rust`, then `cargo build` on the emitted crate), in this session's own
