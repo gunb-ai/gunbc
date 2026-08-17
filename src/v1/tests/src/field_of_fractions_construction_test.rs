@@ -103,6 +103,35 @@ fn field_of_fractions_authority_declares_num_and_denom() {
     );
 }
 
+/// Negative control for the assertion above.
+///
+/// The shape assertion reads whatever `find_decl` returns, so on its own a green result is
+/// consistent with the walker having found some other node, or with a hollow declaration
+/// whose emptiness nobody looks at. This applies the identical read to a deliberately
+/// bodyless declaration of the same name and shows it reports NO fields -- so the green in
+/// `field_of_fractions_authority_declares_num_and_denom` is a fact about
+/// `dag/std/algebra.dag`, not about the read being unable to fail.
+///
+/// The hollow shape is not hypothetical: it is what the type was before #7210 grounded it,
+/// and it emits as `PhantomData` rather than a pair.
+#[test]
+fn the_shape_assertion_reports_a_hollow_declaration_as_fieldless() {
+    const HOLLOW: &str = "module test.hollow\n\ntype FieldOfFractions<R> {\n}\n";
+    let parsed = parse_source_named("hollow.dag", HOLLOW);
+    assert!(
+        parsed.error.is_none(),
+        "hollow specimen should parse, got {:?}",
+        parsed.error
+    );
+    let root = parsed.module.as_ref().expect("hollow specimen module");
+    let decl = find_decl(root, "FieldOfFractions").expect("hollow specimen declares the name");
+    let fields: Vec<&str> = decl.children.iter().map(|c| c.name.as_str()).collect();
+    assert!(
+        !(fields.contains(&"num") && fields.contains(&"denom")),
+        "a bodyless declaration must not satisfy the shape assertion, got {fields:?}",
+    );
+}
+
 #[test]
 fn field_of_fractions_pair_stays_boxed_record_not_native_collapse() {
     let source = Rc::new(SourceFile {
