@@ -171,3 +171,43 @@ STILL OPEN, because more than one repair is defensible and this is load-bearing:
 
 These differ in blast radius and in which open thread they discharge, not in
 whether the current declaration is wrong. That part is settled.
+
+---
+
+## REPAIRED 2026-08-17: `type Nat = Int where range(min: 0)`
+
+The repair choice left open above is taken, under the operator's ruling that the
+bar is compilation and tests rather than reference-identity preservation.
+
+WHICH OPTION, AND WHY IT COLLAPSED TO THE SMALLEST ONE. Option 1 (ground the
+carrier, add a semiring value) is correct; the semiring VALUE half of it turned
+out to be unwarranted. A census of `.add`/`.zero`/`.mul`/`.one` against anything
+Nat-shaped returns 7 hits, all unrelated -- prose in design_document.dag and a
+`rows.add`/`rows.zero` helper in body_lowering. NOTHING in the corpus consumes a
+Nat as an operations record. Declaring one to mirror v2 would be adding structure
+no consumer wants, which §2 prices as redundant work, so the repair is the carrier
+alone.
+
+Option 2 (dissolve onto v2's `Zero | Succ`) is the terminal §3 shape and is NOT
+taken here, for a reason that is decisive rather than a preference: a Peano
+coproduct does not admit an integer literal at a field-init site, so it would
+leave all 50 rows red -- it fixes the fork while failing the bar. It stays a
+DESIGN open thread, coupled to `Int = GroupCompletion<Nat>`.
+
+Option 3 (ground Magnitude first) is dissolved rather than deferred: with the
+carrier grounded on Int, the bodyless `Magnitude` is no longer load-bearing for
+Nat at all, so the hollow-alias thread and this one are now independent.
+
+WHY THIS SPELLING. `Int where range(min: 0)` is the tree's existing idiom for
+exactly this concept -- std.types declares EpochSecs, EpochMs, Port, HttpStatus,
+RetryCount and Char the same way -- so it introduces no new vocabulary, and a
+refinement-over-Int is what the field-init judge already admits. It also makes
+std.nat self-consistent for the first time: nat_compare, nat_max and nat_min
+order two Nats with `<` and `>`, which the previous declaration made unwritable.
+
+WHAT IS NOT CLAIMED. Compilation of the 50 rows is EXPECTED, not yet observed --
+the verifying run is dispatched separately, and this section will be corrected
+rather than quietly amended if the expectation fails. This also does not close
+the two-Nat-authority fork; it corrects the wrong declaration in one of them.
+1,571 `std.nat.Nat` annotations exist in tree and every one of them reads as a
+magnitude, which is the population this repair serves.

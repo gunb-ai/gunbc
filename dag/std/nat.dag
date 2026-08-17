@@ -1,7 +1,22 @@
 module std.nat
 
 
-type Nat = CommutativeSemiring<std.magnitude.Magnitude>
+// A natural number is a CARRIER, not an operations table. The prior declaration
+// -- Nat = CommutativeSemiring<Magnitude> -- said a natural number IS a record of
+// {add, zero, mul, one}, naming the STRUCTURE where the carrier belonged. Its own
+// module contradicted it: nat_compare and nat_max order two Nats with `<` and `>`,
+// which no operations-record admits. The import era never made a consumer check
+// the declaration, so the contradiction sat unobserved rather than being allowed.
+//
+// The semiring is a VALUE the carrier inhabits (v2.std.nat models it that way, and
+// DESIGN §4 states the rule: operations come from inhabitance, as Int.add derives
+// from Int inhabiting a ring). No such value is declared here because nothing in
+// the corpus consumes a Nat's .add/.zero/.mul/.one -- adding one now would be
+// speculative structure, not grounding.
+//
+// `Int where range(min: 0)` is the tree's existing idiom for exactly this shape:
+// std.types declares EpochSecs, EpochMs and four others the same way.
+type Nat = Int where range(min: 0)
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
