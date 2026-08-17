@@ -11,7 +11,7 @@ use im::HashMap;
 use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
 use crate::v1_compiler_infer_types::normalize_access_type_node;
-use crate::v1_interpreter::{sorted_fields, InterpContext, InterpResult, Value};
+use crate::v1_interpreter::{sorted_fields, str_value, InterpContext, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
     field_node_type_expr, find_child_named, inferred_to_node, Connective, ExprData, InferredNode,
@@ -531,7 +531,7 @@ fn projection_atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
                             variant_name: ctx.sym("Atom"),
                             fields: Rc::new(vec![(
                                 ctx.sym("identity"),
-                                Value::Str(identity.to_string()),
+                                str_value(identity.to_string()),
                             )]),
                         },
                     )]),
@@ -562,7 +562,7 @@ fn projection_edge_named(ctx: &InterpContext, name: &str, target: Value) -> Valu
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
+                    fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -586,7 +586,7 @@ fn projection_node_record(ctx: &InterpContext, projection_kind: &str, edges: Vec
                             variant_name: ctx.sym("Atom"),
                             fields: Rc::new(vec![(
                                 ctx.sym("identity"),
-                                Value::Str(projection_kind.to_string()),
+                                str_value(projection_kind.to_string()),
                             )]),
                         },
                     )]),
@@ -1104,7 +1104,7 @@ mod projection_marshal_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
     use super::{marshal_data_initializer_projection, typechecked_subject_absent_projection};
 
@@ -1145,7 +1145,7 @@ mod projection_marshal_tests {
                                 .iter()
                                 .find(|(k, _)| *k == identity_key)
                                 .and_then(|(_, v)| match v {
-                                    Value::Str(s) => Some(s.clone()),
+                                    Value::Str(s) => Some(s.to_string()),
                                     _ => None,
                                 }),
                             _ => None,

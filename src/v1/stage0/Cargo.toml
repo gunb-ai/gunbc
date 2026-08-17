@@ -78,6 +78,17 @@ path = "src/bin/claim_batch.rs"
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
 
+# CHARAT-0 / STR-RC-0 measurement scaffold (not floor-enrolled).
+# Local transport for `extdeps.languages.json.parse` `parse_json` interpreter scaling.
+# Modes: `scaling` (sub-40KB grid), `large` (100/200/507KB decisive regime), plus
+# `survival` and `memo_receipt` for mechanism receipts.
+# DISSOLUTION: delete when CHARAT-0 string-indexing acceptance enrolls a floor witness
+# (or STR-RC-0 scaffold retires), or when large-regime measurement refutes and reverts.
+# Carrier: `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER` in json_parse_scaling_probe.rs.
+[[bin]]
+name = "json_parse_scaling_probe"
+path = "src/bin/json_parse_scaling_probe.rs"
+
 # Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
 # Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
 [[bin]]
@@ -89,26 +100,12 @@ path = "src/bin/discover_owned_data.rs"
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
 
-# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — per-module emit-frontier survey host transport.
-# Authority: module census reads `compiler_frontier_sweep_order` from `frontier.dag` at runtime (no parallel roster).
-# NOT floor-enrolled — long-lane local recipe via `frontier_probe_survey_transport.dag`.
-# CHECKABLE RECEIPT: census before=27 (`compiler_frontier_roster_count`); after shrink=0 LOC when manifest witness greens.
-# Bin LOC: 821 (origin/main) → 1088 (+267 Lane 2 assemble_detail/overlap manifest serialize; see frontier_probe_survey_transport_scaffold_note).
-# DISSOLUTION: `gunbc.plans.wave2_prep_design` §2.3 + `^migrate_when_frontier_per_module_probe_receipt_binds`; then delete bin.
-[[bin]]
-name = "frontier_probe_survey"
-path = "src/bin/frontier_probe_survey.rs"
 
 # CI2-0 Commit B sweep driver — local recipe only (NOT floor-enrolled, not WitnessBin-addressed):
 # per-entry canonical realization sweep over the frontier-probe overlay transport.
 [[bin]]
 name = "realization_sweep_survey"
 path = "src/bin/realization_sweep_survey.rs"
-
-# Whole-tree v2 parse regression scanner (host transport; one harness, N files).
-[[bin]]
-name = "v2_whole_tree_parse_scan"
-path = "src/bin/v2_whole_tree_parse_scan.rs"
 
 # Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
@@ -284,17 +281,6 @@ path = "src/bin/codex_app_server_stdio_session.rs"
 [[bin]]
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
-
-# SCAFFOLD (#6967 human-triage tool) — ad hoc benign/genuine split report over the
-# gate's single-authority join (resolution_divergence_silent_pick_genuine_rows), on
-# top of the same closure-scoped census the gate itself consumes. Not a CI consumer —
-# resolution_divergence_census --closure-scoped is the gate's own binary; this is for
-# human triage of a red run. DISSOLUTION: delete when the falsifier_silent_pick_gate
-# telemetry class dissolves (§13 unique-on-chain resolution ships, per
-# falsifier_silent_pick_gate_note in dag/gunbc/ci_layer_roots.dag).
-[[bin]]
-name = "silent_pick_crosscheck"
-path = "src/bin/silent_pick_crosscheck.rs"
 
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under

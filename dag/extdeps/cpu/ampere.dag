@@ -7,15 +7,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.types {
-  ProcessorThermalLimits,
-  CpuL1CacheGeometry,
-  CpuL2CacheGeometry,
-  CpuL3CacheGeometry,
-  CacheGeometryCitation,
-  CpuModelCatalogRow,
-  CpuSocket,
-  LandGridArray,
-}
+  ProcessorCoolingMount,
+  SocketedLandGrid, CacheGeometryCitation, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SocketFactCitation }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -138,7 +131,39 @@ data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
 // authority, and one product's row was silently standing in as one. The cost lands the first time
 // a Max-specific fact rides that reference, or the first time someone edits the Max row believing
 // it governs only Max.
-data ampere_lga4926_socket: CpuSocket = CpuSocket { package: LandGridArray, contact_count: 4926 }
+//
+// The platform owner rides on the family row for the same reason the rest of it does: which
+// platform an LGA4926 socket belongs to is a family fact, not a per-SKU one, and a contact count
+// alone does not identify a socket.
+// THE MOUNT DESIGNATION IS THE ONE THE DATASHEETS ATTEST, not a name minted here. ILM4926 is named
+// by two Ampere datasheets and the OCP Mt. Jade specification, and extdeps.cpu_attachment.ilm4926
+// carries that attestation and the open question of which physical part it denotes. For the cooling
+// question that ambiguity does not bite: whatever ILM4926 turns out to name, it is the retention
+// interface a cooler bolts to, which is exactly the fact a mount identity is for.
+data ampere_lga4926_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
+  platform_owner: ampere_vendor,
+  designation: "ILM4926",
+}
+
+data ampere_lga4926_socket: CpuSocket = CpuSocket {
+  platform_owner: ampere_vendor,
+  termination: SocketedLandGrid,
+  contact_count: 4926,
+  cooling_mount: ampere_lga4926_cooling_mount,
+}
+
+// The citations sit beside the family socket they ground, not on each SKU row, because the fact
+// they cite is the family's.
+data socket_lga4926_citations: List<SocketFactCitation> = [
+  SocketFactCitation {
+    field: "package",
+    authority: ampere_altra_rev_a1_datasheet_authority,
+  },
+  SocketFactCitation {
+    field: "contact_count",
+    authority: ampere_altra_rev_a1_datasheet_authority,
+  },
+]
 
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
@@ -149,6 +174,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(183),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -167,6 +193,7 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(124),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -189,3 +216,10 @@ data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
 }
 
 data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
+
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
+// "every Ampere processor modelled here", edited beside the rows it names.
+data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+  altra_max_m12830_catalog,
+  altra_q6430_catalog,
+]

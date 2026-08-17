@@ -1,5 +1,11 @@
 module gunbc.spark_serving_converge_plan
 
+import gunbc.spark_serving_observed_members {
+  SparkServingObservedMemberProjection,
+  SparkServingObservedMembers,
+  SparkServingObservedMembersRefused,
+}
+
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, serialize_content_hash, Fnv1a64 }
 import product.placement_supply { HostIdentity }
@@ -7,6 +13,7 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.membership_reconcile { MembershipPlan, MemberAction, membership_write_count }
 import gunbc.spark_serving_membership {
   SparkServingMember,
+  SparkServingMemberAt,
   SparkServingLingerAddress,
   spark_serving_member,
   spark_serving_serving_principal,
@@ -14,7 +21,9 @@ import gunbc.spark_serving_membership {
   spark_serving_executor_linger_disabled_state_digest,
   spark_serving_membership_reconcile,
   spark_serving_membership_noop,
+  spark_serving_desired_members,
 }
+import gunbc.spark_serving_release { SparkServingOccurrence, SparkServingRelease }
 import gunbc.spark_serving_member_realization {
   spark_serving_install_effects_for_member_action,
   spark_serving_install_effects_include,
@@ -27,6 +36,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_held_lease,
   fleet_converge_apply_shell,
   TimerRetirementMember,
+  TimerRetirementMemberAt,
   CapMember,
   timer_retirement_plan,
   membership_plan_lines_timer,
@@ -77,7 +87,7 @@ fn spark_serving_linger_observed_members(
 fn spark_serving_linger_membership_plan(
   host: HostIdentity,
   linger_enabled: Bool,
-) -> MembershipPlan<SparkServingMember> {
+) -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
   spark_serving_membership_reconcile(
     desired: [spark_serving_desired_linger_member(host: host)],
     observed: spark_serving_linger_observed_members(host: host, linger_enabled: linger_enabled),
@@ -85,7 +95,7 @@ fn spark_serving_linger_membership_plan(
 }
 
 fn fleet_converge_spark_serving_typed_action(
-  action: MemberAction<SparkServingMember>,
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
 ) -> FleetConvergeSparkServingTypedAction? {
   match spark_serving_install_effects_for_member_action(action: action) {
     Present { value: effects } =>
@@ -99,23 +109,54 @@ fn fleet_converge_spark_serving_typed_action(
   }
 }
 
+// A PLANNED MEMBER THAT DOES NOT TRANSLATE REFUSES; IT IS NOT DROPPED.
+//
+// This projection used to be `flat_map` with `Absent => []`, which discarded any action carrying no
+// install effects and produced a SHORTER row list with no diagnostic. The only action that reaches
+// that arm is `MemberRemovalRefused` -- itself a refusal, so the drop erased a refusal by silently
+// succeeding, and the artifact then reported a typed_row_count that did not cover its own plan.
+//
+// Its observed frequency was zero BY CONSTRUCTION: the only live plan is linger-only and linger
+// always translates, so nothing ever exercised the arm. That is what made it worth closing before
+// the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
+type SparkServingTypedActionProjection
+  = SparkServingTypedActionsProjected { rows: List<FleetConvergeSparkServingTypedAction> }
+  | SparkServingTypedActionsRefused { cause: String }
+
 fn fleet_converge_spark_serving_typed_actions(
-  plan: MembershipPlan<SparkServingMember>,
-) -> List<FleetConvergeSparkServingTypedAction> {
-  flat_map(plan.actions, a =>
+  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+) -> SparkServingTypedActionProjection {
+  let rows = flat_map(plan.actions, a =>
     match fleet_converge_spark_serving_typed_action(action: a) {
       Present { value: row } => [row]
       Absent => []
     }
   )
+  if length(rows) == length(plan.actions) {
+    SparkServingTypedActionsProjected { rows: rows }
+  } else {
+    SparkServingTypedActionsRefused {
+      cause: join([
+        "spark serving typed actions refused: ", to_string(length(plan.actions)),
+        " planned member actions projected to only ", to_string(length(rows)),
+        " typed rows, so a planned member would have been dropped from the frozen artifact",
+      ], ""),
+    }
+  }
 }
 
 fn spark_serving_fleet_converge_apply_shell(
-  timer_plan: MembershipPlan<TimerRetirementMember>,
+  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
 ) -> String {
   fleet_converge_apply_shell(timer_plan: timer_plan)
 }
 
+// DECLARED RESIDUE, named rather than left to be found. This function propagates a typed-action
+// refusal but not its CAUSE: `FleetConvergePlanArtifact?` has no arm to carry one, so the wet slice
+// renders the generic `plan-refused` verdict and a reader cannot tell a dropped member from a
+// non-Spark host. The arm is unreachable under the linger-only plan, so this is a bounded gap and
+// not a live one. Trigger: it dissolves with the artifact return type, which the full-population
+// cutover has to widen anyway -- that is the commit where the cause gets somewhere to go.
 fn spark_serving_fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -131,8 +172,30 @@ fn spark_serving_fleet_converge_plan_artifact(
       host: host_identity,
       linger_enabled: linger_enabled,
     )
-    let spark_rows = fleet_converge_spark_serving_typed_actions(plan: linger_plan)
-    let subject = fleet_converge_plan_subject(
+    match fleet_converge_spark_serving_typed_actions(plan: linger_plan) {
+      SparkServingTypedActionsRefused { cause: _ } => none
+      SparkServingTypedActionsProjected { rows: spark_rows } =>
+        spark_serving_fleet_converge_plan_artifact_from_rows(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          linger_plan: linger_plan,
+          spark_rows: spark_rows,
+        )
+    }
+  }
+}
+
+fn spark_serving_fleet_converge_plan_artifact_from_rows(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  linger_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  spark_rows: List<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
@@ -200,7 +263,6 @@ fn spark_serving_fleet_converge_plan_artifact(
         }
       _ => Absent
     }
-  }
 }
 
 fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool {
@@ -222,3 +284,37 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
     none
   }
 }
+
+// THE FULL-POPULATION PLAN. `spark_serving_linger_membership_plan` above reconciles a single-element
+// desired list, so three of the four modeled members were never planned and the install effects that
+// act on them could never be selected. This reconciles the whole declared population against what was
+// actually observed.
+//
+// It refuses rather than planning when the observation could not be made: a refused observation
+// rendered as an empty observed population would plan every member as an addition against a host
+// nobody saw.
+fn spark_serving_full_membership_plan(
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingFullMembershipPlan {
+  match projection {
+    SparkServingObservedMembersRefused { cause: cause } =>
+      SparkServingFullMembershipPlanRefused { cause: cause }
+    SparkServingObservedMembers { members: observed, unit_observed: unit_observed } =>
+      SparkServingFullMembershipPlanReady {
+        plan: spark_serving_membership_reconcile(
+          desired: spark_serving_desired_members(
+            occurrence: occurrence,
+            serving_release: serving_release,
+          ),
+          observed: observed,
+        ),
+        unit_observed: unit_observed,
+      }
+  }
+}
+
+type SparkServingFullMembershipPlan
+  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool }
+  | SparkServingFullMembershipPlanRefused { cause: String }

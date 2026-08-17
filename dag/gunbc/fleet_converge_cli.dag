@@ -52,7 +52,13 @@ import gunbc.fleet_intent_network {
 }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
-  reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
+  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
+
+WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
+
+WHAT REACHES THIS INTERFACE NOW. The modeled convergence spine — gunbc.fleet_converge_timer -> gunbc.fleet_converge_apply -> gunbc.host_effect_realize host_effect_apply — consuming modeled desired state and native host-effect realizations. The stage0 driver refuses the converge and serve verbs with a typed status-2 reason naming that spine.
+
+WHY THE HANDLER WAS NOT REBUILT, since not-rebuilt is a decision and not an omission. The cheapest available implementation while the frozen v1 engine stands is resolve-a-.dag-entry plus build-an-interpreter-context plus run, and that is precisely why it is wrong: it would make the interpreter load-bearing for a capability at the moment two lanes are deleting it, converting removable debt into an architectural dependency (DESIGN §3, the deferred-deletion consequence catalogue). The Rust side carries no converge logic, and this row is not a scaffold pending dissolution: nothing here dissolves, because nothing temporary was built."
 }
 
 // SparkManagedAccessUnmeasured is the refusal for a Spark whose managed access nobody has looked

@@ -8,10 +8,6 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
   SelfHostWetReceiptBinding,
   find_wet_receipt_binding
 }
-import v2.compiler.self_host.frontier {
-  CompilerModuleFrontierRow,
-  compiler_frontier_roster
-}
 import v2.std.algebra { length }
 import v2.std.collection {
   List
@@ -182,31 +178,10 @@ fn schedule_entry_from_binding(b: SelfHostWetReceiptBinding) -> ScheduleWitnessE
   self_host_wet_entry(entry: b.entry, f: b.function)
 }
 
-fn frontier_row_wet_entries_if_enrolled(row: CompilerModuleFrontierRow) -> List<ScheduleWitnessEntry> {
-  match find_wet_receipt_binding(module_path: row.module_path) {
-    Present { value: b } => [schedule_entry_from_binding(b: b)]
-    Absent => []
-  }
-}
+data wet_enrollment_roster_term_deleted_note: String = "The frontier-enrolled term is gone with the self-host frontier roster, and it was already empty. falsifier_self_host_wet_entries formerly appended a fold over the roster that admitted a row only when find_wet_receipt_binding matched its module_path; no row matched, which is precisely what falsifier_self_host_wet_template_only_holds asserted by requiring that term to have length zero. So the wet falsifier lane ran on template entries alone before the deletion and runs on template entries alone after it, with no entry added, removed or reordered.
 
-fn falsifier_self_host_wet_frontier_enrolled_entries() -> List<ScheduleWitnessEntry> {
-  fold(
-    compiler_frontier_roster,
-    init: [],
-    f: fn(acc, row) {
-      concat(acc, frontier_row_wet_entries_if_enrolled(row: row))
-    }
-  )
-}
+That gate is retired rather than weakened: it claimed the roster enrolls nothing, and there is no roster left to enroll anything. What survives is the binding lookup itself (find_wet_receipt_binding, schedule_entry_from_binding), which is keyed on a module path and needs no roster to be asked."
 
 fn falsifier_self_host_wet_entries() -> List<ScheduleWitnessEntry> {
-  concat(
-    falsifier_self_host_wet_template_entries,
-    falsifier_self_host_wet_frontier_enrolled_entries()
-  )
-}
-
-fn falsifier_self_host_wet_template_only_holds() -> Bool {
-  length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0
-    && length(xs: falsifier_self_host_wet_entries()) == length(xs: falsifier_self_host_wet_template_entries)
+  falsifier_self_host_wet_template_entries
 }

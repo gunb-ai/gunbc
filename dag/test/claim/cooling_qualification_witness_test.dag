@@ -1,11 +1,26 @@
 module test.claim.cooling_qualification_witness
 
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.vendor.amd { amd }
 import std.types { Bool, List, String }
 import std.measure { watt }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.cpu.types { CpuSocket, LandGridArray }
+import extdeps.cpu.amd {
+  ryzen_5_3600_catalog,
+  ryzen_9_7950x3d_catalog,
+  amd_am4_cooling_mount,
+}
+import extdeps.cpu.types {
+  CpuSocket,
+  LandGridArray,
+  ProcessorCoolingMount,
+  SocketedLandGrid,
+  SocketedPinGrid,
+  cooling_mount_eq,
+  cpu_socket_eq,
+}
 import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import gunbc.fleet_physical_inventory {
   cooler_srv3,
@@ -17,7 +32,7 @@ import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
   CoolerDesignPowerBelowProcessorTdp,
-  CoolerSocketDoesNotMatchProcessorSocket,
+  CoolerMountDoesNotMatchProcessorMount,
   BaseboardNotInCoolerSupportedPopulation,
   InstalledCoolingRealization,
   InstalledCoolingUnobserved,
@@ -26,7 +41,6 @@ import product.cooling_qualification {
   installed_cooling_verdict_for_host,
   cooling_catalog_verdict,
   cooling_catalog_verdict_admits_qualification,
-  installed_cooling_verdict_for_host,
 }
 
 // The live srv3 realization, rebuilt here from the same cited catalog rows the fleet binds, so
@@ -51,13 +65,16 @@ test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
   }
 }
 
-// Control 2: changing the cooler socket refuses. A cooler whose contact count differs is a
-// different socket even where the package family agrees.
-test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
-  let wrong_socket_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+// Control 2: a cooler built for a DIFFERENT RETENTION refuses. The fixture also differs in contact
+// count, but that is now incidental rather than the mechanism: what drives this refusal is the mount
+// designation, ILM4189 against the board's ILM4926. The name and comment used to say socket, which
+// stopped being true when the qualifier moved to the mount -- a control that describes a mechanism
+// it no longer exercises is the same stale-claim class this PR corrects in the model.
+test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool {
+  let wrong_mount_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
-    socket: CpuSocket { package: LandGridArray, contact_count: 4189 },
+    socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4189, cooling_mount: ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4189" } },
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
     max_design_power: dynatron_w1_catalog.max_design_power,
@@ -67,16 +84,16 @@ test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
     realization: InstalledCoolingRealization {
       host: srv3_installed_cooling.host,
       cooler_asset: srv3_installed_cooling.cooler_asset,
-      cooler: wrong_socket_cooler,
+      cooler: wrong_mount_cooler,
       processor: srv3_installed_cooling.processor,
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        CoolerSocketDoesNotMatchProcessorSocket {
-          cooler_socket: _,
-          processor_socket: _,
+        CoolerMountDoesNotMatchProcessorMount {
+          cooler_mount: _,
+          processor_mount: _,
         } => true
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
         CoolerDesignPowerBelowProcessorTdp {
@@ -115,9 +132,9 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
-        CoolerSocketDoesNotMatchProcessorSocket {
-          cooler_socket: _,
-          processor_socket: _,
+        CoolerMountDoesNotMatchProcessorMount {
+          cooler_mount: _,
+          processor_mount: _,
         } => false
         CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
@@ -157,9 +174,9 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => true
-        CoolerSocketDoesNotMatchProcessorSocket {
-          cooler_socket: _,
-          processor_socket: _,
+        CoolerMountDoesNotMatchProcessorMount {
+          cooler_mount: _,
+          processor_mount: _,
         } => false
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
       }
@@ -295,4 +312,125 @@ test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
     verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: installed_cooling_realizations))
     && !cooling_catalog_verdict_admits_qualification(
          verdict: installed_cooling_verdict_for_host(host: host_srv1, realizations: installed_cooling_realizations))
+}
+
+// THE CROSS-PLATFORM COLLISION, REFUSED. This cooler agrees with the Ampere processor on BOTH
+// axes the matcher used to read -- same package family, same 4926 contact count -- and differs
+// only in the platform its socket belongs to. Before socket identity carried the platform owner
+// this qualified, which is a cooler certified against one vendor's mounting geometry passing for
+// another's on a coincidence of scale.
+//
+// It is not hypothetical that the industry makes this mistake: Dynatron sells LGA4926 cold plates
+// listed as Intel parts, and the contact count is the whole of what makes that label look right.
+test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
+  let foreign_platform_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ProcessorCoolingMount { platform_owner: amd, designation: "ILM4926" } },
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: dynatron_w1_catalog.max_design_power,
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  match cooling_catalog_verdict(
+    realization: InstalledCoolingRealization {
+      host: srv3_installed_cooling.host,
+      cooler_asset: srv3_installed_cooling.cooler_asset,
+      cooler: foreign_platform_cooler,
+      processor: srv3_installed_cooling.processor,
+      baseboard_model: srv3_installed_cooling.baseboard_model,
+    },
+  ) {
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        CoolerMountDoesNotMatchProcessorMount {
+          cooler_mount: cm,
+          processor_mount: pm,
+        } =>
+          cm.designation == pm.designation
+            && cm.platform_owner != pm.platform_owner
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => false
+      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+  }
+}
+
+// THE CASE THE OLD RULE GOT WRONG, IN THE REFUSING DIRECTION. AMD retained AM4's retention geometry
+// on AM5, so an AM4 cooler physically fits an AM5 board and AMD says so. The sockets differ on every
+// socket fact: 1331 pin-grid against 1718 land-grid. This witness asserts BOTH halves in one run --
+// that socket equality REFUSES the pair, and that mount equality ACCEPTS it. Asserting only the
+// acceptance would not show the correction changed anything; asserting only the refusal would not
+// show the new rule works. The gap between the two IS the defect this change removes.
+// THE SAME CASE THROUGH THE PRODUCTION QUALIFIER, which is what makes the claim about behaviour
+// rather than about the data model. Review 52714 caught that the witness below proves only
+// !cpu_socket_eq && cooling_mount_eq -- true facts that would hold even if cooling_catalog_verdict
+// never read the mount. It did not read it: the production comparison was still socket equality, and
+// this witness is what forced that to be found rather than assumed.
+//
+// An AM4 cooler on an AM5 processor is CoolingCatalogCompatible. Under socket equality the same
+// realization refuses, and the sibling assertion pins that the two sockets really are unequal, so
+// the admission cannot be explained by the fixture having accidentally made them the same socket.
+test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> Bool {
+  let am4_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: ryzen_5_3600_catalog.socket,
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: dynatron_w1_catalog.max_design_power,
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  !cpu_socket_eq(a: ryzen_5_3600_catalog.socket, b: ryzen_9_7950x3d_catalog.socket)
+    && cooling_catalog_verdict_admits_qualification(
+         verdict: cooling_catalog_verdict(
+           realization: InstalledCoolingRealization {
+             host: srv3_installed_cooling.host,
+             cooler_asset: srv3_installed_cooling.cooler_asset,
+             cooler: am4_cooler,
+             processor: ryzen_9_7950x3d_catalog,
+             baseboard_model: srv3_installed_cooling.baseboard_model,
+           },
+         ))
+}
+
+test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool {
+  let am4_socket = CpuSocket {
+    platform_owner: amd,
+    termination: SocketedPinGrid,
+    contact_count: 1331,
+    cooling_mount: amd_am4_cooling_mount,
+  }
+  let am5_socket = CpuSocket {
+    platform_owner: amd,
+    termination: SocketedLandGrid,
+    contact_count: 1718,
+    cooling_mount: amd_am4_cooling_mount,
+  }
+  !cpu_socket_eq(a: am4_socket, b: am5_socket)
+    && cooling_mount_eq(a: am4_socket.cooling_mount, b: am5_socket.cooling_mount)
+}
+
+// RED control: sharing a platform owner is not sharing a mount. Two Ampere sockets with different
+// retention designations must not qualify each other, or the mount axis would have collapsed into
+// the platform axis it sits beside.
+test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> Bool {
+  let ilm4926 = ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4926" }
+  let ilm4189 = ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4189" }
+  cooling_mount_eq(a: ilm4926, b: ilm4926)
+    && !cooling_mount_eq(a: ilm4926, b: ilm4189)
+}
+
+// RED control: the same retention designation under two platform owners is not one mount either.
+// A designation is a name inside a vendor's scheme, not a global identifier.
+test fn w_red_one_designation_under_two_platforms_is_not_one_mount() -> Bool {
+  !cooling_mount_eq(
+    a: ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4926" },
+    b: ProcessorCoolingMount { platform_owner: amd, designation: "ILM4926" },
+  )
 }
