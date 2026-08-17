@@ -42638,6 +42638,15 @@ pub fn run_required_floor(
         for (class, count) in &failure_census_counts {
             eprintln!("[floor-failure-census] {class}={count}");
         }
+    } else if !failure_census_counts.is_empty() {
+        let total: usize = failure_census_counts.values().sum();
+        eprintln!(
+            "[floor-failure-census] {total} expected-red failure row(s) (set \
+             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS for identity-grain TSV)"
+        );
+        for (class, count) in &failure_census_counts {
+            eprintln!("[floor-failure-census] {class}={count}");
+        }
     }
     Ok(outcome)
 }
