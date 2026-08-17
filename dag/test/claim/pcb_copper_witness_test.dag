@@ -18,14 +18,23 @@ import product.pcb.stackup {
 }
 import product.pcb.copper {
   CopperAdmitted,
+  CopperLayerRef,
   CopperRefused,
+  InterlayerConnection,
+  InterlayerConnectionEndpointHasNoConductor,
+  InterlayerConnectionJoinsALayerToItself,
+  InterlayerConnectionNamesNoSuchNet,
+  InterlayerConnectionSelectedAgainstAnotherStackup,
   LayerOutsideStackup,
   LayerSelected,
   NetCopperRealization,
-  NetRealizedMoreThanOnce,
+  NetHasTwoConductorsOnOneLayer,
+  NetSplitAcrossLayersWithoutAConnection,
   RealizationNamesNoSuchNet,
   RealizationSelectedAgainstAnotherStackup,
   admit_copper,
+  admitted_copper_connections,
+  admitted_copper_realizations,
   copper_is_complete_over_nets,
   copper_layer_function,
   copper_layer_ordinal,
@@ -49,6 +58,17 @@ data three_layer: Stackup = Stackup {
   ],
 }
 
+// Four coppers, because two islands is the smallest arrangement that distinguishes "every layer is
+// touched by a connection" from "every layer is on the same conductor", and that needs 0-1 and 2-3.
+data four_layer: Stackup = Stackup {
+  top: sig,
+  plies: [
+    StackupPly { dielectric: core, copper: gnd },
+    StackupPly { dielectric: core, copper: sig },
+    StackupPly { dielectric: core, copper: gnd },
+  ],
+}
+
 data board_authority: DeclarationRef = DeclarationRef {
   module_path: "test.claim.pcb_copper_witness",
   decl_name: "three_layer",
@@ -60,10 +80,9 @@ data gnd_net: NetIdentity = "GND" as NetIdentity
 data absent_net: NetIdentity = "SPI_CLK" as NetIdentity
 
 // THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
-// intent, so this witness can hand it a roster that belongs to no analog article at all. If the
-// carrier still required an AnalogCircuitIntent, this file would not compile -- which makes the
-// decoupling a fact the suite depends on rather than a claim in a comment. The identities are
-// motherboard rails rather than the RC specimen's, for the same reason.
+// intent, so this witness hands it a roster belonging to no analog article at all. If the carrier
+// still required an AnalogCircuitIntent this file would not compile, which makes the decoupling a
+// fact the suite depends on rather than a claim in a comment.
 data board_nets: List<ElectricalNet> = [
   ElectricalNet { identity: vcc, members: [] },
   ElectricalNet { identity: gnd_net, members: [] },
@@ -198,8 +217,8 @@ test fn w_copper_naming_real_nets_admits() -> Bool {
     Absent => false
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: gnd_net, ordinal: 1)
-  match admit_copper(nets: board_nets, board: board, rs: rs) {
-    CopperAdmitted { realizations: out } => count(out) == 2
+  match admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
+    CopperAdmitted { admitted: out } => count(admitted_copper_realizations(a: out)) == 2
     CopperRefused { causes: _ } => false
   }
 }
@@ -215,13 +234,18 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: absent_net, ordinal: 1)
   count(rs) == count(board_nets)
-    && match admit_copper(nets: board_nets, board: board, rs: rs) {
-      CopperAdmitted { realizations: _ } => false
+    && match admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
+      CopperAdmitted { admitted: _ } => false
       CopperRefused { causes: c } =>
         count(c) == 1
           && count(filter(c, x => match x {
             RealizationNamesNoSuchNet { net: n } => n == absent_net
-            NetRealizedMoreThanOnce { net: _ } => false
+            NetHasTwoConductorsOnOneLayer { net: _ } => false
+          NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+            InterlayerConnectionNamesNoSuchNet { net: _ } => false
+            InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+            InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
             RealizationSelectedAgainstAnotherStackup { net: _ } => false
           })) == 1
     }
@@ -229,23 +253,28 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
   }
 }
 
-// RED control: one net realized on two layers is two conductors claiming one name. Exactly ONE
-// cause, because the problem is a fact about the net rather than about either row -- the same net
-// reported twice would be a duplicate finding, not a second one.
-test fn w_red_a_net_realized_twice_is_refused() -> Bool {
+// RED control: one net on two layers with NO via is two conductors claiming one name. Exactly ONE
+// cause, because the problem is a fact about the net rather than about either row - the same net
+// reported twice would be a duplicate, not a second finding.
+test fn w_red_a_net_split_across_layers_without_a_via_is_refused() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
-  match admit_copper(nets: board_nets, board: board, rs: rs) {
-    CopperAdmitted { realizations: _ } => false
+  match admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
+    CopperAdmitted { admitted: _ } => false
     CopperRefused { causes: c } =>
       count(rs) == 2
         && count(c) == 1
         && count(filter(c, x => match x {
-          NetRealizedMoreThanOnce { net: n } => n == vcc
+          NetHasTwoConductorsOnOneLayer { net: _ } => false
+          NetSplitAcrossLayersWithoutAConnection { net: n } => n == vcc
           RealizationNamesNoSuchNet { net: _ } => false
           RealizationSelectedAgainstAnotherStackup { net: _ } => false
+          InterlayerConnectionNamesNoSuchNet { net: _ } => false
+          InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+          InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
         })) == 1
   }
 }
@@ -259,9 +288,9 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
-  match admit_copper(nets: board_nets, board: board, rs: []) {
+  match admit_copper(nets: board_nets, board: board, rs: [], vs: []) {
     CopperRefused { causes: _ } => false
-    CopperAdmitted { realizations: _ } =>
+    CopperAdmitted { admitted: _ } =>
       count(unrealized_nets(nets: board_nets, rs: [])) == 2
         && !copper_is_complete_over_nets(nets: board_nets, rs: [])
   }
@@ -290,19 +319,371 @@ test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
       let native = realization_on(net: vcc, ordinal: 1)
       count(foreign) == 1
         && count(native) == 1
-        && match admit_copper(nets: board_nets, board: board, rs: native) {
+        && match admit_copper(nets: board_nets, board: board, rs: native, vs: []) {
           CopperRefused { causes: _ } => false
-          CopperAdmitted { realizations: _ } =>
-            match admit_copper(nets: board_nets, board: board, rs: foreign) {
-              CopperAdmitted { realizations: _ } => false
+          CopperAdmitted { admitted: _ } =>
+            match admit_copper(nets: board_nets, board: board, rs: foreign, vs: []) {
+              CopperAdmitted { admitted: _ } => false
               CopperRefused { causes: c } =>
                 count(filter(c, x => match x {
                   RealizationSelectedAgainstAnotherStackup { net: n } => n == vcc
                   RealizationNamesNoSuchNet { net: _ } => false
-                  NetRealizedMoreThanOnce { net: _ } => false
+                  NetHasTwoConductorsOnOneLayer { net: _ } => false
+                NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+            InterlayerConnectionNamesNoSuchNet { net: _ } => false
+            InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+            InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
                 })) == 1
             }
         }
+    }
+  }
+}
+
+fn layer_of(a: AdmittedStackup, ordinal: Int) -> CopperLayerRef? {
+  match select_copper_layer(a: a, ordinal: ordinal) {
+    LayerSelected { layer: l } => Present { value: l }
+    LayerOutsideStackup { requested: _, layer_count: _ } => none
+  }
+}
+
+// THE POINT OF THE WHOLE INCREMENT, asserted in BOTH directions in one run: the identical split
+// realization refuses with no via and admits with one. If only the admitting half were asserted, a
+// refusal that had quietly stopped firing would read as success.
+test fn w_a_via_makes_a_split_net_admissible() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let split = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } =>
+          match layer_of(a: board, ordinal: 2) {
+            Absent => false
+            Present { value: bottom } => {
+              let joined = [InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
+              count(split) == 2
+                && match admit_copper(nets: board_nets, board: board, rs: split, vs: []) {
+                  CopperAdmitted { admitted: _ } => false
+                  CopperRefused { causes: _ } =>
+                    match admit_copper(nets: board_nets, board: board, rs: split, vs: joined) {
+                      CopperRefused { causes: _ } => false
+                      CopperAdmitted { admitted: out } => count(admitted_copper_realizations(a: out)) == 2
+                    }
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+// RED control: a via belonging to a DIFFERENT net does not route this one. Same two layers, same
+// count of vias — only the net identity differs, so a check that merely counted vias would pass.
+test fn w_red_a_via_on_another_net_does_not_route_this_one() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let split = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } =>
+          match layer_of(a: board, ordinal: 2) {
+            Absent => false
+            Present { value: bottom } => {
+              let wrong_net = [InterlayerConnection { net: gnd_net, from_layer: top, to_layer: bottom }]
+              match admit_copper(nets: board_nets, board: board, rs: split, vs: wrong_net) {
+                CopperAdmitted { admitted: _ } => false
+                CopperRefused { causes: c } =>
+                  count(filter(c, x => match x {
+                    NetHasTwoConductorsOnOneLayer { net: _ } => false
+          NetSplitAcrossLayersWithoutAConnection { net: n } => n == vcc
+                    RealizationNamesNoSuchNet { net: _ } => false
+                    RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                    InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                    InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+                    InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                  })) > 0
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// RED control: a via whose endpoints are the same layer is a drilled hole connecting nothing, and
+// it reports the ordinal so the author knows which one.
+test fn w_red_a_via_from_a_layer_to_itself_is_refused() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 1) {
+        Absent => false
+        Present { value: mid } => {
+          let degenerate = [InterlayerConnection { net: vcc, from_layer: mid, to_layer: mid }]
+          match admit_copper(nets: board_nets, board: board, rs: realization_on(net: vcc, ordinal: 1), vs: degenerate) {
+            CopperAdmitted { admitted: _ } => false
+            CopperRefused { causes: c } =>
+              count(filter(c, x => match x {
+                InterlayerConnectionJoinsALayerToItself { net: n, ordinal: o } => n == vcc && o == 1
+                InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                NetHasTwoConductorsOnOneLayer { net: _ } => false
+                NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+                RealizationNamesNoSuchNet { net: _ } => false
+                RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+              })) == 1
+          }
+        }
+      }
+  }
+}
+
+// RED control: a via inherits the stackup binding through its endpoints, so one selected against
+// another board refuses without the via model needing its own check for it.
+test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match admitted_board(s: other_board, authority: other_authority) {
+        Absent => false
+        Present { value: elsewhere } =>
+          match layer_of(a: board, ordinal: 0) {
+            Absent => false
+            Present { value: here } =>
+              match layer_of(a: elsewhere, ordinal: 2) {
+                Absent => false
+                Present { value: there } => {
+                  let crossed = [InterlayerConnection { net: vcc, from_layer: here, to_layer: there }]
+                  match admit_copper(nets: board_nets, board: board, rs: realization_on(net: vcc, ordinal: 0), vs: crossed) {
+                    CopperAdmitted { admitted: _ } => false
+                    CopperRefused { causes: c } =>
+                      count(filter(c, x => match x {
+                        InterlayerConnectionSelectedAgainstAnotherStackup { net: n } => n == vcc
+                        NetHasTwoConductorsOnOneLayer { net: _ } => false
+                NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+                        RealizationNamesNoSuchNet { net: _ } => false
+                        RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                        InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                        InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                      })) == 1
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// RED control: TWO CONDUCTORS ON ONE LAYER, WITH A VIA PRESENT. This is the case the split refusal
+// stopped catching when it narrowed to via-reachability: both rows sit on layer 0, a vcc via touches
+// layer 0, so every realized layer IS via-reached and the routing question is satisfied. It is still
+// two rows claiming one net on one layer. Confirmed admitted by a probe before this refusal existed.
+test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let dup = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 0)
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } =>
+          match layer_of(a: board, ordinal: 1) {
+            Absent => false
+            Present { value: mid } => {
+              let v = [InterlayerConnection { net: vcc, from_layer: top, to_layer: mid }]
+              count(dup) == 2
+                && match admit_copper(nets: board_nets, board: board, rs: dup, vs: v) {
+                  CopperAdmitted { admitted: _ } => false
+                  CopperRefused { causes: c } =>
+                    count(filter(c, x => match x {
+                      NetHasTwoConductorsOnOneLayer { net: n } => n == vcc
+                      NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+                      RealizationNamesNoSuchNet { net: _ } => false
+                      RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                      InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                      InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+                      InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                    })) == 1
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+// THE CASE THE WEAK FORM ADMITTED. VCC realized on all four layers, joined 0-1 and 2-3: every
+// realized layer is touched by a connection of its own net, so the previous reachability question
+// answered yes, and the board admitted with two electrically separate VCC islands. This asserts the
+// refusal, and w_islands_joined_into_one_conductor_admits asserts the same population admits once
+// the two halves are bridged — both directions in one run, so a refusal that stopped firing cannot
+// read as success.
+test fn w_two_islands_of_one_net_refuse() -> Bool {
+  match admitted_board(s: four_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let all = realization_at(board: board, net: vcc, ordinal: 0)
+        + realization_at(board: board, net: vcc, ordinal: 1)
+        + realization_at(board: board, net: vcc, ordinal: 2)
+        + realization_at(board: board, net: vcc, ordinal: 3)
+      match islanded_connections(board: board) {
+        Absent => false
+        Present { value: conns } =>
+          count(all) == 4
+            && match admit_copper(nets: board_nets, board: board, rs: all, vs: conns) {
+              CopperAdmitted { admitted: _ } => false
+              CopperRefused { causes: c } =>
+                count(filter(c, x => match x {
+                  NetSplitAcrossLayersWithoutAConnection { net: n } => n == vcc
+                  NetHasTwoConductorsOnOneLayer { net: _ } => false
+                  RealizationNamesNoSuchNet { net: _ } => false
+                  RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                  InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                  InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+                  InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                  InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                })) > 0
+            }
+      }
+    }
+  }
+}
+
+// realization_on is pinned to the three-layer fixture, so it cannot reach ordinal 3. This selects
+// against whichever board it is handed, which is what the four-layer cases need.
+fn realization_at(board: AdmittedStackup, net: NetIdentity, ordinal: Int) -> List<NetCopperRealization> {
+  match layer_of(a: board, ordinal: ordinal) {
+    Absent => []
+    Present { value: l } => [NetCopperRealization { net: net, layer: l }]
+  }
+}
+
+fn islanded_connections(board: AdmittedStackup) -> List<InterlayerConnection>? {
+  match layer_of(a: board, ordinal: 0) {
+    Absent => none
+    Present { value: l0 } =>
+      match layer_of(a: board, ordinal: 1) {
+        Absent => none
+        Present { value: l1 } =>
+          match layer_of(a: board, ordinal: 2) {
+            Absent => none
+            Present { value: l2 } =>
+              match layer_of(a: board, ordinal: 3) {
+                Absent => none
+                Present { value: l3 } => Present { value: [
+                  InterlayerConnection { net: vcc, from_layer: l0, to_layer: l1 },
+                  InterlayerConnection { net: vcc, from_layer: l2, to_layer: l3 },
+                ] }
+              }
+          }
+      }
+  }
+}
+
+// The other direction: bridge the two islands with a third connection and the same four
+// realizations admit. Without this, the refusal above could be firing for any reason at all.
+test fn w_islands_joined_into_one_conductor_admits() -> Bool {
+  match admitted_board(s: four_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let all = realization_at(board: board, net: vcc, ordinal: 0)
+        + realization_at(board: board, net: vcc, ordinal: 1)
+        + realization_at(board: board, net: vcc, ordinal: 2)
+        + realization_at(board: board, net: vcc, ordinal: 3)
+      match islanded_connections(board: board) {
+        Absent => false
+        Present { value: conns } =>
+          match layer_of(a: board, ordinal: 1) {
+            Absent => false
+            Present { value: l1 } =>
+              match layer_of(a: board, ordinal: 2) {
+                Absent => false
+                Present { value: l2 } => {
+                  let bridged = conns + [InterlayerConnection { net: vcc, from_layer: l1, to_layer: l2 }]
+                  match admit_copper(nets: board_nets, board: board, rs: all, vs: bridged) {
+                    CopperRefused { causes: _ } => false
+                    CopperAdmitted { admitted: out } =>
+                      count(admitted_copper_realizations(a: out)) == 4
+                        && count(admitted_copper_connections(a: out)) == 3
+                  }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE EVIDENCE MUST SURVIVE ADMISSION. Two connection populations that both admit must produce
+// admitted values that DIFFER, or the carrier has dropped the evidence it judged. Asserting the
+// count alone would be satisfied by a carrier that stored the number and discarded the rows, so this
+// also reads a connection back out and checks it names the net it was authored with.
+test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let split = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } =>
+          match layer_of(a: board, ordinal: 2) {
+            Absent => false
+            Present { value: bottom } => {
+              let joined = [InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
+              match admit_copper(nets: board_nets, board: board, rs: split, vs: joined) {
+                CopperRefused { causes: _ } => false
+                CopperAdmitted { admitted: out } => {
+                  let back = admitted_copper_connections(a: out)
+                  count(back) == 1 && count(filter(back, c => c.net == vcc)) == 1
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// AN ENDPOINT ON A LAYER THE NET DOES NOT OCCUPY. VCC is realized on 0 and 2 and the connection runs
+// 0 to 1 — layer 1 exists on this board and the connection names a real net, so every stackup and
+// identity check it faces passes. What it does not do is land on VCC copper, and before this refusal
+// the board admitted. The net is still split, so the connectivity refusal fires too; this asserts
+// the endpoint cause specifically, which is the one that names WHERE the hole goes nowhere.
+test fn w_a_connection_endpoint_with_no_conductor_refuses() -> Bool {
+  match admitted_board(s: three_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } => {
+      let split = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } =>
+          match layer_of(a: board, ordinal: 1) {
+            Absent => false
+            Present { value: middle } => {
+              let dangling = [InterlayerConnection { net: vcc, from_layer: top, to_layer: middle }]
+              match admit_copper(nets: board_nets, board: board, rs: split, vs: dangling) {
+                CopperAdmitted { admitted: _ } => false
+                CopperRefused { causes: c } =>
+                  count(filter(c, x => match x {
+                    InterlayerConnectionEndpointHasNoConductor { net: n, ordinal: o } => n == vcc && o == 1
+                    NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+                    NetHasTwoConductorsOnOneLayer { net: _ } => false
+                    RealizationNamesNoSuchNet { net: _ } => false
+                    RealizationSelectedAgainstAnotherStackup { net: _ } => false
+                    InterlayerConnectionNamesNoSuchNet { net: _ } => false
+                    InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+                    InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                  })) == 1
+              }
+            }
+          }
+      }
     }
   }
 }

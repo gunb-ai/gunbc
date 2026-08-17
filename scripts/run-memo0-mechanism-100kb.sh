@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SCAFFOLD — STR-RC-0 memo0 mechanism receipt beside json_parse_scaling_probe
-# (not a general scripts/ home; same transport class as docs/probes/run_frontier_probe_survey_per_module.sh).
+# (not a general scripts/ home; one-off probe transport lives beside the probe it serves).
 # dissolve-on: delete when STR-RC-0 mechanism receipts are floor-enrolled or the branch reverts.
 # Runtime-present: invokes json_parse_scaling_probe seed bin with GUNBC_EVAL_MEMO=0.
 # STR-RC-0 mechanism check: post 100KB survival with GUNBC_EVAL_MEMO=0 only.
