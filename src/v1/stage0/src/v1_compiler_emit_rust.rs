@@ -2264,86 +2264,32 @@ pub fn render_rust_fn_sig_type(
         {
             rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
         } else {
-            if (((((n.connective.clone() == Connective::NoConnective)
+            if (((((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
                 && (name.clone() != "".to_string()))
                 && (name.clone() != "String".to_string()))
                 && !is_container_type(name.clone()))
+                && closed_alias_peels_zero_param(env.clone(), n.clone()))
+                && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), corpus_repr.clone()))
             {
-                match closed_alias_peel_verdict(env.clone(), n.clone()) {
-                    ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
-                        if rust_fn_sig_preserves_authored_alias_leaf(
-                            name.clone(),
-                            corpus_repr.clone(),
-                        ) {
-                            render_rust_shared_type_with_optional(
-                                n.clone(),
-                                name.clone(),
-                                name.clone(),
-                                shared_types.clone(),
-                            )
-                        } else {
-                            render_rust_fn_sig_type_applied_binding(
-                                n.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                env.clone(),
-                            )
-                        }
-                    }
-                    ClosedAliasPeelVerdict::ClosedAliasHasParams => {
-                        render_rust_fn_sig_type_applied_binding(
-                            n.clone(),
-                            shared_types.clone(),
-                            corpus_repr.clone(),
-                            source_indices.clone(),
-                            env.clone(),
-                        )
-                    }
-                    ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
-                        render_rust_fn_sig_type_applied_binding(
-                            n.clone(),
-                            shared_types.clone(),
-                            corpus_repr.clone(),
-                            source_indices.clone(),
-                            env.clone(),
-                        )
-                    }
-                }
+                render_rust_shared_type_with_optional(
+                    n.clone(),
+                    name.clone(),
+                    name.clone(),
+                    shared_types.clone(),
+                )
             } else {
-                if (((n.connective.clone() == Connective::NoConnective)
+                if ((((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) > 0))
                     && !is_container_type(name.clone()))
+                    && closed_alias_peels_zero_param(env.clone(), n.clone()))
                 {
-                    match closed_alias_peel_verdict(env.clone(), n.clone()) {
-                        ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
-                            render_rust_shared_type_with_optional(
-                                n.clone(),
-                                name.clone(),
-                                name.clone(),
-                                shared_types.clone(),
-                            )
-                        }
-                        ClosedAliasPeelVerdict::ClosedAliasHasParams => {
-                            render_rust_fn_sig_type_applied_binding(
-                                n.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                env.clone(),
-                            )
-                        }
-                        ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
-                            render_rust_fn_sig_type_applied_binding(
-                                n.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                env.clone(),
-                            )
-                        }
-                    }
+                    render_rust_shared_type_with_optional(
+                        n.clone(),
+                        name.clone(),
+                        name.clone(),
+                        shared_types.clone(),
+                    )
                 } else {
                     if ((generic_param_names.clone().len() as i64) > 0) {
                         render_rust_decl_type(

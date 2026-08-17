@@ -243,7 +243,7 @@ pub type GistId = String;
 
 pub type Secret = String;
 
-pub type SecretValue = String;
+pub type SecretValue = Secret;
 
 pub type SemVer = String;
 
@@ -436,7 +436,7 @@ pub struct Credential {
 
 pub type FilesystemHandle = String;
 
-pub type NetworkHandle = ();
+pub type NetworkHandle = Unit;
 
 pub type ToolHandle = String;
 
