@@ -90,7 +90,7 @@ test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
     cores: 1,
     threads: std.measure.hardware_thread_count(1),
     nominal_sustained_per_thread_hz: std.measure.hertz(1000000000),
-    socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926 },
+    socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926, cooling_mount: extdeps.cpu.ampere.ampere_lga4926_cooling_mount },
     socket_citations: extdeps.cpu.ampere.socket_lga4926_citations,
     tdp_watts: std.measure.watt(99),
     l1_cache: extdeps.cpu.ampere.ampere_altra_l1_cache_geometry,

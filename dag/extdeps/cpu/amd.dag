@@ -26,6 +26,17 @@ data amd_ryzen_7_pro_8700ge_authority: extdeps.external_authority.ExternalAuthor
 // is the termination AMD used through AM4 and abandoned at AM5 -- the socket is a zero insertion
 // force flip-chip land grid array, so the processor presents lands and the socket presents the
 // springs. The count was already right; the termination was carried over from the AM4 rows.
+// AM5 KEEPS AM4'S COOLER MOUNTING, AND THAT IS WHY THE MOUNT IS NOT THE SOCKET. AM4 and AM5 are
+// different sockets by every socket fact -- 1331 pin-grid against 1718 land-grid -- yet AMD retained
+// the AM4 retention geometry on AM5 so that AM4 coolers fit. A compatibility rule reading socket
+// identity therefore gets a real, common case WRONG in the refusing direction: it rejects a cooler
+// that physically fits and that the vendor says fits. This is the discriminating pair for the whole
+// correction, and it is why both rows below name one mount.
+data amd_am4_cooling_mount: extdeps.cpu.types.ProcessorCoolingMount = extdeps.cpu.types.ProcessorCoolingMount {
+  platform_owner: extdeps.vendor.amd.amd,
+  designation: "AM4",
+}
+
 data socket_am5_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
@@ -148,7 +159,7 @@ data ryzen_5_3600_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.ty
   cores: 6,
   threads: std.measure.hardware_thread_count(12),
   nominal_sustained_per_thread_hz: std.measure.hertz(3600000000),
-  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedPinGrid, contact_count: 1331 },
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedPinGrid, contact_count: 1331, cooling_mount: amd_am4_cooling_mount },
   socket_citations: socket_am4_citations,
   tdp_watts: std.measure.watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
@@ -167,7 +178,7 @@ data ryzen_7_pro_8700ge_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.
   cores: 8,
   threads: std.measure.hardware_thread_count(16),
   nominal_sustained_per_thread_hz: std.measure.hertz(3300000000),
-  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718 },
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount },
   socket_citations: socket_am5_citations,
   tdp_watts: std.measure.watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
@@ -186,7 +197,7 @@ data ryzen_9_7950x3d_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu
   cores: 16,
   threads: std.measure.hardware_thread_count(32),
   nominal_sustained_per_thread_hz: std.measure.hertz(4200000000),
-  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718 },
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount },
   socket_citations: socket_am5_citations,
   tdp_watts: std.measure.watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,

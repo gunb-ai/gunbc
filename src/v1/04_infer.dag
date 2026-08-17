@@ -9145,6 +9145,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
     clone_bounded_type_params: empty_map(),
+    clone_impl_required_type_params: empty_map(),
     corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed),
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),

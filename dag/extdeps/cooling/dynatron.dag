@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data dynatron_w1_catalog: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
   model: "W1",
   manufacturer: extdeps.vendor.dynatron.dynatron,
-  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926 },
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount },
   active_passive_switchable: true,
   minimum_rack_units: std.measure.rack_unit(2),
   max_design_power: std.measure.watt(250),

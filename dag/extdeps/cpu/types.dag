@@ -84,11 +84,33 @@ fn socket_termination_as_package_termination(t: SocketTermination) -> ProcessorP
 //
 // Contact count and package remain as attributes because a board still needs them; they are just
 // no longer permitted to answer the identity question on their own.
+// A COOLER DOES NOT ATTACH TO THE CONTACTS. It attaches to the retention hardware around them -- the
+// loading mechanism, the backplate, the mounting-hole pattern and the load the assembly is rated to
+// apply. Those are mechanical facts about the SOCKET'S RETENTION SYSTEM, and the contact count is
+// not among them. The two happen to correlate because a platform defines both together, which is
+// precisely why a compatibility rule reading contacts LOOKS right and is not: it fits any part that
+// coincidentally shares a count, and coolers labelled for a foreign platform at a matching count
+// already exist in the market.
+//
+// So a mount is its own identity, and it is carried BY the socket rather than derived from it: a
+// socket cannot be authored without naming the mount it presents, which is the completeness a
+// separate join table would have had to check for.
+type ProcessorCoolingMount {
+  platform_owner: Vendor<Hardware>
+  designation: NonEmptyStr
+}
+
+fn cooling_mount_eq(a: ProcessorCoolingMount, b: ProcessorCoolingMount) -> Bool {
+  a.platform_owner == b.platform_owner && a.designation == b.designation
+}
+
 type CpuSocket {
   platform_owner: Vendor<Hardware>
 
   termination: SocketTermination
   contact_count: Int
+
+  cooling_mount: ProcessorCoolingMount
 }
 
 // WHY THE ATTACHMENT-MODE HALF IS NOT HERE. Splitting termination from attachment is one correction
