@@ -83,7 +83,7 @@ checkpoint scalar. And `extdeps.languages.rust.types` `rust_type_checkpoints` co
 { dag_name: "witness", target_type: "Witness", ... }
 ```
 
-`Witness` is not a scalar. It is the generic enum `Witness<C>` declared in `dag/std/witness.dag`,
+`Witness` is not a scalar. It is the generic enum `Witness<C>` declared in `v2.std.witness` (`src/v2/std/witness.dag`),
 and `std.types` `container_type_arity` independently records `"Witness": 1`. So **two authorities
 disagree about one type's arity** (DESIGN section 3), the emitter believes the checkpoint table, and
 every `Witness<T>` in type position loses its argument. That is the whole of half 2 (`missing
@@ -148,3 +148,86 @@ Each is ~2m40s against ~8 minutes for a compiler-module cargo probe.
   authored leaf name with a resolved node's children is a distinct defect, and it is entangled with
   the corpus-repr flag that Root B owns. Fixing the `Witness` row will not move it.
 - Nothing here sizes the corpus. A live E0107 census across modules is still owed.
+
+## 7. The fix, and what it measured (2026-08-17)
+
+Landed in this lane, half 2 only.
+
+**Authority edits.** `extdeps.languages.rust.types` `rust_type_checkpoints` loses its two `Witness`
+rows (`"Witness"` and the lowercase twin), and `v1.compiler.05_emit_rust`
+`rust_render_checkpoint_scalar_bare` consults the declared-arity authority first
+(`std.types is_container_type`) so no leaf with declared arity can be classified a checkpoint
+scalar however the target's spelling table is later edited. The row deletion removes today's wrong
+answer; the guard is what makes re-adding one harmless. Both `.dag` authorities and their
+regenerated `src/v1/stage0` projections move together; the generated coercion-registry assertions in
+`compiler_tests.rs` dropped their two `Witness` rows on regen, because those assertions were derived
+from the table rather than independent evidence of anything.
+
+Nothing else was lost with the rows, checked rather than assumed: `coerce_primitive_type(Rust,
+"Witness")` still answers `"Witness"` through the `qualified_last_segment` fallback, and `is_copy`'s
+`Absent` arm and its former `Present{false}` arm are the same decision at every consumer.
+
+**Emitted-text before/after, same command, same worktree.**
+
+```
+src/v2/std/collection.dag closure   4 lines changed, and only those 4:
+  -  pub fn optional_present_witness<T>(opt: Option<T>) -> Rc<Witness> {
+  +  pub fn optional_present_witness<T>(opt: Option<T>) -> Rc<Witness<T>> {
+  -      pub value: Rc<Witness>,
+  +      pub value: Rc<Witness<T>>,
+  -  pub fn witness_from_optional<T>(...) -> Rc<Witness> {
+  +  pub fn witness_from_optional<T>(...) -> Rc<Witness<T>> {
+  -  pub fn list_nth<T: Clone>(...) -> Rc<Witness> {
+  +  pub fn list_nth<T: Clone>(...) -> Rc<Witness<T>> {
+
+dag/std/integer.dag closure          byte-identical, zero files differ
+```
+
+The second line is the collateral control: half 1's `pub type PositiveInt = Nat<Magnitude>` is
+unchanged, which is the intended scope and not an oversight.
+
+**Cargo, same module, same route, same head — one module, M = 1 on both sides.**
+
+```
+                 before   after
+E0107              21       17      the 4 `missing generics for enum Witness` are gone
+E0308             286      286
+E0277             115      115
+E0599              80       80
+E0369              57       57
+every other code   identical
+```
+
+Read this as one module's exact sites, NOT as corpus burn-down: per the program's fixed-denominator
+rule, a total that moves with the number of entries probed is mostly a statement about how many
+entries were probed. Both sides here are the same single entry, so the 4 is a real per-site
+difference; it is not 4/116 of the corpus root, and the corpus figure for this half (33 sites,
+`smart-ibex-716`'s eleven-module distinct-site census) is measured elsewhere and not re-derived here.
+
+**Evidence enrolled.** `dag/test/claim/root_d_checkpoint_scalar_declared_arity_witness_test.dag`:
+
+- positive — a declared-arity leaf keeps its argument through emission (`Witness<T>`, never
+  `-> Rc<Witness>`);
+- null control — a genuine arity-0 checkpoint scalar reached with phantom arguments still renders
+  bare (`Compose<i64, ...>`, never `i64<...>`), so the E0109 wall this guard sits inside is intact;
+- the arity authority answers for both fixtures.
+
+Discriminating in both directions **by execution**: green with the change, and red with the change
+reverted and the binary rebuilt from the reverted tree (the whole diff reverted, not the witness
+disarmed).
+
+## 8. Does identity-keyed realization subsume this?
+
+Asked by `smart-ram-730`; `eager-deer-389` is re-keying `lookup_checkpoint` from a bare `String` to
+a resolved declaration identity. **No for the rows, yes for the arm's neighbourhood.**
+
+Re-keying makes the lookup match the *right declaration*. It does not make a row that claims arity 0
+for an arity-1 declaration correct — under identity keys the `Witness` row would match the real
+`v2.std.witness.Witness` and still strip its argument. The missing fact in these two rows is arity,
+not identity, so they are wrong under any key and the deletion is not downstream of that change.
+
+Where the two do meet: a `TypeCheckpoint` row states a target *spelling*, and the emitter reads
+membership as the proposition "arity 0 in Rust". That is one Present arm answering several
+questions — the same shape as the name-keying deficit, one level up from it. The lowercase
+`"witness"` twin is a pure name-keying artifact (two spellings of one concept) and belongs to that
+lane; it is deleted here only because it goes with its sibling.
