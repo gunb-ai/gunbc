@@ -7003,50 +7003,6 @@ fn bare_reference_pull_paths_for_source(
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        // A loader decides WHICH FILES TO LOAD. It does not decide which
-        // declaration a name binds to -- that is the resolver's authority, and
-        // it has context (scrutinee type, expected type, call position) the
-        // loader does not.
-        //
-        // The ambiguous arm below used to conflate the two: when several
-        // modules declare a spelling and no nearest-ancestor winner exists, it
-        // returned None and emitted NO EDGE. That renders "I cannot decide who
-        // owns this name" as "no module is needed" -- DESIGN's empty-observation
-        // narrow, the mirror of the absorbing fallback and strictly worse than
-        // it, because a widen is merely expensive while a narrow is silently
-        // uncovered. The resolver then reports the name as not found, which
-        // reads as a corpus defect rather than as an unloaded file.
-        //
-        // Measured on the live corpus: the names that fail this way are exactly
-        // the multi-declarer ones -- Accepted (gunbc.workflow.types,
-        // v2.std.diagnostic), Present (three declarers), Empty (std.algebra,
-        // std.stack). A `match verdict { Accepted { .. } => .. }` is fully
-        // determined by the scrutinee's type, but a context-free census cannot
-        // see that, so it loaded nothing and turned a decidable constructor into
-        // "variant 'Accepted' not found in type 'String'".
-        //
-        // Loading every eligible candidate owner is NOT choosing one. It is the
-        // structural over-approximation computed AS the answer -- the model's
-        // precision frontier, per DESIGN's explicit carve-out -- not a fallback
-        // taken on failure: it never widens in response to an error, and it is
-        // bounded by the declarers the census already found. The resolver still
-        // accepts or refuses.
-        let resolve_all_in = |census: &Rc<SymbolIndex>| -> Vec<String> {
-            if service_head {
-                return Vec::new();
-            }
-            match v1_rt::map_get(&census.global_bare, name.clone()) {
-                Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => candidates
-                        .iter()
-                        .filter(|c| pullable(&c.binding))
-                        .map(|c| c.module_path.clone())
-                        .collect(),
-                    _ => Vec::new(),
-                },
-                None => Vec::new(),
-            }
-        };
         let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
             if service_head {
                 return v1_rt::map_get(&census.services, name.clone())
@@ -7088,69 +7044,54 @@ fn bare_reference_pull_paths_for_source(
                 }
             }
         };
-        // A single winner (unique binding, or an ambiguity a nearest-ancestor
-        // rule genuinely decides) stays exactly as precise as before. Only when
-        // no winner exists do we fall back to the census's own structural
-        // answer: the set of eligible declarers. Note the trigger -- the census
-        // reporting AMBIGUOUS, a structural state -- never an error or a
-        // failure-to-compute, which is what separates a precision frontier from
-        // the absorbing fallback DESIGN forbids.
-        let target_modules: Vec<String> = match resolve_in(&census) {
-            Some(m) => vec![m],
-            None => match resolve_in(&pool_bare_census(index)?) {
-                Some(m) => vec![m],
-                None => {
-                    let mut all = resolve_all_in(&census);
-                    if all.is_empty() {
-                        all = resolve_all_in(&pool_bare_census(index)?);
-                    }
-                    all
-                }
-            },
+        let target_module = match resolve_in(&census) {
+            Some(m) => Some(m),
+            None => resolve_in(&pool_bare_census(index)?),
         };
-        for module_path in target_modules {
-            let Some(dep) = index.source_files.get(&module_path) else {
-                return Err(format!(
-                    "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
+        let Some(module_path) = target_module else {
+            continue;
+        };
+        let Some(dep) = index.source_files.get(&module_path) else {
+            return Err(format!(
+                "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
                  module '{module_path}', but that module has no source file in the pool \
                  (fail-closed)"
-                ));
-            };
-            let name_is_test_row = dep.content.lines().any(|l| {
-                let t = l.trim_start();
-                ["test fn ", "test data "].iter().any(|prefix| {
-                    t.strip_prefix(prefix).is_some_and(|rest| {
-                        rest.strip_prefix(name.as_str()).is_some_and(|after| {
-                            after
-                                .chars()
-                                .next()
-                                .is_none_or(|c| !c.is_alphanumeric() && c != '_')
-                        })
+            ));
+        };
+        let name_is_test_row = dep.content.lines().any(|l| {
+            let t = l.trim_start();
+            ["test fn ", "test data "].iter().any(|prefix| {
+                t.strip_prefix(prefix).is_some_and(|rest| {
+                    rest.strip_prefix(name.as_str()).is_some_and(|after| {
+                        after
+                            .chars()
+                            .next()
+                            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
                     })
                 })
-            });
-            if name_is_test_row {
-                continue;
-            }
-            let dep_rel = workspace_relative_repo_path(&dep.path);
-            if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
-                eprintln!(
-                    "[bare-pull] {} -> '{}' -> {} ({})",
-                    file_rel, name, module_path, dep_rel
-                );
-            }
-            if !index.module_graph_facts.declares_repo_path(&dep_rel) {
-                return Err(format!(
-                    "bare_reference_closure: referenced module '{module_path}' at \
+            })
+        });
+        if name_is_test_row {
+            continue;
+        }
+        let dep_rel = workspace_relative_repo_path(&dep.path);
+        if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
+            eprintln!(
+                "[bare-pull] {} -> '{}' -> {} ({})",
+                file_rel, name, module_path, dep_rel
+            );
+        }
+        if !index.module_graph_facts.declares_repo_path(&dep_rel) {
+            return Err(format!(
+                "bare_reference_closure: referenced module '{module_path}' at \
                  '{dep_rel}' has no provenance in the module-graph facts pool \
                  (fail-closed)"
-                ));
-            }
-            for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
-                let rel = workspace_relative_repo_path(&path);
-                if pulled_set.insert(rel.clone()) {
-                    pulled.push(rel);
-                }
+            ));
+        }
+        for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
+            let rel = workspace_relative_repo_path(&path);
+            if pulled_set.insert(rel.clone()) {
+                pulled.push(rel);
             }
         }
     }
