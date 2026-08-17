@@ -27,7 +27,7 @@
 | Affected-set & diff provenance | `gunbc.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | emit-when | Declared `SourceRef` boundary + provenance ingest |
 | Floor / witness execution | `claim_executor` · `src/v2/workflow/ci_floor_plan.dag` · [witness-realization-plan.md](witness-realization-plan.md) | emit-when | Workflow `host_effect_apply` replaces HAND driver |
 | Compile-clean shard scope | `tools.dag_compile_clean_scope` · `v2.compiler.compile` | partial | Import-closure authority unified on `module_graph` |
-| Regen oracle & self-host scope | `regen_stage0` · `v2.compiler.self_host.frontier` | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
+| Regen oracle & self-host scope | `regen_stage0` (the `v2.compiler.self_host.frontier` half of this scope is deleted with the roster) | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
 | Host builtin bridge (interpreter seam) | `v1_interpreter` builtins · per-lens `*_live` projections | seed-kernel-retained | Node-tree readers dissolve seams (#5364 class); kernel keeps physics |
 | Lens census / hygiene host feeds | `v2.lens.*` tables · `non_fold_residue` · `fact_cardinality` | emit-when | Each lens lands node-tree reader or explicit host row retires |
 | Floor observability & width | `gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md) | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
