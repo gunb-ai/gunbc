@@ -75,3 +75,99 @@ PRE-EXISTING modeling errors that the import era never checked. That question
 belongs with the two-`Nat`-authority fork (`std.nat.Nat` the algebra alias
 versus `v2.std.nat.Nat` the Peano coproduct), which DESIGN already carries as
 unconsolidated. Do not fix the 50 sites before deciding which way it points.
+
+---
+
+## RESOLVED 2026-08-17: the declaration is the defect, not the 50 sites
+
+Cause established by reading the two declarations side by side. The question
+this note opened with — "is `logic_cells: std.nat.Nat = 1280` a latent modeling
+error, or is the authored `Nat` the correct formal?" — has a third answer that
+is better than either: **the literal is correct and `type Nat` is wrong.**
+
+### The evidence
+
+`CommutativeSemiring<T>` is an operations RECORD (`dag/std/algebra.dag`):
+
+```
+type CommutativeSemiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+```
+
+`dag/std/nat.dag` then declares:
+
+```
+type Nat = CommutativeSemiring<std.magnitude.Magnitude>
+```
+
+which says: **a natural number IS a table containing an add function, a zero, a
+mul, and a one.** It names the STRUCTURE where it should name the CARRIER.
+
+### The file contradicts its own declaration
+
+Two functions in the same file are unwritable under it:
+
+```
+fn nat_compare(a: Nat, b: Nat) -> Ordering { if a < b { ... } }
+fn nat_max(a: Nat, b: Nat) -> Nat { if a > b { a } else { b } }
+```
+
+You cannot order two operation-records with `<`. Every USE in `std.nat` treats
+`Nat` as a magnitude; only the declaration says otherwise. So the declaration
+was never consistent with its own module — the import era simply never made a
+consumer check it.
+
+### v2 already models this correctly, which makes it a §3 fork
+
+`src/v2/std/nat.dag`:
+
+```
+type Nat = Zero | Succ { prev: Nat }
+
+data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
+  add: nat_add, zero: Zero, mul: nat_mul, one: Succ { prev: Zero }
+}
+```
+
+Carrier is the type; the semiring is a VALUE the carrier inhabits. That is
+DESIGN §4 exactly — "operations come from inhabitance (no per-type ops)", the
+same shape as `Int.add` deriving from `Int` inhabiting a ring. `std.nat` states
+the equation the other way round and thereby fuses two concepts under one name,
+which is the §3 nicknaming violation with the roles swapped: not two names for
+one concept, but one name for two.
+
+Note also `type Magnitude` is BODYLESS (`dag/std/magnitude.dag:3`), so the
+type argument is itself the hollow-alias class DESIGN tracks as an open thread.
+
+### Why exactly now
+
+The field-init judge (`peel_nominal_alias_identity` +
+`kernel_value_declared_type_mismatch`) fires on this; the fn-return judge
+(`declared_type_conformance_diags`) does not, because it only runs when both
+sides are `conformance_ground_type` and `Nat`-vs-`Int` is not. So the historical
+green was SILENCE, not admission — the cut did not introduce this, it removed
+the last thing hiding it.
+
+### What is decided, and what is still the operator's
+
+DECIDED by evidence: the 50 sites are correct authoring. Do NOT "fix" them by
+wrapping literals or by changing `ice40/subject.dag`. That would edit 50 correct
+declarations to satisfy one incorrect one, and it is the shape §5 warns about —
+the check can be satisfied by editing the declaration while the model stays wrong.
+
+STILL OPEN, because more than one repair is defensible and this is load-bearing:
+
+1. Ground `std.nat.Nat` on the carrier and add a separate semiring VALUE,
+   mirroring `v2.std.nat`. Correct, and largest blast radius (45 `Nat`
+   annotations in tree).
+2. Dissolve the fork per §3 — one `Nat` authority, v2's, with `std.nat`
+   consuming it. Terminal shape, and couples to the `Int = GroupCompletion<Nat>`
+   grounding already named in DESIGN's open threads.
+3. Ground `Magnitude` first, since a bodyless carrier makes (1) hollow anyway.
+
+These differ in blast radius and in which open thread they discharge, not in
+whether the current declaration is wrong. That part is settled.
