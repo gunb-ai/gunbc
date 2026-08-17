@@ -260,3 +260,46 @@ finding -- cardinality consulted before visibility -- appearing inside the class
 regen, and it means the repair is **qualification at the reference sites**, never a redeclaration
 of `std.nat.Nat`. The reverted declaration change was aimed at the wrong layer, which is why it
 closed a definitional cycle instead of fixing anything.
+
+## CI `witnesses` failure is era skew between the .dag side and the seed (2026-08-17)
+
+PR #8282 @ `fd9aaea` fails `witnesses` with:
+
+    claim_executor: unknown argument: --required-floor
+
+This is not a witness failure. It is the merge debt recorded earlier, surfacing at the one
+place it can: main's #8283 replaced the CI floor with a single invocation,
+
+    claim_executor --required-floor --source-root dag --source-root src/v2
+
+and this branch carries **main's `.dag` side** of that change (`gunbc.witness_floor_workflow`,
+`gunbc.ci_layer_roots`, `gunbc.design_document` all mention `required-floor`) while its **Rust
+seed predates it** -- `src/v1/stage0/src/` was restored wholesale from pre-merge tip
+`738791252ba` after the mixed-seed failure, and neither `bin/claim_executor.rs` nor `cli_run.rs`
+carries the flag. The emitted workflow therefore calls a binary that cannot answer it.
+
+### Why the obvious repair is the wrong order
+
+`git diff HEAD origin/main` on the two files:
+
+    src/v1/stage0/src/bin/claim_executor.rs    +92  -491
+    src/v1/stage0/src/cli_run.rs             +3279 -1585
+
+`claim_executor.rs` is a clean take -- main SHRINKS it, because the floor cut deleted the plan,
+batch, worker and selection machinery it used to carry. `cli_run.rs` is not: main is +3279
+relative to this branch precisely because **this branch deleted the import machinery main still
+has**, so taking main's copy re-admits the import era wholesale. That is the same trap that
+produced the earlier "main's content minus imports" failure, and it must not be repeated.
+
+The narrow port is `run_required_floor` (main `cli_run.rs`, ~900 lines) plus its
+`required_floor_claims_from_admission` helper, folding `v2.workflow.required_floor`.
+
+**But porting it does not turn this check green, and it must not be attempted as if it would.**
+`run_required_floor` strictly typechecks the whole corpus during preparation, before executing
+any witness. On this branch that preparation refuses -- which is the same fact as the residue
+below. Landing the port first would replace `unknown argument` with a preparation refusal and
+change nothing else, while adding ~900 lines of delicate seed surgery to an already-diverged
+file. Sequencing is therefore: close the corpus residue, then port the floor entry, then the
+check can pass for the first time.
+
+Recorded so that a later session does not read `unknown argument` as a small flag-parsing fix.
