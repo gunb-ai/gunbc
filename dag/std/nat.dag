@@ -14,9 +14,21 @@ module std.nat
 // the corpus consumes a Nat's .add/.zero/.mul/.one -- adding one now would be
 // speculative structure, not grounding.
 //
-// `Int where range(min: 0)` is the tree's existing idiom for exactly this shape:
-// std.types declares EpochSecs, EpochMs and four others the same way.
-type Nat = Int where range(min: 0)
+// REVERTED 2026-08-17. The repair below was `Int where range(min: 0)` and it is
+// NOT AVAILABLE at this position, because std.integer declares
+//     type Int = AbelianGroup<GroupCompletion<std.nat.Nat>>
+// so a Nat defined over Int closes the cycle Nat -> Int -> GroupCompletion<Nat>.
+// A whole-tree compile at 3e493652f7a aborted with `has overflowed its stack`
+// inside reconcile, where the immediately preceding commit reached reconcile and
+// completed it. Whether the bare `Int` here reaches the kernel primitive (as
+// std.types' EpochSecs and five siblings do, compiling fine) or std.integer's
+// algebraic Int is exactly the pool-dependent binding this branch is about --
+// which is why this position cannot take the idiom on faith.
+//
+// The declaration below is still WRONG for the reason stated above, and the 50
+// integer-literal rows are still correct authoring. The repair must ground Nat on
+// a carrier that provably does not route through std.integer.Int.
+type Nat = CommutativeSemiring<std.magnitude.Magnitude>
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
