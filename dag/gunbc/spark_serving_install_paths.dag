@@ -38,6 +38,17 @@ fn spark_serving_models_root() -> std.types.FilePath {
   ) as std.types.FilePath
 }
 
+// The unit's parent directory, absolute, derived from the same two authorities the unit path is.
+// It exists as its own function because a realizer that needed it would otherwise reconstruct it by
+// string surgery on the unit path -- a second derivation of one fact, and one that silently breaks
+// if the unit basename ever contains a separator.
+fn spark_serving_user_unit_dir() -> std.types.FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_user_unit_dir_rel),
+  ) as std.types.FilePath
+}
+
 fn spark_serving_user_unit_path() -> std.types.FilePath {
   concat(
     gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
