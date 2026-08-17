@@ -40661,6 +40661,20 @@ pub struct PreparedClaimScope {
     /// set-digest would call them identical when they are not.
     pub scope_identity: String,
     pub module_count: usize,
+    /// BARE NAMES IN THIS SCOPE CLAIMED BY MORE THAN ONE MODULE.
+    ///
+    /// `item_registry` is keyed by bare leaf name, so it cannot represent two declarations that
+    /// spell the same. Precedence decides which one a lookup gets, and for a name the entry
+    /// module owns or directly imports that decision is the language's — ordinary shadowing.
+    /// For a name claimed only by modules the scope reached transitively, it is not: nothing the
+    /// author wrote says which should win, and the registry has already discarded the other
+    /// before precedence is consulted.
+    ///
+    /// That is a silent pick, and the first obligation on one is to stop being silent. It is
+    /// counted here so the population is a measured quantity rather than an assumption, which is
+    /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
+    /// whether the terminal per-module-environment correction has to land first.
+    pub ambiguous_bare_names: usize,
 }
 
 /// Project the exact scope for one entry file out of the prepared repository.
@@ -40859,6 +40873,12 @@ pub fn claim_scope_for(
             order.push(parent.name.clone());
         }
     }
+    // THE AUTHORED REGION ENDS HERE. Everything in `order` so far is the entry module itself
+    // plus the closure of what its author wrote `import` for, so a name collision inside this
+    // prefix is ordinary shadowing the language sanctions and precedence settles. Everything
+    // appended after it is reached transitively by reference, and a collision decided there is
+    // decided by nothing the author wrote — see `ambiguous_bare_names`.
+    let authored_region = order.len();
     // Then the REFERENCE closure, transitively, appended after the import closure so that a
     // module reached both ways keeps the compiler's precedence position and this only ever ADDS
     // visibility. Breadth-first from the entry over a sorted frontier, so the resulting order is
@@ -40916,19 +40936,39 @@ pub fn claim_scope_for(
     // sorted later.
     let mut item_registry: HashMap<String, Rc<crate::v1_compiler_infer_items::ItemInfo>> =
         HashMap::new();
+    // Which module won each bare name, and whether it won inside the authored region. A later
+    // module claiming a name already won OUTSIDE that region is the ambiguous case: two
+    // transitively-reached declarations spell the same and nothing the author wrote ranks them.
+    let mut winner_of: HashMap<String, (String, bool)> = HashMap::new();
+    let mut ambiguous: HashSet<String> = HashSet::new();
     {
         let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
             .iter()
             .map(|m| (m.func_env.name.as_str(), m))
             .collect();
-        for module_name in &order {
+        for (position, module_name) in order.iter().enumerate() {
             let Some(module) = module_by_name.get(module_name.as_str()) else {
                 continue;
             };
+            let authored = position < authored_region;
             for (name, info) in module.item_registry.iter() {
-                item_registry
-                    .entry(name.clone())
-                    .or_insert_with(|| info.clone());
+                match winner_of.get(name) {
+                    None => {
+                        item_registry.insert(name.clone(), info.clone());
+                        winner_of.insert(name.clone(), (module_name.clone(), authored));
+                    }
+                    // Already claimed by this same module — one module's own registry, not a
+                    // collision between two.
+                    Some((winner, _)) if winner == module_name => {}
+                    // Already won inside the authored region: the author's imports rank it and
+                    // precedence has settled it. Ordinary shadowing, not ambiguity.
+                    Some((_, true)) => {}
+                    // Won outside it, and now claimed again from outside it. Nothing the author
+                    // wrote decides between these two spellings.
+                    Some((_, false)) => {
+                        ambiguous.insert(name.clone());
+                    }
+                }
             }
         }
     }
@@ -40954,6 +40994,7 @@ pub fn claim_scope_for(
         ),
         module_count,
         scope_identity,
+        ambiguous_bare_names: ambiguous.len(),
     })
 }
 
@@ -41827,6 +41868,9 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut scopes_with_ambiguity: usize = 0;
+    let mut ambiguous_total: usize = 0;
+    let mut ambiguous_max: usize = 0;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
@@ -41841,6 +41885,11 @@ pub fn run_required_floor(
             scope_constructions += 1;
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
+            if built.ambiguous_bare_names > 0 {
+                scopes_with_ambiguity += 1;
+                ambiguous_total += built.ambiguous_bare_names;
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+            }
             current_scope = Some((claim.module_path.clone(), built));
         }
         let scope = &current_scope
@@ -41938,6 +41987,17 @@ pub fn run_required_floor(
         },
         scope_module_max,
         prepared.graph.modules.len()
+    );
+    // THE SILENT PICK, COUNTED. Each of these is a bare name two transitively-reached modules
+    // both spell, resolved by scope precedence because a registry keyed on bare names cannot
+    // hold both — a resolution nothing the author wrote authorizes. Reported, not refused: the
+    // honest arm is to refuse the ambiguous lookup, and whether that is affordable is a question
+    // about this population, which until now nobody had measured. Zero here would mean the
+    // reference closure never donates a colliding name and the flat registry is adequate in
+    // practice; anything else sizes the terminal per-module-environment correction.
+    eprintln!(
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
+        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
     );
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently
