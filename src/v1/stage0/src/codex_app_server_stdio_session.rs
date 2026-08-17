@@ -338,11 +338,45 @@ pub fn run_cli_main() -> i32 {
             }
             "--thread-start-id" => {
                 i += 1;
-                thread_start_id = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(4);
+                match args.get(i) {
+                    None => {
+                        eprintln!(
+                            "codex_app_server_stdio_session: missing value for --thread-start-id"
+                        );
+                        return 2;
+                    }
+                    Some(s) => match s.parse::<i64>() {
+                        Ok(id) => thread_start_id = id,
+                        Err(e) => {
+                            eprintln!(
+                                "codex_app_server_stdio_session: invalid --thread-start-id {:?}: {e}",
+                                s
+                            );
+                            return 2;
+                        }
+                    },
+                }
             }
             "--turn-start-id" => {
                 i += 1;
-                turn_start_id = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(5);
+                match args.get(i) {
+                    None => {
+                        eprintln!(
+                            "codex_app_server_stdio_session: missing value for --turn-start-id"
+                        );
+                        return 2;
+                    }
+                    Some(s) => match s.parse::<i64>() {
+                        Ok(id) => turn_start_id = id,
+                        Err(e) => {
+                            eprintln!(
+                                "codex_app_server_stdio_session: invalid --turn-start-id {:?}: {e}",
+                                s
+                            );
+                            return 2;
+                        }
+                    },
+                }
             }
             _ => {}
         }
