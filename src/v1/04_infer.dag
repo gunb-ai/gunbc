@@ -9562,6 +9562,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
     clone_bounded_type_params: empty_map(),
+    clone_impl_required_type_params: empty_map(),
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
     fn_return_type: none

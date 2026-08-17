@@ -89,6 +89,7 @@ type EmitGraphInfo {
   read_only_params: Set<String>
 
   clone_bounded_type_params: Map<String, Set<String>>
+  clone_impl_required_type_params: Map<String, Set<String>>
 
 
   fn_generic_param_names: List<String>
@@ -118,6 +119,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
     clone_bounded_type_params: empty_map(),
+    clone_impl_required_type_params: empty_map(),
 
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
@@ -140,6 +142,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
+    clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
     fn_return_type: emit_info.fn_return_type
@@ -161,6 +164,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
+    clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: fn_return_type
