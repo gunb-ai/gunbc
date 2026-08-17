@@ -1175,7 +1175,7 @@ not survive contact with the live corpus.
 |---|---|---|
 | July Root 1 — DIAGNOSTICS carrier fork, "largest single bucket", 26–30% of E0308 | **8 sites, 0.4%** | §11 |
 | July Root 2 — `Witness<T>` parametrization, 18–23% | **zero occurrences of the string** | §11 |
-| Root B ≈ 196 sites | **under-measured; algebra surface is 509, the largest root** | §11 |
+| Root B ≈ 196 sites | **under-measured — but the 509 that replaced it is itself WITHDRAWN (§18): keyword-assigned, at most 146 repr-shaped** | §11, superseded by §18 |
 | "342 diagnostics citing the algebra carrier" | **74 distinct sites; the 342 was a line count** | `eager-deer-389`, self-corrected |
 | T7 = "a ContentHash carrier fork" | **a seed-prelude name collision; same 105 sites, different cause** | `smart-ibex-716`, self-corrected |
 | Root A = struct-only derive trigger | **under challenge by its own author; see 12.5** | this session |
@@ -1201,7 +1201,7 @@ cause.
 
 | root | live size | owner | state |
 |---|---|---|---|
-| B — algebra/numeric carrier, closure flag | 509 (§11) | `eager-deer-389` | identity-keying design; flip control executed both directions |
+| B — algebra/numeric carrier, closure flag | ~~509~~ → **at most 146 repr-shaped (§18)**, and narrower still: sites whose type carries a checkpoint row do not move | `eager-deer-389` | identity-keying design; flip control executed both directions |
 | C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
 | D — checkpoint arity | 116 = 65 alias + 33 `Witness` | `vivid-wren-870` | `Witness` row deletion ready; alias half entangled with B |
 | A — derive/bounds | **unknown; under challenge** | this session | see 12.5 |
