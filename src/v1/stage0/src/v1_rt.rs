@@ -275,7 +275,7 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
 }
 
 /// Ascii-aware variant taking a precomputed `is_ascii` flag (the `RcStr` carrier fact)
-/// instead of rescanning the whole string on every call — the per-call `s.is_ascii()`
+/// instead of rescanning the whole string on every call -- the per-call `s.is_ascii()`
 /// scan is what made repeated indexing over a large string O(n^2) (STRING-INDEX-0).
 pub fn char_at_ascii_aware(s: &str, is_ascii: bool, pos: i64) -> String {
     let pos = pos.max(0) as usize;
