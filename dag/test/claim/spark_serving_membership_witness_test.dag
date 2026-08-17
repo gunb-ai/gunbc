@@ -78,7 +78,7 @@ fn plan_has_refused_address(
   )
 }
 
-data w_noop_note: std.types.String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
+data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> std.types.Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
@@ -196,7 +196,7 @@ test fn w_spark_serving_key_is_host_principal_address_not_value() -> std.types.B
   gunbc.spark_serving_membership.spark_serving_member_key(member: a) == gunbc.spark_serving_membership.spark_serving_member_key(member: b)
     && string_contains(
       s: gunbc.spark_serving_membership.spark_serving_member_key(member: a),
-      pattern: gunbc.spark_serving_membership.spark_serving_serving_principal() as std.types.String,
+      pattern: gunbc.spark_serving_membership.spark_serving_serving_principal() as String,
     )
     && string_contains(s: gunbc.spark_serving_membership.spark_serving_member_key(member: a), pattern: "runtime-root")
 }
@@ -221,7 +221,7 @@ test fn w_spark_serving_key_differs_when_host_changes() -> std.types.Bool {
 }
 
 test fn w_spark_serving_user_unit_path_uses_unit_identity_authority() -> std.types.Bool {
-  string_contains(s: gunbc.spark_serving_install_paths.spark_serving_user_unit_path() as std.types.String, pattern: gunbc.spark_serving_unit_identity.spark_serving_unit_name)
+  string_contains(s: gunbc.spark_serving_install_paths.spark_serving_user_unit_path() as String, pattern: gunbc.spark_serving_unit_identity.spark_serving_unit_name)
 }
 
 test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> std.types.Bool {
@@ -229,7 +229,7 @@ test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> std.types.Bool
   intent.path == gunbc.spark_serving_install_paths.spark_serving_user_unit_path()
     && intent.spec.service_type == ("simple" as std.types.NonEmptyStr)
     && intent.spec.exec_subcommand == ("serve" as std.types.NonEmptyStr)
-    && string_contains(s: intent.spec.bind_host_port as std.types.String, pattern: ":")
+    && string_contains(s: intent.spec.bind_host_port as String, pattern: ":")
 }
 
 test fn w_spark_serving_change_projects_effect_replace() -> std.types.Bool {

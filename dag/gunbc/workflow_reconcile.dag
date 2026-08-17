@@ -12,15 +12,15 @@ type WorkflowFactState
   | WorkflowFactWaived
 
 type WorkflowFactKey {
-  workflow_id: std.types.String
-  obligation_id: std.types.String
+  workflow_id: String
+  obligation_id: String
 }
 
 type WorkflowFact {
   key: WorkflowFactKey
-  intent_revision: std.types.String
+  intent_revision: String
   state: WorkflowFactState
-  detail: std.types.String
+  detail: String
 }
 
 type WorkflowFactTree
@@ -50,30 +50,30 @@ type WorkflowFactMembershipFold {
 }
 
 type WorkflowReconcileFold {
-  remaining: std.types.Int
-  plan_refusals: std.types.Int
-  first_missing: std.types.String
+  remaining: Int
+  plan_refusals: Int
+  first_missing: String
 }
 
 type WorkflowObservationTally {
-  failures: std.types.Int
-  refusals: std.types.Int
+  failures: Int
+  refusals: Int
 }
 
 type WorkflowReconcileReport {
-  desired_count: std.types.Int
-  observed_count: std.types.Int
-  remaining_count: std.types.Int
-  observed_failure_count: std.types.Int
-  observed_refusal_count: std.types.Int
-  plan_refusal_count: std.types.Int
+  desired_count: Int
+  observed_count: Int
+  remaining_count: Int
+  observed_failure_count: Int
+  observed_refusal_count: Int
+  plan_refusal_count: Int
   plan: gunbc.membership_reconcile.MembershipPlan<WorkflowFactMember, WorkflowFactMemberAt>
   verdict: std.reducible.ReduceVerdict
 }
 
-data workflow_recursive_reconcile_note: std.types.String = "A workflow is desired facts reconciled against observed facts, not a stored stage enum. WorkflowFactTree is recursive at every grain: a fact may be a leaf or may be decomposed into child workflow facts while retaining its own verdict. fold_workflow_fact_tree is THE catamorphism over that shape; membership, verdict, and observation tallies are algebras over the same traversal rather than independent recursive walkers. Its membership algebra DERIVES each WorkflowFactMember parent_key from the tree edge, so moving an unchanged child between parents is one MemberChanged rather than an invisible no-op or hand-authored remove/add pair. Desired and observed members feed the existing generic membership_reconcile; Added members become a MemberAdded obligation and Modified members a MemberChanged obligation (both are work remaining; they differ in how they realize — gunbc.change_realization), unchanged members disappear by monoid identity, and an observed member removed from desired REFUSES because workflow facts are Ensured rather than Owned. Goal shrink therefore cannot compile into evidence deletion: an intentional removal must remain as an explicit WorkflowFactWaived desired fact. intent_revision is per-obligation semantic identity, so an approved refinement produces a Modified hunk while unchanged sibling facts remain noops. The verdict projection reuses std.workflow_recursive: a decomposed parent participates beside its descendants, so green children cannot silently complete a pending parent and one deep refusal latches the whole tree. Observed failure/refusal and plan refusal are separate typed counts: a provider refusal cannot degrade into generic not-converged, and an unsafe goal removal cannot masquerade as provider failure. Realizations consume the generic MemberAdded/MemberChanged as either a direct effect or another planned workflow; they do not each reimplement desired-vs-observed mutation logic."
+data workflow_recursive_reconcile_note: String = "A workflow is desired facts reconciled against observed facts, not a stored stage enum. WorkflowFactTree is recursive at every grain: a fact may be a leaf or may be decomposed into child workflow facts while retaining its own verdict. fold_workflow_fact_tree is THE catamorphism over that shape; membership, verdict, and observation tallies are algebras over the same traversal rather than independent recursive walkers. Its membership algebra DERIVES each WorkflowFactMember parent_key from the tree edge, so moving an unchanged child between parents is one MemberChanged rather than an invisible no-op or hand-authored remove/add pair. Desired and observed members feed the existing generic membership_reconcile; Added members become a MemberAdded obligation and Modified members a MemberChanged obligation (both are work remaining; they differ in how they realize — gunbc.change_realization), unchanged members disappear by monoid identity, and an observed member removed from desired REFUSES because workflow facts are Ensured rather than Owned. Goal shrink therefore cannot compile into evidence deletion: an intentional removal must remain as an explicit WorkflowFactWaived desired fact. intent_revision is per-obligation semantic identity, so an approved refinement produces a Modified hunk while unchanged sibling facts remain noops. The verdict projection reuses std.workflow_recursive: a decomposed parent participates beside its descendants, so green children cannot silently complete a pending parent and one deep refusal latches the whole tree. Observed failure/refusal and plan refusal are separate typed counts: a provider refusal cannot degrade into generic not-converged, and an unsafe goal removal cannot masquerade as provider failure. Realizations consume the generic MemberAdded/MemberChanged as either a direct effect or another planned workflow; they do not each reimplement desired-vs-observed mutation logic."
 
-fn workflow_fact_state_key(state: WorkflowFactState) -> std.types.String {
+fn workflow_fact_state_key(state: WorkflowFactState) -> String {
   match state {
     WorkflowFactPending => "pending"
     WorkflowFactActive => "active"
@@ -111,7 +111,7 @@ fn workflow_fact_ownership(fact: WorkflowFact) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Ensured }
 }
 
-fn workflow_fact_locus(fact: WorkflowFact) -> std.types.String {
+fn workflow_fact_locus(fact: WorkflowFact) -> String {
   join([
     "workflow:",
     fact.key.workflow_id,
@@ -492,7 +492,7 @@ fn workflow_reconcile_report(
 
 fn workflow_reconcile_status_key(
   report: WorkflowReconcileReport,
-) -> std.types.String {
+) -> String {
   if report.plan_refusal_count > 0
     || report.observed_refusal_count > 0 {
     "refused"

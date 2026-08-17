@@ -28,10 +28,10 @@ type RunnerSlotObservation
   | RunnerSlotsUnobserved { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
 fn runner_slot_instance_dir(instance_name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
-  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", instance_name as std.types.String], "") as std.types.NonEmptyStr
+  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", instance_name as String], "") as std.types.NonEmptyStr
 }
 
-fn runner_slot_member_from_instance_name(instance_name: std.types.String) -> RunnerSlotMember {
+fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
   let name = instance_name as std.types.NonEmptyStr
   RunnerSlotMember {
     instance_name: name,
@@ -51,14 +51,14 @@ fn runner_slot_member_key(m: RunnerSlotMember) -> std.types.NonEmptyStr {
 }
 
 fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
-  a as std.types.String == b as std.types.String
+  a as String == b as String
 }
 
 fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> std.types.Bool {
-  a.slot_dir as std.types.String == b.slot_dir as std.types.String
+  a.slot_dir as String == b.slot_dir as String
 }
 
-data runner_slot_member_ownership_scaffold_note: std.types.String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
+data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
 
 fn runner_slot_member_ownership(m: RunnerSlotMember) -> gunbc.ownership.Ownership? {
   Absent
@@ -84,8 +84,8 @@ type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
       host: product.placement_supply.HostIdentity
-      declared_count: std.types.Int
-      observed_count: std.types.Int
+      declared_count: Int
+      observed_count: Int
     }
 
 fn runner_slot_enumeration_postcondition(
@@ -108,8 +108,8 @@ fn runner_slot_enumeration_postcondition(
 type RunnerSlotProvisionPlan {
   host_label: std.types.NonEmptyStr
   membership: gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
-  base_dir_script: std.types.String
-  upsert_extract_scripts: std.types.List<std.types.String>
+  base_dir_script: String
+  upsert_extract_scripts: std.types.List<String>
 }
 
 fn runner_slot_provision_plan(

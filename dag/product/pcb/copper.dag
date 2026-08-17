@@ -27,15 +27,15 @@ module product.pcb.copper
 // is the same one admit_stackup closed one layer up by carrying the declaration it judged.
 type CopperLayerRef sole_constructor {
   stackup_authority: std.decl_ref.DeclarationRef
-  ordinal: std.types.Int
+  ordinal: Int
   function: product.pcb.stackup.CopperLayerFunction
 }
 
 type LayerSelection
   = LayerSelected { layer: CopperLayerRef }
-  | LayerOutsideStackup { requested: std.types.Int, layer_count: std.types.Int }
+  | LayerOutsideStackup { requested: Int, layer_count: Int }
 
-fn mint_layer_ref(stackup_authority: std.decl_ref.DeclarationRef, ordinal: std.types.Int, function: product.pcb.stackup.CopperLayerFunction) -> LayerSelection
+fn mint_layer_ref(stackup_authority: std.decl_ref.DeclarationRef, ordinal: Int, function: product.pcb.stackup.CopperLayerFunction) -> LayerSelection
   admit_callers: [
     decl_ref(module_path: "product.pcb.copper", decl_name: "select_copper_layer"),
   ]
@@ -51,7 +51,7 @@ fn mint_layer_ref(stackup_authority: std.decl_ref.DeclarationRef, ordinal: std.t
 // order the stackup already carries. Out of range REFUSES with both numbers rather than clamping to
 // the nearest layer — a clamp would put copper on a real layer that nobody asked for, which is the
 // fabricated-plausible-output failure with a board attached (DESIGN section 5).
-fn select_copper_layer(a: product.pcb.stackup.AdmittedStackup, ordinal: std.types.Int) -> LayerSelection {
+fn select_copper_layer(a: product.pcb.stackup.AdmittedStackup, ordinal: Int) -> LayerSelection {
   let layers = product.pcb.stackup.stackup_copper_layers(s: product.pcb.stackup.admitted_stackup_body(a: a))
   let n = product.pcb.stackup.stackup_copper_layer_count(s: product.pcb.stackup.admitted_stackup_body(a: a))
   if ordinal < 0 || ordinal >= n {
@@ -70,11 +70,11 @@ fn select_copper_layer(a: product.pcb.stackup.AdmittedStackup, ordinal: std.type
 // accumulator carries how many layers have been passed and the layers matched so far; at most one
 // can match, and the caller has already refused the out-of-range case, so the match is nonempty.
 type LayerScan {
-  seen: std.types.Int
+  seen: Int
   picked: std.types.List<product.pcb.stackup.CopperLayer>
 }
 
-fn scan_for_ordinal(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: std.types.Int) -> LayerScan {
+fn scan_for_ordinal(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> LayerScan {
   v2.std.algebra.fold_list(
     xs: layers,
     empty: LayerScan { seen: 0, picked: [] },
@@ -87,11 +87,11 @@ fn scan_for_ordinal(layers: std.types.List<product.pcb.stackup.CopperLayer>, ord
   )
 }
 
-fn nth_layer_function(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: std.types.Int) -> product.pcb.stackup.CopperLayerFunction {
+fn nth_layer_function(layers: std.types.List<product.pcb.stackup.CopperLayer>, ordinal: Int) -> product.pcb.stackup.CopperLayerFunction {
   scan_for_ordinal(layers: layers, ordinal: ordinal).picked.first().function
 }
 
-fn copper_layer_ordinal(r: CopperLayerRef) -> std.types.Int {
+fn copper_layer_ordinal(r: CopperLayerRef) -> Int {
   r.ordinal
 }
 
@@ -135,7 +135,7 @@ type CopperRefusalCause
 // NetIdentity and ElectricalTerminalRef are general concepts living in a specimen module, and they
 // belong in a connectivity authority that the analog article and this both consume. That migration
 // touches the article and its SPICE projection, so it is its own change rather than a rider here.
-fn net_exists(nets: std.types.List<product.compute_board.analog.ElectricalNet>, net: product.compute_board.analog.NetIdentity) -> std.logic.Bool {
+fn net_exists(nets: std.types.List<product.compute_board.analog.ElectricalNet>, net: product.compute_board.analog.NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
 
@@ -200,6 +200,6 @@ fn unrealized_nets(nets: std.types.List<product.compute_board.analog.ElectricalN
   filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) == 0)
 }
 
-fn copper_is_complete_over_nets(nets: std.types.List<product.compute_board.analog.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.logic.Bool {
+fn copper_is_complete_over_nets(nets: std.types.List<product.compute_board.analog.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
   count(unrealized_nets(nets: nets, rs: rs)) == 0
 }

@@ -3,24 +3,24 @@ module test.claim.membership_reconcile_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-type TMemberAt = std.types.String
+type TMemberAt = String
 
-type TMember { mid: std.types.String, ver: std.types.String, own: gunbc.ownership.Ownership? }
+type TMember { mid: String, ver: String, own: gunbc.ownership.Ownership? }
 
-fn tm_owned(mid: std.types.String, ver: std.types.String) -> TMember {
+fn tm_owned(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Present { value: gunbc.ownership.Owned } }
 }
 
-fn tm_ensured(mid: std.types.String, ver: std.types.String) -> TMember {
+fn tm_ensured(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Present { value: gunbc.ownership.Ensured } }
 }
 
-fn tm_unknown(mid: std.types.String, ver: std.types.String) -> TMember {
+fn tm_unknown(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Absent }
 }
 
-fn t_key(m: TMember) -> std.types.String { m.mid }
-fn t_key_eq(a: std.types.String, b: std.types.String) -> std.types.Bool { a == b }
+fn t_key(m: TMember) -> String { m.mid }
+fn t_key_eq(a: String, b: String) -> std.types.Bool { a == b }
 fn t_val_eq(a: TMember, b: TMember) -> std.types.Bool { a.ver == b.ver }
 fn t_own(m: TMember) -> gunbc.ownership.Ownership? { m.own }
 
@@ -37,11 +37,11 @@ fn t_reconcile(desired: std.types.List<TMember>, observed: std.types.List<TMembe
   )
 }
 
-fn plan_has_add(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: std.types.String) -> std.types.Bool {
+fn plan_has_add(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> std.types.Bool {
   any(plan.actions, a => match a { gunbc.membership_reconcile.MemberAdded { at: _, to: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: std.types.String, from_ver: std.types.String, to_ver: std.types.String) -> std.types.Bool {
+fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String, from_ver: String, to_ver: String) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
       gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
@@ -51,11 +51,11 @@ fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<TMemb
   )
 }
 
-fn plan_has_teardown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: std.types.String) -> std.types.Bool {
+fn plan_has_teardown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> std.types.Bool {
   any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: std.types.String) -> std.types.Bool {
+fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
       gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
@@ -65,7 +65,7 @@ fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<TM
   )
 }
 
-fn plan_has_refused_unknown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: std.types.String) -> std.types.Bool {
+fn plan_has_refused_unknown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
       gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
@@ -97,7 +97,7 @@ test fn w_unchanged_noop() -> std.types.Bool {
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0
 }
 
-data w_modified_changes_note: std.types.String = "A Modified hunk is a MemberChanged carrying BOTH sides, NOT an add of the `to` side. The from-side assertion is the discriminating half: it reds if anyone reintroduces the collapse that discarded `from`, which is the fact every safe realization of a change needs (an SCM compare-and-swap names the expected prior; a moved host address needs the prior endpoint to retire). Asserted at the ACTION grain — a tally alone cannot tell a change from an add."
+data w_modified_changes_note: String = "A Modified hunk is a MemberChanged carrying BOTH sides, NOT an add of the `to` side. The from-side assertion is the discriminating half: it reds if anyone reintroduces the collapse that discarded `from`, which is the fact every safe realization of a change needs (an SCM compare-and-swap names the expected prior; a moved host address needs the prior endpoint to retire). Asserted at the ACTION grain — a tally alone cannot tell a change from an add."
 
 test fn w_modified_is_change_carrying_both_sides() -> std.types.Bool {
   let plan = t_reconcile(
@@ -113,7 +113,7 @@ test fn w_modified_is_change_carrying_both_sides() -> std.types.Bool {
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0
 }
 
-data w_ensured_converges_note: std.types.String = "REGRESSION CONTROL for a wall that was BUILT AND WITHDRAWN during this change (DESIGN §4b(4): the evidence stays enrolled after the reasoning settles; §4c: prose is never evidence a machine claim holds). An earlier draft refused a Modified hunk whose `from` was not Owned, reading replacement as destruction. That is wrong, and this row is what makes it stay wrong out loud. WHAT IT PROVES, precisely: gunbc.ownership defines Ensured as 'requires present but does NOT own (never torn down)' — a constraint on REMOVAL. Ensured says NOTHING about update, and treating it as if it did breaks the module whose entire job is re-installing drifted pins (tool_readiness classifies every pin Ensured; repo_local_git_config every binding). So the SAME Ensured member must CONVERGE when its value drifts and REFUSE when it is removed — one member, both arms, in one plan, so the asymmetry is asserted rather than assumed. Reintroducing the change-refusal arm turns the first conjunct red."
+data w_ensured_converges_note: String = "REGRESSION CONTROL for a wall that was BUILT AND WITHDRAWN during this change (DESIGN §4b(4): the evidence stays enrolled after the reasoning settles; §4c: prose is never evidence a machine claim holds). An earlier draft refused a Modified hunk whose `from` was not Owned, reading replacement as destruction. That is wrong, and this row is what makes it stay wrong out loud. WHAT IT PROVES, precisely: gunbc.ownership defines Ensured as 'requires present but does NOT own (never torn down)' — a constraint on REMOVAL. Ensured says NOTHING about update, and treating it as if it did breaks the module whose entire job is re-installing drifted pins (tool_readiness classifies every pin Ensured; repo_local_git_config every binding). So the SAME Ensured member must CONVERGE when its value drifts and REFUSE when it is removed — one member, both arms, in one plan, so the asymmetry is asserted rather than assumed. Reintroducing the change-refusal arm turns the first conjunct red."
 
 test fn w_ensured_member_converges_but_refuses_removal() -> std.types.Bool {
   let plan = t_reconcile(
@@ -145,7 +145,7 @@ test fn w_r5_owned_only_teardown_synthetic() -> std.types.Bool {
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 2
 }
 
-fn effects_has_teardown(es: std.types.List<gunbc.membership_reconcile.MemberEffect<TMember>>, mid: std.types.String) -> std.types.Bool {
+fn effects_has_teardown(es: std.types.List<gunbc.membership_reconcile.MemberEffect<TMember>>, mid: String) -> std.types.Bool {
   any(es, e =>
     match e {
       gunbc.membership_reconcile.EffectRemove { from: m } => m.mid == mid
@@ -155,7 +155,7 @@ fn effects_has_teardown(es: std.types.List<gunbc.membership_reconcile.MemberEffe
   )
 }
 
-data w_effect_replace_note: std.types.String = "EffectReplace carries BOTH sides into apply, which is the point of the split: a handler that replaces a member must be able to retire the prior realization, and `from` is the only place the prior endpoint survives. An EffectAdd carries one side because there is nothing there to retire."
+data w_effect_replace_note: String = "EffectReplace carries BOTH sides into apply, which is the point of the split: a handler that replaces a member must be able to retire the prior realization, and `from` is the only place the prior endpoint survives. An EffectAdd carries one side because there is nothing there to retire."
 
 test fn w_change_projects_to_effect_replace_with_both_sides() -> std.types.Bool {
   let plan = t_reconcile(
@@ -175,7 +175,7 @@ test fn w_change_projects_to_effect_replace_with_both_sides() -> std.types.Bool 
   }
 }
 
-data w_effects_wholesale_refuse_note: std.types.String = "DISCRIMINATING (§5): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects returns ApplyRefused (o's owned teardown NOT surfaced as an effect), never EffectsReady with the refused sibling silently filtered out. If membership_effects is ever broken to drop-the-refused and return the effects, this hits the EffectsReady arm and returns false = RED. The degenerate apply/retract poles never produce a Refused, so only this synthetic mixed observed set exercises the wall."
+data w_effects_wholesale_refuse_note: String = "DISCRIMINATING (§5): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects returns ApplyRefused (o's owned teardown NOT surfaced as an effect), never EffectsReady with the refused sibling silently filtered out. If membership_effects is ever broken to drop-the-refused and return the effects, this hits the EffectsReady arm and returns false = RED. The degenerate apply/retract poles never produce a Refused, so only this synthetic mixed observed set exercises the wall."
 
 test fn w_effects_refuses_wholesale_on_any_refusal() -> std.types.Bool {
   let plan = t_reconcile(
@@ -215,9 +215,9 @@ test fn w_tally_matches_counts() -> std.types.Bool {
     && t.refusals == gunbc.membership_reconcile.membership_refusal_count(plan: plan)
 }
 
-type ScopedWitnessScope { node: std.types.String }
+type ScopedWitnessScope { node: String }
 
-type ScopedWitnessMember { node: std.types.String, mid: std.types.String, ver: std.types.String }
+type ScopedWitnessMember { node: String, mid: String, ver: String }
 
 type ScopedWitnessKeyRelation
 
@@ -229,11 +229,11 @@ fn scoped_witness_scope_eq(a: ScopedWitnessScope, b: ScopedWitnessScope) -> std.
   a.node == b.node
 }
 
-fn scoped_witness_key_of(m: ScopedWitnessMember) -> std.types.String {
+fn scoped_witness_key_of(m: ScopedWitnessMember) -> String {
   m.mid
 }
 
-fn scoped_witness_key_eq(a: std.types.String, b: std.types.String) -> std.types.Bool {
+fn scoped_witness_key_eq(a: String, b: String) -> std.types.Bool {
   a == b
 }
 
@@ -245,17 +245,17 @@ fn scoped_witness_own(_: ScopedWitnessMember) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Owned }
 }
 
-data scoped_witness_key_relation: std.key_relation.KeyRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, std.types.String> = std.key_relation.KeyRelation {
+data scoped_witness_key_relation: std.key_relation.KeyRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String> = std.key_relation.KeyRelation {
   scope_of: scoped_witness_scope_of,
   key_of: scoped_witness_key_of,
   scope_eq: scoped_witness_scope_eq,
   key_eq: scoped_witness_key_eq,
 }
 
-fn scoped_witness_state_of(m: ScopedWitnessMember) -> std.types.String { m.ver }
-fn scoped_witness_state_eq(a: std.types.String, b: std.types.String) -> std.types.Bool { a == b }
+fn scoped_witness_state_of(m: ScopedWitnessMember) -> String { m.ver }
+fn scoped_witness_state_eq(a: String, b: String) -> std.types.Bool { a == b }
 
-data scoped_witness_resource: std.key_relation.KeyedResourceRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, std.types.String, std.types.String> = std.key_relation.KeyedResourceRelation {
+data scoped_witness_resource: std.key_relation.KeyedResourceRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String, String> = std.key_relation.KeyedResourceRelation {
   key: scoped_witness_key_relation,
   state: std.key_relation.StateRelation {
     state_of: scoped_witness_state_of,
@@ -263,7 +263,7 @@ data scoped_witness_resource: std.key_relation.KeyedResourceRelation<ScopedWitne
   },
 }
 
-data w_same_key_different_scope_note: std.types.String = "DISCRIMINATING (P0 #1): two subjects with the same key in DIFFERENT scopes must NOT collapse into one reconcile row. An unscoped key_of seam treats host-a and host-b both owning route 443:/ as one member; ScopedKey carries scope and key together so both stay distinct."
+data w_same_key_different_scope_note: String = "DISCRIMINATING (P0 #1): two subjects with the same key in DIFFERENT scopes must NOT collapse into one reconcile row. An unscoped key_of seam treats host-a and host-b both owning route 443:/ as one member; ScopedKey carries scope and key together so both stay distinct."
 
 test fn w_same_key_different_scope_stays_distinct() -> std.types.Bool {
   let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }
@@ -314,7 +314,7 @@ test fn w_duplicate_plain_key_refuses_with_roster_cause() -> std.types.Bool {
     }
 }
 
-data w_duplicate_scoped_key_refuses_note: std.types.String = "DISCRIMINATING: two desired members sharing one scoped key must refuse at roster build — MembershipReconcileDuplicateScopedKey on the desired roster, never a 1:1 diff."
+data w_duplicate_scoped_key_refuses_note: String = "DISCRIMINATING: two desired members sharing one scoped key must refuse at roster build — MembershipReconcileDuplicateScopedKey on the desired roster, never a 1:1 diff."
 
 test fn w_duplicate_scoped_key_refuses() -> std.types.Bool {
   let a = ScopedWitnessMember { node: "host-a", mid: "route", ver: "1" }

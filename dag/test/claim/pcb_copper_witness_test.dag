@@ -63,7 +63,7 @@ fn admitted_board(s: product.pcb.stackup.Stackup, authority: std.decl_ref.Declar
   }
 }
 
-fn admitted_three_layer_selection(ordinal: Int) -> std.logic.Bool {
+fn admitted_three_layer_selection(ordinal: Int) -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => false
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -77,7 +77,7 @@ fn admitted_three_layer_selection(ordinal: Int) -> std.logic.Bool {
 // A layer reference reports the ordinal asked for AND the function of the layer that is actually
 // there — the second is what makes the reference a read of the stackup rather than a restatement of
 // the request. Ordinal 1 is the ground plane, and the reference knows it.
-test fn w_a_selected_layer_carries_the_function_it_found() -> std.logic.Bool {
+test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => false
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -97,7 +97,7 @@ test fn w_a_selected_layer_carries_the_function_it_found() -> std.logic.Bool {
 
 // The top layer is signal and the bottom layer is signal, so reading only ordinal 1 could not
 // distinguish a real lookup from a constant. Reading 0 and 2 as well pins that the fold walks.
-test fn w_selection_distinguishes_the_layers_it_walks_past() -> std.logic.Bool {
+test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => false
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -122,7 +122,7 @@ test fn w_selection_distinguishes_the_layers_it_walks_past() -> std.logic.Bool {
 
 // RED control: an ordinal past the last layer refuses and reports BOTH numbers, rather than
 // clamping to the nearest real layer. A clamp would put copper on a layer nobody asked for.
-test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> std.logic.Bool {
+test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => false
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -133,7 +133,7 @@ test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> std.
   }
 }
 
-test fn w_red_a_negative_ordinal_refuses() -> std.logic.Bool {
+test fn w_red_a_negative_ordinal_refuses() -> Bool {
   !admitted_three_layer_selection(ordinal: 0 - 1)
     && admitted_three_layer_selection(ordinal: 0)
 }
@@ -160,7 +160,7 @@ fn realization_on(net: product.compute_board.analog.NetIdentity, ordinal: Int) -
   }
 }
 
-test fn w_copper_naming_real_nets_admits() -> std.logic.Bool {
+test fn w_copper_naming_real_nets_admits() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -176,7 +176,7 @@ test fn w_copper_naming_real_nets_admits() -> std.logic.Bool {
 // RED control: THE RENAMED-NET CLASS. Copper naming a net the schematic does not carry is a
 // conductor belonging to nothing. A count would not see it — two nets, two realizations — which is
 // why admission joins on identity.
-test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> std.logic.Bool {
+test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -199,7 +199,7 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> std.logic.
 // RED control: one net realized on two layers is two conductors claiming one name. Exactly ONE
 // cause, because the problem is a fact about the net rather than about either row -- the same net
 // reported twice would be a duplicate finding, not a second one.
-test fn w_red_a_net_realized_twice_is_refused() -> std.logic.Bool {
+test fn w_red_a_net_realized_twice_is_refused() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -222,7 +222,7 @@ test fn w_red_a_net_realized_twice_is_refused() -> std.logic.Bool {
 // ADMISSION AND COVERAGE ARE SEPARATE AXES. An empty copper set is internally consistent — nothing
 // wrong is realized — and covers nothing. If one arm carried both, an unrouted board would report
 // as admitted-and-therefore-done.
-test fn w_an_empty_board_admits_and_covers_nothing() -> std.logic.Bool {
+test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -236,7 +236,7 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> std.logic.Bool {
   }
 }
 
-test fn w_coverage_completes_only_when_every_net_is_realized() -> std.logic.Bool {
+test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
   let partial = realization_on(net: vcc, ordinal: 0)
   let full = partial + realization_on(net: gnd_net, ordinal: 1)
   count(product.pcb.copper.unrealized_nets(nets: board_nets, rs: partial)) == 1
@@ -249,7 +249,7 @@ test fn w_coverage_completes_only_when_every_net_is_realized() -> std.logic.Bool
 // selected against three_layer by ordinal or function - only the bound declaration separates them.
 // Admitting it against three_layer must refuse, or the seal proved the ref came from SOME admitted
 // stackup and never which one.
-test fn w_red_copper_selected_against_another_stackup_is_refused() -> std.logic.Bool {
+test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {

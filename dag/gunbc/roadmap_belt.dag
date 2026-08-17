@@ -6,24 +6,24 @@ type BeltRunState
   | Paused
 
 type BeltCapacity {
-  max_concurrent: std.types.Int
+  max_concurrent: Int
 }
 
 type BeltAction
   = SpawnWorker { node: gunbc.roadmap_model.RoadmapNode }
   | HoldPaused
-  | AtCapacity { ready_waiting: std.types.Int }
+  | AtCapacity { ready_waiting: Int }
 
 fn node_occupied(occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>, node: gunbc.roadmap_model.RoadmapNode) -> std.types.Bool {
   any(occupied, id => id == node.node)
 }
 
-fn belt_free_slots_int(cap: BeltCapacity, occupied_count: std.types.Int) -> std.types.Int {
+fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
   let free = cap.max_concurrent - occupied_count
   if free < 0 { 0 } else { free }
 }
 
-fn belt_free_slots(cap: BeltCapacity, occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>) -> std.types.Int {
+fn belt_free_slots(cap: BeltCapacity, occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>) -> Int {
   belt_free_slots_int(cap: cap, occupied_count: count(occupied))
 }
 
@@ -59,7 +59,7 @@ fn belt_action_is_spawn(a: BeltAction) -> std.types.Bool {
   }
 }
 
-fn belt_spawn_count(actions: std.types.List<BeltAction>) -> std.types.Int {
+fn belt_spawn_count(actions: std.types.List<BeltAction>) -> Int {
   count(actions |> filter(a => belt_action_is_spawn(a: a)))
 }
 
@@ -78,7 +78,7 @@ data roadmap_belt_default_run_state: BeltRunState = Running
 fn belt_plan(
   state: BeltRunState,
   doc: gunbc.roadmap_document.RoadmapDocument,
-  merged: std.types.List<std.types.Int>,
+  merged: std.types.List<Int>,
   occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>,
   cap: BeltCapacity,
 ) -> std.types.List<BeltAction> {
@@ -90,7 +90,7 @@ fn belt_plan(
   )
 }
 
-fn belt_run_state_label(s: BeltRunState) -> std.types.String {
+fn belt_run_state_label(s: BeltRunState) -> String {
   match s {
     Running => "running"
     Paused => "paused"
@@ -115,7 +115,7 @@ fn belt_is_at_capacity(actions: std.types.List<BeltAction>) -> std.types.Bool {
   })
 }
 
-fn belt_at_capacity_backlog(actions: std.types.List<BeltAction>) -> std.types.Int {
+fn belt_at_capacity_backlog(actions: std.types.List<BeltAction>) -> Int {
   fold(actions, init: 0, f: fn(acc, a) {
     match a {
       AtCapacity { ready_waiting } => ready_waiting
@@ -128,7 +128,7 @@ fn belt_at_capacity_backlog(actions: std.types.List<BeltAction>) -> std.types.In
 fn belt_json_value(
   state: BeltRunState,
   doc: gunbc.roadmap_document.RoadmapDocument,
-  merged: std.types.List<std.types.Int>,
+  merged: std.types.List<Int>,
   occupied: std.types.List<gunbc.roadmap_model.RoadmapNodeId>,
   cap: BeltCapacity,
 ) -> extdeps.languages.json.emit.JsonValue {
@@ -138,15 +138,15 @@ fn belt_json_value(
     extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-belt/v1")),
     extdeps.languages.json.emit.json_kv(key: "run_state", value: extdeps.languages.json.emit.json_string(s: belt_run_state_label(s: state))),
     extdeps.languages.json.emit.json_kv(key: "max_concurrent", value: extdeps.languages.json.emit.json_int(n: cap.max_concurrent)),
-    extdeps.languages.json.emit.json_kv(key: "occupied", value: extdeps.languages.json.emit.json_array(elements: occupied |> map(id => extdeps.languages.json.emit.json_string(s: id as std.types.String)))),
+    extdeps.languages.json.emit.json_kv(key: "occupied", value: extdeps.languages.json.emit.json_array(elements: occupied |> map(id => extdeps.languages.json.emit.json_string(s: id as String)))),
     extdeps.languages.json.emit.json_kv(key: "ready_count", value: extdeps.languages.json.emit.json_int(n: count(frontier.ready))),
-    extdeps.languages.json.emit.json_kv(key: "would_spawn", value: extdeps.languages.json.emit.json_array(elements: belt_would_spawn_ids(actions: actions) |> map(id => extdeps.languages.json.emit.json_string(s: id as std.types.String)))),
+    extdeps.languages.json.emit.json_kv(key: "would_spawn", value: extdeps.languages.json.emit.json_array(elements: belt_would_spawn_ids(actions: actions) |> map(id => extdeps.languages.json.emit.json_string(s: id as String)))),
     extdeps.languages.json.emit.json_kv(key: "at_capacity", value: extdeps.languages.json.emit.json_bool(b: belt_is_at_capacity(actions: actions))),
     extdeps.languages.json.emit.json_kv(key: "at_capacity_backlog", value: extdeps.languages.json.emit.json_int(n: belt_at_capacity_backlog(actions: actions))),
   ])
 }
 
-fn roadmap_belt_status_json() -> std.types.String {
+fn roadmap_belt_status_json() -> String {
   match gunbc.roadmap_authority.roadmap_authority_projection() {
     gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
       extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
@@ -165,30 +165,30 @@ fn roadmap_belt_status_json() -> std.types.String {
   }
 }
 
-data belt_reconcile_authority_note: std.types.String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMES belt_step (spawn-only, observed hardcoded empty): belt_step is the degenerate slice-1 precursor and retires when the host-effect driver (slice 2b: MemberAdded/MemberChanged -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision. The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
+data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMES belt_step (spawn-only, observed hardcoded empty): belt_step is the degenerate slice-1 precursor and retires when the host-effect driver (slice 2b: MemberAdded/MemberChanged -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision. The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
 
-type DispatchMemberAt = std.types.String
+type DispatchMemberAt = String
 
 type DispatchMember
-  = DesiredMember { node_id: std.types.String, node: gunbc.roadmap_model.RoadmapNode }
-  | ObservedMember { node_id: std.types.String, session: gunbc.roadmap_dispatch_actuator.DispatchLiveSession }
+  = DesiredMember { node_id: String, node: gunbc.roadmap_model.RoadmapNode }
+  | ObservedMember { node_id: String, session: gunbc.roadmap_dispatch_actuator.DispatchLiveSession }
 
-data belt_dispatch_member_note: std.types.String = "The reconcile member for the belt. DesiredMember (from frontier.ready) carries the RoadmapNode for the spawn brief; ObservedMember (from dispatch_live_sessions) carries the DispatchLiveSession for the teardown. Both keyed on the node-id String so a ready node and its live session collapse to one key. The action's member carries exactly the payload that action needs: Added->DesiredMember(.node) spawns, Removed->ObservedMember(.session) reaps. Keyed on raw String (not RoadmapNodeId) so desired (n.node as String) and observed (s.node_id, already String) share one key type with no branded cast."
+data belt_dispatch_member_note: String = "The reconcile member for the belt. DesiredMember (from frontier.ready) carries the RoadmapNode for the spawn brief; ObservedMember (from dispatch_live_sessions) carries the DispatchLiveSession for the teardown. Both keyed on the node-id String so a ready node and its live session collapse to one key. The action's member carries exactly the payload that action needs: Added->DesiredMember(.node) spawns, Removed->ObservedMember(.session) reaps. Keyed on raw String (not RoadmapNodeId) so desired (n.node as String) and observed (s.node_id, already String) share one key type with no branded cast."
 
-fn dispatch_member_key(m: DispatchMember) -> std.types.String {
+fn dispatch_member_key(m: DispatchMember) -> String {
   match m {
     DesiredMember { node_id, node: _ } => node_id
     ObservedMember { node_id, session: _ } => node_id
   }
 }
 
-fn dispatch_member_key_eq(a: std.types.String, b: std.types.String) -> std.types.Bool { a == b }
+fn dispatch_member_key_eq(a: String, b: String) -> std.types.Bool { a == b }
 
-data belt_value_eq_note: std.types.String = "Presence-only equality (always true): a ready node WITH a live session is Unchanged (noop), never Modified — the belt must NEVER respawn a running session on content drift (that would kill live work). Session HEALTH (drain/restart of a drifted or hung session for a still-ready node) is the actuator lease concern (roadmap_dispatch_actuator.classify_dispatch_lease_upsert), a SEPARATE layer over membership. key_of is stable identity (node-id) so a Removed member means the node genuinely left the ready set (done), never a content drift."
+data belt_value_eq_note: String = "Presence-only equality (always true): a ready node WITH a live session is Unchanged (noop), never Modified — the belt must NEVER respawn a running session on content drift (that would kill live work). Session HEALTH (drain/restart of a drifted or hung session for a still-ready node) is the actuator lease concern (roadmap_dispatch_actuator.classify_dispatch_lease_upsert), a SEPARATE layer over membership. key_of is stable identity (node-id) so a Removed member means the node genuinely left the ready set (done), never a content drift."
 
 fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> std.types.Bool { true }
 
-data belt_ownership_mapping_note: std.types.String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
+data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
 
 fn belt_ownership_owned() -> gunbc.ownership.Ownership? { Present { value: gunbc.ownership.Owned } }
 fn belt_ownership_unknown() -> gunbc.ownership.Ownership? { Absent }
@@ -197,7 +197,7 @@ fn belt_session_ownership(session: gunbc.roadmap_dispatch_actuator.DispatchLiveS
   if gunbc.roadmap_dispatch_actuator.dispatch_session_is_owned(session: session) { belt_ownership_owned() } else { belt_ownership_unknown() }
 }
 
-data belt_desired_member_ownership_note: std.types.String = "ownership_of is called by the spine ONLY on Removed (observed-side) members; a DesiredMember is on the desired side and is never Removed, so this arm is unreachable by construction. IF reached it returns Absent => OwnershipUnknown => REFUSE (fail-closed, DESIGN §5) — never a fabricated Owned that would license a teardown."
+data belt_desired_member_ownership_note: String = "ownership_of is called by the spine ONLY on Removed (observed-side) members; a DesiredMember is on the desired side and is never Removed, so this arm is unreachable by construction. IF reached it returns Absent => OwnershipUnknown => REFUSE (fail-closed, DESIGN §5) — never a fabricated Owned that would license a teardown."
 
 fn dispatch_member_ownership(m: DispatchMember) -> gunbc.ownership.Ownership? {
   match m {
@@ -207,7 +207,7 @@ fn dispatch_member_ownership(m: DispatchMember) -> gunbc.ownership.Ownership? {
 }
 
 fn belt_desired_members(frontier: gunbc.roadmap_spawner.SpawnFrontier) -> std.types.List<DispatchMember> {
-  frontier.ready |> map(n => DesiredMember { node_id: n.node as std.types.String, node: n })
+  frontier.ready |> map(n => DesiredMember { node_id: n.node as String, node: n })
 }
 
 fn belt_observed_members(live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> std.types.List<DispatchMember> {
@@ -266,15 +266,15 @@ fn belt_plan_refusals(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMe
 
 type BeltReconcile {
   run_state: BeltRunState,
-  occupied: std.types.Int,
-  free: std.types.Int,
+  occupied: Int,
+  free: Int,
   spawns: std.types.List<DispatchMember>,
-  deferred: std.types.Int,
+  deferred: Int,
   teardowns: std.types.List<DispatchMember>,
   refusals: std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>,
 }
 
-data belt_deferred_note: std.types.String = "deferred = upserts beyond this tick's free capacity. NOT dropped-and-forgotten (absorbing): the deferred nodes stay desired-not-observed, so the next reconcile tick produces their upserts again (idempotent). The count is SURFACED (belt status at_capacity_backlog / would_defer), so a growing backlog is an observable signal, never silent."
+data belt_deferred_note: String = "deferred = upserts beyond this tick's free capacity. NOT dropped-and-forgotten (absorbing): the deferred nodes stay desired-not-observed, so the next reconcile tick produces their upserts again (idempotent). The count is SURFACED (belt status at_capacity_backlog / would_defer), so a growing backlog is an observable signal, never silent."
 
 fn belt_reconcile(
   state: BeltRunState,
@@ -311,17 +311,17 @@ fn belt_reconcile(
   }
 }
 
-fn belt_reconcile_spawn_count(r: BeltReconcile) -> std.types.Int { count(r.spawns) }
-fn belt_reconcile_teardown_count(r: BeltReconcile) -> std.types.Int { count(r.teardowns) }
-fn belt_reconcile_refusal_count(r: BeltReconcile) -> std.types.Int { count(r.refusals) }
+fn belt_reconcile_spawn_count(r: BeltReconcile) -> Int { count(r.spawns) }
+fn belt_reconcile_teardown_count(r: BeltReconcile) -> Int { count(r.teardowns) }
+fn belt_reconcile_refusal_count(r: BeltReconcile) -> Int { count(r.refusals) }
 
-fn dispatch_member_id(m: DispatchMember) -> std.types.String { dispatch_member_key(m: m) }
+fn dispatch_member_id(m: DispatchMember) -> String { dispatch_member_key(m: m) }
 
-fn belt_member_ids(ms: std.types.List<DispatchMember>) -> std.types.List<std.types.String> {
+fn belt_member_ids(ms: std.types.List<DispatchMember>) -> std.types.List<String> {
   ms |> map(m => dispatch_member_id(m: m))
 }
 
-fn belt_refusal_member_id(a: gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>) -> std.types.String {
+fn belt_refusal_member_id(a: gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>) -> String {
   match a {
     gunbc.membership_reconcile.MemberRemovalRefused { from: member, cause: _ } => dispatch_member_id(m: member)
     gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } => dispatch_member_id(m: member)
@@ -331,7 +331,7 @@ fn belt_refusal_member_id(a: gunbc.membership_reconcile.MemberAction<DispatchMem
   }
 }
 
-fn belt_refusal_ids(as: std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>) -> std.types.List<std.types.String> {
+fn belt_refusal_ids(as: std.types.List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>>) -> std.types.List<String> {
   as |> map(a => belt_refusal_member_id(a: a))
 }
 
@@ -361,6 +361,6 @@ fn belt_reconcile_status_json(
   frontier: gunbc.roadmap_spawner.SpawnFrontier,
   live: std.types.List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   cap: BeltCapacity,
-) -> std.types.String {
+) -> String {
   extdeps.languages.json.emit.serialize_json(v: belt_reconcile_json_value(state: state, frontier: frontier, live: live, cap: cap))
 }

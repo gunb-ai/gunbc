@@ -1,13 +1,13 @@
 module gunbc.host_axis_caps
 
 
-data host_axis_caps_note: std.types.String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMemberAt = std.types.NonEmptyStr
 
 type CapMember {
   dropin_path: std.types.NonEmptyStr
-  content: std.types.String
+  content: String
 }
 
 data caps_managed_dropin_paths: std.types.List<std.types.NonEmptyStr> = [
@@ -18,7 +18,7 @@ data caps_managed_dropin_paths: std.types.List<std.types.NonEmptyStr> = [
 ]
 
 fn cap_is_managed_path(p: std.types.NonEmptyStr) -> std.types.Bool {
-  fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as std.types.String == p as std.types.String))
+  fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as String == p as String))
 }
 
 fn cap_member_key(m: CapMember) -> std.types.NonEmptyStr {
@@ -26,7 +26,7 @@ fn cap_member_key(m: CapMember) -> std.types.NonEmptyStr {
 }
 
 fn cap_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
-  a as std.types.String == b as std.types.String
+  a as String == b as String
 }
 
 fn cap_member_value_eq(a: CapMember, b: CapMember) -> std.types.Bool {
@@ -41,8 +41,8 @@ fn cap_member_ownership(m: CapMember) -> gunbc.ownership.Ownership? {
   }
 }
 
-fn cap_dropin_content(property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> std.types.String {
-  join(["[Service]\n", property as std.types.String, "=", bytes_value as std.types.String, "\n"], "")
+fn cap_dropin_content(property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> String {
+  join(["[Service]\n", property as String, "=", bytes_value as String, "\n"], "")
 }
 
 fn desired_cap_member(dropin_path: std.types.NonEmptyStr, property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> CapMember {
@@ -52,9 +52,9 @@ fn desired_cap_member(dropin_path: std.types.NonEmptyStr, property: std.types.No
   }
 }
 
-fn cap_upsert_script(m: CapMember) -> std.types.String {
+fn cap_upsert_script(m: CapMember) -> String {
   join([
-    "printf '%s' '", m.content, "' > ", m.dropin_path as std.types.String, "\n",
+    "printf '%s' '", m.content, "' > ", m.dropin_path as String, "\n",
     "systemctl daemon-reload\n",
   ], "")
 }
@@ -76,15 +76,15 @@ fn caps_effects(desired: std.types.List<CapMember>, observed: std.types.List<Cap
   gunbc.membership_reconcile.membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_upsert_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> std.types.Int {
+fn caps_upsert_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
   gunbc.membership_reconcile.membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_teardown_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> std.types.Int {
+fn caps_teardown_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
   gunbc.membership_reconcile.membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_refusal_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> std.types.Int {
+fn caps_refusal_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
   gunbc.membership_reconcile.membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
@@ -106,9 +106,9 @@ data control_shadow_managed_filenames: std.types.List<std.types.NonEmptyStr> = [
 fn control_shadow_dropin_path(unit: std.types.NonEmptyStr, filename: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
   join([
     gunbc.host_converge.gunbc_runner_control_dropin_dir_prefix,
-    unit as std.types.String,
+    unit as String,
     ".d/",
-    filename as std.types.String,
+    filename as String,
   ], "") as std.types.NonEmptyStr
 }
 
@@ -121,18 +121,18 @@ fn control_shadow_unit_key(u: ControlShadowUnit) -> std.types.NonEmptyStr {
 }
 
 fn control_shadow_unit_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
-  a as std.types.String == b as std.types.String
+  a as String == b as String
 }
 
 fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> std.types.Bool {
-  a.unit as std.types.String == b.unit as std.types.String
+  a.unit as String == b.unit as String
 }
 
 fn control_shadow_unit_ownership(u: ControlShadowUnit) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Owned }
 }
 
-fn control_shadow_revert_script(u: ControlShadowUnit) -> std.types.String {
+fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
   concat(join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
 }
 
@@ -160,7 +160,7 @@ fn derived_runner_memory_cap_members() -> std.types.List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
-fn runner_memory_cap_author_script() -> std.types.String {
+fn runner_memory_cap_author_script() -> String {
   join([
     cap_upsert_script(m: derived_runner_memory_max_cap_member()),
     cap_upsert_script(m: derived_runner_memory_high_cap_member()),
@@ -171,7 +171,7 @@ fn cap_observed_contains_derived_member(observed: std.types.List<CapMember>, der
   fold(observed, init: false, f: (acc, o) =>
     acc
       || (
-        cap_member_key(m: o) as std.types.String == cap_member_key(m: derived) as std.types.String
+        cap_member_key(m: o) as String == cap_member_key(m: derived) as String
           && cap_member_value_eq(a: o, b: derived)
       )
   )
@@ -185,11 +185,11 @@ fn runner_memory_cap_author_ready_for_shadow_revert(observed: std.types.List<Cap
   )
 }
 
-data memory_cap_author_before_shadow_revert_ordering_note: std.types.String = "Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
+data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
 
 data host_axis_caps_author_before_revert_enforced: std.types.Bool = true
 
-fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, slot: std.types.Int, limit: std.types.Int) -> std.types.List<std.types.NonEmptyStr> {
+fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, slot: Int, limit: Int) -> std.types.List<std.types.NonEmptyStr> {
   if slot > limit {
     []
   } else {
@@ -208,14 +208,14 @@ fn runner_slot_service_units_for_host(host: product.placement_supply.HostIdentit
   )
 }
 
-fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: std.types.String) -> std.types.String {
+fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: String) -> String {
   join([
     "printf '%s' '", m.content, "' > \"$_gunbc_stage/", stage_name, "\"\n",
-    "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as std.types.String, "\n",
+    "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as String, "\n",
   ], "")
 }
 
-fn deploy_runner_memory_cap_author_script() -> std.types.String {
+fn deploy_runner_memory_cap_author_script() -> String {
   join([
     deploy_cap_upsert_staged_lines(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
     deploy_cap_upsert_staged_lines(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
@@ -224,40 +224,40 @@ fn deploy_runner_memory_cap_author_script() -> std.types.String {
   ], "")
 }
 
-fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> std.types.String {
+fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> String {
   concat(gunbc.live_deploy.operations.privileged_command(argv: extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit)), "\n")
 }
 
-fn deploy_memory_cap_shadow_revert_script(units: std.types.List<std.types.NonEmptyStr>) -> std.types.String {
+fn deploy_memory_cap_shadow_revert_script(units: std.types.List<std.types.NonEmptyStr>) -> String {
   fold(units, init: "", f: (acc, unit) =>
     concat(acc, deploy_control_shadow_revert_line(u: control_shadow_unit(unit: unit)))
   )
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
-fn deploy_memory_cap_apply_script_for_host(host: product.placement_supply.HostIdentity) -> std.types.String {
+fn deploy_memory_cap_apply_script_for_host(host: product.placement_supply.HostIdentity) -> String {
   deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
 }
 
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
-fn deploy_memory_cap_apply_script_ordered(units: std.types.List<std.types.NonEmptyStr>) -> std.types.String {
+fn deploy_memory_cap_apply_script_ordered(units: std.types.List<std.types.NonEmptyStr>) -> String {
   concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
 }
 
 // Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
-fn deploy_memory_cap_script_matches_ordered_composition(script: std.types.String, units: std.types.List<std.types.NonEmptyStr>) -> std.types.Bool {
+fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: std.types.List<std.types.NonEmptyStr>) -> std.types.Bool {
   script == deploy_memory_cap_apply_script_ordered(units: units)
 }
 
 // Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
-fn deploy_memory_cap_script_author_precedes_shadow_revert(script: std.types.String, units: std.types.List<std.types.NonEmptyStr>) -> std.types.Bool {
+fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: std.types.List<std.types.NonEmptyStr>) -> std.types.Bool {
   let author = deploy_runner_memory_cap_author_script()
   let reverts = deploy_memory_cap_shadow_revert_script(units: units)
   std.types.list_length(items: units) > 0 && script == concat(author, reverts)
 }
 
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
-data deploy_memory_cap_live_deploy_enrollment_note: std.types.String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
+data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
 
 fn control_shadow_reconcile(
   desired: std.types.List<ControlShadowUnit>,
@@ -285,13 +285,13 @@ fn control_shadow_effects(
 fn control_shadow_teardown_count(
   desired: std.types.List<ControlShadowUnit>,
   observed: std.types.List<ControlShadowUnit>,
-) -> std.types.Int {
+) -> Int {
   gunbc.membership_reconcile.membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }
 
 fn control_shadow_refusal_count(
   desired: std.types.List<ControlShadowUnit>,
   observed: std.types.List<ControlShadowUnit>,
-) -> std.types.Int {
+) -> Int {
   gunbc.membership_reconcile.membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

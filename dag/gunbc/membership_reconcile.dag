@@ -52,7 +52,7 @@ type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
       duplicate: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>,
     }
 
-data membership_reconcile_authority_note: std.types.String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq, ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` = the reconcile key so effect realization does not re-derive identity from mutable value. FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused. membership_reconcile_scoped is the KeyRelation/KeyedResourceRelation path for relations with grounded scope (Tailscale vertical only until scope lands elsewhere)."
+data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq, ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` = the reconcile key so effect realization does not re-derive identity from mutable value. FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused. membership_reconcile_scoped is the KeyRelation/KeyedResourceRelation path for relations with grounded scope (Tailscale vertical only until scope lands elsewhere)."
 
 fn plain_member_rows<M, K>(
   members: std.types.List<M>,
@@ -72,7 +72,7 @@ fn membership_plain_roster_build<M, K>(
   )
 }
 
-data member_changed_both_sides_note: std.types.String = "WHY MemberChanged carries `from` as well as `to`. The prior shape collapsed a Modified hunk into an upsert of the `to` side and DISCARDED `from`, which is lossy in a load-bearing way rather than merely untidy: the prior value is what every safe realization of a change needs. An SCM ref update is a compare-and-swap that names the expected prior (git update-ref <ref> <new> <old>), so without `from` the only reachable realization is the unconditional write and the atomicity the capability already offers cannot be used. A host resource whose address moved must retire the prior endpoint, and `from` is the only place that endpoint survives. gunbc.change_realization is the table that consumes both sides. A NOTE ON WHAT THIS IS NOT: an earlier draft of this change also refused a Modified hunk whose `from` was not Owned, on the reading that replacement is destruction. That was withdrawn — it over-fires on every Ensured consumer and contradicts gunbc.ownership, where Ensured constrains teardown only. Ownership gates removal; it does not gate convergence."
+data member_changed_both_sides_note: String = "WHY MemberChanged carries `from` as well as `to`. The prior shape collapsed a Modified hunk into an upsert of the `to` side and DISCARDED `from`, which is lossy in a load-bearing way rather than merely untidy: the prior value is what every safe realization of a change needs. An SCM ref update is a compare-and-swap that names the expected prior (git update-ref <ref> <new> <old>), so without `from` the only reachable realization is the unconditional write and the atomicity the capability already offers cannot be used. A host resource whose address moved must retire the prior endpoint, and `from` is the only place that endpoint survives. gunbc.change_realization is the table that consumes both sides. A NOTE ON WHAT THIS IS NOT: an earlier draft of this change also refused a Modified hunk whose `from` was not Owned, on the reading that replacement is destruction. That was withdrawn — it over-fires on every Ensured consumer and contradicts gunbc.ownership, where Ensured constrains teardown only. Ownership gates removal; it does not gate convergence."
 
 type RemovalAdmission
   = RemovalAdmitted
@@ -284,7 +284,7 @@ fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
 
 fn membership_subject_self_state_of<M>(m: M) -> M { m }
 
-data membership_effects_note: std.types.String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
+data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
 
 fn membership_effects<M, At>(plan: MembershipPlan<M, At>) -> EffectsOrRefusal<M> {
   let refusals = flat_map(plan.actions, a =>
@@ -315,13 +315,13 @@ fn membership_effects<M, At>(plan: MembershipPlan<M, At>) -> EffectsOrRefusal<M>
 }
 
 type MembershipTally {
-  adds: std.types.Int
-  changes: std.types.Int
-  removals: std.types.Int
-  refusals: std.types.Int
+  adds: Int
+  changes: Int
+  removals: Int
+  refusals: Int
 }
 
-data membership_tally_note: std.types.String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all four counts in a single pass; the membership_added/change/removal/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
+data membership_tally_note: String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all four counts in a single pass; the membership_added/change/removal/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
 
 fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
   fold(plan.actions, init: MembershipTally { adds: 0, changes: 0, removals: 0, refusals: 0 }, f: (acc, a) =>
@@ -340,26 +340,26 @@ fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
   )
 }
 
-fn membership_added_count<M, At>(plan: MembershipPlan<M, At>) -> std.types.Int {
+fn membership_added_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).adds
 }
 
-fn membership_change_count<M, At>(plan: MembershipPlan<M, At>) -> std.types.Int {
+fn membership_change_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).changes
 }
 
-data membership_write_count_note: std.types.String = "adds + changes — the count of members this plan will WRITE, which is what the former membership_upsert_count actually answered for its consumers ('how much work is left'). It is kept as a DERIVED projection over the two separate tally fields, never as a stored merged counter: an add and a change have different realizations (gunbc.change_realization), so a single stored 'upserts' number is the conflation this change removed and re-storing it would reinstate it. A consumer that genuinely cares which kind of write it is reads adds and changes directly."
+data membership_write_count_note: String = "adds + changes — the count of members this plan will WRITE, which is what the former membership_upsert_count actually answered for its consumers ('how much work is left'). It is kept as a DERIVED projection over the two separate tally fields, never as a stored merged counter: an add and a change have different realizations (gunbc.change_realization), so a single stored 'upserts' number is the conflation this change removed and re-storing it would reinstate it. A consumer that genuinely cares which kind of write it is reads adds and changes directly."
 
-fn membership_write_count<M, At>(plan: MembershipPlan<M, At>) -> std.types.Int {
+fn membership_write_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
   let t = membership_tally(plan: plan)
   t.adds + t.changes
 }
 
-fn membership_removal_count<M, At>(plan: MembershipPlan<M, At>) -> std.types.Int {
+fn membership_removal_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).removals
 }
 
-fn membership_refusal_count<M, At>(plan: MembershipPlan<M, At>) -> std.types.Int {
+fn membership_refusal_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).refusals
 }
 
@@ -372,4 +372,4 @@ data membership_effects_wholesale_refuse_policy_trigger: std.disposition.Disposi
   }
 }
 
-data membership_effects_wholesale_refuse_policy_note: std.types.String = "WHOLESALE-REFUSE is a deliberate, SCOPE-DEPENDENT execution policy (pass-2 review, calm-ferret + royal-carp) — this counted mark is its single authority (§6 carrier-is-authority; the design doc glosses it, does not own it). membership_effects encodes a POLICY, not only a type: any refusal => the WHOLE apply emits nothing. This is separable from the PLAN grain, where 'siblings continue' (membership_reconcile still produces every per-member action and counts refusals — an owned teardown is recorded next to a non-owned refuse). The correct policy turns on the future real observed-provider's SCOPE: observed = owned-artifacts-only => a refusal is a genuine anomaly => wholesale-refuse is the right conservative halt (stop the line); observed = everything-on-host => foreign members are normal => wholesale-refuse would let any foreign thing block our owned teardown, and siblings-continue would be wanted instead. MOOT for the pass-2 deploy poles (apply pole has no Removed; retract pole observes owned-only) — no refusal arises today, so this is a safety backstop for a future non-degenerate observed provider. DISSOLVES when that real observed-provider design lands AND someone makes the conscious wholesale-vs-siblings-continue call (editing membership_effects); until then the type must NOT be silently taken to lock the choice."
+data membership_effects_wholesale_refuse_policy_note: String = "WHOLESALE-REFUSE is a deliberate, SCOPE-DEPENDENT execution policy (pass-2 review, calm-ferret + royal-carp) — this counted mark is its single authority (§6 carrier-is-authority; the design doc glosses it, does not own it). membership_effects encodes a POLICY, not only a type: any refusal => the WHOLE apply emits nothing. This is separable from the PLAN grain, where 'siblings continue' (membership_reconcile still produces every per-member action and counts refusals — an owned teardown is recorded next to a non-owned refuse). The correct policy turns on the future real observed-provider's SCOPE: observed = owned-artifacts-only => a refusal is a genuine anomaly => wholesale-refuse is the right conservative halt (stop the line); observed = everything-on-host => foreign members are normal => wholesale-refuse would let any foreign thing block our owned teardown, and siblings-continue would be wanted instead. MOOT for the pass-2 deploy poles (apply pole has no Removed; retract pole observes owned-only) — no refusal arises today, so this is a safety backstop for a future non-degenerate observed provider. DISSOLVES when that real observed-provider design lands AND someone makes the conscious wholesale-vs-siblings-continue call (editing membership_effects); until then the type must NOT be silently taken to lock the choice."
