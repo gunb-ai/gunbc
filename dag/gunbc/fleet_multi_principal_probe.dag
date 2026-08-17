@@ -639,6 +639,18 @@ func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessE
     Absent =>
       exit_failure(reason: "spark managed-access standing refused before any observation: attempt identity is not a safe path segment, so the agent selector has no attempt-owned path to be materialized at")
     Present { value: attempt } =>
+      spark_managed_access_standing_for_attempt(attempt_raw: attempt_raw, attempt: attempt)
+  }
+}
+
+// The credential gate, split out so the attempt-identity match above has one expression per arm
+// rather than a nested match indented back to the outer column (review 52733).
+func spark_managed_access_standing_for_attempt(
+  attempt_raw: String,
+  attempt: FleetSshAttemptIdentity,
+) -> ProcessExit
+  uses net: Network
+{
   match probe_agent_credential_verification(attempt: attempt) {
     FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
       exit_failure(
@@ -657,7 +669,6 @@ func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessE
         attempt_raw: attempt_raw,
         credential_identity: fleet_ssh_credential_identity(binding: binding),
       )
-  }
   }
 }
 
