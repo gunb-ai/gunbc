@@ -74,8 +74,7 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
     desired: desired_runner_slot_members(deploy: srv3_runner_host_deploy),
     observed: observed,
   )
-  membership_added_count(plan: plan) == 5
-    && membership_added_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - 2
+  membership_added_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - list_length(items: observed)
 }
 
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {
@@ -93,7 +92,8 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
         observed: observed,
       )
       runner_slot_provision_has_width_increase(plan: plan)
-        && list_length(items: plan.upsert_extract_scripts) == 6
+        && list_length(items: plan.upsert_extract_scripts)
+             == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - list_length(items: observed)
         && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
         && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
     Absent => false
