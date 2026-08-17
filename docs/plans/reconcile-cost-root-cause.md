@@ -107,6 +107,41 @@ near-identical environments, and stands at that scope. It does not license concl
 is irrelevant: the fixture-to-corpus step is ~50x and is the larger factor. What remains genuinely
 open is the ~9x that separates this module from its control.
 
+**The dominant rule is function-call inference.** Exclusive time bucketed by expression kind
+(exclusive, so a recursive parent does not absorb its children and read as dominant for sitting on
+top of them):
+
+```
+gunbc.host_effect_realize :: Call    207725ms  n=402   516730 us/call   <- 80% of the module
+gunbc.host_effect_realize :: Other    49593ms  n=466   106423 us/call
+gunbc.host_effect_realize :: Match     1710ms  n=69     24790 us/call
+
+matched on the SAME kind (Call):
+gunbc.live_deploy.apply               3743ms  n=80     46792 us/call    11x cheaper
+v1.compiler.emit_rust                 3872ms  n=4191     923 us/call   560x cheaper
+v1.compiler.infer                     2943ms  n=2958     995 us/call
+v1.compiler.parse                     1983ms  n=2334     850 us/call
+```
+
+This is a matched-rule control, not a whole-module one: the same rule costs 560x more here than in
+ordinary compiler modules. Two consequences. `Match` is 1710ms, so the 86-arm nested match is
+**definitively not the cause** — it was suspected twice and is wrong twice. And a call site must
+both resolve a callee and unify each argument against the signature's types, which is exactly where
+a large type surface and a large visibility surface would MULTIPLY rather than add. That is why every
+one-dimensional fixture above was true and insufficient: the identity fixture has a type but no call
+site, and the breadth fixture varies fields but never unifies them against a signature. Neither can
+exercise the product.
+
+**Instrument limitation, stated rather than hidden:** `Other` (49.6s, 19% of the module) is a bucket
+for the `ExprData` variants the probe did not enumerate. A fifth of the module's cost is currently
+attributed to "not one of the seven kinds I named."
+
+**Open — the next measurement.** Counters INSIDE the Call rule: callee lookups, candidate scans,
+type-compatibility calls, generic substitutions, each against its DISTINCT-key count. Relation-level
+recomputation across 402 distinct call sites is entirely consistent with `amp = 1.0` and has not been
+measured. If calls-per-distinct-key returns ~100x, the repair is interning or memoizing a pure
+relation; if it returns ~1x, the cost is a genuine per-site scan and the repair is an index.
+
 **Scope of `amp = 1.0`:** no expression NODE is re-entered. It says nothing about repeated type
 comparisons, generic substitutions, or name lookups across different expressions; a relation-level
 amplification of 100x is fully compatible with it. That census has not been run.
