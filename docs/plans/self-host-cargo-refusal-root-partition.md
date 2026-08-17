@@ -1209,13 +1209,15 @@ in the operation/capability emit paths — the sites span `std_*` files exclusiv
 from the seven-site latent set counted above, which shares no member with it and is a different
 quantity despite the coincident 7) and then signature absence (**none** show a `_` or unresolved type
 var in the rustc operand types; all name concrete carriers). Their report gave both as fractions of
-112; that denominator is **not reconciled with this document** and is carried here without it, because
-§18's mechanism table puts E0369 at **191, explicitly undetermined and unclassified**, and the only
-other 112 in this document is `source_authority`'s E0599 count in §11. Whether 112 is a deduped,
-per-file, or otherwise narrowed scope of the same population is **unverified** — no command or scope
-was recorded with it. The two findings above do not depend on the denominator: both are universals over
-whatever set was examined, and a wrong count cannot turn a "none" into a "some". Reconciling 112
-against 191 is owed before either number is quoted as a population. `bold-lark-722`
+112. **§18.4 reconciles that denominator** and it is not a discrepancy: 112 is the distinct-site count
+of the **July 7-module measured bank**, and 191 is the same classification at **M=11 scope** — two
+scopes of one population, both `repr_fork`, both with zero `missing_trait_impl`. The seven `std_*`
+files named above are that bank's module set, which is a **different quantity** from the seven latent
+`empty_emit_graph_info()` sites counted earlier in this section; the two sevens share no member and
+their coincidence is arithmetic, not structural. Quote 112 only as the measured bank and 191 only as
+the M=11 partition, never interchangeably. The two findings above do not depend on either number:
+both are universals over whatever set was examined, and a wrong count cannot turn a "none" into a
+"some". `bold-lark-722`
 killed it for the wrap axis by mechanism: at those sites `shared_types` arrives as its OWN positional
 argument carrying the real set, and `render_rust_type` reads that parameter rather than
 `emit_info.shared_types`, so wrap membership is not degraded — what an empty info actually zeroes is
