@@ -1,6 +1,7 @@
 module gunbc.spark_serving_unit_render
 
 import std.types { String, NonEmptyStr, FilePath }
+import std.content_hash { serialize_content_hash, content_hash_of_value }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   Description,
@@ -79,4 +80,27 @@ fn spark_serving_desired_user_unit_text() -> String {
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
     ),
   )
+}
+
+// ONE IDENTITY FOR UNIT CONTENT, used by the desired side and the observed side alike.
+//
+// The member's state IS the file's content, so its identity must be a function of bytes and nothing
+// else. An earlier classifier returned the DESIRED spec's digest when bytes matched and a hash of
+// the observed bytes when they did not -- two different identity domains, so the same bytes on disk
+// changed identity whenever desired state changed, and the equality arm silently imported the answer
+// it was supposed to be establishing.
+//
+// Taking the identity over `String` rather than `NonEmptyStr` is deliberate: an empty file is a real
+// observation and ordinary drift, not an impossible state, and casting `""` to `NonEmptyStr` to
+// force it through a hash would be a lie about what was read.
+fn spark_serving_user_unit_content_identity(bytes: String) -> NonEmptyStr {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: join(["unit-content:", bytes], "") as NonEmptyStr,
+    ),
+  ) as NonEmptyStr
+}
+
+fn spark_serving_desired_user_unit_content_identity() -> NonEmptyStr {
+  spark_serving_user_unit_content_identity(bytes: spark_serving_desired_user_unit_text())
 }
