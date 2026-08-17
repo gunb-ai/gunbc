@@ -3277,15 +3277,22 @@ pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
 }
 
 /// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
-/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
+/// entries plus their transitive DEPENDENCY closure through `[src/v1, dag]`, returned as
 /// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
 /// consumes this function — so the regen compile and the skip witness share one closure
 /// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
 /// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
 /// oracle guarding that equivalence.
+///
+/// The closure is the production loader's joint bare+dotted fixpoint. It was previously a
+/// private `import`-line walk, which the namespace cut reduced to the empty set — see the
+/// body for why that failed silently rather than loudly.
 pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
     let roots = regen_source_roots(workspace);
-    let index = regen_build_module_index(&roots)?;
+    // Retained for its REFUSALS, not for lookup: it errors on a missing source root and
+    // on a duplicate module path across roots. The closure below no longer indexes
+    // through it, but dropping the call would silently retire both checks.
+    let _root_validation = regen_build_module_index(&roots)?;
     let entry_root = roots
         .first()
         .ok_or_else(|| "regen source root list must not be empty".to_string())?;
@@ -3296,28 +3303,54 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
     // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
     let mut seen: std::collections::HashMap<String, (String, String)> =
         std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
+    // Entry seeds win a module-path collision, so they are inserted before any closure
+    // member. This preserves the original first-occurrence-wins dedup.
     for path in &entry_paths {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = regen_workspace_relpath(path, workspace);
         if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
+            seen.insert(module_path, (rel, content));
         }
-        queue.push(content);
     }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
+
+    // The closure comes from the PRODUCTION loader, not from a private import walk.
+    //
+    // The former body walked `extract_import_paths`, which matches lines starting with
+    // `import `. After the namespace cut there are none, so the walk terminated on its
+    // first iteration and regen's input set silently collapsed to the entry seeds with
+    // every dependency missing — an input set derived from a DELETED authority returning
+    // nothing and reading as "there are no dependencies" (DESIGN §5, empty-observation
+    // narrow). Regen was not suspended by configuration; it was broken by construction.
+    //
+    // `load_sources_for_entry_with_pool` is the same joint bare+dotted fixpoint ordinary
+    // compilation already runs on this corpus, over one shared `MultiEntryIndex`, with
+    // the pool-precedence policy the name census agrees with. Reusing it keeps ONE
+    // closure authority with two consumers (DESIGN §2/§3) rather than reinstating a
+    // second, import-shaped answer to "what does regen read".
+    //
+    // A private reference walk here would NOT be equivalent, and the seed's own resolver
+    // records why: widening compile scope to reference-derived deps was measured to pull
+    // cross-tree modules into a pool-precedence view where their bare names do not
+    // resolve (344 diagnostics, the Empty/Cons poisoning class). That measurement is
+    // exactly why this defers to the loader that already carries the pool policy instead
+    // of re-deriving one.
+    let root_strings: Vec<String> = roots
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let closure_index = build_multi_entry_index(&root_strings);
+    for path in &entry_paths {
+        let entry = path.to_string_lossy().into_owned();
+        for source in load_sources_for_entry_with_pool(&closure_index, &entry)? {
+            let Some(module_path) = extract_module_path(&source.content) else {
+                continue;
+            };
             if seen.contains_key(&module_path) {
                 continue;
             }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = regen_workspace_relpath(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
+            let rel = regen_workspace_relpath(Path::new(&source.path), workspace);
+            seen.insert(module_path, (rel, source.content.clone()));
         }
     }
     let mut result: Vec<(String, String)> = seen.into_values().collect();
