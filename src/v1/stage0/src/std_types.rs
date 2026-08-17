@@ -436,7 +436,7 @@ pub struct Credential {
 
 pub type FilesystemHandle = String;
 
-pub type NetworkHandle = Unit;
+pub type NetworkHandle = ();
 
 pub type ToolHandle = String;
 

@@ -1143,16 +1143,12 @@ Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the 
 The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  match n.type_annotation {
-    Present { value: _ } =>
-      if n.connective == Conj && (n.children |> count) == 1 {
-        match n.children |> first {
-          Present { value: base_te } =>
-            return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
-          Absent => {}
-        }
-      }
-    Absent => {}
+  if n.connective == Conj && (n.children |> count) == 1 {
+    match n.children |> first {
+      Present { value: base_te } =>
+        return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      Absent => {}
+    }
   }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
@@ -2156,7 +2152,9 @@ fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String
 }
 
 fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
-  if is_value_variant_type_arg(generic_param_names: [], variant_to_enum: variant_to_enum, name: name) {
+  if name == "Unit" {
+    "()"
+  } else if is_value_variant_type_arg(generic_param_names: [], variant_to_enum: variant_to_enum, name: name) {
     "()"
   } else {
     match rust_opaque_kernel_alias_carrier(name: name) {

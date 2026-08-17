@@ -2519,34 +2519,28 @@ pub fn render_rust_alias_rhs_type(
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match n.type_annotation.clone() {
-            Some(_) => {
-                if ((n.connective.clone() == Connective::Conj)
-                    && ((n.children.clone().len() as i64) == 1))
-                {
-                    match n.children.clone().first().cloned() {
-                        Some(base_te) => {
-                            return render_rust_alias_rhs_type(
-                                base_te.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                scope.clone(),
-                                imports.clone(),
-                                registry.clone(),
-                                module_name.clone(),
-                                export_sets.clone(),
-                                typed_modules.clone(),
-                                module_index.clone(),
-                                variant_to_enum.clone(),
-                            )
-                        }
-                        None => {}
-                    }
+        if ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 1))
+        {
+            match n.children.clone().first().cloned() {
+                Some(base_te) => {
+                    return render_rust_alias_rhs_type(
+                        base_te.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        corpus_repr.clone(),
+                        source_indices.clone(),
+                        scope.clone(),
+                        imports.clone(),
+                        registry.clone(),
+                        module_name.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        module_index.clone(),
+                        variant_to_enum.clone(),
+                    )
                 }
+                None => {}
             }
-            None => {}
         }
         let name = authored_name_at(source_indices.clone(), n.clone());
         if (((n.connective.clone() == Connective::NoConnective)
@@ -4755,12 +4749,16 @@ pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), name.clone()) {
+    if (name.clone() == "Unit".to_string()) {
         "()".to_string()
     } else {
-        match rust_opaque_kernel_alias_carrier(name.clone()) {
-            Some(carrier) => carrier.clone(),
-            None => rust_qualify_type_leaf_name(name.clone(), variant_to_enum.clone()),
+        if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), name.clone()) {
+            "()".to_string()
+        } else {
+            match rust_opaque_kernel_alias_carrier(name.clone()) {
+                Some(carrier) => carrier.clone(),
+                None => rust_qualify_type_leaf_name(name.clone(), variant_to_enum.clone()),
+            }
         }
     }
 }
