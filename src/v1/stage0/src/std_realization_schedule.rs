@@ -1142,6 +1142,15 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     }
 }
 
+pub fn node_frontier_selection_sampled_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SelectionSampled is a DECLARED COVERAGE REGRESSION, not an optimization, and it lives on this axis rather than in a second field because this enum answers exactly one question -- which subset of the discovered roster executes -- and a second roster-policy field beside it would be the dual representation DESIGN 3 forbids (the follow-on that removes node_frontier_selection from the generic Runnable collapses this axis into one enum; a sampling arm is that same question, so it converges rather than widening). THE ARM CARRIES NO FRACTION ON PURPOSE. What belongs to the schedule is the KIND of roster policy this batch runs under; the retained fraction is a CI policy number whose single authority is gunbc.ci_spec, reaching the executor the same way discovery_scan_dirs and the batch clamps do. Putting the numerator and denominator here would fork that one policy across the substrate schedule and the spec, and would additionally force every wire codec over this enum to grow numeric columns for a fact none of its consumers ask about (the floor component receipt identifies the affected-set cold control by KIND, never by fraction). GRAIN IS THE ENTIRE POINT: the sample applies to discovery ENTRIES before any resolve, never to witness ROWS. Measured on run 31986966631, the discovery batch spent resolve 42.1min against evalu 7.5min over 9957 rows across 1231 entries -- preparation is ~6x the checking -- so thinning rows while touching every entry would save the 7.5 and none of the 42. The keep decision is fnv1a64(entry_path + tested_commit), so the retained subset ROTATES per commit: a fixed subset would mean the unretained entries never run again, while rotating covers the corpus in expectation across a handful of merges, and any red stays reproducible because tested_commit is already part of the discovery request identity -- it is the salt the request already carried, not a new field.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -1150,6 +1159,7 @@ pub enum NodeFrontierSelection {
     SelectionOff,
     SelectionApplied,
     SelectionPredictOnly,
+    SelectionSampled,
 }
 
 pub fn node_frontier_selection_eq(
@@ -1161,16 +1171,25 @@ pub fn node_frontier_selection_eq(
             NodeFrontierSelection::SelectionOff => true,
             NodeFrontierSelection::SelectionApplied => false,
             NodeFrontierSelection::SelectionPredictOnly => false,
+            NodeFrontierSelection::SelectionSampled => false,
         },
         NodeFrontierSelection::SelectionApplied => match right.clone() {
             NodeFrontierSelection::SelectionOff => false,
             NodeFrontierSelection::SelectionApplied => true,
             NodeFrontierSelection::SelectionPredictOnly => false,
+            NodeFrontierSelection::SelectionSampled => false,
         },
         NodeFrontierSelection::SelectionPredictOnly => match right.clone() {
             NodeFrontierSelection::SelectionOff => false,
             NodeFrontierSelection::SelectionApplied => false,
             NodeFrontierSelection::SelectionPredictOnly => true,
+            NodeFrontierSelection::SelectionSampled => false,
+        },
+        NodeFrontierSelection::SelectionSampled => match right.clone() {
+            NodeFrontierSelection::SelectionOff => false,
+            NodeFrontierSelection::SelectionApplied => false,
+            NodeFrontierSelection::SelectionPredictOnly => false,
+            NodeFrontierSelection::SelectionSampled => true,
         },
     }
 }
@@ -1392,6 +1411,7 @@ pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
         NodeFrontierSelection::SelectionApplied => true,
         NodeFrontierSelection::SelectionOff => false,
         NodeFrontierSelection::SelectionPredictOnly => false,
+        NodeFrontierSelection::SelectionSampled => false,
     }
 }
 
@@ -1699,6 +1719,8 @@ pub struct SelectionOff;
 pub struct SelectionApplied;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SelectionPredictOnly;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SelectionSampled;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OnSuccessRunnableAdmitted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
