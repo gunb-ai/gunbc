@@ -1,29 +1,29 @@
 module extdeps.cooling.dynatron
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.dynatron.co/product-page/w1"
   }
 }
 
-data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+data dynatron_w1_catalog: extdeps.cooling.types.CpuCoolerCatalogRow = extdeps.cooling.types.CpuCoolerCatalogRow {
   model: "W1",
-  manufacturer: dynatron,
-  socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
+  manufacturer: extdeps.vendor.dynatron.dynatron,
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926 },
   active_passive_switchable: true,
-  minimum_rack_units: rack_unit(2),
-  max_design_power: watt(250),
-  supported_motherboards: [AsrockRackAltrad8ud1l2t],
+  minimum_rack_units: std.measure.rack_unit(2),
+  max_design_power: std.measure.watt(250),
+  supported_motherboards: [extdeps.boards.types.AsrockRackAltrad8ud1l2t],
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cooling.dynatron",
       decl_name: "dynatron_w1_catalog",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,

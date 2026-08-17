@@ -1,15 +1,15 @@
 module test.claim.extdeps_anemia_grounding_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data sample_email: Email = "author@example.com"
-data sample_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data sample_ref: GitRef = "feature/widgets"
+data sample_email: std.types.Email = "author@example.com"
+data sample_sha: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
+data sample_ref: std.types.GitRef = "feature/widgets"
 data sample_path: std.types.FilePath = "dag/extdeps/git/git.dag"
 
 test fn w_git_author_email_grounded() -> Bool {
-  let author = GitAuthor {
+  let author = extdeps.git.GitAuthor {
     name: "Example Author",
     email: sample_email,
     timestamp: "2026-06-18T00:00:00Z"
@@ -18,7 +18,7 @@ test fn w_git_author_email_grounded() -> Bool {
 }
 
 test fn w_pull_request_ref_grounded() -> Bool {
-  let head = PullRequestRef {
+  let head = extdeps.github.pulls.PullRequestRef {
     ref: sample_ref,
     sha: sample_sha,
     label: "mock-user:feature/widgets"
@@ -27,10 +27,10 @@ test fn w_pull_request_ref_grounded() -> Bool {
 }
 
 test fn w_pull_review_commit_id_grounded() -> Bool {
-  let review = PullReview {
+  let review = extdeps.github.pulls.PullReview {
     id: 1,
     body: "Looks good",
-    state: Commented,
+    state: extdeps.github.pulls.Commented,
     commit_id: sample_sha,
     html_url: "https://github.com/mock/pull/1#pullrequestreview-1"
   }
@@ -38,7 +38,7 @@ test fn w_pull_review_commit_id_grounded() -> Bool {
 }
 
 test fn w_review_comment_path_grounded() -> Bool {
-  let comment = ReviewComment {
+  let comment = extdeps.github.pulls.ReviewComment {
     id: 1,
     node_id: "PRRC_kwDO",
     path: sample_path,
@@ -57,13 +57,13 @@ test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
     body: none,
     state: extdeps.github.pulls.Open,
     html_url: "https://github.com/mock/pull/42",
-    user: GitHubUser { login: "mock-user", id: 1, type: extdeps.github.github.User },
-    head: PullRequestRef {
+    user: extdeps.github.github.GitHubUser { login: "mock-user", id: 1, type: extdeps.github.github.User },
+    head: extdeps.github.pulls.PullRequestRef {
       ref: sample_ref,
       sha: sample_sha,
       label: "mock-user:feature/widgets"
     },
-    base: PullRequestRef {
+    base: extdeps.github.pulls.PullRequestRef {
       ref: "main",
       sha: "000aaa111bbb000aaa111bbb000aaa111bbb",
       label: "mock-owner:main"
@@ -73,33 +73,33 @@ test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
     merged_at: none,
     draft: false
   }
-  let subject = digest_subject(pr: pr)
+  let subject = gunbc.digest_render.digest_subject(pr: pr)
   subject.head_sha == sample_sha && subject.base_ref == "main"
 }
 
 test fn w_cpu_tdp_watts_power_dimension() -> Bool {
-  watt_count(altra_max_m12830_catalog.tdp_watts) == 183
+  std.measure.watt_count(extdeps.cpu.ampere.altra_max_m12830_catalog.tdp_watts) == 183
 }
 
 test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
-  let row = CpuModelCatalogRow {
+  let row = extdeps.cpu.types.CpuModelCatalogRow {
     model_number: "TEST",
     oem_listing_id: none,
-    vendor: ampere_vendor,
-    architecture: Aarch64,
+    vendor: extdeps.vendor.ampere.ampere_vendor,
+    architecture: extdeps.toolchain.types.Aarch64,
     cores: 1,
-    threads: hardware_thread_count(1),
-    nominal_sustained_per_thread_hz: hertz(1000000000),
-    socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
-    socket_citations: socket_lga4926_citations,
-    tdp_watts: watt(99),
-    l1_cache: ampere_altra_l1_cache_geometry,
-    l1_cache_citations: ampere_altra_l1_cache_citations,
-    l2_cache: ampere_altra_l2_cache_geometry,
-    l2_cache_citations: ampere_altra_l2_cache_citations,
-    l3_cache: ampere_altra_max_l3_cache_geometry,
-    l3_cache_citations: ampere_altra_max_l3_cache_citations,
+    threads: std.measure.hardware_thread_count(1),
+    nominal_sustained_per_thread_hz: std.measure.hertz(1000000000),
+    socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.ampere.ampere_vendor, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 4926 },
+    socket_citations: extdeps.cpu.ampere.socket_lga4926_citations,
+    tdp_watts: std.measure.watt(99),
+    l1_cache: extdeps.cpu.ampere.ampere_altra_l1_cache_geometry,
+    l1_cache_citations: extdeps.cpu.ampere.ampere_altra_l1_cache_citations,
+    l2_cache: extdeps.cpu.ampere.ampere_altra_l2_cache_geometry,
+    l2_cache_citations: extdeps.cpu.ampere.ampere_altra_l2_cache_citations,
+    l3_cache: extdeps.cpu.ampere.ampere_altra_max_l3_cache_geometry,
+    l3_cache_citations: extdeps.cpu.ampere.ampere_altra_max_l3_cache_citations,
   }
-  watt_count(row.tdp_watts) == 99
+  std.measure.watt_count(row.tdp_watts) == 99
 }
 

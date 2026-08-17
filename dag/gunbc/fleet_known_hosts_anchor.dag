@@ -59,9 +59,9 @@ module gunbc.fleet_known_hosts_anchor
 // not a closed one -- it is bounded by the attempt segment (a stale directory can never be READ by a
 // different attempt, only left behind) but it is cleanup this module does not yet perform.
 type KnownHostsAnchor sole_constructor {
-  path: NonEmptyStr
-  registry_identity: ContentHash
-  materialized_content_identity: ContentHash
+  path: std.types.NonEmptyStr
+  registry_identity: std.content_hash.ContentHash
+  materialized_content_identity: std.content_hash.ContentHash
   attempt: FleetSshAttemptIdentity
 }
 
@@ -83,10 +83,10 @@ type KnownHostsAnchor sole_constructor {
 // fleet_ssh_attempt_identity is the only constructor and REFUSES rather than sanitizing: a caller
 // whose attempt id is unsafe has a naming problem this module cannot resolve on their behalf, and
 // quietly rewriting it would hand back an identity that is not the one they hold.
-type FleetSshAttemptIdentity = PathSegment where brand("FleetSshAttemptIdentity")
+type FleetSshAttemptIdentity = std.types.PathSegment where brand("FleetSshAttemptIdentity")
 
-fn fleet_ssh_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
-  if path_segment_is_safe(raw: raw) {
+fn fleet_ssh_attempt_identity(raw: std.types.String) -> FleetSshAttemptIdentity? {
+  if std.types.path_segment_is_safe(raw: raw) {
     Present { value: raw as FleetSshAttemptIdentity }
   } else {
     none
@@ -99,14 +99,14 @@ fn fleet_ssh_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
 // convention rather than a wall. A record literal in another module is exactly the forgery the
 // content check exists to prevent, one layer up.
 fn known_hosts_anchor_seal(
-  path: NonEmptyStr,
-  registry_identity: ContentHash,
-  materialized_content_identity: ContentHash,
+  path: std.types.NonEmptyStr,
+  registry_identity: std.content_hash.ContentHash,
+  materialized_content_identity: std.content_hash.ContentHash,
   attempt: FleetSshAttemptIdentity,
 ) -> KnownHostsAnchor
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
-    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "known_hosts_anchor_hermetic_witness_fixture"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
+    std.decl_ref.decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "known_hosts_anchor_hermetic_witness_fixture"),
   ]
   = KnownHostsAnchor {
     path: path,
@@ -126,9 +126,9 @@ fn known_hosts_anchor_seal(
 // no cause cannot be built, which is the shape the corpus uses wherever a diagnostic must be
 // non-empty by construction.
 type KnownHostsMaterializationOutcome
-  = KnownHostsReady { anchor: KnownHostsAnchor, receipt: String }
-  | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
-  | KnownHostsRefused { first: String, more: List<String> }
+  = KnownHostsReady { anchor: KnownHostsAnchor, receipt: std.types.String }
+  | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: std.types.String }
+  | KnownHostsRefused { first: std.types.String, more: std.types.List<std.types.String> }
 
 // CANONICAL, not registry-order. An earlier revision hashed the rows in whatever order the list
 // happened to carry, which made the identity -- and therefore the anchor's filename -- a function of
@@ -140,23 +140,23 @@ type KnownHostsMaterializationOutcome
 // Sorting the rendered lines is the canonicalization rather than sorting the rows, because the LINE
 // is what ssh consumes -- so canonical bytes and canonical identity are the same operation, and the
 // emitted file is order-independent too rather than only its hash.
-fn canonical_known_hosts_lines(rows: List<KnownHostKeyRow>) -> List<String> {
-  map(rows, k => known_hosts_line(k: k)) |> sort_by(line => line)
+fn canonical_known_hosts_lines(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.types.List<std.types.String> {
+  map(rows, k => gunbc.fleet_host_key_enrollment.known_hosts_line(k: k)) |> sort_by(line => line)
 }
 
-fn canonical_known_hosts_fragment(rows: List<KnownHostKeyRow>) -> String {
+fn canonical_known_hosts_fragment(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.types.String {
   join(map(canonical_known_hosts_lines(rows: rows), l => concat(l, "\n")), "")
 }
 
-fn canonical_known_hosts_identity(rows: List<KnownHostKeyRow>) -> ContentHash {
-  content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as NonEmptyStr)
+fn canonical_known_hosts_identity(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.content_hash.ContentHash {
+  std.content_hash.content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as std.types.NonEmptyStr)
 }
 
 // A DUPLICATE ENDPOINT IS A CONFLICT, not a redundancy. known_hosts accepts a host key matching ANY
 // line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
 // while the registry reads as if it pinned one key -- and the digest would happily identify that
 // widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
-fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
+fn known_hosts_endpoint_conflict(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.types.String? {
   let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
   fold(endpoints, init: none, f: fn(acc, e) {
     match acc {
@@ -168,20 +168,20 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
   })
 }
 
-fn fleet_known_hosts_fragment() -> String {
-  canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
+fn fleet_known_hosts_fragment() -> std.types.String {
+  canonical_known_hosts_fragment(rows: gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments)
 }
 
-fn fleet_known_hosts_registry_identity() -> ContentHash {
-  canonical_known_hosts_identity(rows: fleet_host_key_enrollments)
+fn fleet_known_hosts_registry_identity() -> std.content_hash.ContentHash {
+  canonical_known_hosts_identity(rows: gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments)
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
-fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> std.types.NonEmptyStr {
   join([
-    "target/fleet-ssh-attempt-", attempt as String,
-    "-known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
-  ], "") as NonEmptyStr
+    "target/fleet-ssh-attempt-", attempt as std.types.String,
+    "-known-hosts-", std.content_hash.serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as std.types.String,
+  ], "") as std.types.NonEmptyStr
 }
 
 // THREE THINGS THE BODY DOES THAT ARE NOT OBVIOUS FROM ITS SHAPE, stated here because DESIGN 4c
@@ -200,14 +200,14 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
 func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
-  uses net: Network
+  uses net: std.resources.Network
 {
-  if length(fleet_host_key_enrollments) == 0 {
+  if length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) == 0 {
     KnownHostsRefused {
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+  } else { match known_hosts_endpoint_conflict(rows: gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) {
     Present { value: conflict } => KnownHostsRefused {
       first: join(["known-hosts materialization refused: ", conflict], ""),
       more: [],
@@ -216,18 +216,18 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
     let fragment = fleet_known_hosts_fragment()
     let path = fleet_known_hosts_anchor_path(attempt: attempt)
     let registry_identity = fleet_known_hosts_registry_identity()
-    let existing = Filesystem.Read(path: path as String)
+    let existing = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as std.types.String)
     let already = existing.success && existing.content == fragment
     let written = if already { true } else {
-      let w = Filesystem.Write(path: path as String, content: fragment)
+      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path as std.types.String, content: fragment)
       w.success
     }
     if written {
-      let back = Filesystem.Read(path: path as String)
+      let back = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as std.types.String)
       if back.success {
-        let materialized_identity = content_hash_of_value(value: back.content as NonEmptyStr)
-        match compare_content_hash(left: registry_identity, right: materialized_identity) {
-          ContentHashEqual => {
+        let materialized_identity = std.content_hash.content_hash_of_value(value: back.content as std.types.NonEmptyStr)
+        match std.content_hash.compare_content_hash(left: registry_identity, right: materialized_identity) {
+          std.content_hash.ContentHashEqual => {
             let anchor = known_hosts_anchor_seal(
               path: path,
               registry_identity: registry_identity,
@@ -237,13 +237,13 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
             let receipt = join(
               concat(
                 [join([
-                  "known-hosts-anchor path=", path as String,
-                  " attempt=", attempt as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
-                  " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
+                  "known-hosts-anchor path=", path as std.types.String,
+                  " attempt=", attempt as std.types.String, " identity=", std.content_hash.serialize_content_hash(hash: registry_identity) as std.types.String,
+                  " rows=", to_string(length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments)), "\n",
                 ], "")],
-                map(fleet_host_key_enrollments, k => join([
-                  "  enrolled host=", k.host as String, " endpoint=", k.endpoint,
-                  " provenance=", host_key_provenance_label(p: k.provenance), "\n",
+                map(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments, k => join([
+                  "  enrolled host=", k.host as std.types.String, " endpoint=", k.endpoint,
+                  " provenance=", gunbc.fleet_host_key_enrollment.host_key_provenance_label(p: k.provenance), "\n",
                 ], "")),
               ),
               "",
@@ -254,31 +254,31 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
               KnownHostsReady { anchor: anchor, receipt: receipt }
             }
           }
-          ContentHashDifferent => KnownHostsRefused {
+          std.content_hash.ContentHashDifferent => KnownHostsRefused {
             first: join([
-              "known-hosts materialization refused: the bytes read back from ", path as String,
+              "known-hosts materialization refused: the bytes read back from ", path as std.types.String,
               " do not hash-equal the enrollment registry (registry ",
-              serialize_content_hash(hash: registry_identity) as String,
-              ", materialized ", serialize_content_hash(hash: materialized_identity) as String,
+              std.content_hash.serialize_content_hash(hash: registry_identity) as std.types.String,
+              ", materialized ", std.content_hash.serialize_content_hash(hash: materialized_identity) as std.types.String,
               ") -- the file ssh would consult is not the registry, which is the exact divergence the",
               " staged-fragment readback could not see",
             ], ""),
             more: [],
           }
-          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+          std.content_hash.ContentHashCrossFamilyIncomparable => KnownHostsRefused {
             first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
             more: [],
           }
         }
       } else {
         KnownHostsRefused {
-          first: join(["known-hosts materialization refused: readback of ", path as String, " failed -- ", trim(s: back.error)], ""),
+          first: join(["known-hosts materialization refused: readback of ", path as std.types.String, " failed -- ", std.algebra.trim(s: back.error)], ""),
           more: [],
         }
       }
     } else {
       KnownHostsRefused {
-        first: join(["known-hosts materialization refused: could not write the anchor at ", path as String], ""),
+        first: join(["known-hosts materialization refused: could not write the anchor at ", path as std.types.String], ""),
         more: [],
       }
     }
@@ -296,7 +296,7 @@ fn known_hosts_anchor_of(outcome: KnownHostsMaterializationOutcome) -> KnownHost
   }
 }
 
-fn known_hosts_materialization_receipt(outcome: KnownHostsMaterializationOutcome) -> String {
+fn known_hosts_materialization_receipt(outcome: KnownHostsMaterializationOutcome) -> std.types.String {
   match outcome {
     KnownHostsReady { anchor: _, receipt: r } => r
     KnownHostsAlreadyConverged { anchor: _, receipt: r } => concat("already-converged ", r)
@@ -324,8 +324,8 @@ type FleetOpenSshTrustPolicy sole_constructor {
 
 fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
-    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+    std.decl_ref.decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
   ]
   = FleetOpenSshTrustPolicy { anchor: anchor }
 
@@ -342,8 +342,8 @@ fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> F
 // Derived, never stored. The anchor path is read off the sealed policy, so the options a leg carries
 // and the file whose content was verified are the same fact rather than two facts a path string
 // relates.
-fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<SshClientOption> {
-  openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
+fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
+  extdeps.ssh.client_options.openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
 }
 
 // ── The execution context ──────────────────────────────────────────────────────────────────────
@@ -352,9 +352,57 @@ fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<SshClien
 // module establishes which machine we reached; this establishes which key reached it. For the Spark
 // question -- which POSIX account accepts the fleet key -- an unbound credential makes every positive
 // result ambiguous: an agent holding several identities can produce a success no modeled fact caused.
+// TWO WAYS TO HOLD ONE CREDENTIAL, and they are separate arms rather than one record with an
+// optional field because the OpenSSH posture that makes each EXACT is different in kind: the
+// identity-file arm removes the agent entirely (`IdentityAgent=none`), while the agent arm names a
+// socket and uses a PUBLIC key file purely as a selector. Fusing them would force one arm to carry a
+// field the other must be trusted to ignore.
+//
+// This coproduct is why the Spark CI route could not previously carry trust facts at all: the binding
+// required an identity file, an agent-held key has none, so `SparkServingSliceRunnerAgent` fell back
+// to a bare `SshShell` with no anchor, no credential and no posture.
+// WHERE the private half lives. This is a plain coproduct and the SEAL stays on the binding record
+// below rather than moving here, deliberately: `sole_constructor` seals a record, so turning the
+// binding itself into a coproduct would have made every arm publicly constructible and dropped the
+// wall this module exists to hold. A forged locus is inert -- it names a socket or a file and
+// nothing else -- while a forged BINDING would be a credential claim nobody observed.
+type FleetSshCredentialLocus =
+    FleetSshIdentityFileHeld { identity_file: std.types.NonEmptyStr }
+  | FleetSshAgentHeld { agent_socket: std.types.NonEmptyStr, public_selector_file: std.types.NonEmptyStr }
+
 type FleetSshCredentialBinding sole_constructor {
-  identity_file: NonEmptyStr
-  credential_identity: ContentHash
+  locus: FleetSshCredentialLocus
+  credential_identity: std.content_hash.ContentHash
+}
+
+// The identity of the public key material that was OBSERVED, whichever locus carried it. Receipts
+// read this rather than matching, so adding a locus cannot silently produce a receipt with no
+// identity in it.
+fn fleet_ssh_credential_identity(binding: FleetSshCredentialBinding) -> std.content_hash.ContentHash {
+  binding.credential_identity
+}
+
+// WHERE the credential was held, for a receipt. A reader must be able to tell an identity-file run
+// from an agent run without inferring it from which function was called, because the two have
+// different preconditions and different failure modes.
+fn fleet_ssh_credential_locus_label(binding: FleetSshCredentialBinding) -> std.types.String {
+  match binding.locus {
+    FleetSshIdentityFileHeld { identity_file: f } =>
+      join(["identity_file=", f as std.types.String, " agent=suppressed"], "")
+    FleetSshAgentHeld { agent_socket: s, public_selector_file: p } =>
+      join(["agent_socket=", s as std.types.String, " public_selector_file=", p as std.types.String], "")
+  }
+}
+
+// Derived, never stored beside the locus: the options a leg carries come from the locus that was
+// minted, so a caller cannot pair an agent-held credential with identity-file options or the reverse.
+fn fleet_ssh_credential_options(binding: FleetSshCredentialBinding) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
+  match binding.locus {
+    FleetSshIdentityFileHeld { identity_file: f } =>
+      extdeps.ssh.client_options.openssh_exact_credential_options(identity_file: f)
+    FleetSshAgentHeld { agent_socket: s, public_selector_file: p } =>
+      extdeps.ssh.client_options.openssh_exact_agent_credential_options(agent_socket: s, public_selector_file: p)
+  }
 }
 
 // The mint is sealed for the same reason the anchor's is. The credential_identity is the identity of
@@ -362,13 +410,14 @@ type FleetSshCredentialBinding sole_constructor {
 // must be publishable, and a digest of secret bytes in a receipt is credential material wearing a
 // hash.
 fn fleet_ssh_credential_binding_seal(
-  identity_file: NonEmptyStr,
-  credential_identity: ContentHash,
+  locus: FleetSshCredentialLocus,
+  credential_identity: std.content_hash.ContentHash,
 ) -> FleetSshCredentialBinding
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_derived_material"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_derived_material"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_agent_credential_binding_of_listed_key"),
   ]
-  = FleetSshCredentialBinding { identity_file: identity_file, credential_identity: credential_identity }
+  = FleetSshCredentialBinding { locus: locus, credential_identity: credential_identity }
 
 // THE ONLY MINT, and it takes material DERIVED FROM THE IDENTITY FILE rather than material a caller
 // declares alongside it. The superseded route (`fleet_ssh_credential_binding_of_public_material`)
@@ -384,15 +433,38 @@ fn fleet_ssh_credential_binding_seal(
 // Admitted to the classifier alone, which reaches this only on an observed match, so a binding
 // cannot exist without a derivation that produced the material being hashed.
 fn fleet_ssh_credential_binding_of_derived_material(
-  identity_file: NonEmptyStr,
-  derived_material: NonEmptyStr,
+  identity_file: std.types.NonEmptyStr,
+  derived_material: std.types.NonEmptyStr,
 ) -> FleetSshCredentialBinding
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_ssh_credential_verify", decl_name: "classify_derived_public_key_line"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_ssh_credential_verify", decl_name: "classify_derived_public_key_line"),
   ]
   = fleet_ssh_credential_binding_seal(
-    identity_file: identity_file,
-    credential_identity: content_hash_of_value(value: derived_material),
+    locus: FleetSshIdentityFileHeld { identity_file: identity_file },
+    credential_identity: std.content_hash.content_hash_of_value(value: derived_material),
+  )
+
+// The agent arm's mint, admitted to the agent classifier alone. The identity hashed is the material
+// of the key the AGENT was observed to hold -- the classifier reaches this only after finding the
+// declared fingerprint in the agent's own listing -- so it is the same kind of fact as the
+// identity-file arm's, obtained from a different observation.
+//
+// The selector file carries the PUBLIC key and is what makes `IdentitiesOnly` select one identity out
+// of an agent that may hold several. It is not a secret and is not what authenticates.
+fn fleet_ssh_agent_credential_binding_of_listed_key(
+  agent_socket: std.types.NonEmptyStr,
+  public_selector_file: std.types.NonEmptyStr,
+  listed_material: std.types.NonEmptyStr,
+) -> FleetSshCredentialBinding
+  admit_callers: [
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_ssh_credential_verify", decl_name: "classify_agent_key_listing"),
+  ]
+  = fleet_ssh_credential_binding_seal(
+    locus: FleetSshAgentHeld {
+      agent_socket: agent_socket,
+      public_selector_file: public_selector_file,
+    },
+    credential_identity: std.content_hash.content_hash_of_value(value: listed_material),
   )
 
 // ONE VALUE CARRYING EVERYTHING AN SSH LEG NEEDS TO BE ACCOUNTABLE. Sealed, so it cannot be
@@ -410,8 +482,8 @@ fn fleet_ssh_execution_context_seal(
   credential: FleetSshCredentialBinding,
 ) -> FleetSshExecutionContext
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
-    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_ssh_execution_context_hermetic_witness_fixture"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+    std.decl_ref.decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_ssh_execution_context_hermetic_witness_fixture"),
   ]
   = FleetSshExecutionContext { attempt: attempt, trust: trust, credential: credential }
 
@@ -437,8 +509,8 @@ fn fleet_ssh_execution_context_of(
 // whole product is a claim about a (host, principal) pair, so fusing them into one "user@host" text
 // at the call site would put the thing being measured inside an unparseable leaf.
 type SshTarget {
-  endpoint: NonEmptyStr
-  principal: NonEmptyStr
+  endpoint: std.types.NonEmptyStr
+  principal: std.types.NonEmptyStr
 }
 
 // A REMOTE WORD THAT SURVIVES THE REMOTE SHELL. The transported command is one string which the
@@ -447,15 +519,15 @@ type SshTarget {
 // property of the value rather than a promise in a function name -- which is what the previous
 // List<String> parameter was.
 type PortableRemoteWord sole_constructor {
-  value: NonEmptyStr
+  value: std.types.NonEmptyStr
 }
 
-fn portable_remote_word_char_allowed(cp: Int) -> Bool {
+fn portable_remote_word_char_allowed(cp: std.types.Int) -> std.types.Bool {
   (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
     || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
 }
 
-fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
+fn portable_remote_word_text_ok(text: std.types.String, i: std.types.Int, len: std.types.Int) -> std.types.Bool {
   if i >= len { true } else {
     if portable_remote_word_char_allowed(cp: code_point(ch: char_at(text, i))) {
       portable_remote_word_text_ok(text: text, i: i + 1, len: len)
@@ -466,9 +538,9 @@ fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
 // Refuses rather than quoting: quoting would make the word survive THIS shell, and the remote shell
 // is not known to be the same one. The allowlist is the same conservative alphabet the existing
 // typed-argv edge already enforces, reused rather than re-spelled.
-fn portable_remote_word(raw: String) -> PortableRemoteWord? {
+fn portable_remote_word(raw: std.types.String) -> PortableRemoteWord? {
   if raw != "" && portable_remote_word_text_ok(text: raw, i: 0, len: length(raw)) {
-    Present { value: PortableRemoteWord { value: raw as NonEmptyStr } }
+    Present { value: PortableRemoteWord { value: raw as std.types.NonEmptyStr } }
   } else {
     none
   }
@@ -479,10 +551,10 @@ fn portable_remote_word(raw: String) -> PortableRemoteWord? {
 // by passing an empty list to this one.
 type PortableRemoteWords {
   first: PortableRemoteWord
-  more: List<PortableRemoteWord>
+  more: std.types.List<PortableRemoteWord>
 }
 
-fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
+fn portable_remote_words(raws: std.types.List<std.types.String>) -> PortableRemoteWords? {
   let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
     match acc {
       Absent => none
@@ -494,18 +566,18 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   })
   match admitted {
     Absent => none
-    Present { value: ws } => match list_head(ws) {
-      HeadAbsent => none
-      HeadFound { value: h } => match list_tail(ws) {
-        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
-        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+    Present { value: ws } => match v2.std.algebra.list_head(ws) {
+      v2.std.algebra.HeadAbsent => none
+      v2.std.algebra.HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+        v2.std.algebra.TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        v2.std.algebra.TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
     }
   }
 }
 
-fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
-  concat([words.first.value as String], map(words.more, w => w.value as String))
+fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<std.types.String> {
+  concat([words.first.value as std.types.String], map(words.more, w => w.value as std.types.String))
 }
 
 // THE TERMINAL SHAPER, returning CLIENT ARGS -- everything after argv[0]. It does NOT prepend `ssh`,
@@ -523,24 +595,24 @@ fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
-) -> List<String> {
-  let config_suppression = openssh_suppress_ambient_configuration_options()
+) -> std.types.List<std.types.String> {
+  let config_suppression = extdeps.ssh.client_options.openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),
     concat(
-      openssh_exact_credential_options(identity_file: context.credential.identity_file),
+      fleet_ssh_credential_options(binding: context.credential),
       [
-        User { name: target.principal },
-        BatchMode { enabled: true },
-        ConnectTimeout { seconds: second(count: 10) },
+        extdeps.ssh.client_options.User { name: target.principal },
+        extdeps.ssh.client_options.BatchMode { enabled: true },
+        extdeps.ssh.client_options.ConnectTimeout { seconds: std.measure.second(count: 10) },
       ],
     ),
   )
   concat(
     concat(
-      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
-      serialize_ssh_client_options(options: derived),
+      flat_map(config_suppression, o => extdeps.ssh.client_options.serialize_ssh_config_file_flag(option: o)),
+      extdeps.ssh.client_options.serialize_ssh_client_options(options: derived),
     ),
-    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+    concat([target.endpoint as std.types.String, "--"], portable_remote_words_strings(words: words)),
   )
 }

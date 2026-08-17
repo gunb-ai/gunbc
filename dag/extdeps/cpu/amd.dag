@@ -1,23 +1,23 @@
 module extdeps.cpu.amd
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
   }
 }
 
-data amd_ryzen_5_3600_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data amd_ryzen_5_3600_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.amd.com/en/products/cpu/amd-ryzen-5-3600"
   }
 }
 
-data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data amd_ryzen_7_pro_8700ge_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.amd.com/en/products/cpu/amd-ryzen-7-pro-8700ge"
   }
 }
@@ -26,53 +26,53 @@ data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
 // is the termination AMD used through AM4 and abandoned at AM5 -- the socket is a zero insertion
 // force flip-chip land grid array, so the processor presents lands and the socket presents the
 // springs. The count was already right; the termination was carried over from the AM4 rows.
-data socket_am5_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data socket_am5_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Socket_AM5"
   }
 }
 
-data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data amd_ryzen_9_7950x3d_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.amd.com/en/products/cpu/amd-ryzen-9-7950x3d"
   }
 }
 
 // cores and threads are cited from each model's AMD product page (authorities above). threads is stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps.
-data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
-  data_capacity_per_core: byte_size(32768),
-  instruction_capacity_per_core: byte_size(32768),
-  line_size: byte_size(64),
+data amd_zen2_l1_cache_geometry: extdeps.cpu.types.CpuL1CacheGeometry = extdeps.cpu.types.CpuL1CacheGeometry {
+  data_capacity_per_core: std.measure.byte_size(32768),
+  instruction_capacity_per_core: std.measure.byte_size(32768),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen2_l1_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen2_l1_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "data_capacity_per_core",
     authority: amd_ryzen_5_3600_authority,
   },
 ]
 
-data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
-  capacity_per_core: byte_size(524288),
-  line_size: byte_size(64),
+data amd_zen2_l2_cache_geometry: extdeps.cpu.types.CpuL2CacheGeometry = extdeps.cpu.types.CpuL2CacheGeometry {
+  capacity_per_core: std.measure.byte_size(524288),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen2_l2_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen2_l2_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "capacity_per_core",
     authority: amd_ryzen_5_3600_authority,
   },
 ]
 
-data amd_zen2_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
-  capacity: byte_size(33554432),
-  line_size: byte_size(64),
+data amd_zen2_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometry = extdeps.cpu.types.CpuL3CacheGeometry {
+  capacity: std.measure.byte_size(33554432),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen2_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "capacity",
     authority: amd_ryzen_5_3600_authority,
   },
@@ -81,76 +81,76 @@ data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
 // THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
 // correct 1718 count; an uncited socket field is what let a wrong termination sit beside a right
 // number without anything to check it against.
-data socket_am4_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
+data socket_am4_citations: std.types.List<extdeps.cpu.types.SocketFactCitation> = [
+  extdeps.cpu.types.SocketFactCitation {
     field: "package",
     authority: amd_ryzen_5_3600_authority,
   },
-  SocketFactCitation {
+  extdeps.cpu.types.SocketFactCitation {
     field: "contact_count",
     authority: amd_ryzen_5_3600_authority,
   },
 ]
 
-data socket_am5_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
+data socket_am5_citations: std.types.List<extdeps.cpu.types.SocketFactCitation> = [
+  extdeps.cpu.types.SocketFactCitation {
     field: "package",
     authority: socket_am5_authority,
   },
-  SocketFactCitation {
+  extdeps.cpu.types.SocketFactCitation {
     field: "contact_count",
     authority: socket_am5_authority,
   },
 ]
 
-data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
-  data_capacity_per_core: byte_size(32768),
-  instruction_capacity_per_core: byte_size(32768),
-  line_size: byte_size(64),
+data amd_zen4_l1_cache_geometry: extdeps.cpu.types.CpuL1CacheGeometry = extdeps.cpu.types.CpuL1CacheGeometry {
+  data_capacity_per_core: std.measure.byte_size(32768),
+  instruction_capacity_per_core: std.measure.byte_size(32768),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen4_l1_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen4_l1_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "data_capacity_per_core",
     authority: extdeps_external_authority_anchor,
   },
 ]
 
-data amd_zen4_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
-  capacity_per_core: byte_size(1048576),
-  line_size: byte_size(64),
+data amd_zen4_l2_cache_geometry: extdeps.cpu.types.CpuL2CacheGeometry = extdeps.cpu.types.CpuL2CacheGeometry {
+  capacity_per_core: std.measure.byte_size(1048576),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen4_l2_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen4_l2_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "capacity_per_core",
     authority: extdeps_external_authority_anchor,
   },
 ]
 
-data amd_zen4_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
-  capacity: byte_size(67108864),
-  line_size: byte_size(64),
+data amd_zen4_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometry = extdeps.cpu.types.CpuL3CacheGeometry {
+  capacity: std.measure.byte_size(67108864),
+  line_size: std.measure.byte_size(64),
 }
 
-data amd_zen4_l3_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
+data amd_zen4_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
+  extdeps.cpu.types.CacheGeometryCitation {
     field: "capacity",
     authority: extdeps_external_authority_anchor,
   },
 ]
 
-data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data ryzen_5_3600_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "3600",
   oem_listing_id: none,
-  vendor: amd,
-  architecture: X86_64,
+  vendor: extdeps.vendor.amd.amd,
+  architecture: extdeps.toolchain.types.X86_64,
   cores: 6,
-  threads: hardware_thread_count(12),
-  nominal_sustained_per_thread_hz: hertz(3600000000),
-  socket: CpuSocket { platform_owner: amd, package: PinGridArray, contact_count: 1331 },
+  threads: std.measure.hardware_thread_count(12),
+  nominal_sustained_per_thread_hz: std.measure.hertz(3600000000),
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedPinGrid, contact_count: 1331 },
   socket_citations: socket_am4_citations,
-  tdp_watts: watt(65),
+  tdp_watts: std.measure.watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
   l2_cache: amd_zen2_l2_cache_geometry,
@@ -159,17 +159,17 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   l3_cache_citations: amd_zen2_l3_cache_citations,
 }
 
-data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data ryzen_7_pro_8700ge_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "8700GE",
   oem_listing_id: none,
-  vendor: amd,
-  architecture: X86_64,
+  vendor: extdeps.vendor.amd.amd,
+  architecture: extdeps.toolchain.types.X86_64,
   cores: 8,
-  threads: hardware_thread_count(16),
-  nominal_sustained_per_thread_hz: hertz(3300000000),
-  socket: CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 },
+  threads: std.measure.hardware_thread_count(16),
+  nominal_sustained_per_thread_hz: std.measure.hertz(3300000000),
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718 },
   socket_citations: socket_am5_citations,
-  tdp_watts: watt(65),
+  tdp_watts: std.measure.watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
   l2_cache: amd_zen4_l2_cache_geometry,
@@ -178,17 +178,17 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   l3_cache_citations: amd_zen4_l3_cache_citations,
 }
 
-data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data ryzen_9_7950x3d_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "7950X3D",
   oem_listing_id: none,
-  vendor: amd,
-  architecture: X86_64,
+  vendor: extdeps.vendor.amd.amd,
+  architecture: extdeps.toolchain.types.X86_64,
   cores: 16,
-  threads: hardware_thread_count(32),
-  nominal_sustained_per_thread_hz: hertz(4200000000),
-  socket: CpuSocket { platform_owner: amd, package: LandGridArray, contact_count: 1718 },
+  threads: std.measure.hardware_thread_count(32),
+  nominal_sustained_per_thread_hz: std.measure.hertz(4200000000),
+  socket: extdeps.cpu.types.CpuSocket { platform_owner: extdeps.vendor.amd.amd, termination: extdeps.cpu.types.SocketedLandGrid, contact_count: 1718 },
   socket_citations: socket_am5_citations,
-  tdp_watts: watt(120),
+  tdp_watts: std.measure.watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
   l2_cache: amd_zen4_l2_cache_geometry,
@@ -197,24 +197,24 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   l3_cache_citations: amd_zen4_l3_cache_citations,
 }
 
-data ryzen_5_3600_facts: CpuFacts = CpuFacts {
+data ryzen_5_3600_facts: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
   catalog: ryzen_5_3600_catalog,
-  deployment: CpuDeploymentFacts {
-    sustained_per_thread_hz: hertz(3600000000),
+  deployment: extdeps.cpu.types.CpuDeploymentFacts {
+    sustained_per_thread_hz: std.measure.hertz(3600000000),
   },
 }
 
-data ryzen_7_pro_8700ge_facts: CpuFacts = CpuFacts {
+data ryzen_7_pro_8700ge_facts: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
   catalog: ryzen_7_pro_8700ge_catalog,
-  deployment: CpuDeploymentFacts {
-    sustained_per_thread_hz: hertz(3300000000),
+  deployment: extdeps.cpu.types.CpuDeploymentFacts {
+    sustained_per_thread_hz: std.measure.hertz(3300000000),
   },
 }
 
-data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
+data ryzen_9_7950x3d_facts: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
   catalog: ryzen_9_7950x3d_catalog,
-  deployment: CpuDeploymentFacts {
-    sustained_per_thread_hz: hertz(4200000000),
+  deployment: extdeps.cpu.types.CpuDeploymentFacts {
+    sustained_per_thread_hz: std.measure.hertz(4200000000),
   },
 }
 
@@ -224,7 +224,7 @@ data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
 // elsewhere. The roster is still hand-authored -- a genuinely closed denominator would have to be
 // discovered from the module tree, which is lens work -- so this narrows the gap rather than
 // closing it, and says so.
-data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+data amd_cpu_catalog_rows: std.types.List<extdeps.cpu.types.CpuModelCatalogRow> = [
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,

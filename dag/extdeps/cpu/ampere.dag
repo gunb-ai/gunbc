@@ -1,46 +1,46 @@
 module extdeps.cpu.ampere
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Ampere_Altra"
   }
 }
 
-data ampere_altra_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data ampere_altra_rev_a1_datasheet_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf"
   }
 }
 
-data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data ampere_altra_classic_rev_a1_datasheet_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "amperecomputing.com/assets/Altra_Rev_A1_DS_v1_50_20240130_3375c3dec5_1c5d4604fa.pdf"
   }
 }
 
-data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorThermalLimits {
-  maximum_continuous_junction_temperature: celsius(100),
-  thermal_throttle_temperature: celsius(105),
-  thermal_shutdown_temperature: celsius(120),
+data ampere_altra_max_m12830_thermal_limits: extdeps.cpu.types.ProcessorThermalLimits = extdeps.cpu.types.ProcessorThermalLimits {
+  maximum_continuous_junction_temperature: std.measure.celsius(100),
+  thermal_throttle_temperature: std.measure.celsius(105),
+  thermal_shutdown_temperature: std.measure.celsius(120),
   authority: ampere_altra_rev_a1_datasheet_authority,
 }
 
 // Ampere Altra Max Rev A1 datasheet issue 1.25, table 14: M128-30 maximum continuous junction temperature TCJ=100C, SoC thermal throttling TM1=105C, and thermal shutdown TM2=120C. These are processor facts. A fleet fan policy may derive its emergency ramp from them, but must not rewrite them as operator preference.
-data ampere_altra_l1_data_capacity_per_core: ByteSize = byte_size(65536)
-data ampere_altra_l1_instruction_capacity_per_core: ByteSize = byte_size(65536)
-data ampere_altra_l1_line_size: ByteSize = byte_size(64)
+data ampere_altra_l1_data_capacity_per_core: std.measure.ByteSize = std.measure.byte_size(65536)
+data ampere_altra_l1_instruction_capacity_per_core: std.measure.ByteSize = std.measure.byte_size(65536)
+data ampere_altra_l1_line_size: std.measure.ByteSize = std.measure.byte_size(64)
 
-data ampere_altra_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+data ampere_altra_l1_cache_geometry: extdeps.cpu.types.CpuL1CacheGeometry = extdeps.cpu.types.CpuL1CacheGeometry {
   data_capacity_per_core: ampere_altra_l1_data_capacity_per_core,
   instruction_capacity_per_core: ampere_altra_l1_instruction_capacity_per_core,
   line_size: ampere_altra_l1_line_size,
 }
 
-data ampere_altra_l1_cache_citations: List<CacheGeometryCitation> = [
+data ampere_altra_l1_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "data_capacity_per_core"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -55,15 +55,15 @@ data ampere_altra_l1_cache_citations: List<CacheGeometryCitation> = [
   },
 ]
 
-data ampere_altra_l2_capacity_per_core: ByteSize = byte_size(1048576)
-data ampere_altra_l2_line_size: ByteSize = byte_size(64)
+data ampere_altra_l2_capacity_per_core: std.measure.ByteSize = std.measure.byte_size(1048576)
+data ampere_altra_l2_line_size: std.measure.ByteSize = std.measure.byte_size(64)
 
-data ampere_altra_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+data ampere_altra_l2_cache_geometry: extdeps.cpu.types.CpuL2CacheGeometry = extdeps.cpu.types.CpuL2CacheGeometry {
   capacity_per_core: ampere_altra_l2_capacity_per_core,
   line_size: ampere_altra_l2_line_size,
 }
 
-data ampere_altra_l2_cache_citations: List<CacheGeometryCitation> = [
+data ampere_altra_l2_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity_per_core"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -74,15 +74,15 @@ data ampere_altra_l2_cache_citations: List<CacheGeometryCitation> = [
   },
 ]
 
-data ampere_altra_max_l3_capacity: ByteSize = byte_size(16777216)
-data ampere_altra_l3_line_size: ByteSize = byte_size(64)
+data ampere_altra_max_l3_capacity: std.measure.ByteSize = std.measure.byte_size(16777216)
+data ampere_altra_l3_line_size: std.measure.ByteSize = std.measure.byte_size(64)
 
-data ampere_altra_max_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+data ampere_altra_max_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometry = extdeps.cpu.types.CpuL3CacheGeometry {
   capacity: ampere_altra_max_l3_capacity,
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_max_l3_cache_citations: List<CacheGeometryCitation> = [
+data ampere_altra_max_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity"
     authority: ampere_altra_rev_a1_datasheet_authority
@@ -93,14 +93,14 @@ data ampere_altra_max_l3_cache_citations: List<CacheGeometryCitation> = [
   },
 ]
 
-data ampere_altra_classic_l3_capacity: ByteSize = byte_size(33554432)
+data ampere_altra_classic_l3_capacity: std.measure.ByteSize = std.measure.byte_size(33554432)
 
-data ampere_altra_classic_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+data ampere_altra_classic_l3_cache_geometry: extdeps.cpu.types.CpuL3CacheGeometry = extdeps.cpu.types.CpuL3CacheGeometry {
   capacity: ampere_altra_classic_l3_capacity,
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
+data ampere_altra_classic_l3_cache_citations: std.types.List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "capacity"
     authority: ampere_altra_classic_rev_a1_datasheet_authority
@@ -126,36 +126,36 @@ data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
 // The platform owner rides on the family row for the same reason the rest of it does: which
 // platform an LGA4926 socket belongs to is a family fact, not a per-SKU one, and a contact count
 // alone does not identify a socket.
-data ampere_lga4926_socket: CpuSocket = CpuSocket {
-  platform_owner: ampere_vendor,
-  package: LandGridArray,
+data ampere_lga4926_socket: extdeps.cpu.types.CpuSocket = extdeps.cpu.types.CpuSocket {
+  platform_owner: extdeps.vendor.ampere.ampere_vendor,
+  termination: extdeps.cpu.types.SocketedLandGrid,
   contact_count: 4926,
 }
 
 // The citations sit beside the family socket they ground, not on each SKU row, because the fact
 // they cite is the family's.
-data socket_lga4926_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
+data socket_lga4926_citations: std.types.List<extdeps.cpu.types.SocketFactCitation> = [
+  extdeps.cpu.types.SocketFactCitation {
     field: "package",
     authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  SocketFactCitation {
+  extdeps.cpu.types.SocketFactCitation {
     field: "contact_count",
     authority: ampere_altra_rev_a1_datasheet_authority,
   },
 ]
 
-data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data altra_max_m12830_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
-  vendor: ampere_vendor,
-  architecture: Aarch64,
+  vendor: extdeps.vendor.ampere.ampere_vendor,
+  architecture: extdeps.toolchain.types.Aarch64,
   cores: 128,
-  threads: hardware_thread_count(128),
-  nominal_sustained_per_thread_hz: hertz(3000000000),
+  threads: std.measure.hardware_thread_count(128),
+  nominal_sustained_per_thread_hz: std.measure.hertz(3000000000),
   socket: ampere_lga4926_socket,
   socket_citations: socket_lga4926_citations,
-  tdp_watts: watt(183),
+  tdp_watts: std.measure.watt(183),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -164,17 +164,17 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   l3_cache_citations: ampere_altra_max_l3_cache_citations,
 }
 
-data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data altra_q6430_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "Q64-30",
   oem_listing_id: "AC-106418002",
-  vendor: ampere_vendor,
-  architecture: Aarch64,
+  vendor: extdeps.vendor.ampere.ampere_vendor,
+  architecture: extdeps.toolchain.types.Aarch64,
   cores: 64,
-  threads: hardware_thread_count(64),
-  nominal_sustained_per_thread_hz: hertz(3000000000),
+  threads: std.measure.hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: std.measure.hertz(3000000000),
   socket: ampere_lga4926_socket,
   socket_citations: socket_lga4926_citations,
-  tdp_watts: watt(124),
+  tdp_watts: std.measure.watt(124),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -188,9 +188,9 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 // of a positive result, NOT a negative result — see
 // gunbc.host_memory_qualification SpecificPartQualification, which keeps those
 // two states distinct.
-data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data ampere_altra_avl_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=ppuyl31kktnze6gbof70xitc"
   }
 }
@@ -199,7 +199,7 @@ data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
 
 // THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
 // "every Ampere processor modelled here", edited beside the rows it names.
-data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+data ampere_cpu_catalog_rows: std.types.List<extdeps.cpu.types.CpuModelCatalogRow> = [
   altra_max_m12830_catalog,
   altra_q6430_catalog,
 ]
