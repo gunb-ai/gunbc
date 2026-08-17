@@ -1,0 +1,98 @@
+module std.key_relation
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, and a phantom Relation brand so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work until a consumer grounds a real scope type. Functional-key cardinality for membership_reconcile is NOT stored on this carrier: std.keyed_roster keyed_roster_build over ScopedKey rows PRODUCES the evidence by refusing KeyedRosterBuildDuplicateKey (operator ruling 2026-08-16). An authored 0<=1 magnitude proved nothing about a population; the roster constructor is the wall. Rung today: mitigatable — law stated beside named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity cannot inhabit SubjectKey (impostor separation in docs/plans/keying-relation-design.md)."
+
+data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
+
+data key_relation_brand_type_tag_note: String = "Relation brand types (e.g. TailscaleServeRouteKeyRelation) are uninhabited phantom tags — legitimate under the hollow-alias rule because they are never construction-reached, only used as type parameters to keep unrelated relations non-substitutable when Subject/Scope/Key carriers coincide."
+
+type ScopedKey<Relation, Scope, Key> {
+  scope: Scope
+  key: Key
+}
+
+type KeyRelation<Relation, Subject, Scope, Key> {
+  scope_of: fn(Subject) -> Scope
+  key_of: fn(Subject) -> Key
+  scope_eq: fn(Scope, Scope) -> Bool
+  key_eq: fn(Key, Key) -> Bool
+}
+
+type GlobalKeyScope {}
+
+data global_key_scope_marker: GlobalKeyScope = GlobalKeyScope {}
+
+fn global_key_scope() -> GlobalKeyScope {
+  global_key_scope_marker
+}
+
+fn global_key_scope_eq(_: GlobalKeyScope, _: GlobalKeyScope) -> Bool {
+  true
+}
+
+fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
+  global_key_scope()
+}
+
+fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
+  subject: Subject,
+) -> ScopedKey<Relation, Scope, Key> {
+  let scope_of = relation.scope_of
+  let key_of = relation.key_of
+  ScopedKey { scope: scope_of(subject), key: key_of(subject) }
+}
+
+fn key_relation_scoped_key_eq<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
+  a: ScopedKey<Relation, Scope, Key>,
+  b: ScopedKey<Relation, Scope, Key>,
+) -> Bool {
+  let scope_eq = relation.scope_eq
+  let key_eq = relation.key_eq
+  scope_eq(a.scope, b.scope) && key_eq(a.key, b.key)
+}
+
+fn key_relation_global<Relation, Subject, Key>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+) -> KeyRelation<Relation, Subject, GlobalKeyScope, Key> {
+  KeyRelation {
+    scope_of: key_relation_global_scope_of,
+    key_of: key_of,
+    scope_eq: global_key_scope_eq,
+    key_eq: key_eq,
+  }
+}
+
+type StateRelation<Relation, Subject, State> {
+  state_of: fn(Subject) -> State
+  state_eq: fn(State, State) -> Bool
+}
+
+type KeyedResourceRelation<Relation, Subject, Scope, Key, State> {
+  key: KeyRelation<Relation, Subject, Scope, Key>
+  state: StateRelation<Relation, Subject, State>
+}
+
+fn keyed_resource_subject_value_eq<M, Relation, Scope, Key, State>(
+  resource: KeyedResourceRelation<Relation, M, Scope, Key, State>,
+) -> fn(M, M) -> Bool {
+  let state_of = resource.state.state_of
+  let state_eq = resource.state.state_eq
+  fn(a, b) { state_eq(state_of(a), state_of(b)) }
+}
+
+fn key_resource_relation_global<Relation, Subject, Key, State>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+  state_of: fn(Subject) -> State,
+  state_eq: fn(State, State) -> Bool,
+) -> KeyedResourceRelation<Relation, Subject, GlobalKeyScope, Key, State> {
+  KeyedResourceRelation {
+    key: key_relation_global(key_of: key_of, key_eq: key_eq),
+    state: StateRelation { state_of: state_of, state_eq: state_eq },
+  }
+}
