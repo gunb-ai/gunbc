@@ -1191,6 +1191,32 @@ not survive contact with the live corpus.
 | "342 diagnostics citing the algebra carrier" | **74 distinct sites; the 342 was a line count** | `eager-deer-389`, self-corrected |
 | T7 = "a ContentHash carrier fork" | **a seed-prelude name collision; same 105 sites, different cause** | `smart-ibex-716`, self-corrected |
 | Root A = struct-only derive trigger | **under challenge by its own author; see 12.5** | this session |
+| "an empty `EmitGraphInfo` is a shared upstream beneath Roots B2 and R1" | **DEAD, twice over — and it was mine** | this session, killed by `lively-ibex-709` + `bold-lark-722` |
+
+**The last row is a hypothesis killed before it cost anything, and it is recorded because the next
+session will regenerate it.** While root-causing a Root D residue, `keen-ibex-435` found the emit
+authority rendering a type with `empty_emit_graph_info()` — an env-blind render — and classified all
+14 production sites: 2 legitimately context-free, 7 latent, 5 plumbing. Only one was fixed, because a
+discriminating case existed for exactly one; for the five plumbing sites a case was **attempted per
+site and not found**, which is why they are enumerated rather than threaded (threading an env into a
+callee has zero observable effect unless some type renders differently, so symmetry is not a reason).
+
+It is a natural hypothesis that this is the shared upstream beneath the two open operator/wrap roots —
+both are "the decision disagrees between declaration and call site", which is what a missing env looks
+like from downstream. **It is false, and it was killed twice by different strengths of evidence.**
+`lively-ibex-709` established population disjointness (zero of the 112 B1 E0369 sites are in the
+operation/capability emit paths; all seven files are `std_*`) and then signature absence (0/112 show a
+`_` or unresolved type var in the rustc operand types; all name concrete carriers). `bold-lark-722`
+killed it for the wrap axis by mechanism: at those sites `shared_types` arrives as its OWN positional
+argument carrying the real set, and `render_rust_type` reads that parameter rather than
+`emit_info.shared_types`, so wrap membership is not degraded — what an empty info actually zeroes is
+`fn_generic_param_names`, `variant_to_enum` and `fn_type_env`, which degrade generic-scope rendering
+and applied-binding resolution, a different diagnostic class. That last read is **structural, not
+executed**, and its author declined to call it proof.
+
+So the seven latent sites are their own defect, not a hidden root beneath the open ones — which is a
+more useful result than a positive would have been, because it stops three lanes from converging on
+one wrong cause. Recorded here so the hypothesis is re-read rather than re-run.
 
 Two of those are authors falsifying their own published numbers unprompted. That is the behaviour
 this surface exists to make cheap, and it is the reason the remaining numbers are worth anything.
