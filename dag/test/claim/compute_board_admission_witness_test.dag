@@ -198,6 +198,7 @@ fn refusal_is(r: BoardArticleRefusal, wanted: String) -> Bool {
   match r {
     DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
     DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
+    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
     DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
     NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
     BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
@@ -525,4 +526,29 @@ test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
     kind: PowerPermitAsserted,
     establishment: EstablishedByBoardSignal { signal: out_signal },
   })))
+}
+
+// A NET MEMBER FROM ANOTHER BOARD, WHICH THE DESIGN AXIS ALONE DOES NOT CATCH. Scoped identities
+// make the two boards' terminals unequal, so a foreign member is never FOUND on this net -- and a
+// membership question that always answers no, for a reason nothing states, is the silent half of
+// the state space. This is the loud half. The fixture is otherwise the coherent article, so the
+// only thing that changed is which design the member's component belongs to.
+test fn w_a_net_member_from_another_board_refuses() -> Bool {
+  let elsewhere: ElectricalDesignIdentity = "test.compute_board_admission.other_board" as ElectricalDesignIdentity
+  let foreign = ElectricalTerminalRef {
+    component: component_instance_identity(design: elsewhere, local_identity: "r_top"),
+    terminal: "1" as TerminalIdentity,
+  }
+  let spliced = AnalogCircuitIntent {
+    title: coherent_analog.title,
+    components: coherent_analog.components,
+    nets: [ElectricalNet {
+      identity: net_identity(design: fixture_design, local_identity: "spliced"),
+      members: [foreign],
+    }] + coherent_analog.nets,
+  }
+  refuses_with_exactly(
+    a: fixture_article(analog: spliced, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "NetMemberBelongsToAnotherDesign"
+  )
 }
