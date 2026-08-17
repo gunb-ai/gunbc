@@ -2334,17 +2334,46 @@ mod compiler_tests {
         );
         // RESIDUE, ASSERTED SO IT IS COUNTED RATHER THAN ASSUMED CLOSED: the checkpoint
         // TABLE is keyed on the bare dag_name and is consulted BEFORE identity, so any
-        // name carrying a row bypasses declaration keying entirely. Int has such a row,
-        // so a v2-declared Int still realizes as i64 -- the fork is closed for
-        // table-absent names and OPEN for table-present ones. This assertion is expected
-        // to FLIP to None when the checkpoint rows gain a declaring-module column; that
-        // flip is the dissolution signal, not a regression.
+        // name carrying a row bypasses declaration keying entirely -- the fork is closed
+        // for table-absent names (Nat, above) and OPEN for table-present ones.
+        //
+        // These assert the CURRENT bypassing answers on purpose. They flip to None when
+        // identity reaches the table; that flip is the dissolution signal, NOT a
+        // regression -- do not make them pass again.
+        //
+        // The three asserted are the population vivid-wren-870 separated as the same
+        // SHAPE as Int: the src/v2 declaration is a genuinely different STRUCTURE, not a
+        // spelling coincidence. Int = GroupCompletion<Nat>, String = FreeMonoid<Char>,
+        // Bool = a two-variant coproduct. Their census found SEVEN table names also
+        // declared under src/v2 (adding Float, Symbol, Unit, Hash), as a LOWER BOUND from
+        // a line-start `type` grep. The other four are unasserted: Symbol and Unit are
+        // bodyless and may be declared-abstract rather than competing realizations, and I
+        // have not measured Float or Hash. Absence here is UNMEASURED, never cleared.
+        //
+        // This needs no emitting closure -- the probe is a pure function, so it asks a
+        // question the corpus does not currently exercise. That is why it caught what the
+        // two-arm artifact diff could not: nothing in those closures declares a competing
+        // Int, so the emitted bytes were identical either way.
         assert_eq!(
             crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
                 "Int".to_string(),
                 "src/v2/std/integer.dag".to_string()
             ),
             Some("i64".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "String".to_string(),
+                "src/v2/std/text.dag".to_string()
+            ),
+            Some("String".to_string())
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
+                "Bool".to_string(),
+                "src/v2/std/logic.dag".to_string()
+            ),
+            Some("bool".to_string())
         );
         // GroupCompletion has no checkpoint row and is not the seed host numeric alias,
         // so the checkpoint declines to render it directly -- it fires ONLY for the
