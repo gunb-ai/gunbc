@@ -3,6 +3,7 @@ module test.claim.spark_serving_full_plan_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
+import gunbc.spark_serving_membership { spark_serving_membership_reconcile }
 import gunbc.spark_serving_release {
   SparkServingObservation,
   SparkServingObserved,
@@ -32,6 +33,11 @@ import gunbc.spark_serving_observed_members {
   spark_serving_projection_supports_empty_replan,
 }
 import gunbc.spark_serving_converge_plan {
+  SparkServingTypedActionProjection,
+  SparkServingTypedActionsProjected,
+  SparkServingTypedActionsRefused,
+  fleet_converge_spark_serving_typed_actions,
+  spark_serving_desired_linger_member,
   SparkServingFullMembershipPlan,
   SparkServingFullMembershipPlanReady,
   SparkServingFullMembershipPlanRefused,
@@ -232,4 +238,37 @@ test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
       linger: LingerUnobservedState,
     ),
   )
+}
+
+// ── The typed-action projection refuses rather than dropping ────────────────────────────────────
+
+// Removing an `Ensured` member is refused by the reconcile, and that refusal used to be ERASED: the
+// projection was a flat_map whose `Absent` arm returned the empty list, so the artifact froze fewer
+// typed rows than its own plan had actions and reported no diagnostic. Its frequency was zero by
+// construction because the only live plan is linger-only and linger always translates -- which is
+// exactly why it is worth an executed witness rather than a reading of the code.
+fn removal_refusing_plan() -> MembershipPlan<SparkServingMember> {
+  spark_serving_membership_reconcile(
+    desired: [],
+    observed: [spark_serving_desired_linger_member(host: subject_host)],
+  )
+}
+
+test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
+  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan()) {
+    SparkServingTypedActionsRefused { cause: c } =>
+      string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
+    SparkServingTypedActionsProjected { rows: _ } => false
+  }
+}
+
+// The positive control: the ordinary bare-host linger plan still projects, so the refusal above is a
+// property of the untranslatable action and not of the projection refusing everything.
+test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
+  match fleet_converge_spark_serving_typed_actions(
+    plan: spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
+  ) {
+    SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
+    SparkServingTypedActionsRefused { cause: _ } => false
+  }
 }
