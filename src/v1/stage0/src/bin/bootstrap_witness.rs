@@ -958,9 +958,18 @@ fn ci_performance_ratchet() {
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
     if let Err(ref diff) = pass1.freshness {
+        // The former remediation named `regen_stage0`, which the v1 cut deleted along
+        // with the .dag authority that emitter read. There is deliberately no
+        // replacement command: the committed seed is FROZEN (gunbc.stage0_seed_retention
+        // declares the 136 artifacts that stopped being generated), so nothing regenerates
+        // it and a divergence here is a decision rather than a refresh. Naming a command
+        // that does not exist would make this refusal a dead end for whoever hits it.
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
-             Run `cargo run -p v1-compiler --bin regen_stage0` to update.\n\
+             The seed is FROZEN: the v1 cut deleted regen_stage0 and the .dag authority it\n\
+             emitted from, so no command regenerates this. A divergence here means either the\n\
+             self-compile changed or the frozen seed was edited — decide which, per the\n\
+             retention roster in gunbc.stage0_seed_retention. Do not hand-edit to silence it.\n\
              Diff:\n{}",
             diff
         );
