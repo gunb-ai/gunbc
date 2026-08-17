@@ -81,6 +81,9 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - **CI run 32019076745 @ `42a29aa` (2026-08-17):** `ci` failed on floor job kill/timeout (~95 min),
   not witness refusal — discovery reported **9948 passed · 0 failed**; batches 1–2 green. Retry via
   new head, not `gh run rerun` (frozen merge ref).
+- **CI run 32030285591 @ `fcbfd3ba` (2026-08-17):** same shape — **9948 passed · 0 failed**,
+  `floor_outcome=failure` at ~13.9 GB peak, job killed at ~100 min before post-discovery batches
+  logged. Not a classification or probe defect; sessionpush `pull_request` run (run count 1).
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
