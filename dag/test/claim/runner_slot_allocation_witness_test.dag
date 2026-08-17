@@ -21,6 +21,8 @@ import gunbc.runner_slot_allocation {
   srv2_03_floor_leaf_cgroup_events_at_entry_are_zero,
   gunbc_readback_refusal_stays_witnessed_by_synthetic_drift,
   gunbc_floor_measured_peak_observation,
+  gunbc_floor_measured_peak_armed_high,
+  gunbc_floor_measured_peak_is_uncensored,
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
@@ -135,6 +137,14 @@ test fn witness_declared_row_pins_16_15_gib_from_floor_peak_ruling() -> Bool {
 test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
   byte_size_count(b: gunbc_runner_slot_desired().memory_high)
     >= byte_size_count(b: gunbc_floor_measured_peak_observation)
+}
+
+test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
+  gunbc_floor_measured_peak_is_uncensored()
+}
+
+test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
+  byte_size_count(b: byte_size(16750372454)) > byte_size_count(b: gunbc_floor_measured_peak_armed_high)
 }
 
 test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
