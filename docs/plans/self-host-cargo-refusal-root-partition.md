@@ -2148,3 +2148,51 @@ cannot exist.
 **And the corollary for the measurement law in §11.14:** distinct sites at a fixed M is the right unit
 for *comparing runs*, and the wrong unit for *estimating work*. Both numbers are needed and they are
 not interchangeable.
+
+## 13. Two-arm provenance: three controls that run BEFORE the measurement
+
+Established while standing up the after-arm service for Root B's `RustCorpusRepr` cut. The
+measurement itself is pending; **these three controls are not** — each is complete on its own and
+each closes a route by which a two-arm receipt reports a clean result while measuring nothing.
+
+**13.1 Discriminate the binary, not its mtime.** The stale-binary hazard is usually answered by
+checking that a rebuild happened. That is a proxy. On a self-hosting compiler the direct check is
+available: the arms differ in named symbols, so read them out of the binary.
+
+```
+BEFORE binary, built at a6bceb6903, sccache disabled:
+  RustCorpusRepr              9 hits     <- pre-cut emitter PRESENT
+  FaithfulFreeMonoid          4
+  HostNative                  5
+  decl_file_realizes_natively 0          <- post-cut symbol ABSENT
+```
+
+The after-arm must invert this, and if it does not I stop rather than probe. This answers "does
+this binary carry the change" positively, in both directions, without depending on a timestamp —
+and a timestamp is what moves when a build recompiles something unrelated.
+
+**13.2 Run the determinism control before you have a diff to explain.** Same binary, same sources,
+`04_infer` re-emitted: **85 files, 0 differing.** Emission is deterministic on this path, so any
+later diff is caused.
+
+The sequencing carries more than the result. Run *after* an inconvenient diff appears, this is a
+check you chose to perform on a result you did not like, and "that is just emission
+nondeterminism" is a ready-made, authoritative-sounding way to make the diff not your problem.
+Run *first*, **you have destroyed your own escape route before you know whether you will want
+it.** Same discipline as writing the prediction down before the run, applied to the excuse rather
+than to the claim.
+
+**13.3 Vary the compiler; hold the emitted subject byte-identical.** The natural two-arm design —
+BEFORE = binary+sources at merge-base, AFTER = binary+sources at branch head — varies the
+compiler *and* the subject corpus together, so its diff cannot say which one moved the artifact.
+An emitter change is both cases at once: it edits `.dag` authorities *and* lives in the binary,
+because the emitter is generated Rust compiled into `gunbc`.
+
+So the arms take **binary and source tree as independent inputs**, and the measurement is the
+after-binary against the *merge-base* corpus. The failure mode this closes is specific: if the
+branch also touches `src/v2` or `dag/`, that corpus change folds into the emitter delta and is
+reported as emission change — attributed to the branch owner, by the measurer.
+
+**And the shared property of all three:** each is a control on the *instrument*, not on the
+subject, and each is cheap enough that its only real cost is remembering to run it before the
+result exists rather than after.
