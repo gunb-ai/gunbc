@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_std_core::{module_items, Connective, ExprData, Node};
+use crate::v1_std_core::{module_items, Connective, ExprData, MatchPattern, Node};
 
 /// Maps every declared name to the module declaring it, and every module to its
 /// file. Built once over a set of source roots; the expensive half (parsing
@@ -149,6 +149,31 @@ pub fn names_in_tree(node: &Rc<Node>, out: &mut HashSet<String>) {
     }
     if let Some(annotation) = node.type_annotation.as_ref() {
         names_in_tree(annotation, out);
+    }
+    if let Some(pattern) = node.match_pattern.as_ref() {
+        names_in_pattern(pattern, out);
+    }
+}
+
+fn names_in_pattern(pattern: &Rc<MatchPattern>, out: &mut HashSet<String>) {
+    match &**pattern {
+        MatchPattern::VariantPattern {
+            name,
+            parent_enum,
+            field_bindings,
+        } => {
+            if !name.is_empty() {
+                out.insert(name.clone());
+            }
+            if let Some(parent) = parent_enum {
+                out.insert(parent.clone());
+            }
+            for binding in field_bindings.iter() {
+                names_in_tree(binding, out);
+            }
+        }
+        MatchPattern::Bind { declaration } => names_in_tree(declaration, out),
+        MatchPattern::LitPattern { .. } | MatchPattern::Wildcard => {}
     }
 }
 
@@ -274,6 +299,49 @@ fn collect_references(node: &Rc<Node>, in_type_position: bool, out: &mut HashSet
     }
     if let Some(transport) = node.transport.as_ref() {
         collect_references(transport, in_type_position, out);
+    }
+    // A match pattern is a REFERENCE POSITION, and it was the one the walk
+    // missed entirely. `match x { Present { v } => ... }` names `Present` --
+    // and, through parent_enum, the type that declares it -- nowhere else in
+    // the node, because a pattern hangs off match_pattern rather than off
+    // children/body. So a variant referenced ONLY in a pattern never pulled its
+    // declaring module into the closure, and the module then resolved without
+    // it. That is not a missing edge in the abstract: it is measured as
+    // `variant 'Empty'/'Cons' not found in type 'List'`,
+    // `non-exhaustive match: missing variant(s) Present, Absent`, and
+    // `variant 'Accepted'/'Rejected' not found in type 'String'` in the live
+    // corpus -- roughly forty diagnostics from this one omission.
+    //
+    // Bind and Wildcard introduce binders rather than referencing anything, so
+    // they contribute no edge; LitPattern names no declaration.
+    if let Some(pattern) = node.match_pattern.as_ref() {
+        collect_pattern_references(pattern, out);
+    }
+}
+
+fn collect_pattern_references(pattern: &Rc<MatchPattern>, out: &mut HashSet<String>) {
+    match &**pattern {
+        MatchPattern::VariantPattern {
+            name,
+            parent_enum,
+            field_bindings,
+        } => {
+            if !name.is_empty() {
+                out.insert(name.clone());
+            }
+            if let Some(parent) = parent_enum {
+                out.insert(parent.clone());
+            }
+            // A field binding is a binder, but it may carry a nested pattern or
+            // a declared type of its own.
+            for binding in field_bindings.iter() {
+                collect_references(binding, false, out);
+            }
+        }
+        MatchPattern::Bind { declaration } => {
+            collect_references(declaration, false, out);
+        }
+        MatchPattern::LitPattern { .. } | MatchPattern::Wildcard => {}
     }
 }
 
