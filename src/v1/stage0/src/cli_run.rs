@@ -41104,6 +41104,11 @@ pub struct RequiredFloorOutcome {
     pub claims_executed: usize,
     pub receipt_identities: usize,
     pub passed: usize,
+    /// Enrolled expected-red identities that failed exactly as enrolled. Deliberately its own
+    /// field rather than folded into `passed`: agreement about a failure is not a passing
+    /// witness, and a headline number that rises as debt is added has no direction left to
+    /// report repayment in.
+    pub known_red_held: usize,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
@@ -41785,8 +41790,19 @@ pub fn run_required_floor(
     // predicate this host applies: sites offered minus claims returned is what the manifest
     // declined, so the number cannot drift from the decision that produced it.
     let mut sites: Vec<v1_interpreter::Value> = Vec::new();
+    // THE SAME POPULATION, KEPT IN HOST SHAPE, so the decline can be reported as a PARTITION
+    // rather than as a subtraction. `sites_offered - claims.len()` says how many rows vanished
+    // and nothing about why; two independent hacks decline rows here, and a single difference
+    // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
+    // counted by both.
+    let mut site_facts: Vec<(String, String, bool)> = Vec::new();
     for file in &files {
         for function in &file.functions {
+            site_facts.push((
+                format!("{}.{}", file.module_path, function),
+                file.module_path.clone(),
+                file.reads_live_tree,
+            ));
             sites.push(record_value(
                 &hermetic,
                 "WitnessSite",
@@ -41865,13 +41881,104 @@ pub fn run_required_floor(
     // site offered and not returned as a claim carries a non-required disposition, and those
     // rows are NOT covered by this floor — reported every run in those words, because the
     // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
-    let declined = sites_offered.saturating_sub(claims.len());
-    if declined > 0 {
-        eprintln!(
-            "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
-             required-floor and NOT RUN HERE — each needs an executing consumer on another \
-             cadence, and none exists yet on this branch"
-        );
+    // THE DECLINE IS A PARTITION, AND IT IS PROVED HERE RATHER THAN ASSERTED.
+    //
+    // Two hacks decline rows: the long-home prefix test and the live-tree declaration. A single
+    // `offered - claims` difference cannot tell them apart, cannot see a row declined by
+    // NEITHER (which would be a silent disappearance — the exact gunbc#7762 failure), and
+    // cannot see a row that both would claim. So the three populations are computed by identity
+    // and required to reconstruct the whole:
+    //
+    //     offered = executed ⊎ long-home-declined ⊎ live-tree-declined
+    //
+    // The prefixes are DECODED from the `.dag` authority rather than restated here, because a
+    // host-side copy of that list is a second authority that would drift the moment either side
+    // moved — and the drift would show up as this partition disagreeing, which is a confusing
+    // way to learn about a copy-paste.
+    let long_home_prefixes: Vec<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.required_floor.long_home_prefixes",
+            false,
+        )
+        .map_err(|e| format!("long_home_prefixes: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("long_home_prefixes: {e}"))?;
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => out.push(s.to_string()),
+                other => {
+                    return Err(format!(
+                        "long_home_prefixes: expected a module-path prefix, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    {
+        let executed: HashSet<&str> = claims.iter().map(|c| c.qualified.as_str()).collect();
+        let mut long_declined = 0usize;
+        let mut live_declined = 0usize;
+        let mut both = 0usize;
+        let mut unexplained: Vec<&str> = Vec::new();
+        for (qualified, module_path, reads_live_tree) in &site_facts {
+            if executed.contains(qualified.as_str()) {
+                continue;
+            }
+            let long_home = long_home_prefixes
+                .iter()
+                .any(|p| module_path.starts_with(p));
+            // ASSIGNED IN A FIXED ORDER SO THE ARMS STAY DISJOINT, with the overlap counted
+            // separately rather than hidden by whichever test ran first. A row that is both
+            // long-home and live-tree is a real thing and it is worth knowing how many there
+            // are, but it must be attributed once.
+            match (long_home, *reads_live_tree) {
+                (true, true) => {
+                    long_declined += 1;
+                    both += 1;
+                }
+                (true, false) => long_declined += 1,
+                (false, true) => live_declined += 1,
+                // DECLINED BY NEITHER HACK. This is the arm that must stay empty: the manifest
+                // dropped a row for a reason this host cannot name, which is precisely a silent
+                // narrowing of the roster.
+                (false, false) => unexplained.push(qualified.as_str()),
+            }
+        }
+        let declined = long_declined + live_declined + unexplained.len();
+        if declined > 0 {
+            eprintln!(
+                "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
+                 required-floor and NOT RUN HERE: {long_declined} long-home-declined \
+                 ({both} of them also declare ReadsLiveTree), {live_declined} live-tree-declined \
+                 — each needs an executing consumer on another cadence, and none exists yet on \
+                 this branch"
+            );
+        }
+        if !unexplained.is_empty() {
+            unexplained.sort_unstable();
+            let shown: Vec<&str> = unexplained.iter().copied().take(20).collect();
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SiteDeclinedWithoutDisposition count={} — a \
+                 discovered site was neither executed nor declined by a named disposition, so \
+                 the roster narrowed for a reason nothing can report; first {}: {}",
+                unexplained.len(),
+                shown.len(),
+                shown.join(", ")
+            ));
+        }
+        if claims.len() + declined != sites_offered {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={} executed={} \
+                 declined={} — the three populations must reconstruct the offered set exactly",
+                sites_offered,
+                claims.len(),
+                declined
+            ));
+        }
     }
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
@@ -41891,7 +41998,16 @@ pub fn run_required_floor(
         for item in items {
             match item {
                 v1_interpreter::Value::Str(s) => {
-                    out.insert(s.to_string());
+                    // A DUPLICATE REFUSES. The roster's length is read as the debt, and a
+                    // repeated identity makes that length lie in the direction that flatters:
+                    // 820 rows naming 819 identities reports one more fixed row than exists,
+                    // and the second copy survives every removal of the first. The set would
+                    // absorb it silently, so the refusal has to be here rather than in the set.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_expected_red_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
                 }
                 other => {
                     return Err(format!(
@@ -41941,6 +42057,7 @@ pub fn run_required_floor(
         claims_executed: 0,
         receipt_identities: 0,
         passed: 0,
+        known_red_held: 0,
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -42002,6 +42119,7 @@ pub fn run_required_floor(
     let mut scope_module_max: usize = 0;
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
+    let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
     let mut trim_reclaimed_kb_total: u64 = 0;
@@ -42158,6 +42276,9 @@ pub fn run_required_floor(
         // to be forgotten. And every row is an executing claim with a receipt, so nothing in
         // here reads as covered when it is not.
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
+        if expected_red {
+            expected_red_seen.insert(claim.qualified.clone());
+        }
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red && passed {
             known_red_now_passing += 1;
@@ -42170,7 +42291,12 @@ pub fn run_required_floor(
         }
         if expected_red {
             known_red_held += 1;
-            outcome.passed += 1;
+            // NOT COUNTED AS A PASS. A held row did not pass — it failed exactly as enrolled,
+            // and agreement about a failure is not the same fact as a passing witness. Folding
+            // it into `passed` would make the headline number rise as debt is ADDED, which is
+            // the direction that flatters, and would leave no count that falls when the debt is
+            // repaid. The identity accounting (planned = executed = receipted) is unaffected
+            // because it counts receipts, not verdicts.
             continue;
         }
         match result {
@@ -42279,6 +42405,53 @@ pub fn run_required_floor(
             trim_reclaimed_kb_total as f64 / 1048576.0,
             trim_reclaimed_kb_max as f64 / 1048576.0
         );
+    }
+    outcome.known_red_held = known_red_held;
+    // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
+    // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
+    // still executing — has no consumer unless it is asked here, and without it the roster rots
+    // in exactly the way that makes a skip list a skip list: an identity that is renamed,
+    // deleted, moved under a declined path, or dropped from discovery stays on the roster
+    // forever, is never observed, never passes, and therefore never asks to be removed. The
+    // debt count would keep counting rows that no longer exist.
+    //
+    // So a roster entry that did not execute REFUSES, and it refuses by name. That also closes
+    // the cheapest way to fake a green run: enrolling an identity that does not exist would
+    // otherwise cost nothing.
+    let expected_red_missing: Vec<&String> = {
+        let mut missing: Vec<&String> = expected_red_roster
+            .iter()
+            .filter(|q| !expected_red_seen.contains(*q))
+            .collect();
+        missing.sort();
+        missing
+    };
+    if !expected_red_missing.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
+             identity enrolled in v2.workflow.floor_expected_red must be observed among the \
+             executed claims; these were not, so they are stale and must be removed from the \
+             roster or restored to discovery: {}",
+            expected_red_missing.len(),
+            expected_red_missing
+                .iter()
+                .map(|q| q.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // AND THE PARTITION MUST BE EXACT. With the reverse join above, every enrolled identity was
+    // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
+    // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
+    // it fails loudly if a later edit adds a third arm that quietly swallows rows.
+    if known_red_held + known_red_now_passing != expected_red_roster.len() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
+             roster={} — every enrolled identity must be exactly one of held or now-passing",
+            known_red_held,
+            known_red_now_passing,
+            expected_red_roster.len()
+        ));
     }
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently

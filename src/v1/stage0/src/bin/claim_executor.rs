@@ -10374,11 +10374,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
                 );
                 eprintln!(
-                    "required-floor: planned={} executed={} terminal={} passed={} failed={}",
+                    "required-floor: planned={} executed={} terminal={} passed={} \
+                     known_red_held={} failed={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
                     outcome.passed,
+                    outcome.known_red_held,
                     outcome.failures.len()
                 );
                 for failure in &outcome.failures {
