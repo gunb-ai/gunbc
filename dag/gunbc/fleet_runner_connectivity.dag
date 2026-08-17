@@ -57,7 +57,7 @@ type FleetRunnerCapacityWidthSnapshot {
   achieved: FleetAchievedRunnerWidths
 }
 
-data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06; live fleet_desired_width_total is 24 after srv4 commits 7 at the memory axis)."
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 above is a coincidence of arithmetic, not the same quantity — it is what the roster desired on 2026-08-06.)"
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
