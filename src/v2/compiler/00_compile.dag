@@ -220,7 +220,7 @@ fn compile_inferred_translate(
   inferred: InferredTree,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
-  emit(tree: inferred, target: target)
+  v2.compiler.emit.emit(tree: inferred, target: target)
 }
 
 fn compile_inferred(

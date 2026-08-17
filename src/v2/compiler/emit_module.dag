@@ -9,7 +9,7 @@ fn emit_module_append_decl(
   target: TargetModel
 ) -> Outcome<String> {
   bind_outcome(
-    o: emit(tree: tree, target: target),
+    o: v2.compiler.emit.emit(tree: tree, target: target),
     f: fn(medium) {
       outcome_accepted(
         value: list_append(
@@ -65,7 +65,7 @@ fn emit_family_append_member(
   member: EmitFamilyMember
 ) -> Outcome<String> {
   bind_outcome(
-    o: emit(tree: member.tree, target: member.target),
+    o: v2.compiler.emit.emit(tree: member.tree, target: member.target),
     f: fn(medium) {
       outcome_accepted(
         value: list_append(

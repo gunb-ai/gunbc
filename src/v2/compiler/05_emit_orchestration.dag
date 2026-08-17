@@ -35,7 +35,7 @@ fn orch_emit_from_registry(
   bind_outcome(
     o: orch_emit_registry_emitted_root(medium: medium, construct_tag: construct_tag),
     f: fn(emitted_root) {
-      emit(
+      v2.compiler.emit.emit(
         tree: InferredTree {
           root: emitted_root,
           facts: Map { lookup: orch_emit_facts_lookup }
@@ -48,7 +48,7 @@ fn orch_emit_from_registry(
 
 fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<String> {
   bind_outcome(
-    o: emit(
+    o: v2.compiler.emit.emit(
       tree: InferredTree {
         root: emitted_root,
         facts: Map { lookup: orch_emit_facts_lookup }
