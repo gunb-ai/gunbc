@@ -317,7 +317,7 @@ test fn witness_owned_ci_witness_bundle() -> Bool {
     && witness_fractional_lease_clock_refuses()
     && witness_publication_pending_is_not_github_success()
     && witness_publication_completed_is_github_success()
-    && witness_execution_plan_stages_build_regen_floor()
+    && witness_execution_plan_stages_build_floor()
     && witness_run_id_admits_produced_shape()
     && witness_run_id_refuses_path_traversal_and_malformed()
     && witness_executor_stage_labels_match_plan()
