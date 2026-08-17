@@ -519,12 +519,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "keying-relation-design",
-    primary_work: DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "std.key_relation", decl_name: "KeyRelation", field: WholeDeclaration },
     additional_works: [
+      DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
       DeclarationRef { module_path: "std.effects", decl_name: "KeySource", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "membership_reconcile", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "TailscaleServeRouteKey", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_route_key", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject keyed_two_way_diff describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject KeyRelation describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

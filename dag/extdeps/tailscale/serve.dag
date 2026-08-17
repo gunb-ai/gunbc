@@ -1,6 +1,8 @@
 module extdeps.tailscale.serve
 
-import std.types { NonEmptyStr, Port, String, List }
+import std.types { NonEmptyStr, Port, String, List, Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global, KeyedResourceRelation, StateRelation }
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
@@ -17,6 +19,9 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+
+// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps this relation distinct from other TailscaleServeEndpoint x ScopedKey rows that share carriers — orthogonal to scope correctness (see the // block above tailscale_serve_route_key_relation).
+type TailscaleServeRouteKeyRelation
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -158,6 +163,80 @@ fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServ
 
 fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
   join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+}
+
+// THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
+type TailscaleServeRouteKey {
+  https_port: Port
+  mount: TailscaleServeMount
+}
+
+fn tailscale_serve_route_key(endpoint: TailscaleServeEndpoint) -> TailscaleServeRouteKey {
+  TailscaleServeRouteKey {
+    https_port: endpoint.https_port,
+    mount: endpoint.mount,
+  }
+}
+
+fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> Bool {
+  match a {
+    ServeRootMount =>
+      match b {
+        ServeRootMount => true
+        ServeSetPath { path: _ } => false
+      }
+    ServeSetPath { path: pa } =>
+      match b {
+        ServeRootMount => false
+        ServeSetPath { path: pb } => pa as String == pb as String
+      }
+  }
+}
+
+fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> Bool {
+  a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
+}
+
+fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
+  join(
+    [
+      to_string(key.https_port),
+      ":",
+      tailscale_serve_mount_status_key(mount: key.mount),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn tailscale_endpoint_state_of(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  endpoint.backend
+}
+
+fn tailscale_endpoint_state_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a == b
+}
+
+fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> Bool {
+  tailscale_endpoint_state_eq(
+    a: tailscale_endpoint_state_of(endpoint: a),
+    b: tailscale_endpoint_state_of(endpoint: b),
+  )
+}
+
+// GLOBALKEYSCOPE ON THIS RELATION IS AN HONEST INTERIM RUNG, NOT THE TERMINAL ANSWER. GlobalKeyScope asserts route keys are unique universe-wide, but tailscale serve configuration is per-device — node A and node B may each hold the same listener x mount route as distinct subjects. GlobalKeyScope collapses them into one ScopedKey: the same failure class as distinct deployments sharing one artifact path (distinct subjects merged into one identity), arrived from declaring a scope wider than the resource rather than writing a fake value. The phantom relation brand distinguishes relations from each other, not instances within this relation. Terminal answer is TailscaleServeScope { node, service } with node grounded on the fleet tailnet device carrier already in the model (not minted here). The current fleet vertical is single-node so the wrong population is not yet observable and twin witnesses cannot catch it.
+data tailscale_serve_scope_global_key_dissolve_on: DissolutionCondition = unbound_dissolution(description: "ground TailscaleServeScope { node, service } and re-home tailscale_serve_route_key_relation off GlobalKeyScope; acceptance = one route identity read by BOTH membership reconcile and twin-safety witnesses (successor node://adhoc-907f1da5-c20)")
+
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
+  key_of: tailscale_serve_route_key,
+  key_eq: tailscale_serve_route_key_eq,
+)
+
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
+  key: tailscale_serve_route_key_relation,
+  state: StateRelation {
+    state_of: tailscale_endpoint_state_of,
+    state_eq: tailscale_endpoint_state_eq,
+  },
 }
 
 // EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.
