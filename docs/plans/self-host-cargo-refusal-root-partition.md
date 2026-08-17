@@ -2106,3 +2106,43 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 `ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
+
+## 12. The finding above the findings: a site count measures where the compiler pointed
+
+Every root in this partition was sized by counting distinct diagnostic sites, and in every root that
+was then characterized, the count turned out to be a poor description of the work. The ratio is not a
+rhetorical flourish; it is measurable, and I measured it rather than adopting the round number it was
+suggested with.
+
+| root | sites | units of work | ratio | what one unit is |
+|---|---:|---:|---:|---|
+| B1 algebra carrier | 509 | 1 | 509× | one closure-shape flag deciding the numeric representation |
+| K unsynthesized use-line | 132 | 1 | 132× | one collector that does not reach pattern / nested-argument positions |
+| T7 `Hash` collision | 105 | 1 | 105× | one row in `rust_type_checkpoints` |
+| A generic clone bound | 142 | 2 | 71× | two axes with complementary blind spots |
+| D generic argument count | 116 | 2 | 58× | one checkpoint row + one alias-arity drop |
+| T3 collection carrier | 107 | 5 | 21× | five mechanisms over two alias declarations |
+| T5a Hash/Eq | 27 | 3 | 9× | three declarations |
+| R1 wrap decision | 59 | 10 | 6× | ten types, fourteen bare occurrences |
+| T5b serde/Debug | 44 | 12 | 4× | twelve demanding declarations |
+
+Median **64×**; aggregate 1,408 sites over 38 units, **37×**; range **4× to 509×**. (Root C is
+excluded — it is owned elsewhere and I did not characterize it. "Units of work" is a judgment about
+what one edit is, not a measurement; the site counts are measurements.)
+
+**So the stated rule is: a root's site count measures where the compiler pointed, never what has to
+change — and here that gap has run between fourfold and five-hundred-fold.** A burn-down quoted in
+sites is a statement about rustc's reporting density.
+
+**The variation is the more useful half, and it is not noise.** The largest ratios are single
+*authored rows* — a checkpoint row, a closure-shape flag — where one line of data fans out across the
+corpus through a table lookup. The smallest are *populations of declarations*, where each site's cause
+was authored separately and each needs its own decision. So the ratio predicts the shape of the fix
+before anyone opens the file: a root at 100× is one edit and a large verification; a root at 4× is a
+dozen decisions and a small diff. Sizing a root without knowing which kind it is produces exactly the
+two errors seen tonight — a fix aimed at 5% of its population, and a plan to add 44 derives that
+cannot exist.
+
+**And the corollary for the measurement law in §11.14:** distinct sites at a fixed M is the right unit
+for *comparing runs*, and the wrong unit for *estimating work*. Both numbers are needed and they are
+not interchangeable.
