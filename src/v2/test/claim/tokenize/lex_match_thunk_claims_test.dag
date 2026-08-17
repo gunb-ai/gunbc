@@ -3,23 +3,23 @@ module v2.test.tokenize.lex_match_thunk_claims
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data str_a: String = Cons { head: 97, tail: Empty }
-data str_b: String = Cons { head: 98, tail: Empty }
-data str_ab: String = Cons { head: 97, tail: Cons { head: 98, tail: Empty } }
-data str_ac: String = Cons { head: 97, tail: Cons { head: 99, tail: Empty } }
-data str_abc: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Empty } } }
-data str_bc: String = Cons { head: 98, tail: Cons { head: 99, tail: Empty } }
-data str_aab: String = Cons { head: 97, tail: Cons { head: 97, tail: Cons { head: 98, tail: Empty } } }
-data str_123: String = Cons { head: 49, tail: Cons { head: 50, tail: Cons { head: 51, tail: Empty } } }
-data str_fn: String = Cons { head: 102, tail: Cons { head: 110, tail: Empty } }
-data str_fn_space: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 32, tail: Empty } } }
-data str_fna: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 97, tail: Empty } } }
-data str_slash_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Empty } }
-data str_star_slash: String = Cons { head: 42, tail: Cons { head: 47, tail: Empty } }
+data str_a: String = Cons { head: 97, tail: std.algebra.Empty }
+data str_b: String = Cons { head: 98, tail: std.algebra.Empty }
+data str_ab: String = Cons { head: 97, tail: Cons { head: 98, tail: std.algebra.Empty } }
+data str_ac: String = Cons { head: 97, tail: Cons { head: 99, tail: std.algebra.Empty } }
+data str_abc: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: std.algebra.Empty } } }
+data str_bc: String = Cons { head: 98, tail: Cons { head: 99, tail: std.algebra.Empty } }
+data str_aab: String = Cons { head: 97, tail: Cons { head: 97, tail: Cons { head: 98, tail: std.algebra.Empty } } }
+data str_123: String = Cons { head: 49, tail: Cons { head: 50, tail: Cons { head: 51, tail: std.algebra.Empty } } }
+data str_fn: String = Cons { head: 102, tail: Cons { head: 110, tail: std.algebra.Empty } }
+data str_fn_space: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 32, tail: std.algebra.Empty } } }
+data str_fna: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 97, tail: std.algebra.Empty } } }
+data str_slash_star: String = Cons { head: 47, tail: Cons { head: 42, tail: std.algebra.Empty } }
+data str_star_slash: String = Cons { head: 42, tail: Cons { head: 47, tail: std.algebra.Empty } }
 
-data str_block_comment: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } }
+data str_block_comment: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: std.algebra.Empty } } } }
 
-data str_block_comment_extra_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } } }
+data str_block_comment_extra_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: std.algebra.Empty } } } } }
 
 test fn lex_match_thunk_claims_holds() -> Bool {
 

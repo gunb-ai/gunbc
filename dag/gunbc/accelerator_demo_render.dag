@@ -19,7 +19,7 @@ data accelerator_demo_render_expectation_receipts: List<String> = [
   "render_outcome|DemoRecognized(plan.fused_op_count=3)|recognized: accelerator-demo-relu-mul-add-v1 fused_ops=3 placement=LocalAccelerator medium=simd-contiguous-loop contract=IntegerExact fidelity=Lossless",
 ]
 
-fn render_placement(placement: Placement) -> String {
+fn render_placement(placement: std.realization.Placement) -> String {
   match placement {
     LocalAccelerator => "LocalAccelerator"
     LocalInProcess => "LocalInProcess"
@@ -56,7 +56,7 @@ fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
 
 fn project_plan_view(
   plan: RealizationPlan<Nano>,
-  kernel_placement: Placement,
+  kernel_placement: std.realization.Placement,
   contract: NumericalContract,
   fidelity: DecodeFidelity,
   target_medium: NonEmptyStr
@@ -136,7 +136,7 @@ fn render_plan_digest_block(view: AcceleratorDemoPlanView) -> String {
   let entries = [
     std.render.kv_pair(key: "Target", sep: ": ", value: view.target),
     std.render.kv_pair(key: "Fused ops", sep: ": ", value: to_string(view.fused_op_count)),
-    std.render.kv_pair(key: "Placement", sep: ": ", value: view.placement_label),
+    std.render.kv_pair(key: "std.realization.Placement", sep: ": ", value: view.placement_label),
     std.render.kv_pair(key: "Medium", sep: ": ", value: view.target_medium),
     std.render.kv_pair(key: "Contract", sep: ": ", value: view.contract_label),
     std.render.kv_pair(key: "Fidelity", sep: ": ", value: view.fidelity_label),

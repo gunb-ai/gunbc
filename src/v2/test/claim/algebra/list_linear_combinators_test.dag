@@ -55,7 +55,7 @@ test fn flat_map_concatenates_groups_in_order() -> Bool {
 test fn flat_map_drops_empty_groups() -> Bool {
   list_eq(
     xs: list_flat_map(xs: sample(), f: fn(x) {
-      if x == 2 { Empty } else { Cons { head: x, tail: Empty } }
+      if x == 2 { Empty } else { Cons { head: x, tail: std.algebra.Empty } }
     }),
     ys: [1, 3]
   )

@@ -95,11 +95,11 @@ fn quad_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
 fn quad_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: Cons { head: ^quadmod, tail: Empty }
+      name: Cons { head: ^quadmod, tail: std.algebra.Empty }
     },
     imports: Cons {
       head: Import {
-        target: Cons { head: ^minialg, tail: Empty },
+        target: Cons { head: ^minialg, tail: std.algebra.Empty },
         visibility: ImportVisible
       },
       tail: Empty

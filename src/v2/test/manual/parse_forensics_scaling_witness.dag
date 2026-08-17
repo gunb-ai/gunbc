@@ -35,7 +35,7 @@ fn forensics_scaling_report(path: String) -> List<Int> {
     head: stats.hits,
     tail: Cons {
       head: stats.misses,
-      tail: Cons { head: stats.lookup_calls, tail: Empty }
+      tail: Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
     }
   }
 }
