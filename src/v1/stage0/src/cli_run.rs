@@ -11854,6 +11854,7 @@ fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static
         NodeFrontierSelectionMode::Off => "off",
         NodeFrontierSelectionMode::Applied => "applied",
         NodeFrontierSelectionMode::PredictOnly => "predict_only",
+        NodeFrontierSelectionMode::Sampled => "sampled",
     }
 }
 
@@ -20692,6 +20693,10 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     out
 }
 
+/// Unsampled by construction. The sampled path goes through
+/// `discover_floor_witness_roster_with_snapshot`, whose request carries the sample and keys
+/// the roster cache on it; this direct entry point has no sample parameter so that a caller
+/// cannot reach a sampled roster without also reaching the cache key that describes it.
 pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -20855,6 +20860,114 @@ pub enum NodeFrontierSelectionMode {
     Off,
     Applied,
     PredictOnly,
+    /// The declared wall-clock rung-drop (v2.workflow.ci_floor_plan
+    /// `corpus_discovery_sample_note`): a rotating fraction of discovery ENTRIES is
+    /// retained, and the rest are dropped before any resolve. The fraction is NOT carried
+    /// here — it is a CI policy whose authority is `gunbc.ci_spec`, arriving as argv, so
+    /// this mode says only that the batch is sampled.
+    Sampled,
+}
+
+/// Process-scoped invocation policy: the entry sample this `claim_executor` process was
+/// invoked with, set once from argv before any batch runs.
+///
+/// A global rather than a threaded parameter, deliberately. The value has exactly argv's
+/// lifetime and immutability — written once at startup, never mutated, identical for every
+/// batch in the process — and the only site that needs it is where `DiscoveryCorpusOptions`
+/// is built, six layers below `run()`. Threading it would put a sampling parameter into six
+/// signatures whose functions have no other interest in sampling, which is how a policy fact
+/// ends up copied and then diverging. The write is `set`-once so a second write REFUSES
+/// rather than silently re-pointing the policy mid-run.
+static DISCOVERY_ENTRY_SAMPLE: OnceLock<DiscoveryEntrySample> = OnceLock::new();
+
+pub fn set_discovery_entry_sample(sample: DiscoveryEntrySample) -> Result<(), String> {
+    DISCOVERY_ENTRY_SAMPLE
+        .set(sample)
+        .map_err(|_| "discovery entry sample was already set for this process".to_string())
+}
+
+pub fn discovery_entry_sample() -> Option<DiscoveryEntrySample> {
+    DISCOVERY_ENTRY_SAMPLE.get().copied()
+}
+
+/// The retained fraction of discovery entries, as a policy pair rather than a float:
+/// `keep_numerator / keep_denominator` of entries survive. There is no default and no
+/// inferred value — a `Sampled` batch scheduled without this refuses, because a sample
+/// silently defaulting to "keep everything" would report full coverage while a sample
+/// silently defaulting to "keep a tenth" would report a coverage level nobody declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DiscoveryEntrySample {
+    pub keep_numerator: u32,
+    pub keep_denominator: u32,
+}
+
+impl DiscoveryEntrySample {
+    /// Degenerate and identity fractions REFUSE rather than being normalized away. A zero
+    /// numerator schedules a batch that checks nothing while reporting as a run; a zero
+    /// denominator has no meaning; and `n >= d` is a second spelling of `SelectionOff`,
+    /// which would fork one "run everything" fact across two representations (§3).
+    pub fn admit(keep_numerator: u32, keep_denominator: u32) -> Result<Self, String> {
+        if keep_denominator == 0 {
+            return Err("discovery entry sample: keep_denominator is 0".to_string());
+        }
+        if keep_numerator == 0 {
+            return Err(
+                "discovery entry sample: keep_numerator is 0 — a batch that retains no entry \
+                 is not a sample, it is a skipped batch reporting as a run"
+                    .to_string(),
+            );
+        }
+        if keep_numerator >= keep_denominator {
+            return Err(format!(
+                "discovery entry sample: keep {keep_numerator}/{keep_denominator} retains every \
+                 entry — declare node_frontier_selection: SelectionOff instead of a sample that \
+                 samples nothing"
+            ));
+        }
+        Ok(DiscoveryEntrySample {
+            keep_numerator,
+            keep_denominator,
+        })
+    }
+
+    /// Parses the argv form `N/D`. Every malformed shape refuses with the text it saw —
+    /// there is no lenient reading, because the failure mode of a lenient parse here is a
+    /// silently different coverage level.
+    pub fn parse(spec: &str) -> Result<Self, String> {
+        let (n, d) = spec.split_once('/').ok_or_else(|| {
+            format!("--discovery-entry-sample-keep `{spec}`: expected the form N/D, e.g. 1/5")
+        })?;
+        let n: u32 = n.trim().parse().map_err(|_| {
+            format!("--discovery-entry-sample-keep `{spec}`: numerator `{n}` is not an integer")
+        })?;
+        let d: u32 = d.trim().parse().map_err(|_| {
+            format!("--discovery-entry-sample-keep `{spec}`: denominator `{d}` is not an integer")
+        })?;
+        Self::admit(n, d)
+    }
+
+    /// Entry-grain retention keyed on `fnv1a64(entry_path + salt)`. The salt is the tested
+    /// commit, so the retained subset ROTATES per commit: over successive merges the corpus
+    /// is covered in expectation, instead of the unretained entries never running again.
+    ///
+    /// Reaches the fnv1a64 intrinsics directly rather than `std.content_hash`, for the same
+    /// reason `dag_collect_support::dag_node_surface_fingerprint_rec` does: the modeled
+    /// surface carries the digest as hex text, and this needs the residue of a numeric
+    /// modulus. Re-parsing the hex back to `u64` would be the same computation with a
+    /// round-trip in the middle. Converges with the DESIGN §3 fnv1a64 dual-surface thread.
+    pub fn retains(&self, entry: &str, salt: &str) -> bool {
+        let combined = v1_rt::hash_combine(
+            v1_rt::atom_identity_hash(entry.to_string()),
+            v1_rt::atom_identity_hash(salt.to_string()),
+        );
+        // 16-char hex from `bytes_identity_hash`, so a parse failure is unreachable. If it
+        // ever became reachable it resolves to RETAIN (0 is below every admitted
+        // numerator), which errs toward running the entry — the direction that costs time
+        // rather than coverage. Stated because a fallback that silently dropped entries
+        // here would be a coverage loss wearing a parse error.
+        let n = u64::from_str_radix(&combined, 16).unwrap_or(0);
+        (n % (self.keep_denominator as u64)) < (self.keep_numerator as u64)
+    }
 }
 
 pub struct DiscoveryCorpusOptions {
@@ -20880,6 +20993,10 @@ pub struct DiscoveryCorpusOptions {
     pub wet_receipt_wall_budget_ms: Option<u64>,
     /// Secondary interpreter CPU budget for the falsifier Wet self-host lane.
     pub wet_receipt_interp_eval_budget_ms: Option<u64>,
+    /// The retained fraction when `node_frontier_selection` is `Sampled`. Authority is
+    /// `gunbc.ci_spec`, delivered as argv. `None` beside a `Sampled` selection is a REFUSAL,
+    /// not "keep everything" — see `run_discovery_corpus`.
+    pub entry_sample: Option<DiscoveryEntrySample>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -20910,6 +21027,7 @@ impl Default for DiscoveryCorpusOptions {
             fast_lane_eval_budget_ms: None,
             wet_receipt_wall_budget_ms: None,
             wet_receipt_interp_eval_budget_ms: None,
+            entry_sample: None,
         }
     }
 }
@@ -23084,6 +23202,85 @@ fn run_discovery_corpus_with_options_inner(
             discovery_phase_totals::add(&discovery_phase_totals::ROSTER_WALK_MS, t.elapsed());
             walked?
         };
+    // THE ENTRY SAMPLE, APPLIED HERE AND NOWHERE ELSE.
+    //
+    // Position is the design, not an implementation detail, on both sides:
+    //   * AFTER the roster walk and BEFORE every resolve — each surviving entry costs ~2.3s
+    //     of resolve against ~0.06s of eval (run 31986966631: 42.1min resolve / 7.5min eval
+    //     over 1231 entries), so dropping an entry here is what buys the time. Dropping rows
+    //     downstream of resolve would buy the 7.5 and none of the 42.
+    //   * BEFORE the explicit-entry expansion below, which is what makes `CiSpec.witness_entries`
+    //     exempt BY CONSTRUCTION rather than by a second filter that has to remember them.
+    //     Explicit entries are declared must-run-as-declared; they are appended after the
+    //     sample has already happened, so no sample can reach them.
+    //
+    // A `Sampled` selection with no fraction REFUSES. It is not treated as "keep everything"
+    // (that is `SelectionOff`, and conflating them makes a coverage level depend on whether an
+    // argv was forgotten) and not as some built-in default (which would report a coverage
+    // level nobody declared).
+    match (options.node_frontier_selection, options.entry_sample) {
+        (NodeFrontierSelectionMode::Off, None)
+        | (NodeFrontierSelectionMode::Applied, None)
+        | (NodeFrontierSelectionMode::PredictOnly, None) => {}
+        (NodeFrontierSelectionMode::Sampled, None) => {
+            return Err(
+                "discovery batch declares SelectionSampled but no entry sample was supplied \
+                 (--discovery-entry-sample-keep); a sample without a declared fraction is not \
+                 a sample. Pass the fraction, or declare SelectionOff to run the whole roster."
+                    .to_string(),
+            );
+        }
+        (
+            mode @ (NodeFrontierSelectionMode::Off
+            | NodeFrontierSelectionMode::Applied
+            | NodeFrontierSelectionMode::PredictOnly),
+            Some(_),
+        ) => {
+            // Unreachable from the executor, which gates the read on the declaration, and
+            // kept as a refusal rather than an ignore so that a future caller which pairs
+            // them wrongly stops the line instead of sampling a batch that never asked to be
+            // sampled — the failure would otherwise be invisible, since a narrowed roster
+            // still reports as a successful run.
+            return Err(format!(
+                "an entry sample was supplied but node_frontier_selection is {mode:?}, not \
+                 Sampled — refusing rather than silently sampling a batch that did not ask \
+                 to be sampled"
+            ));
+        }
+        (NodeFrontierSelectionMode::Sampled, Some(sample)) => {
+            let (commit, _tree) = floor_tested_commit_and_tree()?;
+            let rows_before = rows.len();
+            let entries_before = rows
+                .iter()
+                .map(|r| r.entry.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            // Keyed on `row.entry`, so every row of a retained entry survives and every row
+            // of a dropped entry goes: a row filter whose key is the entry IS an entry filter.
+            rows.retain(|row| sample.retains(&row.entry, &commit));
+            let entries_after = rows
+                .iter()
+                .map(|r| r.entry.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            // COUNTED, NEVER ABSENT. What did not run is a reported number on every sampled
+            // run, so the declared coverage gap is observable rather than inferred from a
+            // line that is missing.
+            eprintln!(
+                "[discovery-entry-sample] keep={}/{} salt_commit={} entries_before={} \
+                 entries_after={} entries_dropped={} rows_before={} rows_after={} rows_dropped={}",
+                sample.keep_numerator,
+                sample.keep_denominator,
+                commit,
+                entries_before,
+                entries_after,
+                entries_before.saturating_sub(entries_after),
+                rows_before,
+                rows.len(),
+                rows_before.saturating_sub(rows.len())
+            );
+        }
+    }
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
@@ -24147,6 +24344,16 @@ fn eprintln_affected_set_categorization(
                 "{ts} [affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
             );
         }
+        NodeFrontierSelectionMode::Sampled => {
+            // The roster reaching this point has ALREADY been sampled (the sample is applied
+            // at roster assembly, before any resolve), so these totals are the retained
+            // population, not the corpus. The dropped population is reported by the
+            // `[discovery-entry-sample]` line at the point it was dropped — quoting a
+            // post-sample total as if it were the corpus is how a narrowed run reads as full.
+            eprintln!(
+                "{ts} [affected-set] entry-sampled — running all {total} retained witness(es) across {entries} retained entr(y/ies); see [discovery-entry-sample] for what was dropped"
+            );
+        }
         NodeFrontierSelectionMode::Applied => {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
@@ -24623,6 +24830,9 @@ fn run_discovery_rows(
                 }
                 // would_skip is only computed when selection is enabled.
                 NodeFrontierSelectionMode::Off => {}
+                // Sampling is not affected-set selection: it drops entries at roster
+                // assembly and never consults the diff, so no row reaches here under it.
+                NodeFrontierSelectionMode::Sampled => {}
             }
         }
         if ctx.is_none() {

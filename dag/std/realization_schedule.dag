@@ -604,10 +604,13 @@ fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
   }
 }
 
+data node_frontier_selection_sampled_note: String = "SelectionSampled is a DECLARED COVERAGE REGRESSION, not an optimization, and it lives on this axis rather than in a second field because this enum answers exactly one question -- which subset of the discovered roster executes -- and a second roster-policy field beside it would be the dual representation DESIGN 3 forbids (the follow-on that removes node_frontier_selection from the generic Runnable collapses this axis into one enum; a sampling arm is that same question, so it converges rather than widening). THE ARM CARRIES NO FRACTION ON PURPOSE. What belongs to the schedule is the KIND of roster policy this batch runs under; the retained fraction is a CI policy number whose single authority is gunbc.ci_spec, reaching the executor the same way discovery_scan_dirs and the batch clamps do. Putting the numerator and denominator here would fork that one policy across the substrate schedule and the spec, and would additionally force every wire codec over this enum to grow numeric columns for a fact none of its consumers ask about (the floor component receipt identifies the affected-set cold control by KIND, never by fraction). GRAIN IS THE ENTIRE POINT: the sample applies to discovery ENTRIES before any resolve, never to witness ROWS. Measured on run 31986966631, the discovery batch spent resolve 42.1min against evalu 7.5min over 9957 rows across 1231 entries -- preparation is ~6x the checking -- so thinning rows while touching every entry would save the 7.5 and none of the 42. The keep decision is fnv1a64(entry_path + tested_commit), so the retained subset ROTATES per commit: a fixed subset would mean the unretained entries never run again, while rotating covers the corpus in expectation across a handful of merges, and any red stays reproducible because tested_commit is already part of the discovery request identity -- it is the salt the request already carried, not a new field."
+
 type NodeFrontierSelection
   = SelectionOff
   | SelectionApplied
   | SelectionPredictOnly
+  | SelectionSampled
 
 fn node_frontier_selection_eq(left: NodeFrontierSelection, right: NodeFrontierSelection) -> Bool {
   match left {
@@ -615,16 +618,25 @@ fn node_frontier_selection_eq(left: NodeFrontierSelection, right: NodeFrontierSe
       SelectionOff => true
       SelectionApplied => false
       SelectionPredictOnly => false
+      SelectionSampled => false
     }
     SelectionApplied => match right {
       SelectionOff => false
       SelectionApplied => true
       SelectionPredictOnly => false
+      SelectionSampled => false
     }
     SelectionPredictOnly => match right {
       SelectionOff => false
       SelectionApplied => false
       SelectionPredictOnly => true
+      SelectionSampled => false
+    }
+    SelectionSampled => match right {
+      SelectionOff => false
+      SelectionApplied => false
+      SelectionPredictOnly => false
+      SelectionSampled => true
     }
   }
 }
@@ -743,11 +755,17 @@ type WalkPopulationBudgetRefusal {
 
 data walk_population_budget_note: String = "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop."
 
+// "Applied" means AFFECTED-SET selection is in force -- the diff decides which rows run.
+// SelectionSampled answers false: it never observes a diff, it drops entries at roster
+// assembly by hash. Answering true would route a sampled batch into the affected-set
+// machinery (skip predictions, divergence counting, diff observation) that has no subject
+// under sampling, and would make a sampled run report as an affected-set run.
 fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
   match sel {
     SelectionApplied => true
     SelectionOff => false
     SelectionPredictOnly => false
+    SelectionSampled => false
   }
 }
 

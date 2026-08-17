@@ -53,6 +53,7 @@ fn compile_clean_cold_control_invoke() -> String {
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
       plan_function: CiPlanArtifactPlan,
       notice_title: Absent,
+      discovery_entry_sample_keep: none,
       rooted: false
     )
   )
@@ -86,6 +87,7 @@ fn native_cache_cold_control_invoke() -> String {
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
       plan_function: FalsifierNativeCacheColdPlan,
       notice_title: Absent,
+      discovery_entry_sample_keep: none,
       rooted: false
     )
   )

@@ -74,6 +74,8 @@ fn plan_function_name(p: PlanFunction) -> String {
   }
 }
 
+data discovery_entry_sample_keep_argv_note: String = "THE FRACTION ARRIVES AS ARGV AND IS A PARAMETER RATHER THAN A READ, because gunbc.ci_spec already imports this module: reading the policy from ci_spec here would be an import cycle. So the authority stays in ci_spec (one home for the number) and this module only knows how to spell it. Absent means the invocation declares no sample, which is NOT the same as declaring the whole roster -- a plan whose corpus batch carries SelectionSampled and receives no fraction REFUSES in the executor rather than defaulting, so a forgotten argv stops the line instead of silently changing what fraction of the corpus ran.\n\nCARRIED ON THE SHELL BUILDER ONLY. claim_executor_run_plan_transport_argv (the typed ShellExec service operation in gunbc.cli_services) does NOT carry it, so running gunbc_ci_floor_plan through that path REFUSES at the corpus batch instead of running a differently-sampled roster. That is a declared bounded gap, not an oversight: the CI floor reaches the executor through claim_executor_run_plan_shell, the typed transport has no floor consumer today, and threading the parameter through the service operation signature is work with no current subject. Dissolve-on: the first typed-transport consumer of a Sampled plan -- at which point the operation gains the input and this clause deletes."
+
 fn claim_executor_run_plan_transport_argv(
   source_roots: List<String>,
   plan_entry: String,
@@ -119,11 +121,20 @@ fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
   }
 }
 
+fn claim_executor_discovery_entry_sample_shell_suffix(keep: String?) -> String {
+  match keep {
+    Present { value: k } =>
+      if k == "" { "" } else { concat(" --discovery-entry-sample-keep ", k) }
+    Absent => ""
+  }
+}
+
 fn claim_executor_run_plan_shell(
   source_roots: List<String>,
   plan_entry: String,
   plan_function: PlanFunction,
   notice_title: String?,
+  discovery_entry_sample_keep: String?,
   rooted: Bool
 ) -> String {
   let style = if rooted {
@@ -133,11 +144,12 @@ fn claim_executor_run_plan_shell(
   }
   let flags = source_roots_shell_flags(roots: source_roots, style: style)
   let notice = claim_executor_notice_title_shell_suffix(notice_title: notice_title)
+  let sample = claim_executor_discovery_entry_sample_shell_suffix(keep: discovery_entry_sample_keep)
   concat(
     concat(claim_executor_bin_shell(), flags),
     concat(
       concat(concat(" --plan-entry ", plan_entry), concat(" --plan-function ", plan_function_name(p: plan_function))),
-      notice
+      concat(sample, notice)
     )
   )
 }

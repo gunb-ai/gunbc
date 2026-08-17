@@ -118,6 +118,7 @@ fn floor_component_selection_of_tag(tag: NonEmptyStr) -> NodeFrontierSelection? 
   if (tag as String) == "predict_only" { Present { value: SelectionPredictOnly } }
   else if (tag as String) == "applied" { Present { value: SelectionApplied } }
   else if (tag as String) == "off" { Present { value: SelectionOff } }
+  else if (tag as String) == "sampled" { Present { value: SelectionSampled } }
   else { none }
 }
 
@@ -126,6 +127,7 @@ fn floor_component_selection_tag(s: NodeFrontierSelection) -> String {
     SelectionOff => "off"
     SelectionApplied => "applied"
     SelectionPredictOnly => "predict_only"
+    SelectionSampled => "sampled"
   }
 }
 

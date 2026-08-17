@@ -56,6 +56,7 @@ test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: CiFloorPlan,
     notice_title: Present { value: gunbc_ci_spec.notice_title },
+    discovery_entry_sample_keep: none,
     rooted: true
   )
   scheduler_invoke(spec: gunbc_ci_spec) == modeled
@@ -82,6 +83,7 @@ test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: CiFloorPlan,
     notice_title: Present { value: "" },
+    discovery_entry_sample_keep: none,
     rooted: true
   )
   !string_contains(s: shell, pattern: "--notice-title")

@@ -1146,6 +1146,8 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                         NodeFrontierSelectionMode::Applied
                     } else if ctx.sym_eq(*variant_name, "SelectionPredictOnly") {
                         NodeFrontierSelectionMode::PredictOnly
+                    } else if ctx.sym_eq(*variant_name, "SelectionSampled") {
+                        NodeFrontierSelectionMode::Sampled
                     } else {
                         return Err(format!(
                             "RunnableDiscoveryBatch.node_frontier_selection: unknown \
@@ -1304,6 +1306,8 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                     if ctx.sym_eq(*variant_name, "SelectionApplied") => NodeFrontierSelectionMode::Applied,
                 Some(Value::Variant { variant_name, .. })
                     if ctx.sym_eq(*variant_name, "SelectionPredictOnly") => NodeFrontierSelectionMode::PredictOnly,
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SelectionSampled") => NodeFrontierSelectionMode::Sampled,
                 Some(other) => {
                     return Err(format!(
                         "ScopedWitnessBatch.node_frontier_selection must be NodeFrontierSelection, got {}",
@@ -4410,6 +4414,20 @@ fn run_discovery_batch_node(
             fast_lane_eval_budget_ms,
             wet_receipt_wall_budget_ms,
             wet_receipt_interp_eval_budget_ms,
+            // Joined here rather than threaded: the process-wide argv policy meets the
+            // per-batch `Sampled` declaration at the one site that needs both.
+            //
+            // GATED ON THE DECLARATION, and that gate is load-bearing rather than defensive.
+            // One process runs several discovery batches — the hermetic corpus alongside the
+            // Wet execution and bin-witness lanes — and only the corpus declares Sampled. An
+            // ungated read would hand the process-wide fraction to every one of them, so a
+            // flag meant to sample one batch would silently sample all three. The plan decides
+            // which batches sample; argv only says with what.
+            entry_sample: if node_frontier_selection == NodeFrontierSelectionMode::Sampled {
+                v1_compiler::cli_run::discovery_entry_sample()
+            } else {
+                None
+            },
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -5384,6 +5402,7 @@ fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
                 NodeFrontierSelectionMode::Off => "off",
                 NodeFrontierSelectionMode::Applied => "applied",
                 NodeFrontierSelectionMode::PredictOnly => "predict_only",
+                NodeFrontierSelectionMode::Sampled => "sampled",
             };
             if !seen.contains(&tag) {
                 seen.push(tag);
@@ -10594,6 +10613,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut plan_entry: Option<String> = None;
     let mut plan_function = "bre_claim_batches".to_string();
     let mut notice_title: Option<String> = None;
+    let mut discovery_entry_sample_keep: Option<String> = None;
     let mut perturb_check = false;
     let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
@@ -10629,6 +10649,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--notice-title" => {
                 i += 1;
                 notice_title = Some(require_value(&args, i, "--notice-title")?);
+            }
+            // The retained fraction for a SelectionSampled discovery batch. Its authority is
+            // `gunbc.ci_spec`; it arrives as argv the same way --plan-entry does. There is no
+            // default: a Sampled batch without it refuses (see `entry_sample_for`), because a
+            // sample whose fraction came from a fallback would report a coverage level nobody
+            // declared.
+            "--discovery-entry-sample-keep" => {
+                i += 1;
+                discovery_entry_sample_keep =
+                    Some(require_value(&args, i, "--discovery-entry-sample-keep")?);
             }
             "--perturb-check" => perturb_check = true,
             "--measure-cgroup-peak" => measure_cgroup_peak = true,
@@ -10694,6 +10724,22 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
     let _phase_profile = PhaseProfile::install_from_env();
+    // Admitted and installed BEFORE any batch runs, so a malformed or degenerate fraction
+    // refuses at startup rather than after the first batch has already been narrowed by it.
+    if let Some(spec) = &discovery_entry_sample_keep {
+        match v1_compiler::cli_run::DiscoveryEntrySample::parse(spec) {
+            Ok(sample) => {
+                if let Err(msg) = v1_compiler::cli_run::set_discovery_entry_sample(sample) {
+                    eprintln!("claim_executor: {msg}");
+                    return Err(ExitCode::from(2));
+                }
+            }
+            Err(msg) => {
+                eprintln!("claim_executor: {msg}");
+                return Err(ExitCode::from(2));
+            }
+        }
+    }
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {

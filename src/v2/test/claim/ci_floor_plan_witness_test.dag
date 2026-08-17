@@ -22,6 +22,7 @@ import v2.workflow.ci_floor_plan {
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
   bin_witness_corpus_runnable_for,
+  gunbc_ci_witness_corpus_only_batches,
   bin_witness_corpus_enrolled,
   corpus_witness_entries, execution_witness_entries,
   floor_corpus_exclusion_resource_edges,
@@ -89,7 +90,7 @@ import std.realization_schedule {
   FloorWorkerObservation, OrdinaryFloorWorker,
   FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
   FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
-  SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
+  SelectionOff, SelectionApplied, SelectionPredictOnly, SelectionSampled, NodeFrontierSelection,
   node_frontier_selection_eq,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -558,18 +559,46 @@ fn discovery_batch_selection_is(r: Runnable, expected: NodeFrontierSelection) ->
   }
 }
 
-// The three ordinary merge-critical witness batches run their whole roster. Pinned
-// positively (each is SelectionOff) AND negatively (none is SelectionApplied), because a
-// three-valued field makes "not applied" and "off" different claims: a drift to
-// SelectionPredictOnly would satisfy the negative half alone while quietly restoring a
-// mechanism the flip exists to stop consuming.
-test fn witness_ordinary_floor_batches_run_the_whole_roster() -> Bool {
-  discovery_batch_selection_is(r: corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionOff)
-    && discovery_batch_selection_is(r: execution_corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionOff)
+// The two Wet ordinary batches still run their whole roster. Pinned positively (each is
+// SelectionOff) AND negatively (neither is SelectionApplied), because a four-valued field
+// makes "not applied" and "off" different claims: a drift to SelectionPredictOnly would
+// satisfy the negative half alone while quietly restoring a mechanism the flip exists to
+// stop consuming. The hermetic discovery corpus is NO LONGER among them -- it carries
+// SelectionSampled on the CI floor path, asserted separately below so that the coverage
+// regression is one named claim rather than an absence in this one.
+test fn witness_ordinary_wet_floor_batches_run_the_whole_roster() -> Bool {
+  discovery_batch_selection_is(r: execution_corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionOff)
     && discovery_batch_selection_is(r: bin_witness_corpus_runnable_for(), expected: SelectionOff)
-    && !discovery_batch_selection_is(r: corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionApplied)
     && !discovery_batch_selection_is(r: execution_corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionApplied)
     && !discovery_batch_selection_is(r: bin_witness_corpus_runnable_for(), expected: SelectionApplied)
+}
+
+// THE COVERAGE REGRESSION, ASSERTED IN BOTH DIRECTIONS. The CI floor's corpus node samples;
+// the local pre-push projection does not. Pinning only the first would let the sample leak
+// onto the local path in a later edit and read as green, since a leak makes the CI-side
+// claim no less true. The negative arms additionally forbid the two selection values that
+// would silently restore affected-set consumption on a batch this change did not move to it.
+test fn witness_ci_floor_corpus_samples_and_local_projection_does_not() -> Bool {
+  discovery_batch_selection_is(
+    r: corpus_runnable_for(spec: gunbc_ci_spec, selection: SelectionSampled),
+    expected: SelectionSampled
+  )
+    && discovery_batch_selection_is(
+         r: gunbc_ci_witness_corpus_only_batches().first().first(),
+         expected: SelectionOff
+       )
+    && !discovery_batch_selection_is(
+         r: gunbc_ci_witness_corpus_only_batches().first().first(),
+         expected: SelectionSampled
+       )
+    && !discovery_batch_selection_is(
+         r: corpus_runnable_for(spec: gunbc_ci_spec, selection: SelectionSampled),
+         expected: SelectionApplied
+       )
+    && !discovery_batch_selection_is(
+         r: corpus_runnable_for(spec: gunbc_ci_spec, selection: SelectionSampled),
+         expected: SelectionPredictOnly
+       )
 }
 
 // The declared scope boundary of the flip, asserted rather than described: the falsifier's
@@ -597,6 +626,7 @@ fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
     SelectionPredictOnly => true
     SelectionApplied => false
     SelectionOff => false
+    SelectionSampled => false
   }
 }
 
@@ -630,6 +660,7 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries()))
@@ -688,6 +719,7 @@ fn known_red_probe_batch_matches_roster(r: Runnable, roster: List<ScheduleWitnes
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && known_red_roster_set_eq(a: entries, b: roster)
@@ -749,6 +781,7 @@ fn falsifier_self_host_wet_known_red_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: falsifier_self_host_wet_known_red_entries))
@@ -767,6 +800,7 @@ fn falsifier_silent_pick_gate_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: falsifier_silent_pick_gate_entries))
@@ -786,6 +820,7 @@ fn falsifier_substrate_long_lane_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: falsifier_substrate_long_lane_entries()))
@@ -816,6 +851,7 @@ fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => true
         SelectionPredictOnly => false
         SelectionOff => false
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: falsifier_cadence_witness_entries()))
@@ -924,6 +960,7 @@ fn bin_witness_wet_batch_holds(r: Runnable) -> Bool {
         SelectionApplied => false
         SelectionPredictOnly => false
         SelectionOff => true
+        SelectionSampled => false
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: bin_witness_wet_entries))

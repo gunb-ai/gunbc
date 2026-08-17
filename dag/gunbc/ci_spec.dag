@@ -429,12 +429,27 @@ data plan_function_string_projection_note: String = "These two are the NAME PROJ
 data floor_plan_function: String = plan_function_name(p: CiFloorPlan)
 data plan_artifact_plan_function: String = plan_function_name(p: CiPlanArtifactPlan)
 
+data gunbc_ci_discovery_entry_sample_keep_note: String = "THE RETAINED FRACTION OF DISCOVERY ENTRIES ON THE CI FLOOR, and the single authority for that number. The schedule says WHICH batch samples (std.realization_schedule SelectionSampled, carried by v2.workflow.ci_floor_plan corpus_runnable_for); this row says WITH WHAT, because a policy quantity is a CI spec fact and not a substrate one -- putting it on the schedule arm would fork it across the two.\n\nWHY 1/5. Measured on run 31986966631: batch 3 walled 56.9 minutes over 1231 entries, of which resolve was 42.1 minutes and eval 7.5. Retaining a fifth of the entries removes roughly 34 minutes of resolve and about 6 of eval, while the whole-corpus roster walk (7.4 minutes) is unaffected because it answers a per-module question over the whole tree regardless. Predicted landing: about 47 minutes, not 15 -- the operator accepted that number explicitly when ruling the drop (2026-08-17). The fraction is the dial; the durable fix is amortizing per-entry resolve, which is this row's restoration trigger.\n\nWHAT A CHANGE TO THIS NUMBER MEANS: it moves the declared coverage level of every merge-critical run. A raise is free coverage and costs minutes; a cut buys minutes and costs coverage in expectation. Neither is a tuning decision to be taken silently -- the rung-drop this row implements is recorded at v2.workflow.ci_floor_plan corpus_discovery_sample_note, and that row is where the reason lives."
+
+data gunbc_ci_discovery_entry_sample_keep: String = "1/5"
+
+// The sample rides ONLY the floor plan. regen, plan-artifact and the falsifier reach this
+// same builder, and none of them declares SelectionSampled -- handing them the fraction
+// would put an argv on a command whose plan never consumes it, which reads to the next
+// author as though those lanes were sampled too.
 fn scheduler_invoke_with(spec: CiSpec, plan_function: PlanFunction) -> String {
+  let sample_keep =
+    if plan_function_name(p: plan_function) == floor_plan_function {
+      Present { value: gunbc_ci_discovery_entry_sample_keep }
+    } else {
+      none
+    }
   claim_executor_run_plan_shell(
     source_roots: witness_layer_roots,
     plan_entry: floor_plan_entry,
     plan_function: plan_function,
     notice_title: Present { value: spec.notice_title },
+    discovery_entry_sample_keep: sample_keep,
     rooted: true
   )
 }

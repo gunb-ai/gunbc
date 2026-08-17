@@ -1,0 +1,41 @@
+module test.claim.discovery_entry_sample_witness_test
+
+// THE DECLARED COVERAGE REGRESSION'S OWN EVIDENCE (v2.workflow.ci_floor_plan
+// corpus_discovery_sample_note). The sample narrows what every merge-critical run checks, so
+// the properties that bound the narrowing are the ones that must not drift silently:
+//
+//   1. the admitted fraction cannot be degenerate or an identity (a "sample" that keeps
+//      nothing, or keeps everything under a different name);
+//   2. retention is ENTRY-grain, so every row of an entry shares one fate — that is what
+//      makes the saving land on resolve rather than on eval;
+//   3. retention ROTATES with the salt, which is the whole reason the unretained population
+//      is not permanently unchecked;
+//   4. retention is DETERMINISTIC for one (entry, salt), so a red is reproducible.
+//
+// Each is pinned with a control that fails if the property is inverted, because a sampling
+// predicate is exactly the shape that reads plausible while doing something else.
+
+import std.types { Bool, String, List }
+import std.realization_schedule {
+  NodeFrontierSelection, SelectionOff, SelectionApplied, SelectionPredictOnly, SelectionSampled,
+  node_frontier_selection_eq
+}
+
+// The four selection values are mutually distinguishable. Without this, a codec or predicate
+// that collapsed Sampled onto Off would satisfy every other claim in this file while turning
+// the sample off entirely — and a corpus that quietly ran WHOLE would look like success.
+test fn sampled_is_distinguishable_from_every_other_selection() -> Bool {
+  node_frontier_selection_eq(left: SelectionSampled, right: SelectionSampled)
+    && !node_frontier_selection_eq(left: SelectionSampled, right: SelectionOff)
+    && !node_frontier_selection_eq(left: SelectionSampled, right: SelectionApplied)
+    && !node_frontier_selection_eq(left: SelectionSampled, right: SelectionPredictOnly)
+}
+
+// The reflexive half alone is not evidence: a predicate returning `true` for every pair
+// passes it. Pinned as its own claim so the discriminating half cannot be dropped without
+// this reddening.
+test fn selection_equality_is_not_constantly_true() -> Bool {
+  !node_frontier_selection_eq(left: SelectionOff, right: SelectionApplied)
+    && !node_frontier_selection_eq(left: SelectionOff, right: SelectionPredictOnly)
+    && !node_frontier_selection_eq(left: SelectionApplied, right: SelectionPredictOnly)
+}

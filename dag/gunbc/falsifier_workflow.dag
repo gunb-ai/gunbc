@@ -128,6 +128,7 @@ fn falsifier_invoke() -> String {
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
       plan_function: FalsifierPlan,
       notice_title: Absent,
+      discovery_entry_sample_keep: none,
       rooted: false
     )
   )
