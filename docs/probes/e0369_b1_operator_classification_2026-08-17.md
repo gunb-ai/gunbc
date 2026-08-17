@@ -67,6 +67,10 @@ missing_trait_impl sites (`dyn Fn ==`, `im::Vector` derive) are a disjoint popul
 not a second mechanism; they are the same algebra-carrier repr fork seen through a wider
 entry closure. Fresh M=11 re-measurement is scripted in `run_e0369_b1_classification.sh`.
 
+## Cross-lane check (keen-ibex-435, negative)
+
+**None** of the 112 measured B1-keyword E0369 sites trace to the four `empty_emit_graph_info()` call sites in `emit_operation_method` / `emit_capability_method` (`05_emit_rust.dag:9432,9481,9921,10254`). Every site is in `std_*` emitted modules (`std_measure`, `std_nat`, `std_cache_interface`, `std_realization_*`, `std_verification`) — `PartialEq` derives or body binops on `CommutativeSemiring`/`Measure`, not service return/wire types. A third “blind render” cause does not apply to this population.
+
 ## What is NOT claimed
 
 - Fresh M=11 cargo logs were not banked in this receipt. The authoritative count here is the
