@@ -36,7 +36,7 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
     && committed_allocation_for(host: "srv-does-not-exist") == 0
 }
 
-data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY. srv4's historical disk row-pin is retired: allocation commits 7 at the memory axis and disk binding moves to apply-time gunbc.runner_lifecycle runner_width_disk_preflight. Asserting only 5/5/7/7 committed would miss a reintroduced disk pin; asserting only memory admissions would miss provisioning without the apply gate."
+data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY. srv4's historical disk row-pin is retired: allocation commits 6 at the memory axis (7 before the 2026-08-17 16GiB ruling) and disk binding moves to apply-time gunbc.runner_lifecycle runner_width_disk_preflight. Asserting only 5/5/6/6 committed would miss a reintroduced disk pin; asserting only memory admissions would miss provisioning without the apply gate."
 
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
   gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv1) == 5
@@ -78,7 +78,7 @@ test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
 }
 
 test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
-  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) > std.measure.byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
+  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) > std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget)
 }
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
@@ -93,13 +93,13 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
   std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget_bytes()) == std.measure.byte_size_count(b: std.measure.byte_size(12884901888))
 }
 
-data srv2_03_effective_cap_drift_note: String = "SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB while gunbc_runner_slot_desired declares 14GiB/13GiB — 2GiB drift on both boundaries. Dissolve-on: post-apply readback replaces gunbc_srv2_03_effective_cap_observation."
+data srv2_03_effective_cap_drift_note: String = "SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB and the declaration now MATCHES it, so the 2GiB drift this subject was written for is dissolved (gunbc.runner_slot_allocation gunbc_srv2_03_drift_dissolved_by_ruling_note). The witness below asserts the ABSENCE of drift; the readback-refusal predicate keeps its discriminating input from gunbc_synthetic_drifted_cap_observation instead, deliberately synthetic so no convergence can green it. Dissolve-on: post-apply readback replaces gunbc_srv2_03_effective_cap_observation."
 
-data declared_row_floor_peak_derivation_note: String = "SUBJECT A (declared row): 14GiB/13GiB derives from the 2026-08-05 floor_peak_post calibration (gunbc_runner_slot_memory_max_ruling_note), NOT from srv2-03 live readback. This witness pins only the declared constants."
+data declared_row_floor_peak_derivation_note: String = "SUBJECT A (declared row): 16GiB/15GiB derives from the 2026-08-17 floor-peak ruling superseding the 2026-08-05 calibration (gunbc_runner_slot_memory_max_ruling_note), NOT from srv2-03 live readback — that the two now coincide is a coincidence recorded as one in that ruling. This witness pins only the declared constants."
 
-data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is the structural predicate — effective readback must not become declaration authority when drift exists."
+data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is the structural predicate — effective readback must not become declaration authority when drift exists. Its discriminating input is now gunbc_synthetic_drifted_cap_observation, srv2-03 having stopped drifting; a synthetic fixture is used precisely so that a future converge cannot silently retire this predicate's only witness."
 
-data srv2_03_converge_floor_fit_note: String = "SUBJECT D (converge consequence): enforcement envelope is 2GiB above declaration; floor cgroup leaf events at T5 entry are zero; modeled-budget compliance is UNMEASURED — converge would first enforce the modeled envelope against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no floor byte figure are asserted."
+data srv2_03_converge_floor_fit_note: String = "SUBJECT D (converge consequence): ANSWERED, not pending. Modeled-budget compliance under the superseded 14GiB/13GiB row is now MEASURED and it failed — an uncensored 15509315584-byte floor peak above that max, plus srv1 pinned at exactly 13.00GiB with 829 and 44803 memory.high events once it was actually converged there. The floor cgroup leaf events at T5 entry remain zero as the baseline they always were, and srv2-03 has no envelope left to enforce because the declaration moved to meet it. Superseded detail retained: converge would first enforce the modeled envelope against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no floor byte figure are asserted."
 
 test fn witness_declared_row_pins_14_13_gib_from_floor_peak_calibration() -> Bool {
   std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max) == std.measure.byte_size_count(b: std.measure.byte_size(15032385536))

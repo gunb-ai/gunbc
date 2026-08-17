@@ -25,10 +25,10 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
     && (string_contains(s: rendered, pattern: "CTRL_RUNNER_SLOT") == false)
 }
 
-test fn witness_srv3_deploy_row_names_seven_slots() -> Bool {
-  list_length(items: runner_instance_names(deploy: srv3_runner_host_deploy)) == 7
+test fn witness_srv3_deploy_row_names_six_slots() -> Bool {
+  list_length(items: runner_instance_names(deploy: srv3_runner_host_deploy)) == 6
     && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).first(), pattern: "srv3-01")
-    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 6).first(), pattern: "srv3-07")
+    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 5).first(), pattern: "srv3-06")
 }
 
 test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
@@ -89,7 +89,7 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   }
 }
 
-test fn witness_srv4_runner_count_seven_materialization_target() -> Bool {
-  srv4_runner_host_deploy.runner_count == 7
-    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy)) == 7
+test fn witness_srv4_runner_count_six_materialization_target() -> Bool {
+  srv4_runner_host_deploy.runner_count == 6
+    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy)) == 6
 }
