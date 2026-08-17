@@ -3,7 +3,9 @@ module product.compute_board.power_distribution
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Millivolt, millivolt, millivolt_count }
-import product.compute_board.analog { NetIdentity }
+import product.electrical.connectivity {
+  NetIdentity,
+}
 import extdeps.programmable_logic.ice40.supply {
   BankIoSupply,
   ConfigurationBankSupply,

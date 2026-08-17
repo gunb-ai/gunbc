@@ -5,11 +5,13 @@ import std.measure { Measure }
 import product.compute_board.analog {
   AnalogCircuitIntent,
   CapacitorInstance,
-  ComponentInstanceIdentity,
   ElectricalComponentInstance,
+  ResistorInstance,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
   ElectricalNet,
   NetIdentity,
-  ResistorInstance,
   TerminalIdentity,
   terminal_ref,
 }

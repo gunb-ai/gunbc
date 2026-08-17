@@ -2,7 +2,17 @@ module test.claim.compute_board_article_witness
 
 import std.types { String, NonEmptyStr, List }
 import product.compute_board.digital_control { board_power_interlock_intent }
-import product.compute_board.analog { AnalogCircuitIntent, ComponentModelBinding, ElectricalModelAbsent, NetIdentity, ComponentInstanceIdentity, TerminalIdentity, terminal_ref }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  ComponentModelBinding,
+  ElectricalModelAbsent,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  NetIdentity,
+  TerminalIdentity,
+  terminal_ref,
+}
 import product.compute_board.spice_projection {
   SpiceSliceProjected,
   SpiceSliceRefused,
