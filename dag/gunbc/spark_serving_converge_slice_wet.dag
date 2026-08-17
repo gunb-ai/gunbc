@@ -42,6 +42,7 @@ import gunbc.spark_serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
   spark_serving_linger_membership_plan,
 }
+import gunbc.remote_operation { RemoteOperationSucceeded, RemoteOperationRefused, remote_operation_count }
 import gunbc.spark_serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
   spark_serving_exec_frozen_typed_rows,
@@ -203,15 +204,9 @@ fn spark_serving_converge_slice_exec_verdict(
         join(["wet-apply-refused ", why], "")
       SparkServingFrozenRemoteExecApplied { exec_outcome } =>
         match exec_outcome {
-          TypedArgvExecRefused { reason: why } =>
+          RemoteOperationRefused { reason: why } =>
             join(["wet-apply-exec-refused ", why], "")
-          TypedArgvExecConverged { result } =>
-            if result.success == false {
-              join([
-                "wet-apply-exec-failed exit=", to_string(result.exit_code),
-                " stderr=", result.stderr,
-              ], "")
-            } else {
+          RemoteOperationSucceeded { label: _ } =>
               match spark_serving_probe_linger(transport: transport) {
                 TypedArgvExecRefused { reason: why } =>
                   join(["wet-applied-readback-refused ", why], "")
@@ -234,7 +229,6 @@ fn spark_serving_converge_slice_exec_verdict(
                     }
                   }
               }
-            }
         }
     }
   }
@@ -329,14 +323,14 @@ fn spark_serving_converge_slice_wet_host_report(
                           apply_command_count: 0,
                           verdict: join(["apply-refused ", why], ""),
                         )
-                      SparkServingFrozenApplied { remote_commands: commands, effect_count: n } =>
+                      SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
                         spark_serving_converge_slice_host_line(
                           host: host,
                           endpoint: endpoint,
                           observed_linger: LingerObserved { enabled: linger_enabled },
                           typed_row_count: length(artifact.spark_serving_typed_actions),
                           apply_effect_count: n,
-                          apply_command_count: length(commands),
+                          apply_command_count: remote_operation_count(operations: ops),
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
                               transport: transport,

@@ -952,6 +952,11 @@ data v1_claim_scoped_witness_dissolve_on_note: String = "When V2ParserOwnsV1Clai
 
 data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
   ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
+  ScheduleWitnessEntry {
     entry: "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
     function: "",
     kind: CorpusWitnessKind,
