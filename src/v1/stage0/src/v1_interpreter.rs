@@ -13310,7 +13310,7 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
         // string. If that appears, the amortization argument inverts and a carried count
         // becomes correct.
-        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(s.as_str(), s.is_ascii())),
+        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(&s, s.is_ascii())),
         _ => None,
     }
 }
