@@ -50,6 +50,18 @@ import gunbc.spark_serving_release {
   SparkServingObservationRefused,
 }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_serving_observed_members {
+  SparkServingObservedUnitState,
+  UserUnitStateUnobserved,
+  SparkServingUnitEnablement,
+  UserUnitEnabled,
+  UserUnitDisabled,
+  UserUnitEnablementNotFound,
+  UserUnitEnablementUnobserved,
+  classify_observed_user_unit,
+  spark_serving_user_unit_read_argv,
+  spark_serving_user_unit_is_enabled_argv,
+}
 import gunbc.spark_serving_runtime_receipt {
   spark_serving_runtime_receipt_probe_words,
   spark_serving_runtime_receipt_field_from_probe,
@@ -627,5 +639,56 @@ func spark_serving_observe_ci_with_context(
     )
   } else {
     ExitSuccess
+  }
+}
+
+// ── Observing the user unit, on the same SSH legs as everything else ────────────────────────────
+
+// systemd's `is-enabled` answers with a WORD on stdout and an exit code, and the two disagree in a
+// way that matters: a disabled unit exits non-zero while printing "disabled", which is a successful
+// observation of a real state. Reading only the exit code would render that as a failed probe, so
+// the word is what is classified and the exit code only distinguishes "we could not ask".
+fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitEnablement {
+  let word = trim(s: result.stdout)
+  if word == "enabled" || word == "enabled-runtime" {
+    UserUnitEnabled
+  } else if word == "disabled" {
+    UserUnitDisabled
+  } else if word == "not-found" {
+    UserUnitEnablementNotFound
+  } else {
+    UserUnitEnablementUnobserved
+  }
+}
+
+// A `cat` that fails because the file is missing is ABSENCE; a `cat` that fails for any other reason
+// is an unobserved member. systemd's own message is not available here, so the discriminator is the
+// exit code GNU coreutils uses for a missing operand target alongside a stderr naming the path --
+// and where neither holds, the honest answer is unobserved rather than a guess at absence.
+fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
+  string_contains(result.stderr, "No such file or directory")
+}
+
+fn spark_serving_observe_user_unit(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingObservedUnitState {
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
+  ) {
+    Absent => UserUnitStateUnobserved
+    Present { value: read } =>
+      match spark_serving_probe_leg(
+        context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
+      ) {
+        Absent => UserUnitStateUnobserved
+        Present { value: enabled } =>
+          classify_observed_user_unit(
+            read_succeeded: read.success,
+            read_stdout: read.stdout,
+            file_absent: cat_reported_missing_file(result: read),
+            enablement: classify_is_enabled_stdout(result: enabled),
+          )
+      }
   }
 }
