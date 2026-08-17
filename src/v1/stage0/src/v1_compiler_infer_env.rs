@@ -1410,7 +1410,18 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            binding,
+            module_path: measured_mp,
+            ..
+        }) => {
+            // BRANCH-LOCAL MEASUREMENT ARM -- NOT FOR MERGE. Read-only; the
+            // production answer below is byte-identical with it armed or not.
+            crate::unique_arm_chain_measure::observe_unique_arm(
+                &env.module_path.clone(),
+                &name.clone(),
+                &measured_mp.clone(),
+            );
             Some(binding.clone())
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {

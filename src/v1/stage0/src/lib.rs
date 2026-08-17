@@ -89,6 +89,7 @@ pub mod std_trait_derive_shape;
 pub mod std_types;
 pub mod std_unicode_types;
 pub mod std_witness_admission;
+pub mod unique_arm_chain_measure;
 pub mod v1_compiler_annotation_bind;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_closure_stub_v2_std_integer_rust;
