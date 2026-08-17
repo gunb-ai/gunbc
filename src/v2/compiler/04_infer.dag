@@ -1181,7 +1181,7 @@ fn infer_loop_iteration(
   }
 }
 
-data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). dissolve-on: general operator/operand typing table subsumes this rule."
+data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. dissolve-on: general operator/operand typing table subsumes this rule."
 
 fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
   match op_node.kind {
@@ -1196,6 +1196,18 @@ fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
         wire: op_node,
         operation: canonical_operation_op_add()
       )
+  }
+}
+
+fn infer_transform_is_binary_infix_int_add_shape(node: Node) -> Bool {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    false
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => false
+      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+    }
   }
 }
 
@@ -1641,16 +1653,20 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
       )
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials)
     ComputationNode { behavior: Transform } =>
-      infer_gather_fold_acc_ok(
-        node: n,
-        entries: empty_inferred_facts_entry_list(),
-        pending: None,
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: true,
-        children_remaining: length(xs: n.children)
-      )
+      if infer_transform_is_binary_infix_int_add_shape(node: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: true,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials)
+      }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Conj } => infer_gather_fold_not_derived(n: n, partials: partials)
