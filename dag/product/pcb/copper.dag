@@ -164,6 +164,14 @@ fn realizations_of_net(rs: List<NetCopperRealization>, net: NetIdentity) -> List
 // A NET REALIZED TWICE IS TWO CONDUCTORS CLAIMING ONE NAME. That is not a redundant route - a real
 // net split across layers is one realization with vias, which this increment does not yet model -
 // so at this grain it is an authority fork in copper and refuses.
+// ONE CAUSE PER NET FOR THE NET-GRAIN CAUSE, because a net realized twice is ONE fork however many
+// rows are involved. Deriving it from the realization list emitted one cause per row, so a
+// doubly-realized net reported two identical causes and a reader counting findings saw two problems
+// where one exists - a duplicate wearing the counted-causes policy, and DESIGN section 3 rules a
+// duplicate a fork whether or not the copies agree. The row-grain causes stay per-row because theirs
+// genuinely are: each realization naming a net the roster lacks is its own row to fix. The net-grain
+// cause derives from the roster, and a realization naming a net the roster lacks is still caught by
+// RealizationNamesNoSuchNet rather than silently skipped by the narrower iteration.
 fn copper_refusal_causes(
   nets: List<ElectricalNet>,
   board: AdmittedStackup,
@@ -174,8 +182,8 @@ fn copper_refusal_causes(
     r => RealizationNamesNoSuchNet { net: r.net },
   )
   let duplicated = map(
-    filter(rs, r => count(realizations_of_net(rs: rs, net: r.net)) > 1),
-    r => NetRealizedMoreThanOnce { net: r.net },
+    filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) > 1),
+    n => NetRealizedMoreThanOnce { net: n.identity },
   )
   let foreign = map(
     filter(rs, r => r.layer.stackup_authority != admitted_stackup_authority(a: board)),

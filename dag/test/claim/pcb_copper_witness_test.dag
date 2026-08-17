@@ -229,8 +229,9 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
   }
 }
 
-// RED control: one net realized on two layers is two conductors claiming one name. Both offending
-// rows are reported, because both are wrong and fixing one leaves the fork.
+// RED control: one net realized on two layers is two conductors claiming one name. Exactly ONE
+// cause, because the problem is a fact about the net rather than about either row -- the same net
+// reported twice would be a duplicate finding, not a second one.
 test fn w_red_a_net_realized_twice_is_refused() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
@@ -238,7 +239,14 @@ test fn w_red_a_net_realized_twice_is_refused() -> Bool {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
   match admit_copper(nets: board_nets, board: board, rs: rs) {
     CopperAdmitted { realizations: _ } => false
-    CopperRefused { causes: c } => count(c) == 2
+    CopperRefused { causes: c } =>
+      count(rs) == 2
+        && count(c) == 1
+        && count(filter(c, x => match x {
+          NetRealizedMoreThanOnce { net: n } => n == vcc
+          RealizationNamesNoSuchNet { net: _ } => false
+          RealizationSelectedAgainstAnotherStackup { net: _ } => false
+        })) == 1
   }
 }
   }
