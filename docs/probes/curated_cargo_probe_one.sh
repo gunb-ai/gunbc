@@ -3,8 +3,9 @@
 # (+ generic std-seed-link follow-up) retires this hand-shell probe runner; until then it
 # projects the cssl emit+assemble+cargo spine for per-module verdict TSV (probe-only).
 # dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
-# Authority: cssl_v1_compiled_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
-# (docs/probes/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc).
+# Authority: cssl_v1_compiled_probe_lib_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
+# (`curated_probe_cargo_toml_write_from_cssl_authority` — ProcessExit + Filesystem.Write;
+# docs/probes/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc).
 #
 # INVOCATION CONTRACT (2026-07-19, calm-boar-697 — durable; do not re-learn expensively):
 #   CSSL_STD_SEED_LINK=1  — required for std-seed-link closure assembly via cssl_assemble.

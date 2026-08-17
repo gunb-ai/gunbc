@@ -72,12 +72,13 @@ entry closure. Fresh M=11 re-measurement is scripted in `run_e0369_b1_classifica
 - Fresh M=11 cargo logs were not banked in this receipt. The authoritative count here is the
   **July 7-module instance bank** (112 distinct B1-keyword sites), extended to 191 by mechanism
   argument — not a live `curated_cargo_probe_one.sh` sweep on current main.
-- **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe had two coupled
-  defects — manifest render (`NotProcessExit` on stderr) and **exit 0 on `HARNESS_REFUSE`** — plus
-  **stale `PROBE_KEEP_LOG_DIR` logs** on refusing reruns (nonzero from a prior invocation reads as
-  present). This branch fixes: stderr extraction, non-zero exit on refuse, `clear_probe_keep_log` on
-  harness/emit refuse, fresh `mktemp` log dir per M=11 sweep, and **paired reading** (`paired_rustc_errors`
-  beside any count — a bare zero is refused).
+- **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
+  `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
+  value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
+  prevent). The shell route is now `curated_probe_cargo_toml_write_from_cssl_authority` (ProcessExit +
+  `Filesystem.Write`, same pattern as `e0599_write_*_blob`). Loudness fixes from #8373 remain:
+  non-zero exit on `HARNESS_REFUSE`/`EMIT_REFUSE`, stale-log clearing, fresh `mktemp` log dir, paired
+  `paired_rustc_errors` beside counts.
 - **Reading rule:** a zero is only readable beside a nonzero from the same invocation. The July bank
   pairs 112 classified sites with per-site TSV rows (nonzero enumeration); it does not rely on a bare
   grep-over-missing-log zero.
