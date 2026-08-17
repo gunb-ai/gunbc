@@ -904,7 +904,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
         "_"
       } else {
-        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
       }
   }
 }
@@ -980,12 +980,12 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
         if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
           render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {
-          render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+          render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
         }
       } else {
-        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
       }
-    Absent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    Absent => render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
   }
 }
 
@@ -5030,7 +5030,9 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
 }
 
-fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+data render_rust_type_applied_binding_env_note: String = "Construction wall for the zero-parameter-alias applied-argument class (E0107 'type alias takes 0 generic arguments but N were supplied'). A reference to a closed alias arrives at the emitter carrying the RESOLVED DEFINITION's type arguments as its children while its authored spelling is still the alias name, so a renderer that prints name-plus-children emits ClosedCarrierAlias<Q, S, M> for a Rust alias declared with no parameters. Four renderers already refuse that shape by asking the single peel authority rust_fn_sig_peel_closed_alias: render_rust_applied_type, render_rust_decl_type, render_rust_fn_sig_type and render_rust_alias_rhs_type. This function is the fifth path, and it did NOT lack the guard -- it reached render_rust_applied_type, which asked, and was answered with an EMPTY TypeEnv this function constructed inline plus an empty_emit_graph_info() it passed to render_rust_type. An empty env resolves no binding, and the peel predicate renders 'I could not look this up' identically to 'this declaration has parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened applied form rather than refusing. Every one of this function's callers already holds the TypeEnv it was discarding, so the fix is to stop discarding it: the peel authority stays the single authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag closure. The next rung is upstream and not taken here: an alias reference that preserved its AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no renderer would need to ask at all.";
+
+fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
@@ -5041,15 +5043,15 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
           if outer_name != applied_name {
             render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
           }
         } else {
-          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
         }
       } else {
-        render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+        render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: [], env: env))
       }
-    Absent => render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    Absent => render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: [], env: env))
   }
 }
 
@@ -5058,13 +5060,13 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   if generic_param_names |> count > 0 {
     render_rust_decl_type(n: resolved_type(n: field), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else if find_property(props: field.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
-    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
     render_rust_type(n: authored_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
   } else {
-    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, env: env)
   }
 }
 
@@ -5074,11 +5076,11 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let ty = if generic_param_names |> count > 0 {
     render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
   } else if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, env: env)
   } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, env: env)
   } else if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
-    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
+    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, env: env)
   } else if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     let rt_child_name = authored_name_at(source_indices: env.source_indices, node: rt_child)
     match lookup_type_by_name(env: env, name: rt_child_name) {
@@ -5413,7 +5415,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
           } else {
             render_rust_type(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, emit_info: emit_info)
           }
-          let ty = if find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices) } else { raw_ty }
+          let ty = if find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, env: env) } else { raw_ty }
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
@@ -10201,7 +10203,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
-    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, env: scope.type_env)
   }
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
