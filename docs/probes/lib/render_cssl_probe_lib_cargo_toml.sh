@@ -5,6 +5,19 @@
 # (single authority — no parallel dependency manifest, no sed fork). dissolve-on alt: gunbc bash-emit #5828.
 set -euo pipefail
 
+# gunbc run maps non-ProcessExit returns to stderr (exit 2) with the value embedded in the
+# diagnostic: error: function `…` returned `VALUE`, not `ProcessExit`.
+extract_not_processexit_return() {
+  local raw="$1"
+  local marker=' returned `'
+  local suffix='`, not `ProcessExit`.'
+  if [[ "$raw" != *"$marker"* || "$raw" != *"$suffix"* ]]; then
+    return 1
+  fi
+  local after="${raw#*"$marker"}"
+  printf '%s' "${after%%"$suffix"*}"
+}
+
 render_cssl_probe_lib_cargo_toml() {
   local root="$1"
   local out_path="$2"
@@ -22,24 +35,17 @@ render_cssl_probe_lib_cargo_toml() {
   fi
 
   local probe_lib_toml err_log
-  probe_lib_toml="$(
+  err_log="$(
     cd "$root"
     "$gunbc" run \
       --source-root dag \
       --source-root src/v2 \
       --entry dag/tools/self_host_curated_probe_cargo.dag \
-      --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
+      --function curated_probe_cargo_toml_from_cssl_authority 2>&1 || true
   )"
+  probe_lib_toml="$(extract_not_processexit_return "$err_log" || true)"
 
   if [[ -z "$probe_lib_toml" ]]; then
-    err_log="$(
-      cd "$root"
-      "$gunbc" run \
-        --source-root dag \
-        --source-root src/v2 \
-        --entry dag/tools/self_host_curated_probe_cargo.dag \
-        --function curated_probe_cargo_toml_from_cssl_authority 2>&1 >/dev/null
-    )"
     echo "curated_cargo_probe: gunbc authority-read failed" >&2
     [[ -n "$err_log" ]] && echo "$err_log" >&2
     return 1

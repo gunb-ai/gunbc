@@ -141,35 +141,35 @@ def classify_site(site: Site) -> tuple[str, str]:
 
 
 def parse_instances_tsv(path: Path, entry: str) -> list[Site]:
-  sites: list[Site] = []
-  with path.open(encoding="utf-8", newline="") as fh:
-    reader = csv.DictReader(fh, delimiter="\t")
-    for row in reader:
-      signature = row.get("message", "").strip()
-      rel = row.get("path", "").strip()
-      try:
-        line = int(row.get("line", "0"))
-        col = int(row.get("col", "0"))
-      except ValueError:
-        continue
-      operand_types = row.get("single", "").strip() or extract_operand_types(signature)
-      code_line = row.get("code", "").strip()
-      if not b1_keyword_hit(signature, operand_types, signature, rel):
-        continue
-      sites.append(
-        Site(
-          entry=entry,
-          file=rel,
-          line=line,
-          col=col,
-          code="E0369",
-          signature=signature,
-          message=signature,
-          code_line=code_line,
-          operand_types=operand_types,
-        )
-      )
-  return sites
+    sites: list[Site] = []
+    with path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        for row in reader:
+            signature = row.get("message", "").strip()
+            rel = row.get("path", "").strip()
+            try:
+                line = int(row.get("line", "0"))
+                col = int(row.get("col", "0"))
+            except ValueError:
+                continue
+            operand_types = row.get("single", "").strip() or extract_operand_types(signature)
+            code_line = row.get("code", "").strip()
+            if not b1_keyword_hit(signature, operand_types, signature, rel):
+                continue
+            sites.append(
+                Site(
+                    entry=entry,
+                    file=rel,
+                    line=line,
+                    col=col,
+                    code="E0369",
+                    signature=signature,
+                    message=signature,
+                    code_line=code_line,
+                    operand_types=operand_types,
+                )
+            )
+    return sites
 
 
 def parse_cargo_log(path: Path, entry: str) -> list[Site]:

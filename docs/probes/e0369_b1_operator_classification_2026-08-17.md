@@ -69,9 +69,11 @@ entry closure. Fresh M=11 re-measurement is scripted in `run_e0369_b1_classifica
 
 ## What is NOT claimed
 
-- Fresh M=11 cargo logs were not banked in this receipt (harness `gunbc run` stdout/stderr
-  seam blocked `render_cssl_probe_lib_cargo_toml` in this session); the classification
-  is executed on the July instance bank and extended to 191 by mechanism argument above.
+- Fresh M=11 cargo logs were not banked in this receipt (the full M=11 loop is scripted in
+  `run_e0369_b1_classification.sh`; `render_cssl_probe_lib_cargo_toml.sh` now reads the
+  `NotProcessExit` return from stderr, but no M=11 run was executed for this commit). The
+  classification is executed on the July instance bank and extended to 191 by mechanism
+  argument above.
 - Nat/Int sites whose diagnostic spells only `Rc<v2_std_nat::Nat>` without an algebra
   keyword are **excluded** from the B1 filter (strict keyword match per §18) and therefore
   from the 191 — they belong to Root B3 (`Nat`/`Int` vs `{integer}`/`i64`), not this row.
