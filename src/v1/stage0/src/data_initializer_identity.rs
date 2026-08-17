@@ -825,10 +825,39 @@ fn type_item_and_home(
     if let Some(node) = type_item_from_importing_module_type_env(tm, declared_type_bare, si) {
         return Some((node, authored_name_at(si.clone(), tm.module.clone())));
     }
-    let (prefix, _) = declared_type_authored.rsplit_once('.')?;
-    let declaring = typed_module_for_path(ctx, prefix)?;
-    let node = type_item_from_importing_module_type_env(&declaring, declared_type_bare, si)?;
-    Some((node, prefix.to_string()))
+
+    // The referencing module does not carry the type, so the reference is cross-module.
+    //
+    // The prefix is NOT recoverable from the annotation's authored name: measured, a
+    // `test.decl_facts_order.carrier.Disposition` annotation reports its authored name as
+    // plain `Disposition`, because qualification lives in the annotation node's structure
+    // rather than its name. Two earlier repairs failed on exactly that -- they reconstructed
+    // an owner from a string that never carried one.
+    //
+    // So resolve by DECLARATION IDENTITY instead: find the module that actually declares this
+    // type. A unique declarer is the answer; more than one is genuinely ambiguous at this
+    // grain and REFUSES, because picking the first would resolve a cross-module parent to
+    // whichever module happened to be walked first -- a confidently wrong qualified name in
+    // place of a refusal, which is the failure mode this whole path exists to avoid.
+    let mut found: Option<(Rc<Node>, String)> = None;
+    for candidate in ctx.modules.iter() {
+        let Some(node) =
+            type_item_from_importing_module_type_env(candidate, declared_type_bare, si)
+        else {
+            continue;
+        };
+        let module_path = authored_name_at(si.clone(), candidate.module.clone());
+        match &found {
+            // Same declaration reachable through more than one module's env is not a second
+            // declarer; only a DIFFERENT owning module makes it ambiguous.
+            Some((seen, seen_module)) if Rc::ptr_eq(seen, &node) || *seen_module == module_path => {
+            }
+            Some(_) => return None,
+            None => found = Some((node, module_path)),
+        }
+    }
+    let _ = declared_type_authored;
+    found
 }
 
 fn marshal_record_literal_projection(
