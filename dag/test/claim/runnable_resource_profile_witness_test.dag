@@ -47,7 +47,6 @@ test fn witness_corpus_never_forbids_co_residence() -> Bool {
     source_roots: []
     scan_dirs: []
     explicit_entries: []
-    node_frontier_selection: SelectionOff
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,

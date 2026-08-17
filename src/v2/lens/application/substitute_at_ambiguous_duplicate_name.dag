@@ -45,14 +45,22 @@ fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   }
 }
 
-fn substitute_at_ambiguous_duplicate_name_claim_rhs() -> Bool {
-  substitute_at_ambiguous_duplicate_name_claim_holds()
+fn substitute_at_ambiguous_duplicate_name_claim_rhs() -> Node {
+  if substitute_at_ambiguous_duplicate_name_claim_holds() {
+    substitute_ambiguous_duplicate_name_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
 }
 
 data claim_substitute_at_ambiguous_duplicate_name: TestClaim = EqualsClaim {
   label: "lens_application/substitute_at_ambiguous_duplicate_name: duplicate named edge rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: substitute_at_ambiguous_duplicate_name_claim_rhs(),
-  rhs: true,
+  lhs: substitute_ambiguous_duplicate_name_root,
+  rhs: substitute_at_ambiguous_duplicate_name_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

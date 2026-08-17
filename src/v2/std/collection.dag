@@ -43,8 +43,21 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   }
 }
 
+// LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
+// third state in which the map fails to say. So the total form is the primitive and the
+// Outcome-wrapped form below is a projection of it, not the other way round.
+//
+// The direction matters at the consumer. A caller reaching for `map_get` must match a
+// `Rejected` arm that no producer can construct, and the only arms available to it are the
+// caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
+// nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
+// removes the arm rather than asking every caller to dispose of it honestly.
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  m.lookup(key)
+}
+
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
-  outcome_accepted(value: m.lookup(key))
+  outcome_accepted(value: map_lookup(m: m, key: key))
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(

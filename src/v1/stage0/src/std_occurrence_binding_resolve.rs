@@ -5,6 +5,7 @@ use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
+pub use crate::std_occurrence_binding::OccurrenceBinding;
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;
 pub use crate::std_occurrence_binding::{
     BindingCandidate, BindingOccurrence, ContainmentPath, OccurrenceBindingResult,

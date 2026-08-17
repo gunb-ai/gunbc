@@ -14,10 +14,12 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
+use crate::std_occurrence_identity::OccurrenceRole::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
 };
+pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
@@ -384,6 +386,14 @@ pub struct ModuleResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportResult {
+    pub import: Rc<Node>,
+    pub tokens: Rc<TokenStream>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantResult {
     pub variant: Rc<Node>,
     pub tokens: Rc<TokenStream>,
@@ -570,8 +580,24 @@ impl ExpectedToken {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportsResult {
+    pub imports: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<TokenStream>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemsResult {
     pub items: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<TokenStream>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NamesResult {
+    pub names: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<TokenStream>,
     pub ctx: Rc<ParseContext>,
     pub err: Option<Rc<ErrorNode>>,
@@ -2922,8 +2948,8 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let mod_name = r.name.clone();
         let mod_name_span = r.span.clone();
         let tokens = skip_newlines(r.tokens.clone());
-        let tokens = skip_newlines(tokens.clone());
-        if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
+        let r = parse_imports(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
                 module: module_node(
                     "".to_string(),
@@ -2931,15 +2957,14 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
                     Rc::new(vec![]),
                     start_span.clone(),
                 ),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: Some(parse_error(
-                    "the import statement is deleted; name the container instead (a cross-module reference is written container.member, and that reference IS the dependency edge)".to_string(),
-                    token_span(token_stream_first(tokens.clone())),
-                )),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
             });
         }
-        let imports: Rc<Vec<Rc<Node>>> = Rc::new(vec![]);
+        let imports = r.imports.clone();
+        let tokens = r.tokens.clone();
+        let ctx = r.ctx.clone();
         let r = parse_items(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
@@ -2989,6 +3014,47 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
     }
 }
 
+pub fn parse_imports(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ImportsResult> {
+    parse_imports_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
+}
+
+pub fn parse_imports_acc(
+    mut tokens: Rc<TokenStream>,
+    mut ctx: Rc<ParseContext>,
+    mut acc: Rc<Vec<Rc<Node>>>,
+) -> Rc<ImportsResult> {
+    loop {
+        tokens = skip_newlines(tokens.clone());
+        if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
+            let r = parse_import(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ImportsResult {
+                    imports: Rc::new(vec![]),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            {
+                let __tco_0 = r.tokens.clone();
+                let __tco_1 = r.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, r.import.clone());
+                tokens = __tco_0;
+                ctx = __tco_1;
+                acc = __tco_2;
+                continue;
+            }
+        } else {
+            break Rc::new(ImportsResult {
+                imports: acc.clone(),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: None,
+            });
+        }
+    }
+}
+
 pub fn parse_items(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemsResult> {
     parse_items_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
 }
@@ -3030,8 +3096,153 @@ pub fn parse_items_acc(
     }
 }
 
+pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ImportResult> {
+    {
+        let start_span = token_span(token_stream_first(tokens.clone()));
+        let err_import = import_node(
+            "".to_string(),
+            false,
+            Rc::new(vec![]),
+            start_span.clone(),
+            start_span.clone(),
+        );
+        let r = expect(
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
+                text: "import".to_string(),
+            }),
+        );
+        if has_err(r.err.clone()) {
+            return Rc::new(ImportResult {
+                import: err_import.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let tokens = r.tokens.clone();
+        let r = parse_dotted_ident(tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ImportResult {
+                import: err_import.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let mod_path = r.name.clone();
+        let mod_path_span = r.span.clone();
+        let tokens = r.tokens.clone();
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
+            EatResult::EatConsumed { tokens: __ec, .. } => {
+                let r = parse_import_names(__ec.clone(), ctx.clone());
+                if has_err(r.err.clone()) {
+                    return Rc::new(ImportResult {
+                        import: err_import.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                let names = r.names.clone();
+                let tokens = r.tokens.clone();
+                let ctx = r.ctx.clone();
+                let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
+                if has_err(r.err.clone()) {
+                    return Rc::new(ImportResult {
+                        import: err_import.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                let tokens = skip_newlines(r.tokens.clone());
+                let base_imp = import_node(
+                    mod_path.clone(),
+                    false,
+                    names.clone(),
+                    start_span.clone(),
+                    mod_path_span.clone(),
+                );
+                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
+                let ctx = parse_context_with_intern_table(ctx.clone(), imp_ir.table.clone());
+                let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
+                Rc::new(ImportResult {
+                    import: imp.clone(),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+            EatResult::EatUnchanged { tokens: __eu, .. } => {
+                let tokens = skip_newlines(tokens.clone());
+                let base_imp = import_node(
+                    mod_path.clone(),
+                    true,
+                    Rc::new(vec![]),
+                    start_span.clone(),
+                    mod_path_span.clone(),
+                );
+                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
+                let ctx = parse_context_with_intern_table(ctx.clone(), imp_ir.table.clone());
+                let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
+                Rc::new(ImportResult {
+                    import: imp.clone(),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: None,
+                })
+            }
+        }
+    }
+}
+
+pub fn parse_import_names(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<NamesResult> {
+    parse_import_names_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
+}
+
 pub fn parsed_name_leaf(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     leaf_node_with_span(name.clone(), span.clone())
+}
+
+pub fn parse_import_names_acc(
+    mut tokens: Rc<TokenStream>,
+    mut ctx: Rc<ParseContext>,
+    mut acc: Rc<Vec<Rc<Node>>>,
+) -> Rc<NamesResult> {
+    loop {
+        tokens = skip_newlines(tokens.clone());
+        if tok_is_rbrace(token_stream_first(tokens.clone())) {
+            break Rc::new(NamesResult {
+                names: acc.clone(),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: None,
+            });
+        } else {
+            let r = parse_dotted_ident(tokens.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(NamesResult {
+                    names: Rc::new(vec![]),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let name_node = parsed_name_leaf(r.name.clone(), r.span.clone());
+            tokens = skip_newlines(r.tokens.clone());
+            let e = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            tokens = skip_newlines(match (*e.clone()).clone() {
+                EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
+            });
+            {
+                let __tco_0 = v1_rt::rc_list_push(acc, name_node.clone());
+                acc = __tco_0;
+                continue;
+            }
+        }
+    }
 }
 
 pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<Rc<ItemForm>> {
@@ -13113,75 +13324,11 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                             }
                         }
                     } else {
-                        looks_like_qualified_arm_start(tokens.clone())
+                        false
                     }
                 }
             }
             _ => false,
-        }
-    }
-}
-
-pub fn looks_like_qualified_arm_start(tokens: Rc<TokenStream>) -> bool {
-    {
-        let len = dotted_path_token_count(tokens.clone(), 0);
-        if ((len.clone() > 1)
-            && is_uppercase_start(peek_ident_text_at(tokens.clone(), (len.clone() - 1))))
-        {
-            if peek_is_fat_arrow_at(tokens.clone(), len.clone()) {
-                true
-            } else {
-                if peek_is_expected_at(
-                    tokens.clone(),
-                    len.clone(),
-                    Rc::new(ExpectedToken::ExpectLBrace),
-                ) {
-                    scan_for_fat_arrow_after_braces(
-                        token_stream_advance(tokens.clone(), (len.clone() + 1)),
-                        1,
-                    )
-                } else {
-                    false
-                }
-            }
-        } else {
-            false
-        }
-    }
-}
-
-pub fn dotted_path_token_count(tokens: Rc<TokenStream>, offset: i64) -> i64 {
-    {
-        if (peek_is_expected_at(
-            tokens.clone(),
-            (offset.clone() + 1),
-            Rc::new(ExpectedToken::ExpectDot),
-        ) && peek_is_ident_at(tokens.clone(), (offset.clone() + 2)))
-        {
-            dotted_path_token_count(tokens.clone(), (offset.clone() + 2))
-        } else {
-            (offset.clone() + 1)
-        }
-    }
-}
-
-pub fn peek_is_ident_at(tokens: Rc<TokenStream>, offset: i64) -> bool {
-    {
-        match token_stream_first(token_stream_advance(tokens.clone(), offset.clone())) {
-            Some(t) => match t.shape.clone() {
-                TokenShape::ShIdent => true,
-                _ => false,
-            },
-            None => false,
-        }
-    }
-}
-
-pub fn peek_ident_text_at(tokens: Rc<TokenStream>, offset: i64) -> String {
-    {
-        match token_stream_first(token_stream_advance(tokens.clone(), offset.clone())) {
-            Some(t) => t.text.clone(),
-            None => "".to_string(),
         }
     }
 }

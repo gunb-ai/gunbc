@@ -4,6 +4,8 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
@@ -22,7 +24,9 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{ArityMismatch, InternalError, UnresolvedType};
+use crate::v1_std_core::CompilerDiagnostic::{
+    ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
+};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -1720,10 +1724,28 @@ pub fn resolve_node_bounded(
                                                         ]),
                                                     })
                                                 } else {
-                                                    Rc::new(NodeResolveResult {
-                                                        resolved: final_resolved.clone(),
-                                                        diagnostics: Rc::new(vec![]),
-                                                    })
+                                                    {
+                                                        let unlisted_diags = if ((masked.clone()
+                                                            && (v1_rt::map_is_empty(
+                                                                &env.source_visible_names.clone(),
+                                                            ) == false))
+                                                            && (v1_rt::map_has(
+                                                                &env.source_visible_names.clone(),
+                                                                type_name.clone(),
+                                                            ) == false))
+                                                        {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
+    name: type_name.clone(),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        };
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: unlisted_diags.clone(),
+                                                        })
+                                                    }
                                                 }
                                             }
                                             None => {

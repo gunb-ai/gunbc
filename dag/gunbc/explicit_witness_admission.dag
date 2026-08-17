@@ -100,36 +100,6 @@ fn known_red_pre_verdict_probe(
 data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_complement_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work). Owner: the namespace-only-resolution lane, whose containment SymbolIndex covers exactly this class.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_meet_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_join_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
   known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",

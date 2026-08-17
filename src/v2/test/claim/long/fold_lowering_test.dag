@@ -74,8 +74,8 @@ fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
 
 fn fold_snippet_identities() -> List<Symbol> {
   match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
-    Absent => Empty
-    Present { value: tree } => collect_atom_identities(n: tree, acc: Empty)
+    Absent => std.algebra.Empty
+    Present { value: tree } => collect_atom_identities(n: tree, acc: std.algebra.Empty)
   }
 }
 

@@ -35,7 +35,7 @@ type FleetRunnerCapacityWidthSnapshot {
   achieved: FleetAchievedRunnerWidths
 }
 
-data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 above is a coincidence of arithmetic, not the same quantity — it is what the roster desired on 2026-08-06.)"
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 is a DIFFERENT QUANTITY that happens to share the number — it is what the roster desired on 2026-08-06 (5+5+7+5, srv4 row-pinned), and it comes from the pinned per-host rows in incident_pinned_widths_note, never from the live allocation.)"
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
@@ -398,16 +398,33 @@ fn fleet_hosts() -> List<HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
+data incident_pinned_widths_note: String = "THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT OF IT. This fold previously pinned srv4 alone and read gunbc_runner_slots_per_host live for srv1-srv3, so a historical incident total silently tracked present-day allocation. The 2026-08-17 16GiB ruling moved srv3 from 7 to 6 and the outage total would have become 21 while incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting itself because it was only half pinned.\n\nDESIGN section 5's test-oracle discipline is the authority: a historical measurement compared against a literal is legitimate only when the measurement is independently fixed, and half of this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5, srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records. They are frozen by date and must never be updated to follow an allocation ruling; a future ruling changes what the fleet desires TODAY, not what it desired during that outage."
+
+data incident_srv1_committed_width_at_outage: Int = 5
+
+data incident_srv2_committed_width_at_outage: Int = 5
+
+data incident_srv3_committed_width_at_outage: Int = 7
+
+fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    incident_srv1_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv2 as String) {
+    incident_srv2_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv3 as String) {
+    incident_srv3_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv4 as String) {
+    incident_srv4_committed_width_at_outage
+  } else {
+    0
+  }
+}
+
 fn incident_fleet_desired_width_at_outage() -> Int {
   fold(
     fleet_hosts(),
     init: 0,
-    f: (n, h) =>
-      if (h as String) == (operator_host_srv4 as String) {
-        n + incident_srv4_committed_width_at_outage
-      } else {
-        n + gunbc_runner_slots_per_host(host: h)
-      },
+    f: (n, h) => n + incident_committed_width_at_outage_for(host: h),
   )
 }
 

@@ -33,7 +33,7 @@ fn export_entry_from_decl_fact(fact: DeclFact) -> ExportEntry? {
 }
 
 fn export_entries_for_rel_path(rel_path: String, facts: List<DeclFact>) -> List<ExportEntry> {
-  fold(facts, init: Empty, f: fn(acc, fact) {
+  fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
     if fact.rel_path == rel_path {
       match export_entry_from_decl_fact(fact: fact) {
         Present { value: entry } => list_snoc_item(xs: acc, item: entry)
@@ -62,7 +62,7 @@ fn interface_summaries_from_facts(
   modules: List<ModuleDeclarationFact>,
   facts: List<DeclFact>
 ) -> List<InterfaceSummary> {
-  fold(modules, init: Empty, f: fn(acc, mod_fact) {
+  fold(modules, init: std.algebra.Empty, f: fn(acc, mod_fact) {
     list_snoc_item(
       xs: acc,
       item: interface_summary_for_module_path(
@@ -101,7 +101,7 @@ fn direct_import_modules(
   rel_path: String,
   edges: List<ImportResolutionFact>
 ) -> List<String> {
-  fold(edges, init: Empty, f: fn(acc, edge) {
+  fold(edges, init: std.algebra.Empty, f: fn(acc, edge) {
     if edge.path == rel_path {
       list_snoc_item(xs: acc, item: edge.import_module)
     } else {
@@ -117,7 +117,7 @@ fn import_interface_hashes_for_module(
 ) -> List<InterfaceHash>? {
   fold(
     direct_import_modules(rel_path: rel_path, edges: edges),
-    init: Present { value: Empty },
+    init: Present { value: std.algebra.Empty },
     f: fn(acc, import_module) {
       match acc {
         Absent => Absent

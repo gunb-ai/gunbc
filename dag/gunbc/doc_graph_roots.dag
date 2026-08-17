@@ -119,15 +119,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "affected-set-precompute-pruning",
-    primary_work: DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_witness_run_disposition", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_test_fn_declaration_edited", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "algebra-grounding-unification-design",
     primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
     additional_works: [
@@ -1048,7 +1039,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.selection_degradation_receipt", decl_name: "selection_degradation_receipt_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "retention_settle", field: WholeDeclaration },
@@ -1188,9 +1178,9 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "root_b_primitive_repr_fork_2026-08-16",
-    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rust_corpus_repr", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "RustCorpusRepr's two fused axes (numeric-primitive realization and reference-derived use-line synthesis) are split into independent facts, so a pure-v2 closure can take the host numeric grounding without losing use-line synthesis; at that point this probe's measurements become historical and its finding folds into the successor carrier") },
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "decl_file_realizes_natively", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }, DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the checkpoint table stops being keyed on the bare dag_name -- a corpus-side declaration-to-Rust-type binding supersedes the spelling row, so realization is decided by declaration identity on every name rather than on the names the table happens to miss; at that point the residue this probe measured is closed and the record is fully superseded") },
   },
   HandAuthoredDocBind {
     home: ProbeDoc,

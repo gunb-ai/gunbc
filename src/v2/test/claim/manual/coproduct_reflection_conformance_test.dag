@@ -38,7 +38,7 @@ fn imported_derive_trait_discriminants(
 ) -> List<Symbol> {
   fold_list(
     xs: inhabitants,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, value) {
       list_snoc_item(
         xs: acc,
@@ -98,7 +98,7 @@ test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
 fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
   fold_list(
     xs: inhabitants,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
   )
 }

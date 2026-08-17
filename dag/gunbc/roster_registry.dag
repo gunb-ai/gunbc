@@ -62,22 +62,6 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "scoped_witness_batches"),
-    unit_kind: "scoped witness batch instance",
-    membership: DeclaredFrontier {
-      reason: "source-root envelopes outside ordinary discovery enroll through the generic std.realization_schedule ScopedWitnessBatch carrier; the current v1 claim instance is the first live member",
-      dissolution: unbound_dissolution(description: "per instance: its source-root envelope joins ordinary discovery or its typed instance dissolution trigger fires; roster-wide, scoped batches derive from declarations that require a non-ordinary source-root envelope")
-    }
-  },
-  RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "v1_claim_scoped_witness_entries"),
-    unit_kind: "file-grain schedule witness entry",
-    membership: DeclaredFrontier {
-      reason: "these two v1 claim files require the dag plus src/v1 envelope declared by v1_claim_scoped_witness_batch and are outside ordinary dag plus src/v2 discovery",
-      dissolution: unbound_dissolution(description: "gunbc.ci_layer_roots v1_claim_scoped_witness_dissolve_on: V2ParserOwnsV1Claims")
-    }
-  },
-  RosterRegistration {
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {

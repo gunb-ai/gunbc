@@ -8,6 +8,8 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
+pub use crate::v1_std_core::CompilerDiagnostic;
+use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
@@ -120,6 +122,15 @@ pub fn compile_dag_diagnostic_census_row_note() -> String {
     thread_local! {
         static CACHED: String = {
             "WHY THIS ROW EXISTS, and why it is additive rather than contested (ladder-probe-corpus, operator-amended scope 2026-08-01). Its sibling compile_dag_rust_emit_check compiles a synthetic source and collapses the whole result to a Bool - it counts diagnostics passing compile_clean_diagnostic_is_hard and answers false when that count is nonzero. That discards three facts the guarantee probe corpus must observe: WHICH judgment fired (a probe refusing for any hard reason, a typo included, otherwise reads as the wall firing), whether it BLOCKS (the filter IS the severity predicate, so demoting a landed wall from blocking to advisory turns its RED silently green), and every advisory (so a positive control cannot state zero-diagnostics-of-ANY-severity, the assertion codex review 45357 added after an advisory MethodExistenceUndecided passed unnoticed as a green control). The Stage-0 receipt vocabulary gunbc.guarantee_measurement makes the gap structural rather than stylistic: RefusedTyped and AcceptedCounted both carry a diagnostic class and a count, and neither is inhabitable from a Bool, so without this row that schema is uninhabitable on every v1 path. MEASUREMENT ONLY - the host arm reports what the compile decided and filters nothing; callers filter. Registered as a type variable rather than a kernel record because the result is a COPRODUCT (observed census vs typed not-runnable, the top-as-answer/top-as-ignorance split), following shell_materialize_operation_argv's argv_materialization_result precedent; filesystem_read_result_type's make_kernel_record_type idiom is the right one only for a product. DISSOLUTION, answering the compile_clean_forcecheck objection in place: this registry is itself a flat global map that plan argues is a section-3 fork awaiting the PrimitiveDefinition identity join, and this row inherits that trigger EXACTLY as its sibling does - when the join dissolves the registry, the two migrate together. One additive row is linear cost against that dissolution; the alternative was a schema no v1 probe could inhabit.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn observe_declared_import_closure_symbol_binding_row_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CLASS B binding-source observation for declared-import-closure-only compiles (#6985). Production classify_unlisted_import_binding_source already exists in cli_run.rs; this row exposes it through the same builtin-registry pattern as compile_dag_diagnostic_census: coproduct result (observed binding vs not-runnable), registered as type_variable_node(id: declared_import_closure_binding_result) rather than a kernel record. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly — one additive row is linear cost against that dissolution; do not mint a fresh trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -359,6 +370,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "compile_dag_diagnostic_census".to_string(),
             type_variable_node("compile_diagnostic_census_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "observe_declared_import_closure_symbol_binding".to_string(),
+            type_variable_node("declared_import_closure_binding_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "class_b_import_closure_gate_not_affected_skip".to_string(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

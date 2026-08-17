@@ -36,7 +36,7 @@ fn host_swap_backing_verdict_for_stats(min_total: ByteSize, s: SwapStats) -> Obs
   if total == 0 {
     std.upsert_decision.Absent
   } else {
-    if total < byte_size_count(b: min_total) { Drifted } else { Converged }
+    if total < byte_size_count(b: min_total) { std.upsert_decision.Drifted } else { Converged }
   }
 }
 
@@ -49,7 +49,7 @@ fn host_swap_backing_verdict(
     SwapBackingRequired { min_total: m, requiring_declaration: d } =>
       match observed {
         Present { value: s } => host_swap_backing_verdict_for_stats(min_total: m, s: s)
-        Absent => UnknownRefused
+        std.upsert_decision.Absent => UnknownRefused
       }
   }
 }
@@ -63,7 +63,7 @@ fn swap_cap_verdict_qualified_by_backing(
   match backing {
     Converged => cap
     std.upsert_decision.Absent => std.upsert_decision.Absent
-    Drifted => Drifted
+    std.upsert_decision.Drifted => std.upsert_decision.Drifted
     Conflict => Conflict
     Inaccessible => Inaccessible
     UnknownRefused => UnknownRefused
@@ -83,7 +83,7 @@ fn observation_verdict_is_converged(v: ObservationVerdict) -> Bool {
   match v {
     Converged => true
     std.upsert_decision.Absent => false
-    Drifted => false
+    std.upsert_decision.Drifted => false
     Conflict => false
     Inaccessible => false
     UnknownRefused => false
