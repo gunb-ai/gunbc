@@ -1,7 +1,7 @@
 module product.pcb.copper
 
 import std.logic { Bool }
-import std.types { Int, List, NonEmptyStr }
+import std.types { Int, List }
 import std.decl_ref { DeclarationRef }
 import product.compute_board.analog { ElectricalNet, NetIdentity }
 import v2.std.algebra { fold_list }
@@ -127,32 +127,29 @@ type NetCopperRealization {
 
 type CopperRefusalCause
   = RealizationNamesNoSuchNet { net: NetIdentity }
-  | NetRealizedMoreThanOnce { net: NetIdentity }
   | RealizationSelectedAgainstAnotherStackup { net: NetIdentity }
+  | NetSplitAcrossLayersWithoutAVia { net: NetIdentity }
+  | NetHasTwoConductorsOnOneLayer { net: NetIdentity }
+  | ViaNamesNoSuchNet { net: NetIdentity }
+  | ViaSelectedAgainstAnotherStackup { net: NetIdentity }
+  | ViaJoinsALayerToItself { net: NetIdentity, ordinal: Int }
 
 // ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
 // is renamed in the schematic and its copper realization keeps the old identity, so the board has a
 // conductor belonging to nothing and a net with no conductor. Counting realizations against nets
 // would report both boards as fine, because the count did not change (DESIGN section 5 - completeness
 // is an identity join).
-// COPPER TAKES THE NET ROSTER, NOT THE CIRCUIT INTENT, and that boundary is the whole point of this
-// correction. The first cut of this module took an AnalogCircuitIntent, which looks harmless because
-// the only field it read was .nets -- but AnalogCircuitIntent carries components: it is the RC
-// specimen's article, and ElectricalComponentInstance is a CLOSED coproduct of resistor, capacitor
-// and independent voltage source. A CPU, a BMC, a DDR slot, a regulator or a connector has no
-// variant there.
-//
-// So the copper carrier could only have acquired the Altra motherboard as a consumer by making the
-// motherboard impersonate a three-part analog board. The universe a lens ranges over has to be the
-// objects it is genuinely about, and copper is about ELECTRICAL CONNECTIVITY, not about one
-// product's SPICE article.
+// COPPER TAKES THE NET ROSTER, NOT THE CIRCUIT INTENT. The first cut took an AnalogCircuitIntent,
+// which looks harmless because the only field it read was .nets -- but that type carries components,
+// and ElectricalComponentInstance is a CLOSED coproduct of resistor, capacitor and independent
+// voltage source. A CPU, a BMC, a DDR slot, a regulator or a connector has no variant there, so the
+// copper carrier could only have acquired the motherboard as a consumer by making the motherboard
+// impersonate a three-part analog board.
 //
 // ElectricalNet is already general: its members are component-and-terminal identities, which say
-// nothing about what kind of component. Only the intent wrapper was specimen-bound, so the fix is to
-// stop taking the wrapper. HOMING IS STILL WRONG and is the declared next step: ElectricalNet,
-// NetIdentity and ElectricalTerminalRef are general concepts living in a specimen module, and they
-// belong in a connectivity authority that the analog article and this both consume. That migration
-// touches the article and its SPICE projection, so it is its own change rather than a rider here.
+// nothing about what kind of component. Only the wrapper was specimen-bound. HOMING IS STILL WRONG
+// and is the declared next step -- these net concepts live in a specimen module and belong in a
+// connectivity authority both the analog article and this consume.
 fn net_exists(nets: List<ElectricalNet>, net: NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
@@ -164,32 +161,124 @@ fn realizations_of_net(rs: List<NetCopperRealization>, net: NetIdentity) -> List
 // A NET REALIZED TWICE IS TWO CONDUCTORS CLAIMING ONE NAME. That is not a redundant route - a real
 // net split across layers is one realization with vias, which this increment does not yet model -
 // so at this grain it is an authority fork in copper and refuses.
-// ONE CAUSE PER NET FOR THE NET-GRAIN CAUSE, because a net realized twice is ONE fork however many
-// rows are involved. Deriving it from the realization list emitted one cause per row, so a
-// doubly-realized net reported two identical causes and a reader counting findings saw two problems
-// where one exists - a duplicate wearing the counted-causes policy, and DESIGN section 3 rules a
-// duplicate a fork whether or not the copies agree. The row-grain causes stay per-row because theirs
-// genuinely are: each realization naming a net the roster lacks is its own row to fix. The net-grain
-// cause derives from the roster, and a realization naming a net the roster lacks is still caught by
-// RealizationNamesNoSuchNet rather than silently skipped by the narrower iteration.
+// ONE CAUSE PER NET FOR THE NET-GRAIN CAUSES, because those are facts ABOUT A NET rather than about
+// a row: a net on four layers with no via is one problem, not four, and two rows on one layer is one
+// fork however many rows are involved. Deriving them from the realization list emitted one per row,
+// which is a duplicate wearing the counted-causes policy, and DESIGN section 3 rules a duplicate a
+// fork whether or not the copies agree. The row-grain causes stay per-row because theirs genuinely
+// are: each realization naming a net the schematic lacks is its own row to fix. The net-grain causes
+// derive from intent.nets, so the population is the schematic's, and a realization naming a net the
+// schematic lacks is still caught by RealizationNamesNoSuchNet rather than silently skipped.
 fn copper_refusal_causes(
   nets: List<ElectricalNet>,
   board: AdmittedStackup,
   rs: List<NetCopperRealization>,
+  vs: List<Via>,
 ) -> List<CopperRefusalCause> {
   let unknown = map(
     filter(rs, r => !net_exists(nets: nets, net: r.net)),
     r => RealizationNamesNoSuchNet { net: r.net },
   )
   let duplicated = map(
-    filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) > 1),
-    n => NetRealizedMoreThanOnce { net: n.identity },
+    filter(nets, n => net_split_is_unrouted(rs: rs, vs: vs, net: n.identity)),
+    n => NetSplitAcrossLayersWithoutAVia { net: n.identity },
+  )
+  let stacked = map(
+    filter(nets, n => net_has_duplicate_on_one_layer(rs: rs, net: n.identity)),
+    n => NetHasTwoConductorsOnOneLayer { net: n.identity },
   )
   let foreign = map(
     filter(rs, r => r.layer.stackup_authority != admitted_stackup_authority(a: board)),
     r => RealizationSelectedAgainstAnotherStackup { net: r.net },
   )
-  unknown + duplicated + foreign
+  unknown + duplicated + stacked + foreign + via_refusal_causes(nets: nets, board: board, vs: vs)
+}
+
+// A VIA IS A CONDUCTOR BETWEEN TWO LAYERS OF ONE NET. It is what makes a net legitimately present
+// on more than one layer, which the previous increment had to refuse outright because it had no way
+// to tell a routed layer change from two conductors forking one name.
+//
+// Both endpoints are CopperLayerRefs, so both inherit the stackup binding: a via cannot join a layer
+// of one board to a layer of another, and it cannot name an ordinal that board does not have.
+// What the reference cannot carry is the two endpoints being DIFFERENT - that is a relation between
+// two values rather than a property of either, so it is a checked refusal, and a via from a layer to
+// itself is a drilled hole that connects nothing.
+type Via {
+  net: NetIdentity
+  from_layer: CopperLayerRef
+  to_layer: CopperLayerRef
+}
+
+fn via_ordinals(v: Via) -> List<Int> {
+  [copper_layer_ordinal(r: v.from_layer), copper_layer_ordinal(r: v.to_layer)]
+}
+
+fn via_touches_ordinal(v: Via, ordinal: Int) -> Bool {
+  count(filter(via_ordinals(v: v), o => o == ordinal)) > 0
+}
+
+fn vias_of_net(vs: List<Via>, net: NetIdentity) -> List<Via> {
+  filter(vs, v => v.net == net)
+}
+
+// WHETHER A SPLIT NET IS ROUTED OR FORKED. Every layer the net is realized on beyond the first must
+// be reachable by a via belonging to that same net. This is deliberately the WEAK form - it asks
+// that each layer be touched by some via of the net, not that the vias connect the layers into one
+// component. A net on layers 0, 1, 2, 3 with vias 0-1 and 2-3 satisfies this and is still two
+// islands; catching that is a connectivity fixpoint over the via graph, which this increment does
+// not build. Stated so the guarantee is not read as stronger than it is (DESIGN section 4b).
+fn layer_is_via_reachable(vs: List<Via>, net: NetIdentity, ordinal: Int) -> Bool {
+  count(filter(vias_of_net(vs: vs, net: net), v => via_touches_ordinal(v: v, ordinal: ordinal))) > 0
+}
+
+// TWO ROWS FOR ONE NET ON ONE LAYER IS THE ORIGINAL FORK, AND NARROWING THE SPLIT REFUSAL LOST IT.
+// Before vias, any net with more than one realization refused, which caught this case by accident.
+// Replacing that with a via-reachability question asked only whether each REALIZED LAYER is reached
+// by a via - and two rows on layer 0 are both on a layer a via reaches, so both passed. Confirmed by
+// execution before fixing: a probe with vcc realized twice on layer 0 plus a vcc via 0 to 1 was
+// ADMITTED.
+//
+// The lesson is worth the comment: narrowing a refusal is a deletion, and it silently drops every
+// case the old form caught for reasons the new form does not model. Same-layer duplication and
+// cross-layer routing are different questions, so they are now two causes rather than one that got
+// re-aimed.
+//
+// The cause carries the net and not the ordinal. Naming WHICH layer is duplicated needs a fold over
+// distinct ordinals that this increment does not build, and picking one of them would name a layer
+// the model did not establish as the offender.
+fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: NetIdentity) -> Bool {
+  let on = realizations_of_net(rs: rs, net: net)
+  count(filter(on, r =>
+    count(filter(on, other => copper_layer_ordinal(r: other.layer) == copper_layer_ordinal(r: r.layer))) > 1
+  )) > 0
+}
+
+fn net_split_is_unrouted(rs: List<NetCopperRealization>, vs: List<Via>, net: NetIdentity) -> Bool {
+  let on = realizations_of_net(rs: rs, net: net)
+  count(on) > 1
+    && count(filter(on, r => !layer_is_via_reachable(vs: vs, net: net, ordinal: copper_layer_ordinal(r: r.layer)))) > 0
+}
+
+fn via_refusal_causes(
+  nets: List<ElectricalNet>,
+  board: AdmittedStackup,
+  vs: List<Via>,
+) -> List<CopperRefusalCause> {
+  let unknown = map(
+    filter(vs, v => !net_exists(nets: nets, net: v.net)),
+    v => ViaNamesNoSuchNet { net: v.net },
+  )
+  let foreign = map(
+    filter(vs, v =>
+      v.from_layer.stackup_authority != admitted_stackup_authority(a: board)
+        || v.to_layer.stackup_authority != admitted_stackup_authority(a: board)),
+    v => ViaSelectedAgainstAnotherStackup { net: v.net },
+  )
+  let degenerate = map(
+    filter(vs, v => copper_layer_ordinal(r: v.from_layer) == copper_layer_ordinal(r: v.to_layer)),
+    v => ViaJoinsALayerToItself { net: v.net, ordinal: copper_layer_ordinal(r: v.from_layer) },
+  )
+  unknown + foreign + degenerate
 }
 
 type CopperAdmission
@@ -200,8 +289,9 @@ fn admit_copper(
   nets: List<ElectricalNet>,
   board: AdmittedStackup,
   rs: List<NetCopperRealization>,
+  vs: List<Via>,
 ) -> CopperAdmission {
-  let causes = copper_refusal_causes(nets: nets, board: board, rs: rs)
+  let causes = copper_refusal_causes(nets: nets, board: board, rs: rs, vs: vs)
   if count(causes) > 0 {
     CopperRefused { causes: causes }
   } else {
