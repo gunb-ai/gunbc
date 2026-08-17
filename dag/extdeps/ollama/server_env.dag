@@ -1,0 +1,69 @@
+module extdeps.ollama.server_env
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// OLLAMA'S SERVER ENVIRONMENT VARIABLES, WHICH ARE OLLAMA'S NAMES.
+//
+// `OLLAMA_HOST` and `OLLAMA_MODELS` are part of the dependency's configuration surface. Before this
+// module they appeared in the tree exactly once, inside a prose comment, so any consumer needing to
+// configure a server had no choice but to spell the literals itself -- and a consumer that spells an
+// upstream's identifier is a second authority for it (§3), which is how one typo becomes a server
+// that silently binds the wrong address.
+//
+// The variables are modeled as an assignment-producing surface rather than as bare name constants,
+// because the thing a consumer actually needs is `NAME=value` and exposing only the name invites
+// every caller to re-implement the joining.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.ollama.com/faq"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ollama.server_env",
+      decl_name: "OllamaServerEnvVariable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A closed set of the variables this repository has grounded against the cited surface. It is
+// deliberately small: an unmodeled variable should be absent rather than approximated, so that
+// needing one is a visible modeling step and not a string a caller quietly invents.
+type OllamaServerEnvVariable
+  = OllamaHost
+  | OllamaModels
+
+fn ollama_server_env_name(variable: OllamaServerEnvVariable) -> NonEmptyStr {
+  match variable {
+    OllamaHost => "OLLAMA_HOST" as NonEmptyStr
+    OllamaModels => "OLLAMA_MODELS" as NonEmptyStr
+  }
+}
+
+fn ollama_server_env_assignment(
+  variable: OllamaServerEnvVariable,
+  value: NonEmptyStr,
+) -> NonEmptyStr {
+  join([ollama_server_env_name(variable: variable) as String, "=", value as String], "") as NonEmptyStr
+}
+
+// The address the server listens on. Ollama binds 127.0.0.1:11434 when this is unset; which address
+// a given deployment binds is a deployment fact, so it is a parameter here and never a default.
+fn ollama_host_env_assignment(bind: NonEmptyStr) -> NonEmptyStr {
+  ollama_server_env_assignment(variable: OllamaHost, value: bind)
+}
+
+// Where the server stores and looks for model blobs.
+fn ollama_models_env_assignment(root: NonEmptyStr) -> NonEmptyStr {
+  ollama_server_env_assignment(variable: OllamaModels, value: root)
+}
