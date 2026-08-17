@@ -24,6 +24,10 @@
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
 #   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
+#   Exit codes: 0 = measurement completed (including EMIT_REFUSE / cargo refuse rows);
+#               1 = instrument down (HARNESS_REFUSE — cssl_assemble or probe Cargo.toml authority
+#                   refused before cargo ran; residual_histogram carries instrument_down:1);
+#               2 = usage error.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -141,6 +145,13 @@ print(" ".join(parts))
 PY
 }
 
+emit_harness_refuse_row_and_exit() {
+  ERROR_HISTOGRAM="instrument_down:1"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+  exit 1
+}
+
 if [[ "$EMIT_OK" -eq 1 ]]; then
   RAW_DUP_PUB_USE="$(measure_raw_dup_pub_use "$OUT/src")"
   if [[ "$STD_SEED_LINK" == "1" ]]; then
@@ -149,9 +160,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-      exit 0
+      emit_harness_refuse_row_and_exit
     fi
   fi
 
@@ -171,9 +180,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     FIRST_ERROR="cssl harness authority unavailable"
     MAPPED_GATE="HARNESS_MISSING"
     VERDICT="HARNESS_REFUSE"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-    exit 0
+    emit_harness_refuse_row_and_exit
   fi
 
   BUILD_LOG="$OUT/cargo.log"
