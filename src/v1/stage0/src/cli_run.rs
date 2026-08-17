@@ -41905,6 +41905,10 @@ pub fn run_required_floor(
     let mut scope_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
+    let mut scope_kb_total: u64 = 0;
+    let mut scope_kb_max: u64 = 0;
+    let mut scope_kb_max_module = String::new();
+    let mut scope_kb_max_modules: usize = 0;
     let mut scopes_with_ambiguity: usize = 0;
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
@@ -41918,7 +41922,22 @@ pub fn run_required_floor(
             // Dropped before the next is built, not after: holding both would put two scopes
             // resident at the seam and defeat the point of streaming them.
             drop(current_scope.take());
+            // SCOPE COST, MEASURED AT THE SCOPE. The fold's resident set swings from 9.26GB to
+            // 14.86GB and back down, which correlates with scope size but only correlates: the
+            // heartbeat samples on a timer, so it cannot say whether the swing IS the scope or
+            // something else moving alongside it. Read either side of the one construction and
+            // the question stops being inferential. Taken with the old scope already dropped, so
+            // the delta is this scope's cost and not the difference between two.
+            let rss_before = current_rss_bytes().unwrap_or(0) / 1024;
             let built = claim_scope_for(&prepared, &claim.module_path)?;
+            let rss_after = current_rss_bytes().unwrap_or(0) / 1024;
+            let scope_kb = rss_after.saturating_sub(rss_before);
+            if scope_kb > scope_kb_max {
+                scope_kb_max = scope_kb;
+                scope_kb_max_module = claim.module_path.clone();
+                scope_kb_max_modules = built.indexes.modules.len();
+            }
+            scope_kb_total += scope_kb;
             scope_constructions += 1;
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
@@ -42035,6 +42054,23 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
         scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+    );
+    // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
+    // the mean cost of a scope that cost anything; a scope whose modules were all resident from
+    // the previous one reads as free and would otherwise drag the mean toward zero. This is the
+    // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
+    // view rather than a rebuild costs nothing to enter.
+    eprintln!(
+        "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
+        scope_kb_max as f64 / 1048576.0,
+        if scope_kb_max_module.is_empty() {
+            "-"
+        } else {
+            scope_kb_max_module.as_str()
+        },
+        scope_kb_max_modules,
+        scope_kb_total as f64 / 1048576.0,
+        scope_constructions
     );
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
     // for a reader to compare. A run that planned more claims than it executed has silently
