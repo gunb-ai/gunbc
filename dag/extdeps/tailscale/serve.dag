@@ -200,6 +200,7 @@ fn tailscale_serve_route_subject(
   TailscaleServeRouteSubject { scope: scope, endpoint: endpoint }
 }
 
+// Scope identity keys on NetworkEndpoint.label only: fleet tailnet device rows are singleton authorities per label (gunbc.fleet_intent_network). If endpoint rows at the same label can diverge on host/address/role/locality, widen equality here before call sites depend on label alone.
 fn tailscale_network_endpoint_label_eq(a: NetworkEndpoint, b: NetworkEndpoint) -> Bool {
   a.label == b.label
 }
