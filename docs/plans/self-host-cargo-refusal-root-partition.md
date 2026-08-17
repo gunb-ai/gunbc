@@ -1215,7 +1215,7 @@ cause.
 |---|---|---|---|
 | B — algebra/numeric carrier, closure flag | ~~509~~ → **at most 146 repr-shaped (§18)**, and narrower still: sites whose type carries a checkpoint row do not move | `eager-deer-389` | identity-keying design; flip control executed both directions |
 | C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
-| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` (session archived) | half 2 landed; half 1 is [PR #8350](https://github.com/gunb-ai/gunbc/pull/8350) at the merge bar (2/2, MERGEABLE) with no live owner — `smart-ram-730` shepherds it through CI |
+| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` | **both halves LANDED** — half 1 merged as `bbb52138b25` ([PR #8350](https://github.com/gunb-ai/gunbc/pull/8350)), which also retired an enrolled witness that had been asserting the broken shape |
 | A — derive/bounds | **LANDED**, [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as `c4e9cc918c5` | this session | see 12.5 for what the diagnosis got wrong on the way |
 | tail — six mid-sized roots + 62 singletons | 1,874 distinct total | `smart-ibex-716` | partitioned, §11 |
 
