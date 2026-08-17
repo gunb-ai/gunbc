@@ -17,8 +17,8 @@ use crate::std_trait_derive_shape::PairCompletionComponent::{
 use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
     ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
-    ReprDeriveDiv, ReprDeriveEq, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd, ReprDerivePartialEq,
-    ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
+    ReprDeriveDiv, ReprDeriveEq, ReprDeriveHash, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd,
+    ReprDerivePartialEq, ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
 };
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, pair_completion_body_uses_rhs, pair_completion_op_rows,
@@ -195,6 +195,7 @@ pub fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> Str
         ReprGroundingDeriveTrait::ReprDeriveEq => "Eq".to_string(),
         ReprGroundingDeriveTrait::ReprDerivePartialOrd => "PartialOrd".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveOrd => "Ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveHash => "std::hash::Hash".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveSerialize => "serde::Serialize".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveDeserialize => "serde::Deserialize".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveAdd => "std::ops::Add".to_string(),
@@ -699,6 +700,7 @@ pub fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
         ReprGroundingDeriveTrait::ReprDeriveEq => "eq".to_string(),
         ReprGroundingDeriveTrait::ReprDerivePartialOrd => "partial_ord".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveOrd => "ord".to_string(),
+        ReprGroundingDeriveTrait::ReprDeriveHash => "hash".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveSerialize => "serialize".to_string(),
         ReprGroundingDeriveTrait::ReprDeriveDeserialize => "deserialize".to_string(),
     }
