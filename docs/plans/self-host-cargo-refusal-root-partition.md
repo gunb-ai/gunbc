@@ -1892,3 +1892,41 @@ on the symmetry number would discard a possibly-correct mechanism.
 `build_shared_types`' input, not of diagnostics.
 
 Both roots are floor-heavy and cheap to re-measure at M=11 after any fix.
+
+### 11.20 The `shared_types` read: BOTH R1 populations are shared types, so membership is not the discriminator
+
+Run at `smart-ram-730`'s request, to settle whether the DESIGN note's premise (a uniform over-wrap of
+`shared_types` members) is confirmed on R1's 28 over-wraps. Criterion, read from
+`src/v1/05_emit_rust.dag` `build_shared_types` → `maybe_mark_shared_type`: for Rust
+(`sharing.needs_sharing`), a type is shared when its repr is `StructRepr`, or `EnumRepr` with
+`unit_only == false`, minus grounded-coproduct native aliases and `is_type_constant` — and
+`is_type_constant` requires **every** field type to be `is_copy` in the Rust checkpoint table.
+
+| type | declaration | shared? | R1 direction |
+|---|---|---|---|
+| `ScopeRoster` | `{ roots: List<String> }` | yes (field not copy) | OVER (6) |
+| `SubjectRoster` | `{ entries: List<QualifiedName> }` | yes | OVER (6) |
+| `ConsumerRequirement` | payload coproduct | yes (`unit_only == false`) | OVER (6) |
+| `SpanIndex` | `{ entries: Map<OccurrenceId, OriginEvent> }` | yes | BOTH (7/7) |
+| `DecimalDigitsStep` | `{ digits: FreeMonoid<DecimalDigit>, carry: Bool }` | yes | UNDER (4) |
+
+**Every type in both populations is a shared type.** So membership does not separate over- from
+under-wrapping, and "the emitter wraps every `shared_types` member" cannot by itself explain a set
+that is uniformly shared and yet splits by sign. The premise is neither confirmed as the cause nor
+refuted as a description; it is **not discriminating**, which is a third outcome and the one that
+actually occurred.
+
+What this leaves standing is `bold-lark-722`'s catalog read (reported to me, not verified here):
+`rust_sg_rc_use_site_ownership_catalog` rows disagree *by position* for the same carrier —
+`BindingProjection → ReferenceLayerRc` while `FunctionParameter → ReferenceLayerOwned` — and
+`TargetOwnershipUseSite` has exactly four inhabitants, **none of which is a call argument**, while
+`06_translate` `translate_coerced_with_atom_realization` hardcodes `OwnershipAtBindingProjection` for
+the generic node fold. An argument therefore carries the producer-side layer and the
+callee-parameter question is never asked. That predicts precisely what was measured: per-type-stable,
+opposite-signed, all shared, and 53 of 54 readable sites at call-argument position.
+
+**Reconciliation of the two counts, recorded because they will be quoted together:** R1 is **55** at
+M=11; **54** of those appear in the `03_ingest` run, which is the only closure whose emitted tree was
+kept, so the position classification is over 54. The absent one is `v2_compiler_emit_host.rs:417`.
+And `v2_compiler_parse.rs:582:12` carries **both** signs at one file:line:column, so 55 counts
+diagnostics-at-sites, not distinct source positions.
