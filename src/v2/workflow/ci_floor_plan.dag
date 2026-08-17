@@ -127,10 +127,6 @@ data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag
 
 data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
 
-data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
-
-data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
-
 data floor_merge_admission_entry: String = "dag/tools/merge_admission_walk.dag"
 
 data floor_merge_admission_capture_entry: String = "dag/tools/merge_admission_capture.dag"

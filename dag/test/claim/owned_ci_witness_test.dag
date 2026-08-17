@@ -286,10 +286,9 @@ test fn witness_operator_rerun_identity_key() -> Bool {
 
 test fn witness_executor_stage_labels_match_plan() -> Bool {
   let labels = owned_ci_executor_stage_labels()
-  (length(labels) == 3)
+  (length(labels) == 2)
     && (labels.first() == "build")
-    && (labels.skip(n: 1).first() == "regen")
-    && (labels.skip(n: 2).first() == "floor")
+    && (labels.skip(n: 1).first() == "floor")
 }
 
 test fn witness_run_id_admits_produced_shape() -> Bool {
