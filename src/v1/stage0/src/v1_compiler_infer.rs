@@ -20133,6 +20133,7 @@ pub fn build_emit_graph_info(
             read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+            clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: empty_type_env(),
