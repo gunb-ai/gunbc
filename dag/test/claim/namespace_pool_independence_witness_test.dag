@@ -11,25 +11,25 @@ fn npi_witness_consumer_file() -> std.types.FilePath {
   "app/consumer.dag"
 }
 
-fn npi_witness_ref_one() -> OccurrenceId {
-  OccurrenceId { value: 200 }
+fn npi_witness_ref_one() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 200 }
 }
 
-fn npi_witness_ref_two() -> OccurrenceId {
-  OccurrenceId { value: 201 }
+fn npi_witness_ref_two() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 201 }
 }
 
-fn npi_witness_declaration() -> OccurrenceId {
-  OccurrenceId { value: 300 }
+fn npi_witness_declaration() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 300 }
 }
 
-fn npi_witness_declaration_alt() -> OccurrenceId {
-  OccurrenceId { value: 301 }
+fn npi_witness_declaration_alt() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 301 }
 }
 
 fn npi_witness_provenance(
-  reference_occurrence: OccurrenceId,
-  declaration_occurrence: OccurrenceId,
+  reference_occurrence: std.occurrence_identity.OccurrenceId,
+  declaration_occurrence: std.occurrence_identity.OccurrenceId,
 ) -> CrossFileBindingProvenance {
   CrossFileBindingProvenance {
     reference_occurrence: reference_occurrence,
@@ -40,8 +40,8 @@ fn npi_witness_provenance(
 }
 
 fn npi_witness_provider(
-  reference_occurrence: OccurrenceId,
-  declaration_occurrence: OccurrenceId,
+  reference_occurrence: std.occurrence_identity.OccurrenceId,
+  declaration_occurrence: std.occurrence_identity.OccurrenceId,
 ) -> BoundReferenceProvider {
   BoundReferenceProvider {
     reference_occurrence: reference_occurrence,
@@ -142,7 +142,7 @@ test fn unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds() -> B
 }
 
 fn npi_reference_occurrence_in_transport(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   references: List<ReferenceOccurrence>,
 ) -> Bool {
   fold(

@@ -20,14 +20,14 @@ type DeclarationExposure
   | RootExposure
 
 type DeclarationExposureRow {
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
   exposure: DeclarationExposure
 }
 
 data authored_order_note: String = "AuthoredOrderRow carries the authored token ordinal for one occurrence — the source-order axis, distinct from OccurrenceId identity. Module-sibling gating compares ordinals only; never OccurrenceId.value as a proxy for authored order. AuthoredTokenOrdinal authority is std.occurrence_identity (feature:occurrence-ordinal-value-measure dissolve-on) — this module does not mint a parallel Int brand."
 
 type AuthoredOrderRow {
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
   ordinal: AuthoredTokenOrdinal
 }
 
@@ -38,17 +38,17 @@ type OccurrenceBindingCandidateInputs {
 }
 
 type OccurrenceModulePathRow {
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
   module_path: NonEmptyStr
 }
 
 type OccurrenceModulePathIndexRefusal
   = DuplicateOccurrenceModulePathRow {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
       first_module_path: NonEmptyStr,
       conflicting_module_path: NonEmptyStr,
     }
-  | MissingOccurrenceModulePathRow { occurrence: OccurrenceId }
+  | MissingOccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId }
 
 type OccurrenceModulePathIndexBuild {
   module_by_occurrence: Map<Int, NonEmptyStr>
@@ -106,10 +106,10 @@ fn module_by_occurrence_build(
 
 type DeclarationExposureIndexRefusal
   = MissingDeclarationExposure {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
   | ConflictingDeclarationExposure {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
       first_exposure: DeclarationExposure,
       conflicting_exposure: DeclarationExposure,
     }
@@ -151,7 +151,7 @@ type DeclarationExposureGrounding
   | CrossFileProviderExportedExposure
 
 fn occurrence_containment_parent_scope(
-  ancestors: FreeMonoid<OccurrenceId>
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>
 ) -> OccurrenceContainmentPath? {
   match reverse(ancestors) {
     Empty => none
@@ -283,10 +283,10 @@ fn exposure_by_occurrence_build(
 
 type AuthoredOrderIndexRefusal
   = MissingAuthoredOrderRow {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
   | ConflictingAuthoredOrderRow {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
       first_ordinal: AuthoredTokenOrdinal,
       conflicting_ordinal: AuthoredTokenOrdinal,
     }
@@ -347,14 +347,14 @@ fn authored_order_by_occurrence_build(
 
 fn ordinal_of_occurrence(
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> AuthoredTokenOrdinal? {
   map_get(order_by_occurrence, occurrence.value)
 }
 
 fn exposure_of_occurrence(
   exposure_by_occurrence: Map<Int, DeclarationExposure>,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> DeclarationExposure? {
   map_get(exposure_by_occurrence, occurrence.value)
 }
@@ -439,7 +439,7 @@ fn module_paths_validate_transport(
 
 fn module_of_occurrence(
   module_by_occurrence: Map<Int, NonEmptyStr>,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> NonEmptyStr? {
   map_get(module_by_occurrence, occurrence.value)
 }
@@ -470,7 +470,7 @@ fn exposure_validate_transport_declarations(
 
 fn authored_order_validate_transport_occurrence(
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> AuthoredOrderIndexRefusal? {
   match map_get(order_by_occurrence, occurrence.value) {
     Present { value: _ } => none
@@ -626,7 +626,7 @@ type DeclarationsByNameBuild
       by_name: Map<String, List<DeclarationOccurrence>>,
     }
   | DeclarationsByNameMissingIndexEntry {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
 
 type DeclarationsByNameFold
@@ -634,7 +634,7 @@ type DeclarationsByNameFold
       by_name: Map<String, List<DeclarationOccurrence>>,
     }
   | DeclarationsByNameFoldMissing {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
 
 fn declarations_by_name_build(
@@ -678,7 +678,7 @@ type OccurrenceCandidateIndexBuild
   | OccurrenceCandidateIndexModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | OccurrenceCandidateIndexExposureRefused { refusal: DeclarationExposureIndexRefusal }
   | OccurrenceCandidateIndexAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
-  | OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: OccurrenceId }
+  | OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: std.occurrence_identity.OccurrenceId }
 
 fn occurrence_candidate_index_build(
   transport: OccurrenceTransport,
@@ -760,7 +760,7 @@ data occurrence_candidate_cardinality_note: String = "candidate_occurrence_ids_f
 fn candidate_occurrence_ids_for_reference(
   index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence
-) -> List<OccurrenceId> {
+) -> List<std.occurrence_identity.OccurrenceId> {
   match map_get(index.entries_by_id, reference.occurrence.value) {
     Absent => []
     Present { value: entry } =>
@@ -783,8 +783,8 @@ fn candidate_occurrence_ids_for_reference(
 data bound_reference_provider_note: String = "BoundReferenceProvider is the post-bind projection of one accepted OccurrenceBound decision: which reference resolved to which declaration, and which module each side's authored text belongs to. It is produced only from OccurrenceBound (never Unbound or Ambiguous) and only when both occurrences carry an OccurrenceModulePathRow -- a missing module row is a typed, located ReferenceBindingProjectionModulePathMissing refusal, never a silently-omitted edge. Same-module ruling (operator on PR 7515 / slice A): a BoundReferenceProvider whose consumer_module equals provider_module is retained as a binding receipt; the DirectModuleDependency projection emits NO M→M self-edge from it."
 
 type BoundReferenceProvider {
-  reference_occurrence: OccurrenceId
-  declaration_occurrence: OccurrenceId
+  reference_occurrence: std.occurrence_identity.OccurrenceId
+  declaration_occurrence: std.occurrence_identity.OccurrenceId
   consumer_module: NonEmptyStr
   provider_module: NonEmptyStr
 }
@@ -1172,7 +1172,7 @@ type StructuralBindingIndexRefusal
       refusal: AuthoredOrderIndexRefusal,
     }
   | StructuralBindingDeclarationBucketRefusal {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
 
 type StructuralBindingWalk
@@ -1182,8 +1182,8 @@ type StructuralBindingWalk
 data cross_file_binding_provenance_note: String = "CrossFileBindingProvenance is the file-grain post-bind receipt parallel to BoundReferenceProvider: which reference resolved to which declaration, and which storage file each side's authored text belongs to. It is produced only from OccurrenceBound providers after joining consumer_module and provider_module through ModulePathFileRow — a missing row is ReferenceBindingProjectionFilePathMissing, never a silent omission. Same-file ruling (carrier law, parallel to DirectModuleDependency): consumer_file == provider_file rows are retained as binding receipts; the file-dependency projection emits NO self-edge from them."
 
 type CrossFileBindingProvenance {
-  reference_occurrence: OccurrenceId
-  declaration_occurrence: OccurrenceId
+  reference_occurrence: std.occurrence_identity.OccurrenceId
+  declaration_occurrence: std.occurrence_identity.OccurrenceId
   consumer_file: std.types.FilePath
   provider_file: std.types.FilePath
 }
@@ -1578,7 +1578,7 @@ data cross_file_binding_closure_assembly_note: String = "Collision-free cross-fi
 
 type OccurrenceIdRemapState {
   allocator: OccurrenceIdAllocator
-  remap: Map<Int, OccurrenceId>
+  remap: Map<Int, std.occurrence_identity.OccurrenceId>
 }
 
 fn occurrence_id_remap_state_with_fresh_map(
@@ -1591,12 +1591,12 @@ fn occurrence_id_remap_state_with_fresh_map(
 }
 
 type OccurrenceIdRemapResult {
-  id: OccurrenceId
+  id: std.occurrence_identity.OccurrenceId
   state: OccurrenceIdRemapState
 }
 
 fn remap_occurrence_id(
-  id: OccurrenceId,
+  id: std.occurrence_identity.OccurrenceId,
   state: OccurrenceIdRemapState
 ) -> OccurrenceIdRemapResult {
   match map_get(state.remap, id.value) {
@@ -1620,7 +1620,7 @@ type OccurrenceContainmentRemapResult {
 }
 
 type OccurrenceAncestorRemapBuild {
-  ancestors: FreeMonoid<OccurrenceId>
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>
   state: OccurrenceIdRemapState
 }
 
@@ -2251,16 +2251,16 @@ fn reference_derived_clause_e_production_from_assembled_closure(
 
 type ReferenceBindingProjection
   = ReferenceBindingProjectionBound { provider: BoundReferenceProvider }
-  | ReferenceBindingProjectionUnbound { occurrence: OccurrenceId }
-  | ReferenceBindingProjectionAmbiguous { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionUnbound { occurrence: std.occurrence_identity.OccurrenceId }
+  | ReferenceBindingProjectionAmbiguous { occurrence: std.occurrence_identity.OccurrenceId }
   | ReferenceBindingProjectionTransportRefused { refusal: OccurrenceTransportRefusal }
   | ReferenceBindingProjectionModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | ReferenceBindingProjectionExposureRefused { refusal: DeclarationExposureIndexRefusal }
   | ReferenceBindingProjectionAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
-  | ReferenceBindingProjectionDeclarationBucketRefused { occurrence: OccurrenceId }
-  | ReferenceBindingProjectionModulePathMissing { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionDeclarationBucketRefused { occurrence: std.occurrence_identity.OccurrenceId }
+  | ReferenceBindingProjectionModulePathMissing { occurrence: std.occurrence_identity.OccurrenceId }
   | ReferenceBindingProjectionWrongCategory {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
       observed: OccurrenceCategory,
     }
 

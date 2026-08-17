@@ -11,8 +11,8 @@ fn trcb_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan
 }
 
 fn trcb_fixture_path(
-  ancestors: List<OccurrenceId>,
-  terminal: OccurrenceId
+  ancestors: List<std.occurrence_identity.OccurrenceId>,
+  terminal: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath {
     ancestors: ancestors,
@@ -21,7 +21,7 @@ fn trcb_fixture_path(
 }
 
 fn trcb_fixture_index_entry(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
   containment: OccurrenceContainmentPath
 ) -> OccurrenceIndexEntry {
@@ -36,7 +36,7 @@ fn trcb_fixture_index_entry(
 }
 
 fn trcb_fixture_declaration(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   containment: OccurrenceContainmentPath,
   category: OccurrenceCategory
 ) -> DeclarationOccurrence {
@@ -49,7 +49,7 @@ fn trcb_fixture_declaration(
 }
 
 fn trcb_fixture_reference(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   containment: OccurrenceContainmentPath,
   category: OccurrenceCategory
 ) -> ReferenceOccurrence {
@@ -73,21 +73,21 @@ fn trcb_fixture_inputs(
   }
 }
 
-fn trcb_authored_order(occurrence: OccurrenceId, ordinal: Int) -> AuthoredOrderRow {
+fn trcb_authored_order(occurrence: std.occurrence_identity.OccurrenceId, ordinal: Int) -> AuthoredOrderRow {
   AuthoredOrderRow {
     occurrence: occurrence,
     ordinal: AuthoredTokenOrdinal { value: ordinal },
   }
 }
 
-fn trcb_module_exposure(occurrence: OccurrenceId, module: String) -> DeclarationExposureRow {
+fn trcb_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module: String) -> DeclarationExposureRow {
   DeclarationExposureRow {
     occurrence: occurrence,
     exposure: ModuleExposure { module: trcb_module_path(dotted: module) },
   }
 }
 
-fn trcb_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
+fn trcb_root_exposure(occurrence: std.occurrence_identity.OccurrenceId) -> DeclarationExposureRow {
   DeclarationExposureRow {
     occurrence: occurrence,
     exposure: RootExposure,
@@ -96,9 +96,9 @@ fn trcb_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
 
 // Control 1 (binds): cross-module bare ContentHash with RootExposure on the provider type — OccurrenceBound from the single occurrence_binding_from_candidates fold, no import reachability required.
 test fn control_one_containment_bind_holds() -> Bool {
-  let type_decl = OccurrenceId { value: 10 }
-  let fn_body = OccurrenceId { value: 20 }
-  let type_ref = OccurrenceId { value: 30 }
+  let type_decl = std.occurrence_identity.OccurrenceId { value: 10 }
+  let fn_body = std.occurrence_identity.OccurrenceId { value: 20 }
+  let type_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
@@ -148,8 +148,8 @@ test fn control_one_containment_bind_holds() -> Bool {
 
 // Control 2 (must refuse): N1a row 3 analog — no ContentHash declaration in the transport population; candidate lookup returns empty and occurrence_binding_from_candidates yields OccurrenceUnbound.
 test fn control_two_absent_must_refuse_holds() -> Bool {
-  let fn_body = OccurrenceId { value: 20 }
-  let type_ref = OccurrenceId { value: 30 }
+  let fn_body = std.occurrence_identity.OccurrenceId { value: 20 }
+  let type_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
   match resolve_type_reference_containment_binding(
@@ -189,9 +189,9 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
 
 // Control 3 (pool coincidence must not bind): N1a row 4 analog — ContentHash declaration is pool-present (same spelling in transport, symbol_index_lookup would hit on the legacy path) but carries only ModuleExposure for std.content_hash while the reference is in extdeps.consumer with no containment bridge. Kernel must answer OccurrenceUnbound, never treat pool membership as binding authority.
 test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
-  let type_decl = OccurrenceId { value: 10 }
-  let fn_body = OccurrenceId { value: 20 }
-  let type_ref = OccurrenceId { value: 30 }
+  let type_decl = std.occurrence_identity.OccurrenceId { value: 10 }
+  let fn_body = std.occurrence_identity.OccurrenceId { value: 20 }
+  let type_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
@@ -237,8 +237,8 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
 
 // API-boundary control (slice 1 scope note: category inadmissibility): resolve_type_reference_containment_binding refuses a CallableOccurrence reference with ReferenceBindingProjectionWrongCategory before candidate enumeration — not a second binding fold, but the typed entry's category guard must execute.
 test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
-  let call_ref = OccurrenceId { value: 30 }
-  let ref_path = trcb_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
+  let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
+  let ref_path = trcb_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: call_ref)
   match resolve_type_reference_containment_binding(
     transport: OccurrenceTransport {
       index: OccurrenceIndex {

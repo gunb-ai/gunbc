@@ -20,7 +20,7 @@ type StructuralBindingResolution
       refusal: AuthoredOrderIndexRefusal,
     }
   | StructuralBindingIndexDeclarationBucketRefused {
-      occurrence: OccurrenceId,
+      occurrence: std.occurrence_identity.OccurrenceId,
     }
   | StructuralBindingProductionRefused {
       gap: ReferenceBindingProductionGap,
@@ -33,30 +33,30 @@ type ReferenceBindingProductionGap
 
 type ReferenceBindingObservation
   = SameFileNeighbourObservation {
-      neighbour: OccurrenceId,
+      neighbour: std.occurrence_identity.OccurrenceId,
       resolution: StructuralBindingResolution,
     }
   | SameFileNeighbourProductionRefused {
       gap: ReferenceBindingProductionGap,
     }
   | SiblingBranchObservation {
-      own_branch_declaration: OccurrenceId,
-      sibling_branch_declaration: OccurrenceId,
+      own_branch_declaration: std.occurrence_identity.OccurrenceId,
+      sibling_branch_declaration: std.occurrence_identity.OccurrenceId,
       resolution: StructuralBindingResolution,
     }
   | SiblingBranchProductionRefused {
       gap: ReferenceBindingProductionGap,
     }
   | LaterDeclarationObservation {
-      later_declaration: OccurrenceId,
+      later_declaration: std.occurrence_identity.OccurrenceId,
       resolution: StructuralBindingResolution,
     }
   | LaterDeclarationProductionRefused {
       gap: ReferenceBindingProductionGap,
     }
   | DistinctHomonymObservation {
-      first_declaration: OccurrenceId,
-      second_declaration: OccurrenceId,
+      first_declaration: std.occurrence_identity.OccurrenceId,
+      second_declaration: std.occurrence_identity.OccurrenceId,
       resolution: StructuralBindingResolution,
     }
   | DistinctHomonymProductionRefused {

@@ -929,15 +929,15 @@ fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -
 }
 
 fn occurrence_ancestors_push(
-  ancestors: FreeMonoid<OccurrenceId>,
-  occurrence: OccurrenceId
-) -> FreeMonoid<OccurrenceId> {
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
+  occurrence: std.occurrence_identity.OccurrenceId
+) -> FreeMonoid<std.occurrence_identity.OccurrenceId> {
   concat(ancestors, Cons { head: occurrence, tail: Empty })
 }
 
 fn stamp_parsed_node_list(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -960,7 +960,7 @@ fn stamp_parsed_node_list(
 
 fn stamp_parsed_optional_node(
   node: Node?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedOptionalNodeStampResult {
@@ -983,7 +983,7 @@ fn stamp_parsed_optional_node(
 
 fn stamp_parsed_pattern(
   pattern: MatchPattern?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedPatternStampResult {
   match pattern {
@@ -1042,7 +1042,7 @@ fn stamp_parsed_pattern(
 
 fn stamp_parsed_inferred(
   inferred: InferredNode?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedOptionalNodeStampResult {
   match inferred {
@@ -1097,7 +1097,7 @@ fn parsed_occurrence_role_for_node(
 fn parse_context_record_occurrence(
   ctx: ParseContext,
   role: ParsedOccurrenceRole,
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   containment: OccurrenceContainmentPath,
   diagnostic_span: SourceSpan
 ) -> ParseContext {
@@ -1144,7 +1144,7 @@ fn parse_context_record_occurrence(
 
 fn stamp_parsed_node_list_with_head_role(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   head_role: ParsedOccurrenceRole,
   tail_role: ParsedOccurrenceRole
@@ -1173,7 +1173,7 @@ fn stamp_parsed_node_list_with_head_role(
 
 fn stamp_parsed_node_children(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -1224,7 +1224,7 @@ fn stamp_parsed_node_children(
 
 fn stamp_parsed_node(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeStampResult {

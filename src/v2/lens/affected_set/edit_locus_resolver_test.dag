@@ -116,7 +116,7 @@ test fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
 
 fn edit_locus_occurrence_textual_file_eq(
   span_index: SpanIndex,
-  id: OccurrenceId,
+  id: v2.std.node.OccurrenceId,
   file: Symbol
 ) -> Bool {
   match span_index_resolve_textual_locus(index: span_index, id: id) {

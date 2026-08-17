@@ -141,7 +141,7 @@ fn render_annotation_block(text: String) -> String {
 // EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored.
 fn render_subject_annotation_blocks(
   graph: SourceAnnotationGraph,
-  subject: OccurrenceId
+  subject: std.occurrence_identity.OccurrenceId
 ) -> String? {
   let texts = fold(
     source_annotation_graph_rows(graph: graph),
@@ -169,7 +169,7 @@ fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexE
   )
 }
 
-fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: OccurrenceId) -> String? {
+fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: std.occurrence_identity.OccurrenceId) -> String? {
   fold(
     entries,
     init: none,

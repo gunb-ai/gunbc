@@ -48,7 +48,7 @@ test fn span_index_from_source_round_trip_holds() -> Bool {
   }
 }
 
-fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: OccurrenceId) -> Bool {
+fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: v2.std.node.OccurrenceId) -> Bool {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {
