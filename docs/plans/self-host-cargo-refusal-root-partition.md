@@ -1023,10 +1023,12 @@ mis-sized at 196 because the July TSV counted its numeric surface and not its al
 - **No before/after.** This is one measurement of one head; nothing here says a root is shrinking
   or growing except where I compare to a July *document* (11.5), and those comparisons inherit
   that document's staleness in the other direction.
-- **Seven modules, not twenty.** The four unprobed groups (`emit_produced`, `03_normalize`,
-  `program_partition`, `05_emit_orchestration`, …) had near-identical July histograms to the
-  cluster I did probe, which is *suggestive* that they sit on the same 605-row floor and no more.
-  Unmeasured.
+- ~~**Seven modules, not twenty.**~~ **SUPERSEDED by §11.14 (2026-08-16):** `emit_module`,
+  `03_normalize`, `program_partition` and `05_eval` were subsequently probed at the same head and
+  added **nine** new distinct sites in total, so the same-floor suggestion was measured and held.
+  Two of the modules this bullet named as unprobed are now among the eleven. What remains genuinely
+  unmeasured is `emit_produced` and `05_emit_orchestration` — named here so the residue is a list
+  rather than a feeling.
 - **`unreachable_patterns` is counted as an error row** because the crate denies it; if the
   denial is lifted, E drops out of the denominator and every percentage above moves ~2%.
 - **Root ownership is by generated file, and I have not published the file map.** The per-root
