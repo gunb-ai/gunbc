@@ -93,6 +93,9 @@ Checked against `emit_operation_method` / `emit_capability_method` in `src/v1/05
 - **CI run 32040672883 @ `7cbccf41` (2026-08-17):** `build` failed at **Set up job** with GitHub
   **503** on `setup-rust-toolchain` artifact download; `ci` refused via `FloorUpstreamAlreadyRed`
   (fail-fast on upstream red — not an independent floor failure). Retry via new head.
+- **CI run 32040993674 @ `e512b7e1` (2026-08-17):** `build`/regen/heal **success**; `ci` alone failed
+  at **Set up job** with **503** on `upload-artifact` tarball — `gunbc ci` never ran. Retry via new
+  head.
 - **Instrument integrity (2026-08-17):** on main through `7cfeb6f0`, the probe scaffold called
   `gunbc run` on a `String`-returning entry — refused by the #8286 `NotProcessExit` wall. A stderr
   value-capture workaround was tried and **reverted** (it re-opened the fail-open that wall exists to
