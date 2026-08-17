@@ -40703,11 +40703,11 @@ pub struct PreparedClaimScope {
 // longest module-path prefix wins). A tie is a genuine homonym, and it contributes BOTH
 // declarers rather than picking one -- an evaluation scope is a visibility question, and
 // narrowing it on a coin-flip is how a claim silently fails to see the module it meant.
-struct ReferenceClosureIndex {
-    module_count: usize,
-    decl_index: HashMap<String, std::collections::BTreeSet<String>>,
-    module_names: std::collections::HashSet<String>,
-    refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+pub struct ReferenceClosureIndex {
+    pub module_count: usize,
+    pub decl_index: HashMap<String, std::collections::BTreeSet<String>>,
+    pub module_names: std::collections::HashSet<String>,
+    pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
 }
 
 thread_local! {
@@ -40776,7 +40776,7 @@ fn reference_closure_index(
 
 // The modules one module reaches directly by reference. Chains carry a leading unit separator so
 // a qualified path can never collide with a bare identifier in one set.
-fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<String> {
+pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<String> {
     let Some(refs) = index.refs_by_module.get(module) else {
         return Vec::new();
     };
@@ -41735,10 +41735,32 @@ pub fn run_required_floor(
             );
         }
     }
+    // SCOPE SIZE IS REPORTED, because it is the quantity every per-claim cost is proportional to.
+    //
+    // A context's lazily-built indexes are derived from the scope's module population and rebuilt
+    // per claim, so a scope's module count multiplies by the number of claims that share it. When
+    // the scope was an import closure that product was small; the reference closure changed the
+    // multiplicand and the fold's cost moved with it. Reporting only the projection's own
+    // duration hides that entirely: the projection is where scopes are BUILT, and the fold is
+    // where their size is PAID.
+    let mut sizes: Vec<usize> = scopes.values().map(|s| s.indexes.modules.len()).collect();
+    sizes.sort_unstable();
+    let total: usize = sizes.iter().sum();
     eprintln!(
-        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves)",
+        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves) \
+         modules_per_scope min={} p50={} p90={} max={} mean={:.1} corpus={}",
         scopes.len(),
-        scope_start.elapsed().as_millis()
+        scope_start.elapsed().as_millis(),
+        sizes.first().copied().unwrap_or(0),
+        sizes.get(sizes.len() / 2).copied().unwrap_or(0),
+        sizes.get(sizes.len() * 9 / 10).copied().unwrap_or(0),
+        sizes.last().copied().unwrap_or(0),
+        if sizes.is_empty() {
+            0.0
+        } else {
+            total as f64 / sizes.len() as f64
+        },
+        prepared.graph.modules.len()
     );
 
     floor_seam("claim-evaluation-fold");
