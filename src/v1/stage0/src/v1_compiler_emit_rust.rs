@@ -772,6 +772,15 @@ pub fn rust_scalar_checkpoint_render_base(
     }
 }
 
+pub fn rust_checkpoint_scalar_declared_arity_guard_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The strip below reads table MEMBERSHIP as the proposition 'this leaf has arity 0 in Rust'. A TypeCheckpoint row cannot state arity — it states target spelling — so the two facts 'this is a scalar' and 'I have a spelling for this name' arrive as one Present, and the arm answers 'drop every type argument' to both. That is DESIGN section 5's widening failure arm: the dropped argument leaves plausible output rather than a diagnostic, so the deficit's frequency was zero by construction until rustc reported E0107. The guard consults the single arity authority (std.types is_container_type / container_expected_arity) FIRST, so a leaf with declared arity can never be classified scalar however the target's spelling table is edited. Receipt: docs/probes/root_d_generic_arity_2026-08-16.md.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn rust_checkpoint_scalar_phantom_params_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -792,6 +801,9 @@ pub fn rust_render_checkpoint_scalar_bare(
     } else {
         {
             let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
+            if is_container_type(leaf.clone()) {
+                return None;
+            }
             match rust_scalar_checkpoint_render_base(leaf.clone(), corpus_repr.clone()) {
                 Some(scalar) => {
                     if (v1_rt::set_contains(&shared_types, leaf.clone())
@@ -893,7 +905,7 @@ pub fn rust_witness_parent_leaf(parent: String) -> bool {
 pub fn rust_witness_variant_arm_names_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Holds/Violates literals below are the two arms of std.witness.Witness<C> (dag/std/witness.dag) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
+            "Holds/Violates literals below are the two arms of v2.std.witness.Witness<C> (src/v2/std/witness.dag; this citation read std.witness / dag/std/witness.dag until 2026-08-16, naming a module that does not exist in the tree) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
