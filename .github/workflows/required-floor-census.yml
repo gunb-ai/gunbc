@@ -7,10 +7,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: required-floor-census
-  cancel-in-progress: true
+  group: required-floor-census-${{ github.ref }}
+  cancel-in-progress: false
 env:
   CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target-census
 jobs:
   census:
     runs-on: [self-hosted, linux, arm64]
