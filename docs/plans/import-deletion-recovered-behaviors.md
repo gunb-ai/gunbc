@@ -428,3 +428,38 @@ symptom before distinguishing those.
   Below the ordinary compiler floor, reproduces in seven lines, and is a fact
   about `main` rather than about the import deletion. Linked from here so that
   withdrawing the branch-side claim does not orphan the control's own result.
+
+## The deep recursion is reachable from any large `compile_to_resolved`, not just from two bad tests
+
+Recorded because it narrows a question I had left open, and because it was
+found by an instrument failing rather than by looking for it.
+
+A branch-local audit harness — counting constructor-resolution refusals across
+every `data` item in the corpus — built one source vector of 3,747 modules and
+called `compile_to_resolved`. It died at `rc=139`, the same SIGSEGV, after
+`compile.frontend` and `compile.normalize` completed.
+
+So the earlier reading that the descent was reachable "only from two
+over-scoped witnesses" is **too weak**. What the two witnesses had in common
+was not being tests: it was handing `compile_to_resolved` a large source
+vector. Any consumer that does that reaches the same recursion.
+
+**The contrast that localizes it.** `gunbc compile --source-root dag
+--source-root src/v2` over the SAME corpus, on the same host and binary,
+completes: exit 1, 3,096 located diagnostics, no fault. So the fault tracks the
+DRIVER PATH rather than corpus size — the CLI's whole-corpus compile does not
+reach the descent that `compile_to_resolved` over one vector does.
+
+**What this does and does not establish.** It does not establish that a
+production consumer reaches it; the harness is not one, and the CLI path is the
+production whole-corpus compile and it survives. It does retire the claim that
+the population is two tests. The bounded question — whether the resolver's
+production entry can reach a cycling descent in principle — is now sharper: the
+two drivers differ, one faults, and the difference between them is the place to
+look.
+
+**Consequence for the audit.** The 1,187-site constructor audit cannot be run
+at whole-corpus grain through this path until the recursion is repaired or the
+harness is scoped. Scoping it is the better instrument anyway: the subject is
+157 files, and building the whole world to ask about a known population is the
+same over-scoping this branch already cut out of two witnesses.
