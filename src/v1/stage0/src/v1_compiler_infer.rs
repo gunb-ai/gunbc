@@ -904,21 +904,6 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
     }
 }
 
-pub fn same_owner_declaration(
-    owner_a: Rc<Node>,
-    owner_b: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let left_name = authored_name_at(source_indices.clone(), owner_a.clone());
-        let right_name = authored_name_at(source_indices.clone(), owner_b.clone());
-        let same_position = ((owner_a.span.clone().file.clone()
-            == owner_b.span.clone().file.clone())
-            && (owner_a.span.clone().start.clone() == owner_b.span.clone().start.clone()));
-        ((left_name.clone() == right_name.clone()) && same_position.clone())
-    }
-}
-
 pub fn expected_variant_owner_instantiation(
     expected: Option<Rc<Node>>,
     name: String,
@@ -941,66 +926,32 @@ pub fn expected_variant_owner_instantiation(
     }
 }
 
-pub fn resolve_owner_declaration(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node> {
-    match lookup_type_for(scope.type_env.clone(), with_required_cardinality(n.clone())) {
-        Some(decl) => decl.clone(),
-        None => n.clone(),
-    }
-}
-
-pub fn adopt_expected_when_same_owner(
-    exp: Rc<Node>,
-    exp_enum: Rc<Node>,
-    owner: Rc<Node>,
-    scope: Rc<InferScope>,
-    fallback: Rc<Node>,
-) -> Rc<Node> {
-    {
-        let exp_decl = resolve_owner_declaration(exp_enum.clone(), scope.clone());
-        let owner_decl = resolve_owner_declaration(owner.clone(), scope.clone());
-        let owner_matches = same_owner_declaration(
-            exp_decl.clone(),
-            owner_decl.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        );
-        if owner_matches.clone() {
-            exp
-        } else {
-            fallback
-        }
-    }
-}
-
 pub fn variant_reference_inferred_node(
     expected: Option<Rc<Node>>,
     name: String,
-    owner: Rc<Node>,
+    owner_name: String,
     scope: Rc<InferScope>,
     fallback: Rc<Node>,
 ) -> Rc<Node> {
     match expected.clone() {
         Some(exp) => {
-            let expected_is_required = (exp.return_cardinality.clone() == Cardinality::Required);
-            if expected_is_required.clone() {
+            if ((exp.return_cardinality.clone() == Cardinality::Required)
+                && (authored_name_at(scope.type_env.clone().source_indices.clone(), exp.clone())
+                    == owner_name.clone()))
+            {
                 match expected_variant_owner_instantiation(
                     expected.clone(),
                     name.clone(),
                     scope.clone(),
                 ) {
-                    Some(exp_enum) => adopt_expected_when_same_owner(
-                        exp.clone(),
-                        exp_enum.clone(),
-                        owner.clone(),
-                        scope.clone(),
-                        fallback.clone(),
-                    ),
-                    None => fallback.clone(),
+                    Some(_) => exp.clone(),
+                    None => fallback,
                 }
             } else {
-                fallback.clone()
+                fallback
             }
         }
-        None => fallback.clone(),
+        None => fallback,
     }
 }
 
@@ -5685,7 +5636,7 @@ pub fn infer_expr_body(
                                     node: variant_reference_inferred_node(
                                         expected.clone(),
                                         name.clone(),
-                                        binding.resolved.clone(),
+                                        scope_enum.clone(),
                                         scope.clone(),
                                         binding.resolved.clone(),
                                     ),
@@ -5781,7 +5732,7 @@ pub fn infer_expr_body(
                                                 node: variant_reference_inferred_node(
                                                     expected.clone(),
                                                     name.clone(),
-                                                    gbinding.resolved.clone(),
+                                                    scope_enum.clone(),
                                                     scope.clone(),
                                                     gbinding.resolved.clone(),
                                                 ),
@@ -5833,7 +5784,7 @@ pub fn infer_expr_body(
                                             }),
                                             Rc::new(vec![]),
                                             Some(Rc::new(InferredNode::Resolved {
-                                                node: with_required_cardinality(exp_enum.clone()),
+                                                node: exp_enum.clone(),
                                             })),
                                             span.clone(),
                                             span.clone(),
@@ -18905,11 +18856,11 @@ pub fn insert_variant_owner_checked(
         Some(prev) => {
             let prev_name = authored_name_at(source_indices.clone(), prev.resolved.clone());
             let owner_name = authored_name_at(source_indices.clone(), owner.clone());
-            let same_owner = same_owner_declaration(
-                prev.resolved.clone(),
-                owner.clone(),
-                source_indices.clone(),
-            );
+            let same_owner = (((prev_name.clone() == owner_name.clone())
+                && (prev.resolved.clone().span.clone().file.clone()
+                    == owner.span.clone().file.clone()))
+                && (prev.resolved.clone().span.clone().start.clone()
+                    == owner.span.clone().start.clone()));
             if same_owner.clone() {
                 state.clone()
             } else {

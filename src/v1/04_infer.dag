@@ -572,13 +572,6 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
 // or it does not own this variant, leaving the declaration-node behavior unchanged.
 // This is the same lookup the unresolved-name arm below already performs; it is hoisted
 // here so a variant that RESOLVES gets it too, rather than only one that does not.
-fn same_owner_declaration(owner_a: Node, owner_b: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let left_name = authored_name_at(source_indices: source_indices, node: owner_a)
-  let right_name = authored_name_at(source_indices: source_indices, node: owner_b)
-  let same_position = owner_a.span.file == owner_b.span.file && owner_a.span.start == owner_b.span.start
-  left_name == right_name && same_position
-}
-
 fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: InferScope) -> Node? {
   match expected {
     Present { value: exp } =>
@@ -612,33 +605,20 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
 // Both halves were caught by the self-host fixed point re-emitting v1's own sources,
 // not by reasoning about them — a head-only check and then a name+identity check each
 // passed every other measurement while still dropping the wrapper.
-fn resolve_owner_declaration(n: Node, scope: InferScope) -> Node {
-  match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: n)) {
-    Present { value: decl } => decl
-    Absent => n
-  }
-}
-
-fn adopt_expected_when_same_owner(exp: Node, exp_enum: Node, owner: Node, scope: InferScope, fallback: Node) -> Node {
-  let exp_decl = resolve_owner_declaration(n: exp_enum, scope: scope)
-  let owner_decl = resolve_owner_declaration(n: owner, scope: scope)
-  let owner_matches = same_owner_declaration(owner_a: exp_decl, owner_b: owner_decl, source_indices: scope.type_env.source_indices)
-  if owner_matches { exp } else { fallback }
-}
-
-fn variant_reference_inferred_node(expected: Node?, name: String, owner: Node, scope: InferScope, fallback: Node) -> Node {
+fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node) -> Node {
   match expected {
     Present { value: exp } =>
-      let expected_is_required = exp.return_cardinality == Required
-      if expected_is_required {
+      if exp.return_cardinality == Required
+        && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
-          Present { value: exp_enum } => adopt_expected_when_same_owner(exp: exp, exp_enum: exp_enum, owner: owner, scope: scope, fallback: fallback)
+          Present { value: _ } => exp
           Absent => fallback
         }
       } else { fallback }
     Absent => fallback
   }
 }
+
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
   if contains(name, ".") {
     match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
@@ -3214,7 +3194,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 name: name,
                 expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                 children: [],
-                inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner: binding.resolved, scope: scope, fallback: binding.resolved) } },
+                inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
                 span: span,
                 name_span: span
               ))
@@ -3264,7 +3244,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         name: name,
                         expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                         children: [],
-                        inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner: gbinding.resolved, scope: scope, fallback: gbinding.resolved) } },
+                        inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
                         span: span,
                         name_span: span
                       ))
@@ -3287,7 +3267,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         name: name,
                         expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                         children: [],
-                        inferred: Present { value: Resolved { node: with_required_cardinality(n: exp_enum) } },
+                        inferred: Present { value: Resolved { node: exp_enum } },
                         span: span,
                         name_span: span
                       ))
@@ -9023,7 +9003,9 @@ fn insert_variant_owner_checked(state: VariantFoldState, arm_name: String, owner
     Present { value: prev } =>
       let prev_name = authored_name_at(source_indices: source_indices, node: prev.resolved)
       let owner_name = authored_name_at(source_indices: source_indices, node: owner)
-      let same_owner = same_owner_declaration(owner_a: prev.resolved, owner_b: owner, source_indices: source_indices)
+      let same_owner = prev_name == owner_name
+        && prev.resolved.span.file == owner.span.file
+        && prev.resolved.span.start == owner.span.start
       if same_owner {
         state
       } else {
