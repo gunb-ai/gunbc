@@ -41,6 +41,20 @@ type ProcessorPackageTermination = LandGridArray | PinGridArray | BallGridArray
 // "undefined variable 'NotARealTerminationXyz'". So the checker resolves a bare variant name from
 // the pool and then does not test which coproduct it belongs to.
 //
+// WHERE THE ERROR DOES SURFACE, measured separately, because the bound matters more than the alarm.
+// Passing BallGridArray to socket_termination_as_package_termination -- argument position rather
+// than a record field -- is also accepted statically, but it fails at RUNTIME with "non-exhaustive
+// pattern match on: BallGridArray" as soon as that function matches. So a total match over the
+// coproduct is a real runtime guard: any value that reaches one is checked. What is silent is a
+// wrong variant that is only STORED or COMPARED and never matched, which is exactly the record-field
+// probe above -- it read contact_count and never looked at the termination.
+//
+// The blast radius is therefore narrower than a count of enums would suggest, and two neighbouring
+// walls were confirmed to HOLD rather than assumed: sole_constructor refuses cross-module
+// construction and cast, and a missing required field refuses at every site (nine socket literals
+// refused until they named a cooling mount). This finding implicates claims that rest on variant
+// membership alone, not those resting on construction sealing or record shape.
+//
 // WHAT THIS TYPE THEREFORE DELIVERS: the two concepts are separated and every socket row in the
 // corpus names a socketable termination, so the corpus is correct and a reader can no longer mistake
 // a package property for a board one. WHAT IT DOES NOT DELIVER: a wall. The rung is MITIGATABLE, not
