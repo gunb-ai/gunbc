@@ -795,6 +795,18 @@ pub enum InterpError {
     StringRealizationStraddle {
         detail: String,
     },
+    /// A pool root contributed NO `.dag` files to a parse-only corpus walk.
+    ///
+    /// Its own variant rather than a `TypeError` because the class is exactly the
+    /// empty-observation narrow DESIGN names: a pool that silently lost its subject was
+    /// indistinguishable from a pool that legitimately matched nothing, so every row over
+    /// it kept passing on a population smaller than its author declared. The detail names
+    /// WHICH of the three states the root is in -- missing, naming a file, or a directory
+    /// with no `.dag` under it -- because they have different causes and different fixes,
+    /// and collapsing them re-commits the same state-space conflation one level down.
+    PoolRootContributesNothing {
+        detail: String,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -942,6 +954,9 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::PoolRootContributesNothing { detail } => {
+                write!(f, "pool root contributes nothing: {}", detail)
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)

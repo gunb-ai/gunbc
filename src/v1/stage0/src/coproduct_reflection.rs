@@ -531,6 +531,9 @@ fn concept_decl_record(
 }
 
 pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
+    if let Some(detail) = pool_root_refusal_detail(pool_roots, "concept_decl_facts") {
+        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    }
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
@@ -602,6 +605,9 @@ pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
 ) -> InterpResult<Value> {
+    if let Some(detail) = pool_root_refusal_detail(pool_roots, "data_decl_type_facts") {
+        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    }
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
@@ -1220,6 +1226,78 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
+/// Why a declared pool root contributed no `.dag` files. THREE STATES, NOT ONE: they have
+/// different causes and different fixes, and answering "contributed zero files" for all three
+/// would re-commit, one level down, the same state-space conflation this refusal exists to close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolRootDefect {
+    /// The path does not exist. A typo, or a directory that moved out from under the root.
+    Missing,
+    /// The path exists and is a FILE. The likeliest mistake against this seam by a wide margin:
+    /// an author writes a module's path and omits `.dag`, or means one module and a root can only
+    /// ever be a directory. `dag/extdeps/external_authority` was exactly this, inert since it was
+    /// written, and nothing could say so.
+    NamesFile,
+    /// The path is a directory and holds no `.dag` file anywhere beneath it.
+    DirectoryHasNoDagFiles,
+}
+
+impl PoolRootDefect {
+    fn cause(self) -> &'static str {
+        match self {
+            PoolRootDefect::Missing => "the path does not exist",
+            PoolRootDefect::NamesFile => {
+                "this names a FILE; a pool root must be a directory (a module path with `.dag`                  omitted is the usual cause -- name the directory that contains it)"
+            }
+            PoolRootDefect::DirectoryHasNoDagFiles => {
+                "the directory exists but holds no .dag file beneath it"
+            }
+        }
+    }
+}
+
+/// Classify one declared pool root. `None` means it contributes at least one `.dag` file.
+pub fn classify_pool_root(root: &str) -> Option<PoolRootDefect> {
+    let root_path = workspace_root().join(root);
+    if !root_path.exists() {
+        return Some(PoolRootDefect::Missing);
+    }
+    if !root_path.is_dir() {
+        return Some(PoolRootDefect::NamesFile);
+    }
+    let mut files = Vec::new();
+    collect_dag_files_tolerant(&root_path, &mut files);
+    if files.is_empty() {
+        return Some(PoolRootDefect::DirectoryHasNoDagFiles);
+    }
+    None
+}
+
+/// The refusal every parse-only pool walk takes before it walks: typed, located, counted.
+///
+/// LOCATED is the root string the author wrote, because that is the thing they can fix; COUNTED
+/// is every offending root in one message rather than the first, so a pool with three bad roots
+/// takes one round-trip. Returns `None` when every root contributes.
+pub fn pool_root_refusal_detail(pool_roots: &[String], caller: &str) -> Option<String> {
+    let defects: Vec<(&String, PoolRootDefect)> = pool_roots
+        .iter()
+        .filter_map(|r| classify_pool_root(r).map(|d| (r, d)))
+        .collect();
+    if defects.is_empty() {
+        return None;
+    }
+    let rows: Vec<String> = defects
+        .iter()
+        .map(|(r, d)| format!("  root {:?}: {:?} -- {}", r, d, d.cause()))
+        .collect();
+    Some(format!(
+        "{caller} was given {declared} declared pool root(s), {bad} of which contribute no .dag files. A root that contributes nothing is not a narrower pool -- it is a pool that silently lost part of its subject, so every row over it keeps passing on a population smaller than its author declared, and nothing says so. Fix or delete each root named below.\n{rows}",
+        declared = pool_roots.len(),
+        bad = defects.len(),
+        rows = rows.join("\n")
+    ))
+}
+
 fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
     let ws = workspace_root();
     let mut files = Vec::new();
@@ -1407,6 +1485,9 @@ pub fn eval_export_signature_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
 ) -> InterpResult<Value> {
+    if let Some(detail) = pool_root_refusal_detail(pool_roots, "export_signature_facts") {
+        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    }
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
@@ -1432,6 +1513,13 @@ pub fn eval_export_signature_facts(
 }
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
+    // THE LINE STOPS BEFORE THE WALK, not after it. A root that contributes nothing cannot be
+    // discovered from the walk's OUTPUT -- a smaller fact list is exactly what a legitimately
+    // narrow pool produces -- so the only place the two are distinguishable is here, against the
+    // declared roots themselves.
+    if let Some(detail) = pool_root_refusal_detail(pool_roots, "decl_facts") {
+        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    }
     let facts = decl_facts_for_roots(pool_roots);
     eval_decl_facts_rows(ctx, &facts)
 }
