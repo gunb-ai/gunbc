@@ -1,0 +1,159 @@
+module product.fabric.budget
+
+import std.types { NonEmptyStr, Int, Timestamp }
+import std.measure { MoneyAmountMicro }
+import std.currency { CurrencyCode }
+import extdeps.accounting.encumbrance {
+  EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
+  LedgerAdvanced, EncumbranceRefused,
+  reserve_encumbrance, settle_encumbrance, release_encumbrance, committed_total,
+}
+
+// The fabric's money binding over the generic encumbrance kernel. Everything
+// about reserve-settle-release lives upstream; what is added here is the one
+// fact the generic kernel cannot carry, and the reason it cannot.
+//
+// MoneyAmountMicro is Measure<Currency, Micro, Nat>, and Currency there is a
+// QUANTITY - the dimension - not a currency CODE. So two amounts in different
+// currencies have the same type and add without complaint. A generic ledger
+// instantiated at that quantity would therefore sum dollars and euros into a
+// number with no meaning, and would do it silently, which is the worst
+// available failure: the ceiling check would still pass or fail, just against
+// a quantity that denominates nothing.
+//
+// The fix is not to teach the kernel about currency - a compute ledger has no
+// use for that - but to bind the code ONCE to the account and refuse anything
+// presented against it in another code. One account, one denomination, and a
+// cross-currency line has nowhere to land.
+
+type BudgetAccountRef = NonEmptyStr
+
+type MoneyAccount {
+  account: BudgetAccountRef
+  currency: CurrencyCode
+  ledger: EncumbranceLedger<Currency, Micro>
+}
+
+// A request names its own currency rather than inheriting the account's. That
+// is the entire mechanism: if the request could not state a currency, a
+// mismatch would be unrepresentable and therefore undetectable, and the check
+// below would be checking nothing. The caller says what it means, and the
+// account says whether that is what it holds.
+
+type MoneyReservationRequest {
+  reference: NonEmptyStr
+  generation: Int
+  maximum_liability: MoneyAmountMicro
+  currency: CurrencyCode
+}
+
+type MoneySettlementRequest {
+  reference: NonEmptyStr
+  generation: Int
+  actual_spend: MoneyAmountMicro
+  currency: CurrencyCode
+  settled_at: Timestamp
+}
+
+type MoneyRefusal =
+  | CurrencyMismatch {
+      account: BudgetAccountRef,
+      account_currency: CurrencyCode,
+      presented_currency: CurrencyCode,
+    }
+  | LedgerRefused { account: BudgetAccountRef, refusal: EncumbranceRefusal<Currency, Micro> }
+
+type MoneyOutcome =
+  | AccountAdvanced { account: MoneyAccount }
+  | MoneyRefused { refusal: MoneyRefusal }
+
+fn account_with_ledger(a: MoneyAccount, ledger: EncumbranceLedger<Currency, Micro>) -> MoneyAccount {
+  MoneyAccount { account: a.account, currency: a.currency, ledger: ledger }
+}
+
+fn project_outcome(a: MoneyAccount, outcome: EncumbranceOutcome<Currency, Micro>) -> MoneyOutcome {
+  match outcome {
+    LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
+    EncumbranceRefused { refusal: r } =>
+      MoneyRefused { refusal: LedgerRefused { account: a.account, refusal: r } }
+  }
+}
+
+// The currency wall is checked BEFORE the amount reaches the kernel, because
+// once it is inside the kernel the code is gone and the mismatch is no longer
+// observable. There is no arm that converts: a conversion needs a rate, a rate
+// needs a source and a time, and inventing one at an admission boundary would
+// fabricate the exact fact the refusal exists to demand.
+
+fn reserve_money(a: MoneyAccount, request: MoneyReservationRequest) -> MoneyOutcome {
+  if a.currency != request.currency {
+    MoneyRefused {
+      refusal: CurrencyMismatch {
+        account: a.account,
+        account_currency: a.currency,
+        presented_currency: request.currency,
+      }
+    }
+  } else {
+    project_outcome(
+      a: a,
+      outcome: reserve_encumbrance(
+        ledger: a.ledger,
+        reference: request.reference,
+        generation: request.generation,
+        maximum_liability: request.maximum_liability,
+      ),
+    )
+  }
+}
+
+fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcome {
+  if a.currency != request.currency {
+    MoneyRefused {
+      refusal: CurrencyMismatch {
+        account: a.account,
+        account_currency: a.currency,
+        presented_currency: request.currency,
+      }
+    }
+  } else {
+    project_outcome(
+      a: a,
+      outcome: settle_encumbrance(
+        ledger: a.ledger,
+        reference: request.reference,
+        presented_generation: request.generation,
+        actual: request.actual_spend,
+        settled_at: request.settled_at,
+      ),
+    )
+  }
+}
+
+// Release takes no amount, so it takes no currency and needs no wall. The
+// released quantity is whatever was held, which the ledger already knows; a
+// caller-supplied release amount would be a second authority for a number the
+// entry carries, and could disagree with it.
+
+fn release_money(
+  a: MoneyAccount,
+  reference: NonEmptyStr,
+  generation: Int,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+) -> MoneyOutcome {
+  project_outcome(
+    a: a,
+    outcome: release_encumbrance(
+      ledger: a.ledger,
+      reference: reference,
+      presented_generation: generation,
+      reason: reason,
+      released_at: released_at,
+    ),
+  )
+}
+
+fn account_committed(a: MoneyAccount) -> MoneyAmountMicro {
+  committed_total(ledger: a.ledger)
+}
