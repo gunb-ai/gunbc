@@ -15,7 +15,7 @@ fn tpl(raw: String) -> std.http_path.PathTemplate {
 fn probe_table() -> extdeps.http.server.ServedRouteTable<ProbeHandler> {
   extdeps.http.server.ServedRouteTable {
     routes: [
-      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
+      extdeps.http.server.DynamicRoute { method: std.types.GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
       extdeps.http.server.StaticRoute { route: extdeps.http.server.ServedStaticRoute {
         method: GET,
         path_pattern: tpl(raw: "/healthz"),
@@ -23,7 +23,7 @@ fn probe_table() -> extdeps.http.server.ServedRouteTable<ProbeHandler> {
         content_type: text_html_utf8,
         status_on_hit: 200,
       } },
-      extdeps.http.server.DynamicRoute { method: POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
+      extdeps.http.server.DynamicRoute { method: std.types.POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
     ]
   }
 }
