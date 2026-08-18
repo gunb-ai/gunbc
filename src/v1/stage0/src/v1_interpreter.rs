@@ -2314,9 +2314,12 @@ fn coproduct_arm_label(value: &Value, ctx: &InterpContext) -> Option<String> {
     }
 }
 
-/// Prepared-subject scope still refuses interpreted `match` on this coproduct even when the
-/// match lives beside the type; route through structural labels until substrate cross-module
-/// variant-pattern matching is sound (dissolve-on on `admission.dag`).
+// HAND-RUST GATE explicit deferral: prepared-subject scope still refuses interpreted
+// `match` on `BoardArticleRefusal` when the fold lives in `admission.dag`. Route calls
+// to `board_article_refusal_cause_name` through the structural label the payload already
+// carries (the `.dag` authority is the identity fold variant-name → same string) until
+// substrate cross-module variant-pattern matching is sound — same dissolve-on as
+// `admission.dag` `board_article_refusal_cause_name`.
 fn try_board_article_refusal_cause_name_native(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -2331,29 +2334,7 @@ fn try_board_article_refusal_cause_name_native(
             value: ctx.format_value(r),
         }));
     };
-    let name = match label.as_str() {
-        "DuplicateComponentIdentity" => "DuplicateComponentIdentity",
-        "DuplicateNetIdentity" => "DuplicateNetIdentity",
-        "DuplicateSignalName" => "DuplicateSignalName",
-        "NetMemberNamesNoTerminal" => "NetMemberNamesNoTerminal",
-        "NetMemberBelongsToAnotherDesign" => "NetMemberBelongsToAnotherDesign",
-        "BondTerminalNamesNoTerminal" => "BondTerminalNamesNoTerminal",
-        "BondNamesUndeclaredNet" => "BondNamesUndeclaredNet",
-        "ReferenceNetNotDeclared" => "ReferenceNetNotDeclared",
-        "DrivenSignalUndeclared" => "DrivenSignalUndeclared",
-        "DrivenSignalIsAnInput" => "DrivenSignalIsAnInput",
-        "EquationReferencesUndeclaredSignal" => "EquationReferencesUndeclaredSignal",
-        "OutputWithNoDriver" => "OutputWithNoDriver",
-        "OutputWithMultipleDrivers" => "OutputWithMultipleDrivers",
-        "PreconditionSignalUndeclared" => "PreconditionSignalUndeclared",
-        "PreconditionSignalIsNotAnOutput" => "PreconditionSignalIsNotAnOutput",
-        other => {
-            return Some(Err(InterpError::PatternMatchFailure {
-                value: other.to_string(),
-            }));
-        }
-    };
-    Some(Ok(str_value(name.to_string())))
+    Some(Ok(str_value(label)))
 }
 
 fn call_function_inner(
@@ -3719,18 +3700,10 @@ fn match_pattern(
                     if *variant_name != ctx.sym(name) {
                         // Qualified PATTERN spellings (module.Variant) carry the containment
                         // path; variant identity is the bare arm name, normalized at value
-                        // construction — compare last segments on both sides when either may
-                        // carry a qualified spelling (prepared-subject scope).
+                        // construction — so only the pattern side needs the last segment.
                         let pat_last = name.rsplit('.').next().unwrap_or(name);
                         if *variant_name != ctx.sym(pat_last) {
-                            let var_resolved = ctx.resolve(*variant_name);
-                            let var_last = var_resolved
-                                .rsplit('.')
-                                .next()
-                                .unwrap_or(var_resolved.as_str());
-                            if var_last != pat_last {
-                                return None;
-                            }
+                            return None;
                         }
                     }
                     let mut bindings = HashMap::new();
@@ -3748,19 +3721,7 @@ fn match_pattern(
                 }
                 Value::Record { type_name, fields } => {
                     if *type_name != ctx.sym(name) {
-                        // Mirror the Variant arm: record-literal coproduct payloads may carry a
-                        // qualified type_name while patterns spell the bare arm name.
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *type_name != ctx.sym(pat_last) {
-                            let type_resolved = ctx.resolve(*type_name);
-                            let type_last = type_resolved
-                                .rsplit('.')
-                                .next()
-                                .unwrap_or(type_resolved.as_str());
-                            if type_last != pat_last {
-                                return None;
-                            }
-                        }
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
