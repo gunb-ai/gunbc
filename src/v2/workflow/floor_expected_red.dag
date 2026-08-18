@@ -61,7 +61,21 @@ import v2.std.text { String }
 // floor could not deliver a verdict about the other 9,318 rows while they stood.
 //
 // BOUNDED POPULATION, both halves, because neither is visible to any mechanism in this tree:
-//   108 enrollments removed here, being every identity in the 21 relocated modules.
+//   108 enrollments removed here, being every identity in the 21 relocated modules. That is
+//       NOT 102: exactly 102 are the cost rows (verified by identity join against main run
+//       32177951514 -- all 102 removed, none missed), and SIX are enrolled rows that were
+//       behaving exactly as enrolled (known_red_held) and leave only because they share a
+//       module with a relocated row. Naming them, because a population described as 102 while
+//       being 108 is not bounded at the grain it claims:
+//         gunbc.test.claim.realization_sweep_test.witness_canonical_identities_join_own_enrolled_roster
+//         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_direct_runtime_holds
+//         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_generality_executes_holds
+//         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_lazy_arm_branch_suppression_holds
+//         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_produced_add_body_executes_holds
+//         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_source_driven_add_executes_holds
+//       These six are a THIRD collateral class, distinct from the 78: those are unenrolled and
+//       passing, these were enrolled and correctly red. Both leave for the same reason -- a
+//       module is the unit of relocation -- and both return when their module does.
 //    78 healthy, fast, PASSING witnesses that left the floor as collateral, because a module
 //       is the unit of relocation and they share a file with a slow row. Worst offenders:
 //       roadmap_page_witness 29, live_read_classification 17, add_arrow_eval_by_execution 13.
