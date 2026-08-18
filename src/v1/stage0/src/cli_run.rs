@@ -1079,14 +1079,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn required_floor_failure_census_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER,
-            "cli_run_required_floor_failure_census"
-        );
-    }
-
-    #[test]
     fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
@@ -41116,144 +41108,6 @@ pub struct RequiredFloorOutcome {
     pub failures: Vec<String>,
 }
 
-// DELETE WHEN dissolved: `required_floor_failure_census` bin,
-// `RequiredFloorFailureCensusRow`, `classify_witness_failure_message`,
-// `build_required_floor_failure_census_row`, and related census helpers (~125 LOC).
-// Receipt: `rg required_floor_failure_census src/v1/stage0` == 1 until deletion;
-// Wave 1 partition lane (`docs/probes/floor_cut_name_resolution_partition.md`).
-pub(crate) const CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER: &str =
-    "cli_run_required_floor_failure_census";
-
-// INTERIM hand-Rust scaffold (issue 11 / §7): host transport for expected-red failure
-// identity-grain census before qualification vs binding-wall decision (#8282).
-
-/// One row of the identity-grain failure census for expected-red witnesses.
-pub struct RequiredFloorFailureCensusRow {
-    pub witness_qualified: String,
-    pub witness_module: String,
-    pub failure_class: String,
-    pub error_message: String,
-    pub reference_bare_name: Option<String>,
-    pub selected_decl_module: Option<String>,
-    pub selected_decl_params: Option<String>,
-    pub candidate_decl_modules: Vec<String>,
-    pub scope_module_count: usize,
-    pub scope_ambiguous_bare_names: usize,
-}
-
-fn classify_witness_failure_message(message: &str) -> (&'static str, Option<String>) {
-    if let Some(rest) = message.strip_prefix("call contract mismatch calling '") {
-        let callee = rest.split_once('\'').map(|(name, _)| name.to_string());
-        return ("call_contract_mismatch", callee);
-    }
-    if let Some(rest) = message.strip_prefix("no such function: ") {
-        return ("no_such_function", Some(rest.to_string()));
-    }
-    if let Some(rest) = message.strip_prefix("undefined variable: ") {
-        return ("undefined_variable", Some(rest.to_string()));
-    }
-    ("other", None)
-}
-
-fn call_contract_declared_params(message: &str) -> Option<String> {
-    let start = message.find("(declared: [")?;
-    let rest = &message[start + "(declared: [".len()..];
-    let end = rest.find("])")?;
-    Some(rest[..end].to_string())
-}
-
-fn scope_bare_name_declarers(scope: &PreparedClaimScope, bare_name: &str) -> Vec<String> {
-    let mut modules: BTreeSet<String> = BTreeSet::new();
-    for module in scope.indexes.modules.iter() {
-        if let Some(info) = module.item_registry.get(bare_name) {
-            if matches!(
-                info.kind,
-                ItemKind::FnItem | ItemKind::FuncItem | ItemKind::DataItem
-            ) {
-                modules.insert(module.func_env.name.clone());
-            }
-        }
-    }
-    modules.into_iter().collect()
-}
-
-fn build_required_floor_failure_census_row(
-    claim: &RequiredFloorClaim,
-    result: &ClaimOutcome,
-    scope: &PreparedClaimScope,
-    frame: &v1_interpreter::InterpContext,
-    module_path_index: &HashMap<String, String>,
-) -> Option<RequiredFloorFailureCensusRow> {
-    let error_message = match result {
-        ClaimOutcome::RuntimeError { message } => message.clone(),
-        ClaimOutcome::Fail => "returned Bool(false)".to_string(),
-        ClaimOutcome::NotBool { got } => format!("answered {got}, not a Bool"),
-        ClaimOutcome::TimedOut {
-            elapsed_ms,
-            budget_ms,
-            kind,
-        } => format!("exceeded {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)"),
-        ClaimOutcome::Pass => return None,
-    };
-    let (failure_class, reference_bare_name) = classify_witness_failure_message(&error_message);
-    let (selected_decl_module, selected_decl_params) = if failure_class == "call_contract_mismatch"
-    {
-        let callee = reference_bare_name.as_deref()?;
-        let selected = frame
-            .selected_function_identity(callee, module_path_index)
-            .map(|id| id.module_path);
-        let params = call_contract_declared_params(&error_message);
-        (selected, params)
-    } else {
-        (None, None)
-    };
-    let candidate_decl_modules = reference_bare_name
-        .as_deref()
-        .map(|name| scope_bare_name_declarers(scope, name))
-        .unwrap_or_default();
-    Some(RequiredFloorFailureCensusRow {
-        witness_qualified: claim.qualified.clone(),
-        witness_module: claim.module_path.clone(),
-        failure_class: failure_class.to_string(),
-        error_message,
-        reference_bare_name,
-        selected_decl_module,
-        selected_decl_params,
-        candidate_decl_modules,
-        scope_module_count: scope.module_count,
-        scope_ambiguous_bare_names: scope.ambiguous_bare_names,
-    })
-}
-
-fn write_required_floor_failure_census_header(writer: &mut dyn Write) -> std::io::Result<()> {
-    writeln!(
-        writer,
-        "witness_qualified\twitness_module\tfailure_class\terror_message\treference_bare_name\t\
-         selected_decl_module\tselected_decl_params\tcandidate_decl_modules\tscope_module_count\t\
-         scope_ambiguous_bare_names"
-    )
-}
-
-fn write_required_floor_failure_census_row(
-    writer: &mut dyn Write,
-    row: &RequiredFloorFailureCensusRow,
-) -> std::io::Result<()> {
-    writeln!(
-        writer,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-        row.witness_qualified,
-        row.witness_module,
-        row.failure_class,
-        row.error_message.replace('\t', " ").replace('\n', " "),
-        row.reference_bare_name.as_deref().unwrap_or(""),
-        row.selected_decl_module.as_deref().unwrap_or(""),
-        row.selected_decl_params.as_deref().unwrap_or(""),
-        row.candidate_decl_modules.join("|"),
-        row.scope_module_count,
-        row.scope_ambiguous_bare_names,
-    )
-}
-
 /// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
 /// names it declares. Produced by folding over bytes preparation already read.
 pub struct InventoryWitnessFile {
@@ -42164,21 +42018,6 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
-    let module_path_index = build_module_path_index(source_roots);
-    let mut failure_census_writer: Option<std::fs::File> =
-        match std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS") {
-            Ok(path) => {
-                let mut file = std::fs::File::create(&path).map_err(|e| {
-                    format!("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS create {path}: {e}")
-                })?;
-                write_required_floor_failure_census_header(&mut file).map_err(|e| {
-                    format!("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS header {path}: {e}")
-                })?;
-                Some(file)
-            }
-            Err(_) => None,
-        };
-    let mut failure_census_counts: BTreeMap<String, usize> = BTreeMap::new();
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
@@ -42204,32 +42043,6 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
-    // STOPPED-LINE AUDIT ONLY (review 53063 / 53065). Population narrow is census-entrypoint
-    // only: `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY` is honored only when
-    // `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS` is also set (the standalone census bin sets both).
-    // Witness CI / `claim_executor --required-floor` never set either; ONLY without CENSUS
-    // refuses rather than silently narrowing the production fold.
-    let census_only_requested = std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY")
-        .ok()
-        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
-    if census_only_requested && failure_census_writer.is_none() {
-        return Err(
-            "REQUIRED-FLOOR REFUSAL cause=FailureCensusOnlyWithoutOutputPath — \
-             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY requires \
-             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS (scope narrow is census-entrypoint only)"
-                .to_string(),
-        );
-    }
-    let census_only = census_only_requested && failure_census_writer.is_some();
-    if census_only {
-        let before = claims.len();
-        claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
-        eprintln!(
-            "floor: failure-census-only retained {} of {} claim(s)",
-            claims.len(),
-            before
-        );
-    }
     let claims_planned = claims.len();
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
@@ -42473,22 +42286,6 @@ pub fn run_required_floor(
         }
         if expected_red {
             known_red_held += 1;
-            if let Some(row) = build_required_floor_failure_census_row(
-                claim,
-                &result,
-                scope,
-                &frame,
-                &module_path_index,
-            ) {
-                *failure_census_counts
-                    .entry(row.failure_class.clone())
-                    .or_default() += 1;
-                if let Some(ref mut writer) = failure_census_writer {
-                    write_required_floor_failure_census_row(writer, &row).map_err(|e| {
-                        format!("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS row write: {e}")
-                    })?;
-                }
-            }
             // NOT COUNTED AS A PASS. A held row did not pass — it failed exactly as enrolled,
             // and agreement about a failure is not the same fact as a passing witness. Folding
             // it into `passed` would make the headline number rise as debt is ADDED, which is
@@ -42664,22 +42461,6 @@ pub fn run_required_floor(
              receipt identity; a gap here is a narrowed roster reported as a roster",
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
-    }
-    if let Some(path) = std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS").ok() {
-        let total: usize = failure_census_counts.values().sum();
-        eprintln!("[floor-failure-census] wrote {total} expected-red failure row(s) to {path}");
-        for (class, count) in &failure_census_counts {
-            eprintln!("[floor-failure-census] {class}={count}");
-        }
-    } else if !failure_census_counts.is_empty() {
-        let total: usize = failure_census_counts.values().sum();
-        eprintln!(
-            "[floor-failure-census] {total} expected-red failure row(s) (set \
-             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS for identity-grain TSV)"
-        );
-        for (class, count) in &failure_census_counts {
-            eprintln!("[floor-failure-census] {class}={count}");
-        }
     }
     Ok(outcome)
 }
