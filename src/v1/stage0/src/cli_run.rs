@@ -180,6 +180,84 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// Module paths a source REFERENCES, for the namespace-only era where `import` no longer
+/// exists. A reference is `module.path.Symbol`, so the module is the longest dotted prefix
+/// the index knows; string literals and `//` annotations are removed first, because prose
+/// naming a module is commentary, not a dependency.
+pub(crate) fn extract_reference_module_paths(
+    content: &str,
+    index: &std::collections::HashMap<String, PathBuf>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for raw in content.lines() {
+        let line = match raw.find("//") {
+            Some(i) => &raw[..i],
+            None => raw,
+        };
+        let mut code = String::with_capacity(line.len());
+        let mut in_str = false;
+        let mut prev_backslash = false;
+        for ch in line.chars() {
+            if in_str {
+                if ch == '\\' && !prev_backslash {
+                    prev_backslash = true;
+                    continue;
+                }
+                if ch == '"' && !prev_backslash {
+                    in_str = false;
+                }
+                prev_backslash = false;
+                continue;
+            }
+            if ch == '"' {
+                in_str = true;
+                continue;
+            }
+            code.push(ch);
+        }
+        let chars: Vec<char> = code.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let c = chars[i];
+            if !(c.is_ascii_lowercase() || c == '_') {
+                i += 1;
+                continue;
+            }
+            if i > 0 {
+                let p = chars[i - 1];
+                if p.is_alphanumeric() || p == '_' || p == '.' {
+                    i += 1;
+                    continue;
+                }
+            }
+            let start = i;
+            while i < chars.len()
+                && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.')
+            {
+                i += 1;
+            }
+            let run: String = chars[start..i].iter().collect();
+            let segs: Vec<&str> = run.split('.').filter(|s| !s.is_empty()).collect();
+            if segs.len() < 2 {
+                continue;
+            }
+            let mut k = segs.len();
+            while k >= 2 {
+                let cand = segs[..k].join(".");
+                if index.contains_key(&cand) {
+                    if seen.insert(cand.clone()) {
+                        out.push(cand);
+                    }
+                    break;
+                }
+                k -= 1;
+            }
+        }
+    }
+    out
+}
+
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
@@ -3620,7 +3698,7 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
         queue.push(content);
     }
     while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
+        for module_path in extract_reference_module_paths(&content, &index) {
             if seen.contains_key(&module_path) {
                 continue;
             }
