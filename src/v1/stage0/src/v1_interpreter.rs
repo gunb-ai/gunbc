@@ -238,10 +238,35 @@ fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool 
     qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
 }
 
+fn scan_modules_for_type_item(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    let bare = qualified_last_segment(type_name.to_string());
+    for module in ctx.modules.iter() {
+        let module_path = authored_name_at(ctx.si(), module.module.clone());
+        for item in module.items.iter() {
+            let name = authored_name_at(ctx.si(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            if name == type_name || name == bare {
+                return Some(item.clone());
+            }
+            if !module_path.is_empty() {
+                let qualified = format!("{}.{}", module_path, name);
+                if qualified == type_name {
+                    return Some(item.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
-    lookup_type_item_across_modules(ctx, parent_enum).or_else(|| {
-        lookup_type_item_across_modules(ctx, &qualified_last_segment(parent_enum.to_string()))
-    })
+    lookup_type_item_across_modules(ctx, parent_enum)
+        .or_else(|| {
+            lookup_type_item_across_modules(ctx, &qualified_last_segment(parent_enum.to_string()))
+        })
+        .or_else(|| scan_modules_for_type_item(ctx, parent_enum))
 }
 
 fn coproduct_parent_spellings_match(
@@ -3738,6 +3763,9 @@ fn match_pattern(
                     }
                     let arm_matches =
                         coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone());
+                    if !arm_matches {
+                        return None;
+                    }
                     if let Some(parent) = parent_enum.as_ref() {
                         let value_parent = resolve_sym(*type_name);
                         let parent_matches =
@@ -3746,21 +3774,22 @@ fn match_pattern(
                             // Infer may stamp the wrong coproduct parent on a pattern arm
                             // (Optional cardinality, imported variant spellings, qualified
                             // containment paths). When the runtime value names a declared arm
-                            // of its own coproduct parent, trust the arm identity.
-                            let declared_under_value_parent = arm_matches
-                                && record_nominal_is_declared_variant_of_coproduct(
-                                    ctx,
-                                    resolve_sym(*variant_name),
-                                    &value_parent,
-                                );
-                            if !declared_under_value_parent {
+                            // of either the pattern's coproduct or the value's runtime parent,
+                            // trust the arm identity.
+                            let arm = resolve_sym(*variant_name);
+                            let declared = record_nominal_is_declared_variant_of_coproduct(
+                                ctx,
+                                arm.clone(),
+                                parent,
+                            ) || record_nominal_is_declared_variant_of_coproduct(
+                                ctx,
+                                arm,
+                                &value_parent,
+                            );
+                            if !declared {
                                 return None;
                             }
-                        } else if !arm_matches {
-                            return None;
                         }
-                    } else if !arm_matches {
-                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -5547,6 +5576,7 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
         None => {
             let mut built: HashMap<String, Rc<Node>> = HashMap::new();
             for module in ctx.modules.iter() {
+                let module_path = authored_name_at(ctx.si(), module.module.clone());
                 for item in module.items.iter() {
                     if eval_profile_enabled() {
                         TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
@@ -5556,7 +5586,11 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
                         continue;
                     }
                     // First declaration wins, matching the scan's early return.
-                    built.entry(name).or_insert_with(|| item.clone());
+                    built.entry(name.clone()).or_insert_with(|| item.clone());
+                    if !module_path.is_empty() {
+                        let qualified = format!("{}.{}", module_path, name);
+                        built.entry(qualified).or_insert_with(|| item.clone());
+                    }
                 }
             }
             let built = Rc::new(built);
@@ -5564,7 +5598,10 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
             built
         }
     };
-    index.get(type_name).cloned()
+    index
+        .get(type_name)
+        .cloned()
+        .or_else(|| scan_modules_for_type_item(ctx, type_name))
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
