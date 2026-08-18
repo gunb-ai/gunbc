@@ -31,15 +31,25 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 306 identities, after the declared rung drop below took 108 out by relocation
-// and a further 52 were removed on run 32189201111 (PR #8460): each reported STALE-QUARANTINE --
-// enrolled as expected-red and PASSED -- which is this roster's own removal path, and they pass
-// because that branch closed two emitter roots (a builtin answering a call the program had already
-// bound to a lexical binding, and a bare closure emitted where an arrow return was declared).
-// That run named 57; the other 5 had already been removed on main by then.
-// (469 -> 361). The count is NOT the whole population affected: 78 healthy passing witnesses
-// left the floor with them as collateral and are enrolled nowhere, so no number in this file
-// counts them. Read the rung drop, not this line, for what left.
+// POPULATION: 306 identities, after the declared rung drop below took 111 out by relocation
+// and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306). Those 52
+// reported STALE-QUARANTINE -- enrolled as expected-red and PASSED -- which is this roster's own
+// removal path, not a roster edit: they pass because that branch closed two emitter roots (a
+// builtin answering a call the program had already bound to a lexical binding, and a bare closure
+// emitted where an arrow return was declared), so witnesses red against those defects now agree.
+// That run named 57; the other 5 had already been removed on main by the time it landed. The count is NOT the whole population affected, and the rest is stated
+// exactly here rather than left to the waves: 38 modules were relocated carrying 429 `test fn`
+// declarations. Of those 429 rows, 111 were enrolled here (the 469 -> 358 delta), 111 were
+// observed over budget or failing (102 budget_refused pre-quarantine, 8 tipped in 32189985063,
+// 1 straggler in 32193032348), and the remaining 207 are healthy witnesses enrolled nowhere,
+// which no number in this file counts. They return when their module does.
+//
+// The three figures above are checkable against the tree and the run counters, and they are
+// stated because the earlier revision of this line said 361 while the roster carried 358, said
+// 108 where the delta is 111, and described its collateral as "roughly 200". A bounded
+// population is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink
+// wall reads this carrier as its baseline, so a stale count here is load-bearing for work
+// that is not mine. Found by tidy-lark-471's external review, not by me.
 //
 // HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
@@ -109,8 +119,8 @@ import v2.std.text { String }
 // measured rather than predicted. Sixteen more modules leave here: the fifteen over 1000ms, and
 // test.claim.e0308_mechanical_trio_test at 774ms, which is below the line but FAILED on that
 // run, so it is quarantined on evidence rather than on threshold. Three more enrolled rows
-// retire with them (roster 361 -> 358), and roughly 200 further healthy siblings leave under the
-// same module-grain rule as the 78 above. The ceiling is 1552ms and it was calibrated as
+// retire with them (roster 361 -> 358; then 358 -> 306 on the #8460 passes above), and further healthy siblings leave under the same
+// module-grain rule as the 78 above -- counted exactly in the POPULATION block, never rounded. The ceiling is 1552ms and it was calibrated as
 // measured-max-plus-one-quantum from a SINGLE 1527ms observation, so rows within a few hundred
 // ms of it are not stably green on a shared runner; that is the real reason this wave exists.
 //
@@ -120,7 +130,7 @@ import v2.std.text { String }
 // deadline rather than its cost -- 30000ms, not 42545ms. The table therefore under-reported
 // exactly the rows that most needed quarantining, and this module fell outside a 1000ms cut it
 // exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
-// leave with it; no roster row named it, so the roster stays at 358.
+// leave with it; no roster row named it, so the relocation left the roster at 358 (306 after the #8460 removals).
 //
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
