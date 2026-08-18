@@ -1,8 +1,8 @@
 module extdeps.languages.python.emit
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "docs.python.org/3/reference/"
   }
@@ -53,7 +53,7 @@ data python_module_init: String = "__init__.py"
 
 data python_string_types: List<String> = ["String", "Secret"]
 
-data python_simple_method_specs: List<std.emit_model.SimpleMethodSpec> = [
+data python_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",            template: "len(\{recv\})",                          wraps_result: false },
   { method_name: "join",             template: "\{arg\}.join(\{recv\})",                 wraps_result: false },
   { method_name: "split",            template: "\{recv\}.split(\{arg\})",                wraps_result: false },

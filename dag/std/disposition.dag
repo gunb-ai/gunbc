@@ -7,5 +7,5 @@ type ConstructionMechanism
   | SubstrateMandatoryTag
 
 type Disposition
-  = Terminal { reason: std.types.NonEmptyStr }
-  | Scaffold { dissolves_to: ConstructionMechanism, bind: std.decl_ref.DeclarationRef }
+  = Terminal { reason: NonEmptyStr }
+  | Scaffold { dissolves_to: ConstructionMechanism, bind: DeclarationRef }

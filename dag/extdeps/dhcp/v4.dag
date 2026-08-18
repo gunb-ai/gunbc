@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type MacAddress = std.types.NonEmptyStr where brand("MacAddress")
+type MacAddress = NonEmptyStr where brand("MacAddress")
 
 data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
@@ -39,19 +39,19 @@ type DhcpAddressOrigin =
 type DhcpLeaseObservation
   = DynamicDhcpLease {
       client_hostname: DhcpClientHostNameOption12?
-      lease_time_remaining: std.measure.Second
+      lease_time_remaining: Second
       status: DhcpLeaseStatus
     }
   | StaticDhcpReservation {
-      reservation_label: std.types.NonEmptyStr
+      reservation_label: NonEmptyStr
       status: DhcpLeaseStatus
     }
 
-fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> std.measure.Second {
+fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> Second {
   second(minutes * 60)
 }
 
-fn dhcp_lease_remaining_cited_minutes(remaining: std.measure.Second) -> std.nat.Nat {
+fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> std.nat.Nat {
   second_count(remaining) / 60
 }
 

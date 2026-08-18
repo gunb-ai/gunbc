@@ -140,7 +140,7 @@ fn render_annotation_block(text: String) -> String {
 
 // EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored.
 fn render_subject_annotation_blocks(
-  graph: std.source_annotation.SourceAnnotationGraph,
+  graph: SourceAnnotationGraph,
   subject: std.occurrence_identity.OccurrenceId
 ) -> String? {
   let texts = fold(
@@ -212,7 +212,7 @@ fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
 // Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact.
 fn keyed_annotation_rows(
   transport: OccurrenceTransport,
-  graph: std.source_annotation.SourceAnnotationGraph
+  graph: SourceAnnotationGraph
 ) -> List<KeyedAnnotationRow>? {
   let eligible = eligible_key_entries(transport: transport)
   if !eligible_names_unique(entries: eligible) {
@@ -266,8 +266,8 @@ fn bind_annotations(
 
 
 type AdmittedSourceAnnotations {
-  graph: std.source_annotation.SourceAnnotationGraph
-  diagnostics: List<v1.std.core.CompilerDiagnostic>
+  graph: SourceAnnotationGraph
+  diagnostics: List<CompilerDiagnostic>
 }
 
 // THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.

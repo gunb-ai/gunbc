@@ -28,7 +28,7 @@ type Reconciliation<A, E>
   = Converged { evidence: E, applied: A }
   | NotConverged { reason: String, applied: A }
 
-data reconcile_grounded_instance_contract: std.disposition.Disposition = std.disposition.Terminal {
+data reconcile_grounded_instance_contract: Disposition = Terminal {
   reason: "carrier cannot re-run the grounding predicate over the observed read (v1-seed substrate limit): every instance must couple grounding to that read inline and land a discriminating perturb-RED witness"
 }
 

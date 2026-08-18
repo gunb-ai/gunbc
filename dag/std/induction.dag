@@ -42,9 +42,9 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> std.ter
 }
 
 type SubValueRelation
-  = StrictSubValue { field: InductiveField, factor: std.computation.ShrinkFactor }
+  = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }
-  | ArithmeticDescent { param: String, factor: std.computation.ShrinkFactor }
+  | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
   | NonIncreasingValue
   | StrictAxisErased
@@ -76,7 +76,7 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   }
 }
 
-fn shrink_factor_eq(a: std.computation.ShrinkFactor, b: std.computation.ShrinkFactor) -> Bool {
+fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   match a {
     UnitShrink =>
       match b { UnitShrink => true, _ => false }
@@ -352,9 +352,9 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 
 type PolynomialExponent
   = IntegerExpZero
-  | IntegerExpPos { degree: std.termination.PositiveDescentAmount }
-  | FractionExp { numerator: std.termination.PositiveDescentAmount, root: std.termination.PositiveDescentAmount }
-  | LogBasedExp { base: std.termination.ProportionalDivisor, argument: std.termination.PositiveDescentAmount }
+  | IntegerExpPos { degree: PositiveDescentAmount }
+  | FractionExp { numerator: PositiveDescentAmount, root: PositiveDescentAmount }
+  | LogBasedExp { base: ProportionalDivisor, argument: PositiveDescentAmount }
 
 fn poly_exp_degree_one() -> PolynomialExponent {
   IntegerExpPos { degree: OneStep }
@@ -558,7 +558,7 @@ fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
   }
 }
 
-fn derive_bound(param: String, branches: Int, factor: std.computation.ShrinkFactor, work_exponent: Int) -> CostBound {
+fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
   if branches < 1 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: work_exponent) {

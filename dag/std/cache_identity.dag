@@ -6,10 +6,10 @@ type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
 type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 
 type ExecutionReceiptDigest {
-  digest: std.content_hash.ContentHash
+  digest: ContentHash
 }
 
-fn execution_receipt_digest_from_content_hash(hash: std.content_hash.ContentHash) -> ExecutionReceiptDigest {
+fn execution_receipt_digest_from_content_hash(hash: ContentHash) -> ExecutionReceiptDigest {
   ExecutionReceiptDigest { digest: hash }
 }
 

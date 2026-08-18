@@ -135,7 +135,7 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 type DerivedOpEffect {
   operation_name: String
   method: std.types.HttpMethod
-  path_template: std.http_path.PathTemplate
+  path_template: PathTemplate
   shape: EffectShape<KeySource>
 }
 
@@ -151,7 +151,7 @@ type DeriveOpEffectResult
 
 fn derive_effect_shape(
   method: std.types.HttpMethod,
-  path: std.http_path.PathTemplate
+  path: PathTemplate
 ) -> EffectShape<KeySource> {
   match method {
     GET     => ReadEffect
@@ -179,7 +179,7 @@ fn derive_effect_shape(
 fn derive_op_effect(
   operation_name: String,
   method: std.types.HttpMethod,
-  path: std.http_path.PathTemplate
+  path: PathTemplate
 ) -> DeriveOpEffectResult {
   let shape = derive_effect_shape(method: method, path: path)
   DerivedEffect { effect: DerivedOpEffect {

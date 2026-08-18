@@ -31,7 +31,7 @@ module std.nat
 // it drops the operations-record the header above shows the module contradicting.
 type Nat
 
-fn nat_compare(a: Nat, b: Nat) -> std.algebra.Ordering {
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
 

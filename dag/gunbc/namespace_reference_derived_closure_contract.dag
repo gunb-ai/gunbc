@@ -5,7 +5,7 @@ data namespace_reference_derived_closure_contract_note: String = "THE CLOSING CO
 
 data namespace_reference_derived_closure_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. The implementation adds production-derived observations to namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall."
 
-fn reference_derived_closure_required_capabilities() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureCapability> {
+fn reference_derived_closure_required_capabilities() -> List<ReferenceDerivedClosureCapability> {
   [
     SameFileEarlierNeighbourVisible,
     SiblingDecisionBranchExcluded,
@@ -17,58 +17,58 @@ fn reference_derived_closure_required_capabilities() -> List<gunbc.namespace_ref
 }
 
 fn reference_derived_closure_missing_capabilities(
-  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>,
-) -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureCapability> {
+  admissions: List<ReferenceDerivedClosureAdmission>,
+) -> List<ReferenceDerivedClosureCapability> {
   reference_derived_closure_required_capabilities()
     |> filter(required =>
       !(admissions |> any(admission => match admission {
         ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
-        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+        ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
       }))
         || admissions |> any(admission => match admission {
           ReferenceDerivedClosureEstablished { receipt: _ } => false
           ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required
-          gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
+          ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
         })
     )
 }
 
 fn reference_derived_closure_closing_frontier_count(
-  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>,
+  admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> Int {
   count(reference_derived_closure_missing_capabilities(admissions: admissions))
 }
 
 fn reference_derived_closure_closing_contract_holds(
-  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>,
+  admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> Bool {
   reference_derived_closure_closing_frontier_count(admissions: admissions) == 0
 }
 
-fn namespace_reference_derived_closure_acceptance_admissions() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> {
+fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
   [
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: SameFileEarlierNeighbourVisible,
       trigger: P2aStructuralCandidateProducer7515,
     },
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: SiblingDecisionBranchExcluded,
       trigger: P2aStructuralCandidateProducer7515,
     },
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: LaterDeclarationExcluded,
       trigger: P2aStructuralCandidateProducer7515,
     },
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: DistinctSameSpelledDeclarationsPreserved,
       trigger: P2aStructuralCandidateProducer7515,
     },
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: RepeatedMentionsCollapseDependency,
       trigger: P2aReferenceDependencyProjection7515,
     },
-    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
+    ReferenceDerivedClosureUnavailable {
       capability: UnrelatedLoadedFileExcluded,
       trigger: P2aPoolIndependentDependencyProjection7515,
     },

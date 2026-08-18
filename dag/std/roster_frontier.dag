@@ -3,26 +3,26 @@ module std.roster_frontier
 
 type FrontierSubject
   = PathSubject { path: String }
-  | DeclSubject { ref: std.decl_ref.DeclarationRef }
+  | DeclSubject { ref: DeclarationRef }
 
 type FrontierRow {
   subject: FrontierSubject
-  reason: std.types.NonEmptyStr
-  dissolution: std.dissolution.DissolutionCondition
+  reason: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
-fn frontier_row_path(path: String, reason: String, dissolution: std.dissolution.DissolutionCondition) -> FrontierRow {
+fn frontier_row_path(path: String, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
   FrontierRow {
     subject: PathSubject { path: path },
-    reason: reason as std.types.NonEmptyStr,
+    reason: reason as NonEmptyStr,
     dissolution: dissolution,
   }
 }
 
-fn frontier_row_decl(ref: std.decl_ref.DeclarationRef, reason: String, dissolution: std.dissolution.DissolutionCondition) -> FrontierRow {
+fn frontier_row_decl(ref: DeclarationRef, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
   FrontierRow {
     subject: DeclSubject { ref: ref },
-    reason: reason as std.types.NonEmptyStr,
+    reason: reason as NonEmptyStr,
     dissolution: dissolution,
   }
 }
@@ -87,7 +87,7 @@ type FrontierExpiryReport {
 
 fn fold_frontier_expiry(
   rows: List<FrontierRow>,
-  present_decls: List<std.decl_ref.DeclarationRef>,
+  present_decls: List<DeclarationRef>,
 ) -> FrontierExpiryReport {
   fold(
     rows,

@@ -26,7 +26,7 @@ type Ice40Family
 // vendor's identifier for a thing, not a structure to parse, and reading capacity out of it is
 // the decomposition failure the DRAM and NVMe rows in this repository already avoid.
 type Ice40Device {
-  ordering_part_number: std.types.NonEmptyStr
+  ordering_part_number: NonEmptyStr
   family: Ice40Family
   logic_cells: std.nat.Nat
   ram4k_blocks: std.nat.Nat
@@ -34,17 +34,17 @@ type Ice40Device {
 }
 
 // A package is a physical carrier with a footprint a board must reproduce. Dimensions are
-// std.measure.Micrometer — the shared Length quantity at one finer decimal step — because a half-millimetre
+// Micrometer — the shared Length quantity at one finer decimal step — because a half-millimetre
 // pitch is not expressible in whole millimetres and the board that places this part is drawn at
 // that grain. An earlier revision spelled these as plain Nat with the unit in the field NAME,
 // which is the fork this repository refuses: a unit written in a name is a unit no consumer can
 // read, so a micrometre and a millimetre become the same type and adding them typechecks. The
 // contact COUNT stays Nat, and correctly: it is a cardinality, not a length.
 type Ice40Package {
-  designator: std.types.NonEmptyStr
-  body_width: std.measure.Micrometer
-  body_height: std.measure.Micrometer
-  contact_pitch: std.measure.Micrometer
+  designator: NonEmptyStr
+  body_width: Micrometer
+  body_height: Micrometer
+  contact_pitch: Micrometer
   contact_count: std.nat.Nat
 }
 
@@ -54,8 +54,8 @@ type Ice40Package {
 // pins are counted separately because they are not general-purpose: they carry the device's
 // configuration interface and a design that spends them as ordinary I/O has to say so.
 type Ice40BankPopulation {
-  device: std.types.NonEmptyStr
-  package_designator: std.types.NonEmptyStr
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
   bank_0: std.nat.Nat
   bank_1: std.nat.Nat
   bank_2: std.nat.Nat
@@ -126,8 +126,8 @@ data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
 // general-purpose total already INCLUDES the four configuration contacts, which is why it reads
 // 96 against a per-bank sum of 92. A consumer that wants a total states which rows it means.
 type Ice40PackageContactItemization {
-  device: std.types.NonEmptyStr
-  package_designator: std.types.NonEmptyStr
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
   general_purpose_single_ended: std.nat.Nat
   differential_inputs_subset: std.nat.Nat
   dedicated_inputs: std.nat.Nat

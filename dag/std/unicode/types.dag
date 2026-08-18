@@ -31,7 +31,7 @@ type UnicodeBlock {
   default_width: DisplayWidth
 }
 
-fn char_in_class(c: std.types.Char, class: CharClass) -> Bool =
+fn char_in_class(c: Char, class: CharClass) -> Bool =
   match class {
 
     Whitespace =>
@@ -50,7 +50,7 @@ fn char_in_class(c: std.types.Char, class: CharClass) -> Bool =
       || unicode_char_code_point(c: c) == 95
   }
 
-fn unicode_char_code_point(c: std.types.Char) -> Int = c + 0
+fn unicode_char_code_point(c: Char) -> Int = c + 0
 
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive

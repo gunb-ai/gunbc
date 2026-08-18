@@ -57,18 +57,18 @@ fn dag_node_fingerprint(node: Node) -> String {
   dag_node_surface_fingerprint_memo(node: dag_node_collection_anchor(node: node))
 }
 
-fn dag_collect_nodes_list(nodes: List<Node>, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_nodes_list(nodes: List<Node>, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   nodes |> fold(init: slots, f: (s, n) => dag_collect_insert_slots(node: n, slots: s, collision_errors: collision_errors))
 }
 
-fn dag_collect_optional_node(value: Node?, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_optional_node(value: Node?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   match value {
     Present { value: inner } => dag_collect_insert_slots(node: inner, slots: slots, collision_errors: collision_errors)
     Absent => slots
   }
 }
 
-fn dag_collect_inferred(value: InferredNode?, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   match value {
     Present { value: Resolved { node: n } } => dag_collect_insert_slots(node: n, slots: slots, collision_errors: collision_errors)
     _ => slots
@@ -79,7 +79,7 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, v1.compiler.dag
 // and expr_data; its embedded Node subtrees (Bind.declaration,
 // VariantPattern.field_bindings) are real DAG artifacts and must be registered
 // or they never enter the collection accumulator at all.
-fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   match pattern {
     Present { value: Bind { declaration: d } } => dag_collect_insert_slots(node: d, slots: slots, collision_errors: collision_errors)
     Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: fbs } } =>
@@ -90,7 +90,7 @@ fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, v1.compi
   }
 }
 
-fn dag_collect_node_tree(node: Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
     slots
@@ -106,7 +106,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, v1.compiler.dag_collect_
   dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
-fn dag_collect_insert_slots(node: Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_insert_slots(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let anchor = dag_node_collection_anchor(node: node)
   let key = dag_node_key(node: anchor)
   match map_get(slots, key) {
@@ -120,19 +120,19 @@ fn dag_collect_insert_slots(node: Node, slots: Map<String, v1.compiler.dag_colle
       let seq = dag_collect_slot_seq(slots: slots)
       dag_collect_node_tree(
         node: anchor,
-        slots: map_insert(slots, key, v1.compiler.dag_collect_support.DagCollectSlot { key: key, fp: fp, node: anchor, seq: seq }),
+        slots: map_insert(slots, key, DagCollectSlot { key: key, fp: fp, node: anchor, seq: seq }),
         collision_errors: collision_errors
       )
     }
   }
 }
 
-fn dag_collect_from_module(module: v1.compiler.infer_items.TypedModule, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_from_module(module: TypedModule, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_insert_slots(node: module.module, slots: slots, collision_errors: collision_errors)
   module.items |> fold(init: slots, f: (s, item) => dag_collect_insert_slots(node: item, slots: s, collision_errors: collision_errors))
 }
 
-fn collect_dag_nodes(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.dag_collect_support.DagCollectAcc {
+fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
   let _memo_reset = dag_collect_fp_memo_reset()
   let collision_errors = []
   let slots = typed.modules

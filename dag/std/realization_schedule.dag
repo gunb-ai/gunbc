@@ -5,9 +5,9 @@ type CostBasis
   | Measured
 
 type CostAccount<S> {
-  time: Measure<Time, S, std.nat.Nat>
-  space: std.measure.ByteSize
-  power: std.measure.Watt
+  time: Measure<Time, S, Nat>
+  space: ByteSize
+  power: Watt
   basis: CostBasis
 }
 
@@ -20,7 +20,7 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   }
 }
 
-fn cost_account_measured<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
+fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
     space: byte_size(count: 0)
@@ -29,12 +29,12 @@ fn cost_account_measured<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> std.nat.Nat {
+fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
   measure_count(m: account.time)
 }
 
 type RealizationObjective {
-  goals: List<std.pareto.AxisGoal>
+  goals: List<AxisGoal>
 }
 
 type WitnessKind
@@ -51,12 +51,12 @@ data witness_cost_clock_note: String = "Which clock the duration carrier names (
 
 type WitnessCostBasis
   = MeasuredAtExactSubject {
-      clock: std.measure.ClockBasis,
-      duration: std.measure.Millisecond,
+      clock: ClockBasis,
+      duration: Millisecond,
       receipt: String
     }
   | EstimatedFromSiblingClass {
-      clock: std.measure.ClockBasis,
+      clock: ClockBasis,
       source_witness: String,
       basis: String
     }
@@ -64,9 +64,9 @@ type WitnessCostBasis
 data scheduled_witness_envelope_typed_consumer_note: String = "path_classification: WitnessConsumerCadence, not a cadence String (C-b, operator brief 2026-08-07, corrected 2026-08-07): the string fused three separate facts — path-policy classification, schedule period, and maximum tolerated staleness — into one field, so a value like \"4h\" answered both which lane classifies this row and how often it runs, and the wire decoder that tried to recover the identity half from the string only ever knew five of WitnessConsumerCadence's nine arms (witness_consumer_cadence_wire_round_trip_witness_test.dag, RED on the archived draft gunbc#7893 / origin/session/swift-wren-710). WitnessConsumerCadence (std.witness_admission) already is the closed, grounded vocabulary for path-policy classification — importing it here is the §3 single-authority move, not a second declaration. The field is named path_classification, not consumer: per src/v2/workflow/witness_admission.dag's commit_roster_enrollment_is_a_consumer_note, WitnessConsumerCadence answers which path policy classifies a row, NOT whether anything executes it — those are two different questions, and naming this field consumer would silently answer the second with the first (the state-space conflation this slice exists to remove). Whether a row has an executing consumer is answered by the separate fold in src/v2/workflow/witness_admission.dag; this envelope does not carry that fact and must not be read as carrying it. max_staleness is Millisecond, the SAME measure wall_budget already uses (std.measure) — reaching for the existing measure is the point; minting a fresh Duration carrier for a concept that already exists would itself be a failed decomposition (§2 net-concepts test). This envelope represents ACTUAL path-policy classification, never DESIRED placement — that is a distinct, later slice with its own types."
 
 type ScheduledWitnessEnvelope {
-  path_classification: std.witness_admission.WitnessConsumerCadence
-  wall_budget: std.measure.Millisecond
-  max_staleness: std.measure.Millisecond
+  path_classification: WitnessConsumerCadence
+  wall_budget: Millisecond
+  max_staleness: Millisecond
 }
 
 type WitnessSpan
@@ -118,7 +118,7 @@ type RunnableResourceProfile {
   heavy_whole_tree_resolve: Bool
   spawns_host_compiler: Bool
   memory: RunnableMemoryClass
-  execution_mode: std.execution_mode.ExecutionMode
+  execution_mode: ExecutionMode
 }
 
 // A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
@@ -137,9 +137,9 @@ type RunnableResourceProfile {
 // by the reader — it names an offset into a list, which no symbol can name — while the module and
 // declaration travel with the value (DESIGN section 3: cite the symbol, not the position).
 type RunnableBatchClamp {
-  overhead: std.measure.Second
-  per_unit: std.measure.Millisecond
-  authority: std.decl_ref.DeclarationRef
+  overhead: Second
+  per_unit: Millisecond
+  authority: DeclarationRef
 }
 
 // The clamp arithmetic, once. `units` is present in the expression and contributes exactly
@@ -180,7 +180,7 @@ type FloorWorkerObservationOutcome
 
 type FloorWorkerObservation {
   worker: FloorWorkerIdentity
-  termination: std.process_termination.ProcessTermination
+  termination: ProcessTermination
   terminal_receipt: FloorWorkerTerminalReceipt
 }
 
@@ -263,7 +263,7 @@ fn runnable_resource_profile(
   heavy_whole_tree_resolve: Bool,
   spawns_host_compiler: Bool,
   memory: RunnableMemoryClass,
-  execution_mode: std.execution_mode.ExecutionMode
+  execution_mode: ExecutionMode
 ) -> RunnableResourceProfile {
   RunnableResourceProfile {
     heavy_whole_tree_resolve: heavy_whole_tree_resolve
@@ -403,17 +403,17 @@ type WalkPlan<F> {
   batches: List<List<Runnable>>
   finalization: F
   on_success_stages: List<List<Runnable>>
-  ordinary_budget: std.measure.Millisecond?
-  on_success_budget: std.measure.Millisecond?
+  ordinary_budget: Millisecond?
+  on_success_budget: Millisecond?
 }
 
 type WalkPopulationBudgetRefusal {
   population: String
   plan_site: String
-  population_index: std.nat.Nat
+  population_index: Nat
   active_unit: String
-  elapsed: std.measure.Millisecond
-  budget: std.measure.Millisecond
+  elapsed: Millisecond
+  budget: Millisecond
 }
 
 data walk_population_budget_note: String = "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop."
@@ -421,7 +421,7 @@ data walk_population_budget_note: String = "WalkPlan carries an explicit Optiona
 type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
-  target: std.content_hash.ContentHash
+  target: ContentHash
   objective: RealizationObjective
   schedule: Schedule
 

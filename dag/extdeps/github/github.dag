@@ -34,7 +34,7 @@ fn github_https_clone_url(repo: Repository) -> NonEmptyStr {
 type GitHubAuthToken {
   token: Secret
   scopes: List<GitHubScope>
-  expires_at: std.types.Timestamp?
+  expires_at: Timestamp?
 }
 
 type GitHubScope

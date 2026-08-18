@@ -9,7 +9,7 @@ fn workspace_members_region_end_marker() -> String {
   "    # END generated stage0 crate members"
 }
 
-fn stage0_member_entry(spec: v1.compiler.stage0_crates.Stage0CrateSpec) -> String {
+fn stage0_member_entry(spec: Stage0CrateSpec) -> String {
   concat("    \"", spec.crate_dir, "\",")
 }
 

@@ -53,7 +53,7 @@ fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
 // argument-position judge compares nominal head names and discards applied type arguments, so
 // Point3 matched Point3 and the frames were never looked at.
 //
-// The seam is now `frame: std.coordinate_frame.CoordinateFrameIdentity` on every point and vector, and every operation
+// The seam is now `frame: CoordinateFrameIdentity` on every point and vector, and every operation
 // below compares the identities its operands actually carry. std.coordinate_frame holds the full
 // account, including why the compiler repair that landed with it closes the call boundary but not
 // the producer side. The claim this layer supports is frame consistency BY CHECKED DERIVATION.
@@ -69,32 +69,32 @@ fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
 // lands with the spatial-world carrier that actually registers frames.
 
 type Vector3 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
   z: SignedFrameComponent
 }
 
 type Point3 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
   z: SignedFrameComponent
 }
 
 type Vector2 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
 }
 
 type Point2 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
 }
 
-fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
+fn vector3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   Vector3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -103,7 +103,7 @@ fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, 
   }
 }
 
-fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
+fn point3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   Point3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -112,15 +112,15 @@ fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z
   }
 }
 
-fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
+fn vector2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
   Vector2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
+fn point2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
   Point2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn zero_vector3(frame: std.coordinate_frame.CoordinateFrameIdentity) -> Vector3 {
+fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
   vector3(frame: frame, x: 0, y: 0, z: 0)
 }
 
@@ -179,20 +179,20 @@ type SpatialFrameRelation
 
 type SpatialFrameRefusal {
   operation: SpatialOperationIdentity
-  left_frame: std.coordinate_frame.CoordinateFrameIdentity
-  right_frame: std.coordinate_frame.CoordinateFrameIdentity
+  left_frame: CoordinateFrameIdentity
+  right_frame: CoordinateFrameIdentity
   relation: SpatialFrameRelation
 }
 
 type SpatialResult<T>
   = SpatialReady { value: T }
-  | SpatialArithmeticRefused { cause: std.checked_arithmetic.IntegerOverflow }
+  | SpatialArithmeticRefused { cause: IntegerOverflow }
   | SpatialFrameRefused { refusal: SpatialFrameRefusal }
 
 // FIRST CROSSING WINS, and every component is computed before the fold rather than after a partial
 // result exists. There is no arm here that produces a value from some components and a default for
 // the rest: a vector with one unrepresentable component is not a vector.
-fn vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Vector3> {
+fn vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Vector3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -208,7 +208,7 @@ fn vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: 
   }
 }
 
-fn point3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Point3> {
+fn point3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Point3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -224,7 +224,7 @@ fn point3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: C
   }
 }
 
-fn vector2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Vector2> {
+fn vector2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Vector2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -235,7 +235,7 @@ fn vector2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: 
   }
 }
 
-fn point2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Point2> {
+fn point2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Point2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -423,8 +423,8 @@ fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResul
 // physical consumer should derive the orientation operation it actually requires rather than
 // inherit a preselected rotation group.
 type ZQuarterTurnTransform3 {
-  from_frame: std.coordinate_frame.CoordinateFrameIdentity
-  to_frame: std.coordinate_frame.CoordinateFrameIdentity
+  from_frame: CoordinateFrameIdentity
+  to_frame: CoordinateFrameIdentity
   rotation_about_z: QuarterTurns
   translation: Vector3
 }

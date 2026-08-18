@@ -18,9 +18,9 @@ data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: ta
 
 // The rule the shape now enforces: a AnnotationParsedSource is produced once per distinct SOURCE TEXT and passed down. The round trip parses exactly twice by construction — the authored source, and the rendered source — because those are two different texts, which is the property.
 type AnnotationParsedSource {
-  artifact: v1.compiler.tokenize.V1LexArtifact
-  parse: v1.compiler.parse.ParseWithTableResult
-  admitted: v1.compiler.annotation_bind.AdmittedSourceAnnotations
+  artifact: V1LexArtifact
+  parse: ParseWithTableResult
+  admitted: AdmittedSourceAnnotations
 }
 
 fn annotation_parsed_of(source: String) -> AnnotationParsedSource {
@@ -346,7 +346,7 @@ data malformed_tail_source: String = "module rt\n\n// good prose\ndata alpha: St
 
 // MEASURED FIRST, then built accordingly. Five malformed shapes were probed — trailing garbage token, a declaration truncated after `=`, an unclosed `fn` parameter list, an unclosed `type` body, a stray `)` — and in every one the parse errors AND the annotation admission refuses, with an EMPTY graph. So the hypothesised false green (parse errors, annotations admit cleanly, renderer drops the malformed tail, rows agree) has no fixture in this tree today: admission refuses first, because a failed parse yields no module items for the capture to attach to. Reporting the end-to-end arm as proof of the parse gate would therefore have been the inert-check tier — an arm that greens whether or not the gate exists.
 
-// So the gate is discriminated where it actually lives, by a forged value that differs from a working one in EXACTLY the parse health and nothing else. Getting that minimal is the whole difficulty, and the first attempt failed its own mutation test: swapping in the malformed source's entire v1.compiler.parse.ParseWithTableResult also swapped its OCCURRENCE TRANSPORT, so the good graph's subject ids no longer resolved and the projection refused for the wrong reason — the arm greened with the gate deleted. What is forged now is only `result`, the error-and-module pair; the transport, intern table, allocator and admitted graph all stay the clean source's. Delete the gate and the arm reds, because the only remaining reason to refuse is the one under test.
+// So the gate is discriminated where it actually lives, by a forged value that differs from a working one in EXACTLY the parse health and nothing else. Getting that minimal is the whole difficulty, and the first attempt failed its own mutation test: swapping in the malformed source's entire ParseWithTableResult also swapped its OCCURRENCE TRANSPORT, so the good graph's subject ids no longer resolved and the projection refused for the wrong reason — the arm greened with the gate deleted. What is forged now is only `result`, the error-and-module pair; the transport, intern table, allocator and admitted graph all stay the clean source's. Delete the gate and the arm reds, because the only remaining reason to refuse is the one under test.
 
 // That is a lesson about controls, not about this gate: a synthetic input that perturbs more than the property under test proves the wrong thing while looking like proof.
 
@@ -365,7 +365,7 @@ test fn w_a_parse_error_is_not_evidence() -> Bool {
           match keyed_rows_of(
             parsed: AnnotationParsedSource {
               artifact: good.artifact,
-              parse: v1.compiler.parse.ParseWithTableResult {
+              parse: ParseWithTableResult {
                 result: bad.parse.result,
                 intern_table: good.parse.intern_table,
                 occurrence_allocator: good.parse.occurrence_allocator,

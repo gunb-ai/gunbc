@@ -9,9 +9,9 @@ module v1.compiler.effect_derivation
 
 fn re_export_derive_op_effect(
   operation_name: String,
-  method: std.types.HttpMethod,
-  path: std.http_path.PathTemplate
-) -> std.effects.DeriveOpEffectResult {
+  method: HttpMethod,
+  path: PathTemplate
+) -> DeriveOpEffectResult {
   derive_op_effect(
     operation_name: operation_name,
     method: method,
@@ -20,10 +20,10 @@ fn re_export_derive_op_effect(
 }
 
 fn re_export_check_modifier(
-  op: std.effects.DerivedOpEffect,
+  op: DerivedOpEffect,
   declared_idempotent: Bool,
   declared_readonly: Bool
-) -> std.effects.ModifierCheck {
+) -> ModifierCheck {
   check_modifier_vs_derivation(
     op: op,
     declared_idempotent: declared_idempotent,
@@ -31,10 +31,10 @@ fn re_export_check_modifier(
   )
 }
 
-fn re_export_parse_path_template(raw: String) -> extdeps.uri_path.PathTemplateParseResult {
+fn re_export_parse_path_template(raw: String) -> PathTemplateParseResult {
   parse_path_template(raw: raw)
 }
 
-fn re_export_has_path_params(template: std.http_path.PathTemplate) -> Bool {
+fn re_export_has_path_params(template: PathTemplate) -> Bool {
   has_path_params(template: template)
 }

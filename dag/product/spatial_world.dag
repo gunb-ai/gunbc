@@ -5,7 +5,7 @@ module product.spatial_world
 //
 // A world is the join of two facts that live in different layers and must not be fused: WHICH room
 // this is (an allocated RoomIdentity, product.placement_supply's authority since SPATIAL-0) and
-// WHAT SHAPE it has (an std.orthogonal_topology.EnclosedSpace, std's, which carries no identity at all by deliberate
+// WHAT SHAPE it has (an EnclosedSpace, std's, which carries no identity at all by deliberate
 // design). This module is the join and owns neither side. That is why geometry is imported rather
 // than re-declared here and why a room's identity is never derived from its shape - two rooms can
 // be geometrically identical and remain different rooms, and one room keeps its identity across
@@ -31,11 +31,11 @@ module product.spatial_world
 // (KeyedLeafVerdict) and which no consumer here has asked for yet.
 
 // The world's refusals EMBED the geometry band's rather than restating them, so a caller learns
-// which layer refused without this module having to re-spell an std.orthogonal_geometry.OrthogonalRefusal it did not
+// which layer refused without this module having to re-spell an OrthogonalRefusal it did not
 // produce. The two arms of its own are identity facts, which the geometry layer cannot have an
 // opinion about because it has no identities.
 type WorldRefusal
-  = WorldGeometryRefused { cause: std.orthogonal_geometry.OrthogonalRefusal }
+  = WorldGeometryRefused { cause: OrthogonalRefusal }
   | DuplicateRoomIdentity { identity: product.placement_supply.RoomIdentity }
   | VariantTargetMissing { identity: product.placement_supply.RoomIdentity }
   | VariantTargetAlreadyPresent { identity: product.placement_supply.RoomIdentity }
@@ -47,7 +47,7 @@ type WorldConstruction<T>
 
 type PlacedSpace {
   identity: product.placement_supply.RoomIdentity
-  space: std.orthogonal_topology.EnclosedSpace
+  space: EnclosedSpace
 }
 
 // The complex is NOT stored beside the rooms. Admission is proven at the mint, and keeping the
@@ -95,7 +95,7 @@ fn first_duplicate_identity(rooms: List<PlacedSpace>) -> RoomIdentity? {
   scanned.duplicate
 }
 
-fn room_spaces(rooms: List<PlacedSpace>) -> List<std.orthogonal_topology.EnclosedSpace> {
+fn room_spaces(rooms: List<PlacedSpace>) -> List<EnclosedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) => concat([r.space], acc)))
 }
 
@@ -138,15 +138,15 @@ fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruc
 // unable to express one.
 type WorldVariant sole_constructor {
   base: World
-  delta: KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>
+  delta: KeyedPatch<product.placement_supply.RoomIdentity, EnclosedSpace>
 }
 
-fn world_variant(base: World, delta: KeyedPatch<RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> WorldVariant {
+fn world_variant(base: World, delta: KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {
   WorldVariant { base: base, delta: delta }
 }
 
 fn variant_base(v: WorldVariant) -> World { v.base }
-fn variant_delta(v: WorldVariant) -> KeyedPatch<RoomIdentity, std.orthogonal_topology.EnclosedSpace> { v.delta }
+fn variant_delta(v: WorldVariant) -> KeyedPatch<RoomIdentity, EnclosedSpace> { v.delta }
 
 type ApplyAcc {
   rooms: List<PlacedSpace>
@@ -163,7 +163,7 @@ fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<Pl
 // [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
 // serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
 // the change IS the representation, and an unrepresented reorder is precisely the violation of it.
-fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: std.orthogonal_topology.EnclosedSpace) -> List<PlacedSpace> {
+fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: EnclosedSpace) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) {
       concat([PlacedSpace { identity: identity, space: space }], acc)
@@ -178,7 +178,7 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: std
 // built against a different base apply cleanly and produce a world nobody described - the
 // fabricated plausible output DESIGN section 5 forbids, and the stale-parent case its
 // compare-and-swap discipline exists for.
-fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> ApplyAcc {
+fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
     Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
     Absent =>

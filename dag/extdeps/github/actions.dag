@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitHubActionsRuntime {
-  oidc_request_url_env: std.types.NonEmptyStr
-  oidc_request_token_env: std.types.NonEmptyStr
+  oidc_request_url_env: NonEmptyStr
+  oidc_request_token_env: NonEmptyStr
 }
 
 data github_actions_runtime: GitHubActionsRuntime = {
@@ -20,11 +20,11 @@ data github_actions_runtime: GitHubActionsRuntime = {
 
 data github_ci_event_surface_note: String = "GITHUB_EVENT_NAME and GITHUB_BASE_REF are default environment variables GitHub Actions sets on every job (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read 2026-07-24). GITHUB_EVENT_NAME carries the wire name of the triggering event (the runtime projection of WorkflowTrigger: push / pull_request / workflow_dispatch / schedule / merge_group). GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on pull_request / pull_request_target events, empty for every other event. extdeps owns these names (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c))."
 
-data github_event_name_env: std.types.NonEmptyStr = "GITHUB_EVENT_NAME"
+data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
 
-data github_base_ref_env: std.types.NonEmptyStr = "GITHUB_BASE_REF"
+data github_base_ref_env: NonEmptyStr = "GITHUB_BASE_REF"
 
-data github_event_path_env: std.types.NonEmptyStr = "GITHUB_EVENT_PATH"
+data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
 
 data github_event_path_home_note: String = "GITHUB_EVENT_PATH is a GitHub Actions DEFAULT ENVIRONMENT VARIABLE — the path to the file holding the full webhook payload for whatever event triggered the run (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read 2026-08-06). It is therefore a fact about the Actions RUNTIME, exactly like github_event_name_env beside it, and not a fact about any one event. It previously lived in extdeps.github.push_event, which made the push payload reader the authority for a variable that carries the pull_request, schedule, and workflow_run payloads just as much. That homing only looked right while push was the sole reader; adding a second event reader made it a §3 fork in waiting — two modules declaring one upstream name, drifting independently. Moved here rather than copied: push_event and workflow_run_event both import it, and there is exactly one declaration of this name in the tree."
 
@@ -48,7 +48,7 @@ type Workflow {
   concurrency: ConcurrencySpec?
   jobs: List<Job>
 
-  env: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  env: List<YamlKeyValue>?
   permissions: WorkflowPermissions?
 }
 
@@ -65,7 +65,7 @@ type PermissionLevel = PermRead | PermWrite | PermNone
 type WorkflowTrigger
   = Push { branches: List<String>, paths: List<String> }
   | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
-  | Schedule { cron: extdeps.cron.schedule_model.CronSchedule }
+  | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
   | WorkflowRunCompleted { workflows: List<String> }
@@ -99,7 +99,7 @@ type DispatchInputType
 type SecretScope = StepScope | JobScope | WorkflowScope
 
 type WorkflowSecret {
-  name: std.types.SecretName
+  name: SecretName
   scope: SecretScope
 }
 
@@ -110,9 +110,9 @@ type Job {
   steps: List<Step>
   needs: List<String>
 
-  env: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  env: List<YamlKeyValue>?
 
-  outputs: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  outputs: List<YamlKeyValue>?
   if_condition: String?
   timeout_minutes: Int?
   continue_on_error: Bool?
@@ -166,7 +166,7 @@ type Step
       id: String?,
       run: String,
       shell: ShellType?,
-      env: List<extdeps.languages.yaml.types.YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
       working_directory: String?,
       if_condition: String?,
       continue_on_error: Bool?,
@@ -177,8 +177,8 @@ type Step
       id: String?,
       uses: ActionRef,
 
-      with: List<extdeps.languages.yaml.types.YamlKeyValue>?,
-      env: List<extdeps.languages.yaml.types.YamlKeyValue>?,
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
       if_condition: String?,
       continue_on_error: Bool?,
       timeout_minutes: Int?

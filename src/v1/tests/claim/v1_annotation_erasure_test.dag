@@ -15,7 +15,7 @@ data later_module: String = "module a.two\n\ndata gamma: String = \"g\"\n\nfn us
 
 data later_module_shifted: String = "module a.two\n\ndata inserted: String = \"i\"\n\ndata gamma: String = \"g\"\n\nfn use_it(x: String) -> String {\n  x\n}\n"
 
-fn parse_in_scope(source: String, file: String, allocator: std.occurrence_identity.OccurrenceIdAllocator, table: v1.std.core.InternTable) -> v1.compiler.parse.ParseWithTableResult {
+fn parse_in_scope(source: String, file: String, allocator: OccurrenceIdAllocator, table: InternTable) -> ParseWithTableResult {
   parse_with_table_in_occurrence_scope(
     tokens: tokenize_artifact(source: source, file: file).tokens,
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
@@ -26,7 +26,7 @@ fn parse_in_scope(source: String, file: String, allocator: std.occurrence_identi
 
 data scope_threading_note: String = "Both modules are parsed in ONE occurrence scope with the allocator threaded from the first into the second, exactly as front_end_sources threads it across a compilation. That threading is what makes proof (2) meaningful: if the annotated first module consumed even one extra identity, every identity in the SECOND module would shift, and a test that parsed each module in its own fresh scope could never observe it."
 
-fn first_then_second(first_source: String, second_source: String) -> v1.compiler.parse.ParseWithTableResult {
+fn first_then_second(first_source: String, second_source: String) -> ParseWithTableResult {
   let first = parse_in_scope(
     source: first_source,
     file: "one.dag",
@@ -41,7 +41,7 @@ fn first_then_second(first_source: String, second_source: String) -> v1.compiler
   )
 }
 
-fn first_only(first_source: String) -> v1.compiler.parse.ParseWithTableResult {
+fn first_only(first_source: String) -> ParseWithTableResult {
   parse_in_scope(
     source: first_source,
     file: "one.dag",
@@ -52,7 +52,7 @@ fn first_only(first_source: String) -> v1.compiler.parse.ParseWithTableResult {
 
 data identity_rendering_note: String = "Renders name-to-identity pairs, deliberately WITHOUT spans. Spans are expected to differ — a comment shifts every byte offset after it, which is the whole reason proof (6) exists as a separate claim — so including them would make this control fail for the one reason it is not testing. What must not move is the IDENTITY each authored name received."
 
-fn render_identities(transport: std.occurrence_identity.OccurrenceTransport) -> String {
+fn render_identities(transport: OccurrenceTransport) -> String {
   fold(
     transport.index.entries,
     init: "",

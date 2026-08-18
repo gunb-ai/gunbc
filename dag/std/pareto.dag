@@ -7,11 +7,11 @@ type AxisGoal = HigherIsBetter | LowerIsBetter
 
 type AxisComparison = Better | Same | Worse
 
-fn compare_int(a: Int, b: Int) -> std.algebra.Ordering {
+fn compare_int(a: Int, b: Int) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
 
-fn axis_comparison(goal: AxisGoal, value_order: std.algebra.Ordering) -> AxisComparison {
+fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
   match goal {
     HigherIsBetter => match value_order {
       Greater => Better

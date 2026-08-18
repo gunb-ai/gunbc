@@ -10,7 +10,7 @@ module std.orthogonal_topology
 // projections of one boundary, so disagreement has no representation.
 //
 // THE SHELL IS CLOSED BY CONSTRUCTION, NOT BY A CHECK. A ClosedShell is minted only from an
-// std.orthogonal_geometry.OrthogonalPrism3, and a footprint loop extruded between two parallel planes is closed for the
+// OrthogonalPrism3, and a footprint loop extruded between two parallel planes is closed for the
 // same reason 3A's loop is closed: the mint takes vertices and derives the edges including the
 // closing one. So there is no unclosed shell for a refusal arm to reject, and no such arm exists -
 // declaring one would be rung inflation on the sum, the same class 3A deleted LoopNotClosed for.
@@ -30,7 +30,7 @@ module std.orthogonal_topology
 // number that looks plausible.
 //
 // ONE REFUSAL VOCABULARY FOR THE BAND, which is why this module extends std.orthogonal_geometry's
-// std.orthogonal_geometry.OrthogonalRefusal rather than declaring a TopologyRefusal beside it. A frame mismatch here is the
+// OrthogonalRefusal rather than declaring a TopologyRefusal beside it. A frame mismatch here is the
 // same fact with the same remedy as a frame mismatch there; a second spelling of it would be the
 // nicknaming DESIGN section 3 forbids, and a consumer handling both bands would have to match two
 // vocabularies to learn one thing.
@@ -39,22 +39,22 @@ module std.orthogonal_topology
 // be a second representation of the footprint: an edit to the loop would leave them stale, and
 // nothing in the type could notice. The span is the edge; the vertical extent is the prism's.
 type ShellWall {
-  start: std.affine_space.Point2
-  end: std.affine_space.Point2
+  start: Point2
+  end: Point2
   low: Int
   high: Int
 }
 
 type ClosedShell sole_constructor {
-  prism: std.orthogonal_geometry.OrthogonalPrism3
+  prism: OrthogonalPrism3
 }
 
 // Total: a prism IS a closed shell, so there is nothing here to refuse and the return type says so.
-fn closed_shell_of_prism(prism: std.orthogonal_geometry.OrthogonalPrism3) -> ClosedShell {
+fn closed_shell_of_prism(prism: OrthogonalPrism3) -> ClosedShell {
   ClosedShell { prism: prism }
 }
 
-fn shell_prism(s: ClosedShell) -> std.orthogonal_geometry.OrthogonalPrism3 { s.prism }
+fn shell_prism(s: ClosedShell) -> OrthogonalPrism3 { s.prism }
 fn shell_frame(s: ClosedShell) -> CoordinateFrameIdentity { prism3_frame(p: s.prism) }
 
 fn shell_walls(s: ClosedShell) -> List<ShellWall> {
@@ -137,7 +137,7 @@ fn count_edge(edges: List<LoopEdge>, wanted: LoopEdge) -> Int {
 // Multiplicity is compared, not mere membership: two loops can draw on the same set of distinct
 // edges while traversing one of them a different number of times, and a membership test would call
 // those equal.
-fn loops_describe_same_region(a: List<std.affine_space.Point2>, b: List<std.affine_space.Point2>) -> Bool {
+fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
   if length(a) != length(b) {
     false
   } else {
@@ -579,7 +579,7 @@ type SpaceComplex sole_constructor {
 
 type ComplexAccum {
   admitted: List<EnclosedSpace>
-  refusal: std.orthogonal_geometry.OrthogonalRefusal?
+  refusal: OrthogonalRefusal?
 }
 
 fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {

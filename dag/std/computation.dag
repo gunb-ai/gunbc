@@ -9,7 +9,7 @@ type SizeBound
   | SubtreeSize { param: String }
   | ArithmeticParam { param: String }
   | ExplicitCountZero
-  | ExplicitCountPositive { steps: std.termination.PositiveDescentAmount }
+  | ExplicitCountPositive { steps: PositiveDescentAmount }
   | Forever
 
 fn tree_size_bound(param: String) -> SizeBound {
@@ -18,9 +18,9 @@ fn tree_size_bound(param: String) -> SizeBound {
 
 type CallPattern
   = ChildAccessorCall { accessor: String }
-  | CollectionShrinkCall { amount: std.termination.PositiveDescentAmount, collection: String }
-  | ArithmeticSubtractCall { steps: std.termination.PositiveDescentAmount, ring_param: String }
-  | ArithmeticDivideCall { divisor: std.termination.ProportionalDivisor, ring_param: String }
+  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }
+  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }
   | ParserAdvanceCall { witness: String }
   | WorklistDrainCall { element: String }
   | FoldBodyCall { outer_collection: String }
@@ -28,13 +28,13 @@ type CallPattern
 
 type ShrinkFactor
   = UnitShrink
-  | ConstantShrink { steps: std.termination.PositiveDescentAmount }
-  | ProportionalShrink { divisor: std.termination.ProportionalDivisor }
+  | ConstantShrink { steps: PositiveDescentAmount }
+  | ProportionalShrink { divisor: ProportionalDivisor }
 
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
-  evidence: std.termination.DescentEvidence
+  evidence: DescentEvidence
   factor: ShrinkFactor?
 }
 

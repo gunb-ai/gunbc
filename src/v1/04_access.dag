@@ -6,7 +6,7 @@ module v1.compiler.infer_access
 
 type AccessCheckResultNode {
   inferred: InferredNode?
-  diagnostics: List<v1.std.core.ErrorNode>
+  diagnostics: List<ErrorNode>
 }
 
 type KeyedCollectionParts {
@@ -14,11 +14,11 @@ type KeyedCollectionParts {
   value_type: Node
 }
 
-fn access_error(message: String, span: SourceSpan, module_name: String) -> v1.std.core.ErrorNode {
+fn access_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn access_result(inferred: Node, diagnostics: List<v1.std.core.ErrorNode>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
+fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
       inferred: Present { value: Resolved { node: inferred } },

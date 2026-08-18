@@ -2,14 +2,14 @@ module extdeps.languages.dag.types
 
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate"
   }
 }
 
-data dag_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
+data dag_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "Int",    default_expr: "0",    is_copy: none, literal_suffix: none },
   { dag_name: "Float",  target_type: "Float",  default_expr: "0.0",  is_copy: none, literal_suffix: none },
   { dag_name: "Bool",   target_type: "Bool",   default_expr: "false", is_copy: none, literal_suffix: none },

@@ -99,23 +99,23 @@ fn copper_layer_function(r: CopperLayerRef) -> product.pcb.stackup.CopperLayerFu
   r.function
 }
 
-// A REALIZATION NAMES A LOGICAL NET AND A LAYER. It carries the product.electrical.connectivity.NetIdentity rather than a copy of
+// A REALIZATION NAMES A LOGICAL NET AND A LAYER. It carries the NetIdentity rather than a copy of
 // the net's members, because membership is the schematic's fact and duplicating it here is how the
 // two representations start to disagree.
 type NetCopperRealization {
-  net: product.electrical.connectivity.NetIdentity
+  net: NetIdentity
   layer: CopperLayerRef
 }
 
 type CopperRefusalCause
-  = RealizationNamesNoSuchNet { net: product.electrical.connectivity.NetIdentity }
-  | RealizationSelectedAgainstAnotherStackup { net: product.electrical.connectivity.NetIdentity }
-  | NetSplitAcrossLayersWithoutAConnection { net: product.electrical.connectivity.NetIdentity }
-  | NetHasTwoConductorsOnOneLayer { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionNamesNoSuchNet { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionSelectedAgainstAnotherStackup { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionJoinsALayerToItself { net: product.electrical.connectivity.NetIdentity, ordinal: Int }
-  | InterlayerConnectionEndpointHasNoConductor { net: product.electrical.connectivity.NetIdentity, ordinal: Int }
+  = RealizationNamesNoSuchNet { net: NetIdentity }
+  | RealizationSelectedAgainstAnotherStackup { net: NetIdentity }
+  | NetSplitAcrossLayersWithoutAConnection { net: NetIdentity }
+  | NetHasTwoConductorsOnOneLayer { net: NetIdentity }
+  | InterlayerConnectionNamesNoSuchNet { net: NetIdentity }
+  | InterlayerConnectionSelectedAgainstAnotherStackup { net: NetIdentity }
+  | InterlayerConnectionJoinsALayerToItself { net: NetIdentity, ordinal: Int }
+  | InterlayerConnectionEndpointHasNoConductor { net: NetIdentity, ordinal: Int }
 
 // ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
 // is renamed in the schematic and its copper realization keeps the old identity, so the board has a
@@ -134,11 +134,11 @@ type CopperRefusalCause
 // was to extract the general grain rather than to move the specimen -- product.electrical
 // .connectivity now owns it and the analog article consumes it on the same footing this module
 // does, so neither is the other's authority.
-fn net_exists(nets: List<ElectricalNet>, net: product.electrical.connectivity.NetIdentity) -> Bool {
+fn net_exists(nets: List<ElectricalNet>, net: NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
 
-fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> std.types.List<NetCopperRealization> {
+fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: NetIdentity) -> std.types.List<NetCopperRealization> {
   filter(rs, r => r.net == net)
 }
 
@@ -189,7 +189,7 @@ fn copper_refusal_causes(
 // two values rather than a property of either, so it is a checked refusal, and a via from a layer to
 // itself is a drilled hole that connects nothing.
 type InterlayerConnection {
-  net: product.electrical.connectivity.NetIdentity
+  net: NetIdentity
   from_layer: CopperLayerRef
   to_layer: CopperLayerRef
 }
@@ -202,7 +202,7 @@ fn interlayer_touches_ordinal(v: InterlayerConnection, ordinal: Int) -> Bool {
   count(filter(interlayer_ordinals(v: v), o => o == ordinal)) > 0
 }
 
-fn connections_of_net(vs: List<InterlayerConnection>, net: product.electrical.connectivity.NetIdentity) -> List<InterlayerConnection> {
+fn connections_of_net(vs: List<InterlayerConnection>, net: NetIdentity) -> List<InterlayerConnection> {
   filter(vs, v => v.net == net)
 }
 
@@ -254,7 +254,7 @@ fn expand_reached(
 fn net_reached_ordinals(
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
-  net: product.electrical.connectivity.NetIdentity,
+  net: NetIdentity,
   seed: Int,
 ) -> List<Int> {
   let conns = connections_of_net(vs: vs, net: net)
@@ -281,7 +281,7 @@ fn net_reached_ordinals(
 // The cause carries the net and not the ordinal. Naming WHICH layer is duplicated needs a fold over
 // distinct ordinals that this increment does not build, and picking one of them would name a layer
 // the model did not establish as the offender.
-fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> Bool {
+fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: NetIdentity) -> Bool {
   let on = realizations_of_net(rs: rs, net: net)
   count(filter(on, r =>
     count(filter(on, other => copper_layer_ordinal(r: other.layer) == copper_layer_ordinal(r: r.layer))) > 1
@@ -294,7 +294,7 @@ fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: product.e
 // if any of them fails to reach all the others. For a connected net every start reaches everything,
 // so the two readings agree; for an islanded net every start fails, so the refusal is not sensitive
 // to which layer it began from.
-fn net_split_is_unrouted(rs: List<NetCopperRealization>, vs: List<InterlayerConnection>, net: product.electrical.connectivity.NetIdentity) -> Bool {
+fn net_split_is_unrouted(rs: List<NetCopperRealization>, vs: List<InterlayerConnection>, net: NetIdentity) -> Bool {
   let on = realizations_of_net(rs: rs, net: net)
   if count(on) <= 1 {
     false
@@ -370,7 +370,7 @@ fn interlayer_refusal_causes(
 // board is not the same net as VCC on another, and an admitted result must not be replayable against
 // a different board whose net labels happen to agree.
 type AdmittedCopper sole_constructor {
-  board: std.decl_ref.DeclarationRef
+  board: DeclarationRef
   realizations: List<NetCopperRealization>
   interlayer_connections: List<InterlayerConnection>
 }
@@ -380,7 +380,7 @@ type CopperAdmission
   | CopperRefused { causes: List<CopperRefusalCause> }
 
 fn mint_admitted_copper(
-  board: std.decl_ref.DeclarationRef,
+  board: DeclarationRef,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
 ) -> CopperAdmission
@@ -397,7 +397,7 @@ fn admitted_copper_connections(a: AdmittedCopper) -> List<InterlayerConnection> 
   a.interlayer_connections
 }
 
-fn admitted_copper_board(a: AdmittedCopper) -> std.decl_ref.DeclarationRef {
+fn admitted_copper_board(a: AdmittedCopper) -> DeclarationRef {
   a.board
 }
 

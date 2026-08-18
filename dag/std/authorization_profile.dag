@@ -1,14 +1,14 @@
 module std.authorization_profile
 
 
-// Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to std.access.AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest carries source, resource, audience, context, and evidence without publisher policy. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct.
+// Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest carries source, resource, audience, context, and evidence without publisher policy. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct.
 type AudienceSet<P>
   = UniversalAudience
   | EnumeratedAudience { members: Set<P> }
 
 data audience_set_note: String = "An audience is a set, not the frozen World > Network > Org > Repo chain from gunbc#7541. Enumerated audiences use the canonical std.types.Set carrier, so duplicate membership is unrepresentable; overlapping sets need not contain one another. UniversalAudience is top and the empty EnumeratedAudience is bottom. audience_subset derives the partial order from canonical set_union, which is also the audience_join operation."
 
-data authorization_profile_audience_query_contract: std.disposition.Disposition = std.disposition.Terminal {
+data authorization_profile_audience_query_contract: Disposition = Terminal {
   reason: "Structural readers over the closed AudienceSet coproduct: audience_subset derives the partial order only from canonical std.types.Set union/equality, and audience_join delegates finite union to canonical set_union. UniversalAudience is the one explicit top arm. Terminal because the coproduct has exactly those two variants and the overlapping-audience witness covers incomparable enumerated sets, universal top, and the join result."
 }
 
@@ -58,13 +58,13 @@ type EffectRequest<S, A, O, C, E> {
 
 fn effect_access_request<S, A, O, C, E>(
   request: EffectRequest<S, A, O, C, E>,
-) -> std.access.AccessRequest<S, EffectAuthorizationAction<A>, O, C, E> {
-  std.access.AccessRequest {
+) -> AccessRequest<S, EffectAuthorizationAction<A>, O, C, E> {
+  AccessRequest {
     subject: request.subject,
     action: EffectAuthorizationAction { effect: request.effect },
     object: request.target,
-    context: std.access.AccessContext { value: request.context },
-    evidence: std.access.AccessEvidence { value: request.evidence },
+    context: AccessContext { value: request.context },
+    evidence: AccessEvidence { value: request.evidence },
   }
 }
 
@@ -84,16 +84,16 @@ type ReferenceRequest<R, C, E> {
 
 fn reference_access_request<R, C, E>(
   request: ReferenceRequest<R, C, E>,
-) -> std.access.AccessRequest<R, ReferenceAction, R, ReferenceContext<R, C>, E> {
-  std.access.AccessRequest {
+) -> AccessRequest<R, ReferenceAction, R, ReferenceContext<R, C>, E> {
+  AccessRequest {
     subject: request.referrer,
     action: ReferenceAction {},
     object: request.referenced,
-    context: std.access.AccessContext { value: ReferenceContext {
+    context: AccessContext { value: ReferenceContext {
       referrer: request.referrer,
       context: request.context,
     } },
-    evidence: std.access.AccessEvidence { value: request.evidence },
+    evidence: AccessEvidence { value: request.evidence },
   }
 }
 
@@ -117,16 +117,16 @@ type PublicationAdmissionRequest<S, Source, R, C, E, P> {
 
 fn publication_access_request<S, Source, R, C, E, P>(
   request: PublicationAdmissionRequest<S, Source, R, C, E, P>,
-) -> std.access.AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<C, P>, E> {
-  std.access.AccessRequest {
+) -> AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<C, P>, E> {
+  AccessRequest {
     subject: request.subject,
     action: PublicationAdmissionAction { source: request.source },
     object: request.resource,
-    context: std.access.AccessContext { value: PublicationContext {
+    context: AccessContext { value: PublicationContext {
       audience: request.audience,
       context: request.context,
     } },
-    evidence: std.access.AccessEvidence { value: request.evidence },
+    evidence: AccessEvidence { value: request.evidence },
   }
 }
 
@@ -150,16 +150,16 @@ type DisclosureRequest<P, R, F, C, E> {
 
 fn disclosure_access_request<P, R, F, C, E>(
   request: DisclosureRequest<P, R, F, C, E>,
-) -> std.access.AccessRequest<P, DisclosureAction<F>, R, DisclosureContext<C, P>, E> {
-  std.access.AccessRequest {
+) -> AccessRequest<P, DisclosureAction<F>, R, DisclosureContext<C, P>, E> {
+  AccessRequest {
     subject: request.principal,
     action: DisclosureAction { fields: request.fields },
     object: request.resource,
-    context: std.access.AccessContext { value: DisclosureContext {
+    context: AccessContext { value: DisclosureContext {
       audience: request.audience,
       context: request.context,
     } },
-    evidence: std.access.AccessEvidence { value: request.evidence },
+    evidence: AccessEvidence { value: request.evidence },
   }
 }
 
@@ -177,12 +177,12 @@ type SealedExecutionRequest<P, O, R, C, E> {
 
 fn sealed_execution_access_request<P, O, R, C, E>(
   request: SealedExecutionRequest<P, O, R, C, E>,
-) -> std.access.AccessRequest<P, SealedExecutionAction<O>, R, C, E> {
-  std.access.AccessRequest {
+) -> AccessRequest<P, SealedExecutionAction<O>, R, C, E> {
+  AccessRequest {
     subject: request.principal,
     action: SealedExecutionAction { operation: request.operation },
     object: request.sealed_resource,
-    context: std.access.AccessContext { value: request.execution_context },
-    evidence: std.access.AccessEvidence { value: request.evidence },
+    context: AccessContext { value: request.execution_context },
+    evidence: AccessEvidence { value: request.evidence },
   }
 }

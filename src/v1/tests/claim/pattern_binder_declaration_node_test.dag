@@ -12,7 +12,7 @@ fn parse_fixture_pattern(source: String) -> ParsedFixturePattern {
   let index = build_newline_index(file: file, source: source)
   let result = parse_pattern(
     tokens: token_stream_new(all: tokenize(source: source, file: file)),
-    ctx: v1.compiler.parse.ParseContext {
+    ctx: ParseContext {
       source_indices: map_insert(empty_map(), file, index),
       intern_table: empty_intern_table(),
     },
@@ -70,8 +70,8 @@ fn transport_fixture_span() -> std.types.SourceSpan {
 
 fn transport_fixture_path(
   occurrence: std.occurrence_identity.OccurrenceId
-) -> std.occurrence_identity.OccurrenceContainmentPath {
-  std.occurrence_identity.OccurrenceContainmentPath {
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
     ancestors: [],
     terminal: occurrence,
   }
@@ -79,9 +79,9 @@ fn transport_fixture_path(
 
 fn transport_fixture_index_entry(
   occurrence: std.occurrence_identity.OccurrenceId
-) -> std.occurrence_identity.OccurrenceIndexEntry {
-  std.occurrence_identity.OccurrenceIndexEntry {
-    projection: std.occurrence_identity.OccurrenceProjection {
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
       occurrence: occurrence,
       authored_name: "same",
       diagnostic_span: transport_fixture_span(),
@@ -92,8 +92,8 @@ fn transport_fixture_index_entry(
 
 fn transport_fixture_declaration(
   occurrence: std.occurrence_identity.OccurrenceId
-) -> std.occurrence_identity.DeclarationOccurrence {
-  std.occurrence_identity.DeclarationOccurrence {
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
     occurrence: occurrence,
     containment: transport_fixture_path(occurrence: occurrence),
     category: LexicalValueOccurrence,
@@ -103,8 +103,8 @@ fn transport_fixture_declaration(
 
 fn transport_fixture_reference(
   occurrence: std.occurrence_identity.OccurrenceId
-) -> std.occurrence_identity.ReferenceOccurrence {
-  std.occurrence_identity.ReferenceOccurrence {
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
     occurrence: occurrence,
     containment: transport_fixture_path(occurrence: occurrence),
     category: CallableOccurrence,
@@ -113,7 +113,7 @@ fn transport_fixture_reference(
 }
 
 fn occurrence_index_has_name(
-  index: std.occurrence_identity.OccurrenceIndex,
+  index: OccurrenceIndex,
   occurrence: std.occurrence_identity.OccurrenceId,
   name: String
 ) -> Bool {
@@ -130,7 +130,7 @@ fn occurrence_index_has_name(
 }
 
 fn lexical_declaration_count_named(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String
 ) -> Int {
   fold(
@@ -154,7 +154,7 @@ fn lexical_declaration_count_named(
 }
 
 fn lexical_reference_count_named(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String
 ) -> Int {
   fold(
@@ -178,7 +178,7 @@ fn lexical_reference_count_named(
 }
 
 fn type_reference_count_named(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String
 ) -> Int {
   fold(
@@ -358,7 +358,7 @@ test fn w_parse_error_preserves_authored_token_ordinal_space() -> Bool {
   let seeded = intern_table_with_authored_token_ordinals(
     table: empty_intern_table(),
     authored_token_ordinals: authored_token_ordinal_space_from_allocator(
-      alloc: std.occurrence_identity.OccurrenceIdAllocator { next_id: 41 }
+      alloc: OccurrenceIdAllocator { next_id: 41 }
     )
   )
   let parsed = parse_with_table(
@@ -380,8 +380,8 @@ test fn w_production_frontend_accepts_valid_occurrence_transport() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex { entries: [] },
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [] },
       declarations: [],
       references: [],
     }
@@ -395,8 +395,8 @@ test fn w_production_frontend_refuses_missing_occurrence_identity() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex { entries: [] },
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [] },
       declarations: [
         transport_fixture_declaration(occurrence: occurrence)
       ],
@@ -424,8 +424,8 @@ test fn w_production_frontend_refuses_duplicate_occurrence_identity() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex { entries: [entry, entry] },
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [entry, entry] },
       declarations: [
         transport_fixture_declaration(occurrence: occurrence)
       ],
@@ -455,8 +455,8 @@ test fn w_production_frontend_refuses_wrong_occurrence_role() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex {
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
         entries: [
           transport_fixture_index_entry(occurrence: occurrence)
         ],
@@ -496,10 +496,10 @@ test fn w_production_frontend_refuses_index_terminal_mismatch() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex {
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
         entries: [
-          std.occurrence_identity.OccurrenceIndexEntry {
+          OccurrenceIndexEntry {
             projection: entry.projection,
             containment: transport_fixture_path(
               occurrence: mismatched_terminal
@@ -536,16 +536,16 @@ test fn w_production_frontend_refuses_ancestor_path_mismatch() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex {
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
         entries: [
           transport_fixture_index_entry(occurrence: occurrence)
         ],
       },
       declarations: [
-        std.occurrence_identity.DeclarationOccurrence {
+        DeclarationOccurrence {
           occurrence: declaration.occurrence,
-          containment: std.occurrence_identity.OccurrenceContainmentPath {
+          containment: OccurrenceContainmentPath {
             ancestors: [ancestor],
             terminal: occurrence,
           },
@@ -580,8 +580,8 @@ test fn w_production_frontend_refuses_duplicate_declaration_rows() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex {
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
         entries: [
           transport_fixture_index_entry(occurrence: occurrence)
         ],
@@ -614,8 +614,8 @@ test fn w_production_frontend_refuses_duplicate_reference_rows() -> Bool {
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
-    occurrence_transport: std.occurrence_identity.OccurrenceTransport {
-      index: std.occurrence_identity.OccurrenceIndex {
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
         entries: [
           transport_fixture_index_entry(occurrence: occurrence)
         ],

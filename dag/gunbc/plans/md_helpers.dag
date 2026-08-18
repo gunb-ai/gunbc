@@ -1,17 +1,17 @@
 module gunbc.plans.md_helpers
 
 
-fn h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H2, inlines: [std.markdown.TextInline { text: text }] } }
-fn h3(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H3, inlines: [std.markdown.TextInline { text: text }] } }
-fn p(text: String) -> std.markdown.MarkdownBlock { std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: text }] } }
-fn li(text: String) -> std.markdown.MarkdownListItem { std.markdown.MarkdownListItem { blocks: [p(text: text)] } }
-fn li_blocks(blocks: List<std.markdown.MarkdownBlock>) -> std.markdown.MarkdownListItem { std.markdown.MarkdownListItem { blocks: blocks } }
-fn ul(items: List<std.markdown.MarkdownListItem>) -> std.markdown.MarkdownBlock { std.markdown.UnorderedListBlock { items: items } }
-fn ol(items: List<std.markdown.MarkdownListItem>) -> std.markdown.MarkdownBlock { std.markdown.OrderedListBlock { items: items } }
-fn cell(text: String) -> std.markdown.MarkdownTableCell { std.markdown.MarkdownTableCell { inlines: [std.markdown.TextInline { text: text }] } }
-fn row(cells: List<std.markdown.MarkdownTableCell>) -> std.markdown.MarkdownTableRow { std.markdown.MarkdownTableRow { cells: cells } }
-fn quote(blocks: List<std.markdown.MarkdownBlock>) -> std.markdown.MarkdownBlock { std.markdown.BlockquoteBlock { blocks: blocks } }
-fn tasks(items: List<std.markdown.MarkdownTaskItem>) -> std.markdown.MarkdownBlock { std.markdown.TaskListBlock { items: items } }
-fn todo(text: String) -> std.markdown.MarkdownTaskItem { std.markdown.MarkdownTaskItem { state: Unchecked, blocks: [p(text: text)] } }
-fn task(state: std.markdown.CheckboxState, text: String) -> std.markdown.MarkdownTaskItem { std.markdown.MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
-fn hr() -> std.markdown.MarkdownBlock { ThematicBreak }
+fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
+fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
+fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
+fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
+fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
+fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
+fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+fn quote(blocks: List<MarkdownBlock>) -> MarkdownBlock { BlockquoteBlock { blocks: blocks } }
+fn tasks(items: List<MarkdownTaskItem>) -> MarkdownBlock { TaskListBlock { items: items } }
+fn todo(text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: Unchecked, blocks: [p(text: text)] } }
+fn task(state: CheckboxState, text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
+fn hr() -> MarkdownBlock { ThematicBreak }

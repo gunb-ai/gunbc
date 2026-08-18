@@ -1,14 +1,14 @@
 module extdeps.languages.python.types
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "docs.python.org/3/reference"
   }
 }
 
-data python_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
+data python_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none, literal_suffix: none },
   { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none, literal_suffix: none },
   { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none, literal_suffix: none },
@@ -19,7 +19,7 @@ data python_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
   { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none, literal_suffix: none }
 ]
 
-data python_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
+data python_algebra_inhabitants: List<InhabitantDecl> = [
   { algebra: "FreeMonoid",
     template: "list[\{0\}]",
     arity: 1,
@@ -63,7 +63,7 @@ data python_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
     is_copy: none }
 ]
 
-data python_callable: std.coercion.CallableRepr = std.coercion.CallableRepr {
+data python_callable: CallableRepr = CallableRepr {
   template: "Callable[[\{params\}], \{return\}]",
   param_separator: ", ",
   return_separator: ", ",
@@ -97,7 +97,7 @@ data pass_statement: String = "pass"
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
 
-data python_cast_syntax: std.coercion.CastSyntax = {
+data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
   cast_rules: [
     { from_type: "int", to_type: "int" },

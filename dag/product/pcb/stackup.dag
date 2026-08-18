@@ -23,12 +23,12 @@ type CopperLayerFunction
 // where the quoting convention lives, not in the physical model.
 type CopperLayer {
   function: CopperLayerFunction
-  thickness: std.measure.Micrometer
+  thickness: Micrometer
 }
 
 type DielectricLayer {
-  thickness: std.measure.Micrometer
-  material: std.types.NonEmptyStr
+  thickness: Micrometer
+  material: NonEmptyStr
 }
 
 type StackupPly {
@@ -57,7 +57,7 @@ fn stackup_ply_thickness(p: StackupPly) -> Int {
   micrometer_count(m: p.dielectric.thickness) + micrometer_count(m: p.copper.thickness)
 }
 
-fn stackup_total_thickness(s: Stackup) -> std.measure.Micrometer {
+fn stackup_total_thickness(s: Stackup) -> Micrometer {
   let top = micrometer_count(m: s.top.thickness)
   let below = fold_list(
     xs: s.plies,
@@ -106,7 +106,7 @@ fn stackup_has_a_reference_plane(s: Stackup) -> Bool {
 // one relation between function and routability.
 //
 // WHY THIS EXISTS RATHER THAN A BARE DECLARATION REFERENCE. PcbWorld's CapabilityEstablished carries
-// a std.decl_ref.DeclarationRef, and a std.decl_ref.DeclarationRef is a name — it does not establish that the thing named
+// a DeclarationRef, and a DeclarationRef is a name — it does not establish that the thing named
 // resolves, is a stackup, or is fit for fabrication. Anyone could mark the stackup capability
 // established by pointing at any declaration in the tree. So this module does not hand out that
 // arm: the only route to an established stackup capability is establish_stackup_capability, whose
@@ -131,7 +131,7 @@ type StackupAdmission
 // reads (DESIGN section 5 - a field carried but never joined establishes nothing).
 type AdmittedStackup sole_constructor {
   stackup: Stackup
-  authority: std.decl_ref.DeclarationRef
+  authority: DeclarationRef
 }
 
 fn stackup_has_zero_thickness_copper(s: Stackup) -> Bool {
@@ -158,13 +158,13 @@ fn stackup_refusal_causes(s: Stackup) -> List<StackupRefusalCause> {
   zero_copper + zero_dielectric + no_reference
 }
 
-fn mint_admitted_stackup(s: Stackup, authority: std.decl_ref.DeclarationRef) -> StackupAdmission
+fn mint_admitted_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission
   admit_callers: [
     decl_ref(module_path: "product.pcb.stackup", decl_name: "admit_stackup"),
   ]
   = StackupAdmitted { admitted: AdmittedStackup { stackup: s, authority: authority } }
 
-fn admit_stackup(s: Stackup, authority: std.decl_ref.DeclarationRef) -> StackupAdmission {
+fn admit_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission {
   let causes = stackup_refusal_causes(s: s)
   if count(causes) > 0 {
     StackupRefused { causes: causes }
@@ -173,7 +173,7 @@ fn admit_stackup(s: Stackup, authority: std.decl_ref.DeclarationRef) -> StackupA
   }
 }
 
-fn admitted_stackup_authority(a: AdmittedStackup) -> std.decl_ref.DeclarationRef {
+fn admitted_stackup_authority(a: AdmittedStackup) -> DeclarationRef {
   a.authority
 }
 
