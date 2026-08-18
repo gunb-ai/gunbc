@@ -531,8 +531,15 @@ fn concept_decl_record(
 }
 
 pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
-    if let Some(detail) = pool_root_refusal_detail(pool_roots, "concept_decl_facts") {
-        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "concept_decl_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
     }
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
@@ -605,8 +612,15 @@ pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
 ) -> InterpResult<Value> {
-    if let Some(detail) = pool_root_refusal_detail(pool_roots, "data_decl_type_facts") {
-        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "data_decl_type_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
     }
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
@@ -1265,9 +1279,7 @@ pub fn classify_pool_root(root: &str) -> Option<PoolRootDefect> {
     if !root_path.is_dir() {
         return Some(PoolRootDefect::NamesFile);
     }
-    let mut files = Vec::new();
-    collect_dag_files_tolerant(&root_path, &mut files);
-    if files.is_empty() {
+    if !crate::cli_run::dag_tree_holds_any_file(&root_path) {
         return Some(PoolRootDefect::DirectoryHasNoDagFiles);
     }
     None
@@ -1276,26 +1288,39 @@ pub fn classify_pool_root(root: &str) -> Option<PoolRootDefect> {
 /// The refusal every parse-only pool walk takes before it walks: typed, located, counted.
 ///
 /// LOCATED is the root string the author wrote, because that is the thing they can fix; COUNTED
-/// is every offending root in one message rather than the first, so a pool with three bad roots
+/// is every offending root in one answer rather than the first, so a pool with three bad roots
 /// takes one round-trip. Returns `None` when every root contributes.
-pub fn pool_root_refusal_detail(pool_roots: &[String], caller: &str) -> Option<String> {
-    let defects: Vec<(&String, PoolRootDefect)> = pool_roots
+///
+/// THE DEFECTS CROSS THE SEAM, and the earlier shape of this function is why that is stated rather
+/// than assumed: it returned `Option<String>`, so the three states above were formatted into prose
+/// here and no consumer could ever match on them. A type that dies at the boundary it was built to
+/// cross is a carrier named for a rung it does not occupy -- the distinction the enum's own comment
+/// defends was, in that shape, unavailable to every reader of the error. The prose is now DERIVED
+/// from the defects at display time (`InterpError::PoolRootContributesNothing`), which is the one
+/// direction that cannot lose them.
+pub fn pool_root_defects(pool_roots: &[String]) -> Vec<(String, PoolRootDefect)> {
+    pool_roots
         .iter()
-        .filter_map(|r| classify_pool_root(r).map(|d| (r, d)))
-        .collect();
-    if defects.is_empty() {
-        return None;
-    }
+        .filter_map(|r| classify_pool_root(r).map(|d| (r.clone(), d)))
+        .collect()
+}
+
+/// Render the defects a caller collected. One row per offending root, cause included, so the
+/// message names what to fix rather than that something is wrong.
+pub fn pool_root_refusal_message(
+    defects: &[(String, PoolRootDefect)],
+    declared: usize,
+    caller: &str,
+) -> String {
     let rows: Vec<String> = defects
         .iter()
         .map(|(r, d)| format!("  root {:?}: {:?} -- {}", r, d, d.cause()))
         .collect();
-    Some(format!(
+    format!(
         "{caller} was given {declared} declared pool root(s), {bad} of which contribute no .dag files. A root that contributes nothing is not a narrower pool -- it is a pool that silently lost part of its subject, so every row over it keeps passing on a population smaller than its author declared, and nothing says so. Fix or delete each root named below.\n{rows}",
-        declared = pool_roots.len(),
         bad = defects.len(),
         rows = rows.join("\n")
-    ))
+    )
 }
 
 fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
@@ -1485,8 +1510,15 @@ pub fn eval_export_signature_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
 ) -> InterpResult<Value> {
-    if let Some(detail) = pool_root_refusal_detail(pool_roots, "export_signature_facts") {
-        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "export_signature_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
     }
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
@@ -1517,8 +1549,15 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     // discovered from the walk's OUTPUT -- a smaller fact list is exactly what a legitimately
     // narrow pool produces -- so the only place the two are distinguishable is here, against the
     // declared roots themselves.
-    if let Some(detail) = pool_root_refusal_detail(pool_roots, "decl_facts") {
-        return Err(crate::v1_interpreter::InterpError::PoolRootContributesNothing { detail });
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "decl_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
     }
     let facts = decl_facts_for_roots(pool_roots);
     eval_decl_facts_rows(ctx, &facts)

@@ -19714,6 +19714,34 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
     }
 }
 
+/// Does this tree hold at least one `.dag` file? EXISTENCE, not inventory.
+///
+/// `collect_dag_files_tolerant` answers "which files" and costs the whole subtree; this answers
+/// "any file" and stops at the first hit. They are different questions and the pool-root gate asks
+/// this one -- collecting every file beneath a root in order to call `is_empty` on the result is
+/// the copied-accumulator shape, an O(subtree) walk to settle something the first file decides.
+/// Directory recursion is depth-first for the same reason: a hit anywhere ends the walk.
+pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            if dag_tree_holds_any_file(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
