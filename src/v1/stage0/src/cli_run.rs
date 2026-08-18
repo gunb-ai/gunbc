@@ -16151,10 +16151,20 @@ mod budget_completion_tests {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => {
                 assert_eq!(budget_ms, 5);
                 assert_eq!(elapsed_ms, 6);
                 assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
+                // Binding `completion` rather than `..` is the point: this fn is one of the two
+                // producers of CompletedOverBudget, so if it ever emitted Interrupted the
+                // elapsed above would silently become a lower bound and 6 would stop being a
+                // measurement. A `..` here would have accepted that.
+                assert_eq!(
+                    completion,
+                    BudgetCompletion::CompletedOverBudget,
+                    "the completion-side backstop observes an exact elapsed, never a bound"
+                );
             }
             other => panic!("expected TimedOut, got {other:?}"),
         }
@@ -16239,10 +16249,16 @@ mod budget_completion_tests {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => {
                 assert_eq!(budget_ms, 600);
                 assert_eq!(elapsed_ms, 601_000);
                 assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
+                assert_eq!(
+                    completion,
+                    BudgetCompletion::CompletedOverBudget,
+                    "the completion-side backstop observes an exact elapsed, never a bound"
+                );
             }
             other => panic!("expected TimedOut, got {other:?}"),
         }

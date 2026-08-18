@@ -2096,7 +2096,31 @@ impl ExpectedRedDisposition {
         match outcome {
             ClaimOutcome::Fail => Self::AgreementAssertionReturnedFalse,
             ClaimOutcome::Pass => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::TimedOut { .. } => Self::BudgetFailure,
+            // SPLIT ON completion, because the two arms differ in whether a verdict exists.
+            // An INTERRUPTED row produced none — budget failure is the honest reading. A
+            // CompletedOverBudget row RAN TO COMPLETION AND PASSED (both converters match only
+            // `ClaimOutcome::Pass`), so reporting "no verdict" about it is the same
+            // state-space conflation this PR removes on the required-floor path, left standing
+            // one function away.
+            //
+            // It maps to the stale-quarantine arm rather than a new one deliberately. The
+            // verdict-bearing half — the enrolled claim is passing and the roster row is stale
+            // — is exactly what that arm means, and it is the half a consumer of this tally
+            // acts on. The cost half is NOT represented here: this surface has one channel per
+            // row, where `run_required_floor` reports such a row to both `stale_quarantine`
+            // and `budget_refused`. Minting a `StaleAndOverBudget` arm to carry it would be
+            // growth on a surface the floor cut is retiring — `--required-floor` returns
+            // before any caller of `run_batch_unit`, so CI does not execute this path at all.
+            // Losing a cost signal on a retiring surface is the right trade; reporting a
+            // passing row as undecided is not.
+            ClaimOutcome::TimedOut {
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
+                ..
+            } => Self::BudgetFailure,
+            ClaimOutcome::TimedOut {
+                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
+                ..
+            } => Self::StaleQuarantineAssertionReturnedTrue,
             ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
                 Self::InfrastructureOrReferentFailure
             }
@@ -13068,6 +13092,11 @@ mod tests {
             elapsed_ms: 5001,
             budget_ms: 5000,
             kind: BudgetKind::Cpu,
+            // Interrupted, so 5001 is a lower bound. Named rather than defaulted: the
+            // CompletedOverBudget row is a DIFFERENT case with its own arm, and a fixture that
+            // did not say which one it built would be asserting about whichever the compiler
+            // picked.
+            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         });
         assert!(
             t.agreements.is_empty(),
@@ -13145,6 +13174,7 @@ mod tests {
                 elapsed_ms: 1,
                 budget_ms: 1,
                 kind: BudgetKind::Wall,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             },
             ClaimOutcome::RuntimeError {
                 message: "boom".into(),
@@ -13612,6 +13642,7 @@ mod tests {
                 elapsed_ms: 900_001,
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             }),
             host_dependency_refusal: None,
             resolve_realization: None,
@@ -16714,6 +16745,7 @@ mod tests {
             elapsed_ms: 900_001,
             budget_ms: 900_000,
             kind: BudgetKind::Wall,
+            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         };
 
         // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must
