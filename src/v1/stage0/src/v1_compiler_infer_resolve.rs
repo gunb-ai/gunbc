@@ -281,16 +281,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     {
                         match resolved.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: target, .. }) => {
-                                let target_resolved = resolve_node_bounded(
-                                    target.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                    0,
-                                    false,
-                                )
-                                .resolved
-                                .clone();
-                                with_authored_identity(n.clone(), target_resolved.clone())
+                                with_authored_identity(n.clone(), structural.clone())
                             }
                             _ => resolved.clone(),
                         }

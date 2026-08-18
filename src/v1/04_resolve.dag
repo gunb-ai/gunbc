@@ -167,8 +167,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
-            let target_resolved = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0, masked: false).resolved
-            with_authored_identity(identity: n, structural: target_resolved)
+            with_authored_identity(identity: n, structural: structural)
           _ => resolved
         }
       } else { resolved }
