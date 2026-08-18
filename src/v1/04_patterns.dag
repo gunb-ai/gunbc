@@ -402,7 +402,7 @@ fn check_match_exhaustiveness(
           _ => acc
         }
       )
-      let uncovered = variant_names |> filter(v => emit_map_has(m: covered_set, key: v) == false)
+      let uncovered = variant_names |> filter(v => emit_map_has(m: covered_set, key: variant_pattern_coverage_key(name: v)) == false)
       if count(uncovered) > 0 {
         [make_error_node(diagnostic: NonExhaustiveMatch { missing: uncovered, span: span }, module_name: module_name)]
       } else {

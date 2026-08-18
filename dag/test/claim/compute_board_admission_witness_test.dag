@@ -11,6 +11,7 @@ import product.compute_board.analog {
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
   ElectricalDesignIdentity,
+  ElectricalTerminalRef,
   ElectricalNet,
   NetIdentity,
   TerminalIdentity,
@@ -54,6 +55,7 @@ import product.compute_board.admission {
   BoardArticleRefused,
   BoardArticleRefusalSet,
   BoardArticleRefusal,
+  NetMemberBelongsToAnotherDesign,
   DuplicateComponentIdentity,
   DuplicateNetIdentity,
   DuplicateSignalName,
