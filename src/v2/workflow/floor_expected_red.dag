@@ -104,8 +104,9 @@ import v2.std.text { String }
 // measured rather than predicted. Sixteen more modules leave here: the fifteen over 1000ms, and
 // test.claim.e0308_mechanical_trio_test at 774ms, which is below the line but FAILED on that
 // run, so it is quarantined on evidence rather than on threshold. Three more enrolled rows
-// retire with them (roster 361 -> 358), and roughly 200 further healthy siblings leave under the
-// same module-grain rule as the 78 above. The ceiling is 1552ms and it was calibrated as
+// retire with them (roster 361 -> 358), and a further 235 healthy siblings leave under the
+// same module-grain rule as the 78 above -- 313 in total, derived below rather than estimated;
+// the "roughly 200" this line carried until 2026-08-18 was a guess and read as one. The ceiling is 1552ms and it was calibrated as
 // measured-max-plus-one-quantum from a SINGLE 1527ms observation, so rows within a few hundred
 // ms of it are not stably green on a shared runner; that is the real reason this wave exists.
 //
@@ -116,6 +117,43 @@ import v2.std.text { String }
 // exactly the rows that most needed quarantining, and this module fell outside a 1000ms cut it
 // exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
 // leave with it; no roster row named it, so the roster stays at 358.
+//
+// TOTAL COLLATERAL, DERIVED, 2026-08-18 (supersedes the per-wave 78 and "roughly 200"): 313
+// healthy, fast, PASSING identities left the required floor across all three waves. It is derived
+// twice, from independent sources that agree exactly, because a coverage-loss figure asserted
+// once is the thing this declaration exists to prevent.
+//
+//   ROUTE A -- the two floor runs on main, differenced:
+//     pre  32177951514 @59653f569e  planned=9420 passed=8951 known_red=367 stale_quarantine=5 budget_refused=102
+//     post 32193032348 @6f3d374de0  planned=8997 passed=8638 known_red=358 stale_quarantine=0 budget_refused=0
+//     passed 313 + known_red 9 + interrupted 102 + passed-over-budget 5 = 429 identities left.
+//   ROUTE B -- the source: 429 `test fn` declarations across the 38 modules relocated by #8457.
+//
+//   The 6-identity gap against `planned` (9420 - 8997 = 423, not 429) is six identities that
+//   LANDED between the two runs, in the three commits separating those heads. It is not a
+//   discrepancy in this population, and it is stated so that the next reader does not read 423
+//   as the answer.
+//
+// TWO NUMBERS THIS SETTLES, both of which were live prose drift: the relocated module count is
+// 38 (21 first wave + 16 second + 1 third), and the problem population is 107, not 102 -- 102
+// BudgetInterrupted plus the 5 that PASSED over budget. Those are different observations with
+// different remedies, and collapsing them is why the two counts circulated at once.
+//
+// WHAT IS STILL NOT DERIVED, named rather than left to be assumed: which INDIVIDUAL identities
+// make up the 313. The figures above are exact in aggregate and unavailable at identity grain,
+// because the floor reports per-identity outcomes only as log lines and a scraped log is not an
+// oracle. Closing that needs the floor to emit an identity-grained receipt, not a better scrape.
+//
+// A COST FIGURE HERE IS NOT A PROPERTY OF ITS WITNESS, and this quarantine proved it by
+// accident. test.claim.emitter_nested_refinement_cast_witness_test
+// single_refinement_carrier_emits_no_unsupported_cast cost 746ms on the pre run and 45941ms on
+// the post run, unchanged in itself; its sibling in the same file costs 763ms. The relocated
+// modules included every earlier caller of `compile_dag_rust_emit_check`, so the one-time
+// `build_module_path_index_from_witness_roots` construction relocated onto the first surviving
+// caller and that row became main's only failure. RELOCATING OR SPLITTING A MODULE MOVES ITS
+// SHARED FIXED COST ONTO THE NEXT SURVIVOR RATHER THAN REMOVING IT -- so a correct decomposition
+// can turn a neighbour red, and every restoration receipt taken before the shared authority is
+// paid in preparation is confounded by whichever row happened to touch it first.
 //
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
