@@ -60,13 +60,36 @@ pub fn run_required_regen(
     let phases = Vec::new();
     let emitted = time_phase(&phases, "compile_stage0", || compile_stage0(&workspace))?;
 
-    let generated_basenames = generated_basenames_from_emit(&emitted);
-    let sync = compare_generated_surfaces(&stage0_src, &emitted, &generated_basenames)?;
+    let committed_basenames = committed_generated_basenames(&stage0_src)?;
+    if emitted.is_empty() {
+        return regen_refusal_outcome(
+            &workspace,
+            candidate_dir_rel,
+            receipt_rel,
+            commit_sha,
+            authority_digest,
+            "refusal: emit produced zero files".to_string(),
+        );
+    }
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    let population_err = validate_compared_populations(&committed_basenames, &emitted_basenames);
+    if let Some(reason) = population_err {
+        return regen_refusal_outcome(
+            &workspace,
+            candidate_dir_rel,
+            receipt_rel,
+            commit_sha,
+            authority_digest,
+            reason,
+        );
+    }
+
+    let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
     let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
 
     let committed_digest =
-        tree_digest_for_basenames(&stage0_src, &generated_basenames, "committed")?;
-    let candidate_digest = tree_digest_from_map(&emitted, &generated_basenames)?;
+        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
+    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
@@ -78,6 +101,7 @@ pub fn run_required_regen(
     let fresh_src = candidate_dir.join("src");
     write_emitted_tree(&fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
+    verify_candidate_tree(&fresh_src, &committed_basenames)?;
 
     let receipt = RegenReceipt {
         schema: RECEIPT_SCHEMA,
@@ -107,8 +131,8 @@ pub fn run_required_regen(
         "required-regen: elapsed_ms={} first_generation_equal={} planned={} executed={}",
         run_started.elapsed().as_millis(),
         first_generation_equal,
-        generated_basenames.len(),
-        generated_basenames.len()
+        committed_basenames.len(),
+        emitted_basenames.len()
     );
 
     Ok(RequiredRegenOutcome { receipt, failures })
@@ -127,8 +151,15 @@ pub fn run_required_regen_fixed_point(
     let sources = regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
     let emitted = compile_stage0(&workspace)?;
-    let generated_basenames = generated_basenames_from_emit(&emitted);
-    let pass2 = tree_digest_from_map(&emitted, &generated_basenames)?;
+    let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
+    if emitted.is_empty() {
+        return Err("refusal: fixed-point emit produced zero files".to_string());
+    }
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    if let Some(reason) = validate_compared_populations(&committed_basenames, &emitted_basenames) {
+        return Err(reason);
+    }
+    let pass2 = tree_digest_from_map(&emitted, &committed_basenames)?;
     let fixed_point_equal = pass1 == pass2;
 
     let receipt = RegenReceipt {
@@ -246,6 +277,122 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<Strin
         }
     }
     names.into_iter().collect()
+}
+
+fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, String> {
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    for entry in fs::read_dir(stage0_src)
+        .map_err(|e| format!("read committed stage0 src {}: {e}", stage0_src.display()))?
+    {
+        let entry = entry.map_err(|e| format!("read committed stage0 entry: {e}"))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if basename.ends_with(".rs") && !HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
+            names.insert(basename.to_string());
+        }
+    }
+    if names.is_empty() {
+        return Err("refusal: committed generated population is empty".to_string());
+    }
+    Ok(names.into_iter().collect())
+}
+
+fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Option<String> {
+    if committed.is_empty() {
+        return Some("refusal: committed generated population is empty".to_string());
+    }
+    if emitted.is_empty() {
+        return Some("refusal: emit produced zero generated surfaces".to_string());
+    }
+    let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
+    let emitted_set: BTreeSet<&str> = emitted.iter().map(String::as_str).collect();
+    let mut emitted_not_committed = Vec::new();
+    for name in emitted {
+        if !committed_set.contains(name.as_str()) {
+            emitted_not_committed.push(name.clone());
+        }
+    }
+    let mut committed_not_emitted = Vec::new();
+    for name in committed {
+        if !emitted_set.contains(name.as_str()) {
+            committed_not_emitted.push(name.clone());
+        }
+    }
+    if !emitted_not_committed.is_empty() || !committed_not_emitted.is_empty() {
+        return Some(format!(
+            "refusal: surface population mismatch — emitted_not_committed={:?} committed_not_emitted={:?}",
+            emitted_not_committed,
+            committed_not_emitted
+        ));
+    }
+    None
+}
+
+fn verify_candidate_tree(
+    candidate_src: &Path,
+    expected_basenames: &[String],
+) -> Result<(), String> {
+    if expected_basenames.is_empty() {
+        return Err(
+            "refusal: cannot verify candidate tree against empty expected population".to_string(),
+        );
+    }
+    if !candidate_src.is_dir() {
+        return Err(format!(
+            "refusal: candidate src directory absent at {}",
+            candidate_src.display()
+        ));
+    }
+    let mut found = 0usize;
+    for basename in expected_basenames {
+        if candidate_src.join(basename).is_file() {
+            found += 1;
+        }
+    }
+    if found == 0 {
+        return Err(format!(
+            "refusal: candidate tree has zero generated files under {}",
+            candidate_src.display()
+        ));
+    }
+    if found != expected_basenames.len() {
+        return Err(format!(
+            "refusal: candidate tree incomplete — found {found} of {} expected generated files under {}",
+            expected_basenames.len(),
+            candidate_src.display()
+        ));
+    }
+    Ok(())
+}
+
+fn regen_refusal_outcome(
+    workspace: &Path,
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    commit_sha: String,
+    authority_digest: String,
+    reason: String,
+) -> Result<RequiredRegenOutcome, String> {
+    let receipt_path = workspace.join(receipt_rel);
+    let receipt = RegenReceipt {
+        schema: RECEIPT_SCHEMA,
+        commit_sha,
+        authority_digest,
+        committed_generated_digest: "refused:population".to_string(),
+        candidate_generated_digest: "refused:population".to_string(),
+        first_generation_equal: false,
+        fixed_point_equal: false,
+        changed_paths: Vec::new(),
+        candidate_artifact: candidate_dir_rel.to_string(),
+    };
+    write_receipt(&receipt_path, &receipt)?;
+    Ok(RequiredRegenOutcome {
+        receipt,
+        failures: vec![reason],
+    })
 }
 
 fn is_hand_maintained_path(path: &str) -> bool {
@@ -436,6 +583,11 @@ fn tree_digest_for_basenames(
     basenames: &[String],
     label: &str,
 ) -> Result<String, String> {
+    if basenames.is_empty() {
+        return Err(format!(
+            "refusal: cannot compute {label} digest over empty population"
+        ));
+    }
     let mut payload = String::new();
     for name in basenames {
         let path = src_dir.join(name);
@@ -454,6 +606,9 @@ fn tree_digest_from_map(
     emitted: &HashMap<String, String>,
     basenames: &[String],
 ) -> Result<String, String> {
+    if basenames.is_empty() {
+        return Err("refusal: cannot compute candidate digest over empty population".to_string());
+    }
     let mut payload = String::new();
     for name in basenames {
         let content = emitted
@@ -562,4 +717,63 @@ fn time_phase<T>(
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     f()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
+        fs::create_dir_all(&path).expect("create temp");
+        path
+    }
+
+    #[test]
+    fn empty_population_digest_refuses() {
+        let err = tree_digest_for_basenames(Path::new("/tmp"), &[], "committed").unwrap_err();
+        assert!(err.contains("empty population"));
+        let err = tree_digest_from_map(&HashMap::new(), &[]).unwrap_err();
+        assert!(err.contains("empty population"));
+    }
+
+    #[test]
+    fn empty_emit_population_refuses_before_agreement() {
+        let reason =
+            validate_compared_populations(&["foo.rs".to_string()], &[]).expect("expected refusal");
+        assert!(reason.contains("zero generated surfaces"));
+    }
+
+    #[test]
+    fn empty_committed_population_refuses_before_agreement() {
+        let reason =
+            validate_compared_populations(&[], &["foo.rs".to_string()]).expect("expected refusal");
+        assert!(reason.contains("committed generated population is empty"));
+    }
+
+    #[test]
+    fn absent_candidate_tree_refuses() {
+        let tmp = temp_dir("required-regen-absent");
+        let missing = tmp.join("no-such-src");
+        let err = verify_candidate_tree(&missing, &["foo.rs".to_string()]).unwrap_err();
+        assert!(err.contains("candidate src directory absent"));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn present_candidate_tree_reports_honestly() {
+        let tmp = temp_dir("required-regen-present");
+        let src = tmp.join("src");
+        fs::create_dir_all(&src).expect("create src");
+        fs::write(src.join("foo.rs"), "fn foo() {}\n").expect("write foo");
+        verify_candidate_tree(&src, &["foo.rs".to_string()]).expect("candidate present");
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

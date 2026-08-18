@@ -40,6 +40,9 @@ type RequiredRegenRefusal
   | HandUnverifiableRefused { entries: List<String> }
   | PlannedExecutedMismatch { planned: Int, executed: Int }
   | FixedPointRefused { reason: String }
+  | EmptyCommittedPopulation
+  | EmptyEmitResult
+  | CandidateTreeAbsent { reason: String }
 
 type RequiredRegenAttempt {
   generated_outcomes: List<RegenSurfaceOutcome>
@@ -107,6 +110,16 @@ fn required_regen_sync_admission(
   planned_surfaces: Int,
   executed_surfaces: Int
 ) -> RequiredRegenSyncAdmission {
+  if planned_surfaces <= 0 {
+    return RequiredRegenSyncRefused {
+      refusals: Cons { head: EmptyCommittedPopulation, tail: no_regen_refusals }
+    }
+  }
+  if executed_surfaces <= 0 {
+    return RequiredRegenSyncRefused {
+      refusals: Cons { head: EmptyEmitResult, tail: no_regen_refusals }
+    }
+  }
   if planned_surfaces != executed_surfaces {
     return RequiredRegenSyncRefused {
       refusals: Cons {
