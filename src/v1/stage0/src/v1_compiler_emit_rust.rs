@@ -5311,6 +5311,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         let map_key_required = v1_map_key_required_type_names(
             v1_map_key_seed_type_exprs(typed.modules.clone(), base_info.type_decl_items.clone()),
+            hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
         );
@@ -5670,6 +5671,24 @@ pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
     }
 }
 
+pub fn hand_maintained_map_key_required_type_names_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by scanning .dag-source-visible type-expression positions (declared fields, fn params/returns, alias right-hand sides) — a type used as a map key only inside HAND-MAINTAINED Rust is invisible to that scan by construction. src/v1/stage0/src/coproduct_reflection.rs declares `StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>`, a map keyed on a tuple containing ItemKind, requiring ItemKind: Hash + Eq — no .dag declaration anywhere positions ItemKind as a map key, so the scan alone drops the derive on every regen. This roster is the declared complement: caller-supplied extra roots fed into the SAME fixpoint the scan seeds, not a derive override or a special case inside the generic mechanism. Grows only when a new hand-maintained consumer requires it, cited here at the point of use.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["ItemKind".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
 pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
     {
         let declaration = v1_rt::concat(
@@ -5800,6 +5819,7 @@ pub fn emit_module(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
             ),
+            hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
         );

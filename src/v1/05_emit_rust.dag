@@ -2456,6 +2456,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   )
   let map_key_required = v1_map_key_required_type_names(
     seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items),
+    extra_seed_names: hand_maintained_map_key_required_type_names,
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
@@ -2595,6 +2596,10 @@ fn lib_rs_mod_name_from_file(f: TextFile) -> String {
   substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
 }
 
+data hand_maintained_map_key_required_type_names_note: String = "v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by scanning .dag-source-visible type-expression positions (declared fields, fn params/returns, alias right-hand sides) — a type used as a map key only inside HAND-MAINTAINED Rust is invisible to that scan by construction. src/v1/stage0/src/coproduct_reflection.rs declares `StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>`, a map keyed on a tuple containing ItemKind, requiring ItemKind: Hash + Eq — no .dag declaration anywhere positions ItemKind as a map key, so the scan alone drops the derive on every regen. This roster is the declared complement: caller-supplied extra roots fed into the SAME fixpoint the scan seeds, not a derive override or a special case inside the generic mechanism. Grows only when a new hand-maintained consumer requires it, cited here at the point of use."
+
+data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
+
 // ONE role, TWO projections. Being a macro provider decides both how the module is
 // RENDERED (`#[macro_use]`) and where it is ORDERED (ahead of its consumers), and the
 // two were independently written comparisons against the same literal until this
@@ -2684,6 +2689,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   )
   let map_key_required = v1_map_key_required_type_names(
     seed_type_exprs: v1_map_key_seed_type_exprs(modules: [typed_module], type_decl_items: base_info.type_decl_items),
+    extra_seed_names: hand_maintained_map_key_required_type_names,
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
