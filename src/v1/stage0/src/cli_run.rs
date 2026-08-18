@@ -7679,6 +7679,32 @@ pub enum BudgetCompletion {
     CompletedOverBudget,
 }
 
+// WHY THIS IS A FIELD AND NOT A SIBLING VARIANT — the actual trade, recorded so the next person
+// weighing it has the argument rather than the outcome.
+//
+// The discriminator sits INSIDE `TimedOut`, which is exactly what made the erasure writable: a
+// `TimedOut { .. }` wildcard absorbs it, and the classifier did precisely that. Had
+// passed-over-budget been a sibling `ClaimOutcome` variant, that wildcard would not have
+// compiled against it and the bug would have been a type error instead of a review miss.
+//
+// It is still a field, for a reason that is not inertia. The variant split this replaced was on
+// RAISE MECHANISM — in-eval poll versus completion-side backstop — which is not a distinction
+// any consumer should act on, and unifying it is what closed the absorption in the first place.
+// Passed-versus-interrupted IS a real distinction because it determines the remedy. Splitting
+// the variant again would re-fragment an event vocabulary that was just deliberately closed, so
+// the axis lives on the arm and the wildcard hazard is paid for by review.
+//
+// NEXT-RUNG TRIGGER, falsifiable rather than a site count: `elapsed: Measured | LowerBound`
+// makes the bad read UNCONSTRUCTIBLE rather than merely reviewable — you cannot obtain the
+// number without deciding which kind you hold. It is not justified by today's population
+// (seven consuming sites), because that is the wrong denominator: the value scales with the
+// RATE at which consuming sites appear and the cost of one miss. So the trigger is a condition,
+// not a threshold — THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS is the evidence that
+// arm-level is insufficient and the climb is earned. Today's rate evidence, for whoever reads
+// this next: four sites dropped it in one PR, authored by the person who wrote the converters,
+// on the day he was most primed to look for it, one of them a fabricated receipt protected by
+// its own justifying comment.
+
 impl BudgetCompletion {
     /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
     /// never has to know which mechanism produced it.
@@ -18039,7 +18065,14 @@ pub fn project_witness_cost_receipt(
                 // the authored `millisecond` constructor across the boundary rather than
                 // assembling a Value::Record here, so the constructor stays the single
                 // authority for the carrier's shape.
-                // THE ONE DELIBERATE DROP, and it is a prerequisite rather than a choice.
+                // THE ONE DELIBERATE DROP — and per DESIGN §5 it is AcknowledgePreexistingDebt,
+                // not new debt, which is a distinction worth naming rather than leaving to a
+                // reader's charity. `std.observation` `TimedOut` never carried this axis, so the
+                // gap predates this change; what the change did was make it VISIBLE by creating
+                // an axis there was previously nothing to drop. Filing that as newly-introduced
+                // debt would teach the next author that surfacing a gap costs an approval, and
+                // the cheap move becomes leaving it unsurfaced — which is the incentive that
+                // verdict exists to remove.
                 // `std.observation` `TimedOut` carries { basis, budget, elapsed } and has no
                 // completion field yet, so there is nowhere on the carrier to put it — and
                 // fabricating a value to reach a more specific arm is exactly what the floor
