@@ -1,13 +1,14 @@
 module test.claim.documentary_refs_witness
 
 
-data documentary_refs_witness_note: String = "THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES. cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance path rather than a second algorithm agreeing with it. The fact populations below are planted rather than live because the SUBJECT of these claims is the mechanism: that a reference which cannot resolve refuses, and that the same reference against an intact population does not. The smallest crossing specimen is the requirement plus one."
+data documentary_refs_witness_note: String = "THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES. v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance path rather than a second algorithm agreeing with it. The fact populations below are planted rather than live because the SUBJECT of these claims is the mechanism: that a reference which cannot resolve refuses, and that the same reference against an intact population does not. The smallest crossing specimen is the requirement plus one."
 
 fn fixture_modules() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   [
     v2.lens.module_graph.ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
     v2.lens.module_graph.ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
     v2.lens.module_graph.ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap_authority.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1_maintenance_standing.dag" },
   ]
 }
 
@@ -15,8 +16,8 @@ fn fixture_fact(qualified_name: String, name: String, path: String) -> v2.std.de
   v2.std.decl_index.DeclFact {
     qualified_name: qualified_name,
     name: name,
-    kind: FnItem,
-    node: enforcement_red_probe_body_leaf,
+    kind: v2.std.decl_index.FnItem,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: path,
   }
 }
@@ -45,12 +46,17 @@ fn intact_facts() -> List<v2.std.decl_index.DeclFact> {
       name: "five_minute_ci_gate_program_note",
       path: "dag/gunbc/roadmap_authority.dag",
     ),
+    fixture_fact(
+      qualified_name: "gunbc.v1_maintenance_standing.v1_seed_standing",
+      name: "v1_seed_standing",
+      path: "dag/gunbc/v1_maintenance_standing.dag",
+    ),
   ]
 }
 
 fn refusals_against(facts: List<v2.std.decl_index.DeclFact>) -> Int {
   v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
-    refs: generated_document_declaration_refs(),
+    refs: gunbc.documentary_refs.generated_document_declaration_refs(),
     facts: facts,
     modules: fixture_modules(),
   )
@@ -95,22 +101,23 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 data rendered_from_rows_note: String = "THE BYTES COME FROM THE ROWS, WHICH IS WHAT MAKES THE ROWS LOAD-BEARING RATHER THAN DECORATIVE. A typed reference sitting beside a paragraph that independently spells the same name is two representations of one fact -- the rename would move the row and leave the sentence, and the enrolled population would resolve while the document lied. This claim asserts the rendered symbol text of each row appears in the generated document, so the row and the printed name cannot diverge."
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
-  let md = expected_design_md()
-  string_contains(s: md, pattern: documentary_ref_symbol_text(reference: body_lowering_symbol_index_ref))
-    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: body_lowering_lexical_lookup_ref))
-    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: body_lowering_production_consumer_ref))
-    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: five_minute_ci_gate_authority_ref))
+  let md = gunbc.design_document.expected_design_md()
+  string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_symbol_index_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_lexical_lookup_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.body_lowering_production_consumer_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.five_minute_ci_gate_authority_ref))
+    && string_contains(s: md, pattern: gunbc.documentary_refs.documentary_ref_symbol_text(reference: gunbc.documentary_refs.v1_maintenance_standing_ref))
 }
 
 data population_union_note: String = "The widened denominator is asserted directly, because a union that silently dropped one side would leave exactly the exemption this change removes: the generated refs must all be present in the combined population, and the combined population must be larger than the hand-authored one alone."
 
 test fn documentary_refs_population_is_the_union() -> Bool {
-  let all_refs = all_documentary_declaration_refs()
-  let hand = hand_authored_doc_declaration_refs()
-  let generated = generated_document_declaration_refs()
-  length(xs: all_refs) == length(xs: hand) + length(xs: generated)
-    && length(xs: generated) == 4
+  let all_refs = gunbc.documentary_refs.all_documentary_declaration_refs()
+  let hand = gunbc.doc_graph_roots.hand_authored_doc_declaration_refs()
+  let generated = gunbc.documentary_refs.generated_document_declaration_refs()
+  v2.std.algebra.length(xs: all_refs) == v2.std.algebra.length(xs: hand) + v2.std.algebra.length(xs: generated)
+    && v2.std.algebra.length(xs: generated) == 5
 }
 
-data retired_prose_substring_control_note: String = "A NEGATIVE PROSE CHECK STOOD HERE AND WAS DELETED RATHER THAN REPAIRED. It asserted the generated document no longer contains the substring 'six-step', to show the superseded numbered sequence is gone. It failed -- and it failed CORRECTLY, because the replacement sentence explains that the paragraph previously carried a numbered six-step copy, so the words survive while the copy does not. The check could not tell a restatement from an explanation of its removal.\n\nTHAT IS THE WHOLE ARGUMENT AGAINST THIS SHAPE, and it is already on record: gunbc.roadmap_authority witness_authority_contains_no_mutable_execution_ledger blacklists substrings in a status field and is structurally unable to catch a stale claim spelled without them. Repairing the needle would have produced a check that passes for this one spelling and decides nothing in general -- validation standing where nothing decidable was available. The positive claim survives instead, in documentary_refs_generated_document_renders_the_rows: the roadmap authority is cited by rendering its typed row, which is a fact a mechanism can actually decide."
+data retired_prose_substring_control_note: String = "A NEGATIVE PROSE CHECK STOOD HERE AND WAS DELETED RATHER THAN REPAIRED. It asserted the generated document no longer v2.std.algebra.contains the substring 'six-step', to show the superseded numbered sequence is gone. It failed -- and it failed CORRECTLY, because the replacement sentence explains that the paragraph previously carried a numbered six-step copy, so the words survive while the copy does not. The check could not tell a restatement from an explanation of its removal.\n\nTHAT IS THE WHOLE ARGUMENT AGAINST THIS SHAPE, and it is already on record: gunbc.roadmap_authority witness_authority_contains_no_mutable_execution_ledger blacklists substrings in a status field and is structurally unable to catch a stale claim spelled without them. Repairing the needle would have produced a check that passes for this one spelling and decides nothing in general -- validation standing where nothing decidable was available. The positive claim survives instead, in documentary_refs_generated_document_renders_the_rows: the roadmap authority is cited by rendering its typed row, which is a fact a mechanism can actually decide."
 

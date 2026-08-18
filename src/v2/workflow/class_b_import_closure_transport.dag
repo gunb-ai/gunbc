@@ -1,0 +1,119 @@
+module v2.workflow.class_b_import_closure_transport
+
+
+data class_b_transport_note: String = "Class B import-closure transport (#6985). All four rows are ordinary funcs on this module. NO REQUIRED-FLOOR CONSUMER TODAY: rows 1-2 sit in test.claim.long.rust_test_fixtures_import_closure_witness, quarantined by #8457 because they PASS over the 1552ms ceiling (Cpu 25816ms and 36536ms); required_floor.dag excludes them by authored module name via long_home_prefixes. Their FalsifierSubstrateLongLane exclusion and long-lane enrollment rows are deleted (2026-08-18): the floor never consulted witness_exclusion_frontier, and the falsifier cadence died in the floor cut, so neither had an executing consumer. Rows 1-2 are unwitnessed until the cost is fixed and they leave long/. WET INTEGRATION CONSUMER (not on required floor yet): run_class_b_import_closure_gate on source_root_ingest_gate_passes — rows 1-4 together when that gate is re-enrolled on claim_executor --required-floor. Rows 1-2 use gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots (minimal declared-import footprint). Rows 3-4 use gunbc.ci_layer_roots.witness_layer_roots for stripped-entry pool-coincidence pressure. Rows 3-4 accept ONLY gunbc.declared_import_closure_binding.ObservationProduced carrying a successfully ingested BindingObserved outcome; every gunbc.declared_import_closure_binding.ObservationProductionRefused (overlay read/strip/mkdir/mktemp/write/cleanup/compile) reds the gate — compile graph:None is P1(b), not a seam refusal. Predicate unit controls stay in class_b_import_closure_binding_refusal_witness_test.dag and class_b_strip_receipt_witness_test.dag. Affected-set skip: class_b_import_closure_gate_not_affected_skip (cli_run::class_b_import_closure_gate_skip_label_for_ci) skips the ~2.3min gate on pull_request when the merge-base diff is provably disjoint from the gate input closure; empty diff / departed non-docs / observation or closure failure runs the full gate (fail-closed); push-to-main always runs the full gate as cold control."
+
+data class_b_consumer_module: String = "v2.extdeps.languages.rust_test"
+data class_b_symbol: String = "rust_selection_policy_node"
+data class_b_perturbation_overlay_rel: String = "fixtures/class_b_import_closure/perturbation_overlay"
+data class_b_overlay_template: String = "/target/class_b_stripped_XXXXXX"
+
+fn class_b_observe_with_overlay(
+  pool_roots: List<String>
+) -> gunbc.declared_import_closure_binding.DeclaredImportClosureBindingObservation {
+  observe_declared_import_closure_symbol_binding(
+    pool_roots: pool_roots,
+    entry_path: gunbc.class_b_import_closure_overlay.class_b_entry_rel,
+    consumer_module: class_b_consumer_module,
+    symbol: class_b_symbol
+  )
+}
+
+fn class_b_outcome_from_observation(
+  obs: gunbc.declared_import_closure_binding.DeclaredImportClosureBindingObservation
+) -> gunbc.declared_import_closure_binding.DeclaredImportClosureBindingObservationOutcome {
+  match obs {
+    gunbc.declared_import_closure_binding.BindingNotRunnable { cause } => gunbc.declared_import_closure_binding.ObservationProductionRefused {
+      phase: "compile" as std.types.NonEmptyStr,
+      cause: cause
+    }
+    observation => gunbc.declared_import_closure_binding.ObservationProduced { observation: observation }
+  }
+}
+
+func class_b_declared_import_closure_lists_rust_import() -> Bool {
+  gunbc.declared_import_closure_binding.binding_source_is_listed_import(
+    obs: class_b_observe_with_overlay(pool_roots: gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots)
+  )
+}
+
+func class_b_ambient_pool_provider_preserves_listed_import() -> Bool {
+  let baseline = class_b_observe_with_overlay(pool_roots: gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots)
+  let perturbed = class_b_observe_with_overlay(
+    pool_roots: concat([class_b_perturbation_overlay_rel], gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots)
+  )
+  gunbc.declared_import_closure_binding.binding_source_is_listed_import(obs: baseline)
+    && gunbc.declared_import_closure_binding.binding_source_is_listed_import(obs: perturbed)
+}
+
+func class_b_observe_with_derived_stripped_overlay(
+  include_perturbation: Bool
+) -> gunbc.declared_import_closure_binding.DeclaredImportClosureBindingObservationOutcome {
+  let root = git.Inspect.Toplevel()
+  let target = shell.Mkdir.Parents(path: concat(root.path, "/target"))
+  if target.success {
+    let overlay = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, class_b_overlay_template)
+    )
+    if overlay.success {
+      match gunbc.class_b_import_closure_overlay.class_b_materialize_stripped_entry_overlay(root: root.path, overlay_dir: overlay.path) {
+        gunbc.class_b_import_closure_overlay.OverlayMaterialized { overlay_entry_path: _ } => {
+          let pool_roots = if include_perturbation {
+            concat([overlay.path, class_b_perturbation_overlay_rel], gunbc.ci_layer_roots.witness_layer_roots)
+          } else {
+            concat([overlay.path], gunbc.ci_layer_roots.witness_layer_roots)
+          }
+          let observed = class_b_outcome_from_observation(
+            obs: class_b_observe_with_overlay(pool_roots: pool_roots)
+          )
+          let cleaned = shell.Remove.RecursiveForce(path: overlay.path)
+          if cleaned.success {
+            observed
+          } else {
+            gunbc.declared_import_closure_binding.ObservationProductionRefused {
+              phase: "cleanup" as std.types.NonEmptyStr,
+              cause: "class_b overlay cleanup refused" as std.types.NonEmptyStr
+            }
+          }
+        }
+        gunbc.class_b_import_closure_overlay.OverlayMaterializationRefused { phase, cause } => gunbc.declared_import_closure_binding.ObservationProductionRefused {
+          phase: phase,
+          cause: cause
+        }
+      }
+    } else {
+      gunbc.declared_import_closure_binding.ObservationProductionRefused {
+        phase: "mktemp" as std.types.NonEmptyStr,
+        cause: "class_b overlay mktemp refused" as std.types.NonEmptyStr
+      }
+    }
+  } else {
+    gunbc.declared_import_closure_binding.ObservationProductionRefused {
+      phase: "mkdir" as std.types.NonEmptyStr,
+      cause: "class_b overlay target mkdir refused" as std.types.NonEmptyStr
+    }
+  }
+}
+
+func class_b_stripped_import_closure_refuses_binding() -> Bool {
+  gunbc.declared_import_closure_binding.row3_stripped_refuses_binding(
+    outcome: class_b_observe_with_derived_stripped_overlay(include_perturbation: false)
+  )
+}
+
+func class_b_stripped_with_ambient_pool_coincidence_or_refuse() -> Bool {
+  gunbc.declared_import_closure_binding.row4_stripped_pool_coincidence_or_refuse(
+    outcome: class_b_observe_with_derived_stripped_overlay(include_perturbation: true)
+  )
+}
+
+func run_class_b_import_closure_gate() -> Bool {
+  if class_b_import_closure_gate_not_affected_skip() {
+    true
+  } else {
+    class_b_declared_import_closure_lists_rust_import()
+      && class_b_ambient_pool_provider_preserves_listed_import()
+      && class_b_stripped_import_closure_refuses_binding()
+      && class_b_stripped_with_ambient_pool_coincidence_or_refuse()
+  }
+}

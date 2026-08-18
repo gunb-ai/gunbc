@@ -320,6 +320,15 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {} (runtime error: {})", function, message);
             *any_failed = true;
         }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            println!(
+                "FAIL {} (host tool unresolved: {:?} (probed: {}))",
+                function,
+                name,
+                probed.join(", ")
+            );
+            *any_failed = true;
+        }
         // The clock is named because a cpu-budget kill and a wall-budget kill have different
         // remedies — and `completion` is named because whether the number BOUNDS the cost or
         // MEASURES it differs by arm. This line used to say "killed ... elapsed is a ceiling"

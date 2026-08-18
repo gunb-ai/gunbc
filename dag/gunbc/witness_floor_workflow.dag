@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
 // Authored fresh on 2026-08-15 as re-add #1 after the CI wipe, deliberately NOT by reviving
@@ -180,7 +181,7 @@ fn witness_floor_build_step() -> extdeps.github.actions.Step {
   }
 }
 
-// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
+// The source-root flags are FOLDED from gunbc.ci_layer_roots gunbc.ci_layer_roots.witness_layer_roots, never spelled
 // here. That authority is what the compile-clean closure and the divergence census already read,
 // so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
 // rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
@@ -268,9 +269,9 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   on: [
     extdeps.github.actions.WorkflowDispatch { inputs: [] },
     extdeps.github.actions.Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
-    extdeps.github.pulls.PullRequest {
+    extdeps.github.actions.PullRequest {
       branches: [gunbc.repo_identity.gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened, ReadyForReview]
+      types: [extdeps.github.actions.Opened, extdeps.github.actions.Synchronize, extdeps.github.actions.Reopened, extdeps.github.actions.ReadyForReview]
     }
   ],
   concurrency: Present {
@@ -285,7 +286,10 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
     }
   },
   env: Present {
-    value: [extdeps.languages.yaml.types.kv(key: "CARGO_TERM_COLOR", value: extdeps.languages.yaml.types.yaml_string(s: "always"))]
+    value: [
+      extdeps.languages.yaml.types.kv(key: "CARGO_TERM_COLOR", value: extdeps.languages.yaml.types.yaml_string(s: "always")),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: extdeps.languages.yaml.types.yaml_string(s: "expected_red_roster_join.tsv"))
+    ]
   },
   permissions: Present {
     value: extdeps.github.actions.WorkflowPermissions {

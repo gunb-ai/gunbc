@@ -271,3 +271,9 @@ path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
 [[bin]]
 name = "floor_prepared_toll_receipt"
 path = "src/bin/floor_prepared_toll_receipt.rs"
+
+# Expected-red roster identity join — join-only host transport. NOT floor-enrolled.
+# Dissolve-on: prune `floor_expected_red` from a post-rebase join run, not from failure-log rows.
+[[bin]]
+name = "expected_red_roster_join"
+path = "src/bin/expected_red_roster_join.rs"
