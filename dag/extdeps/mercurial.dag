@@ -563,8 +563,8 @@ fn mercurial_repository_projection_fold<R>(
 }
 
 fn mercurial_projection_map_contents(
-  projection: MercurialRepositoryProjection,
-  map_contents: fn(MercurialRepositoryProjectionContents) -> MercurialRepositoryProjectionContents,
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  map_contents: fn(extdeps.mercurial.MercurialRepositoryProjectionContents) -> extdeps.mercurial.MercurialRepositoryProjectionContents,
 ) -> MercurialRepositoryProjection {
   mercurial_repository_projection_fold(
     projection: projection,

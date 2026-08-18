@@ -57,7 +57,7 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: v2.std.node.Node) -> v2.std
         v2.std.diagnostic.Rejected { diagnostics: _ } =>
           match find_named_child(root: edge.target, name: ^facts_field_std_projection) {
             v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
-              v2.std.diagnostic.Accepted { value: edge.target, diagnostics: None }
+              v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
             v2.std.diagnostic.Rejected { diagnostics: _ } => acc
           }
       }
@@ -74,7 +74,7 @@ fn inhabitant_std_projection_symbol(inhabitant: v2.std.node.Node) -> v2.std.diag
         f: fn(atom_node) {
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
-              v2.std.diagnostic.Accepted { value: sym, diagnostics: None }
+              v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
             Absent =>
               outcome_rejected(
                 inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
@@ -91,7 +91,7 @@ fn inhabitant_type_atom_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnosti
     v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
       match node_atom_identity_optional(node: atom_node) {
         Present { value: sym } =>
-          v2.std.diagnostic.Accepted { value: sym, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
         Absent =>
           outcome_rejected(
             inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
@@ -112,7 +112,7 @@ fn inhabitant_surface_spelling_symbol(inhabitant: v2.std.node.Node) -> v2.std.di
         v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
-              v2.std.diagnostic.Accepted { value: sym, diagnostics: None }
+              v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
             Absent =>
               outcome_rejected(
                 inhabitant_neutralization_surface_spelling_missing_diagnostic(
@@ -222,7 +222,7 @@ fn target_inhabitant_for_std_projection_with_selection_policy(
         inhabitant_neutralization_no_target_diagnostic(std_projection: std_projection)
       )
     v2.std.passing_candidate_fold.OnePassingCandidate { candidate: c } =>
-      v2.std.diagnostic.Accepted { value: c, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: c, diagnostics: v2.std.diagnostic.None }
     v2.std.passing_candidate_fold.ManyPassingCandidates =>
       outcome_rejected(
         inhabitant_neutralization_ambiguous_target_diagnostic(
@@ -278,7 +278,7 @@ fn target_inhabitant_for_std_projection(
             )
           )
         v2.std.passing_candidate_fold.OnePassingCandidate { candidate: c } =>
-          v2.std.diagnostic.Accepted { value: c, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: c, diagnostics: v2.std.diagnostic.None }
         v2.std.passing_candidate_fold.ManyPassingCandidates =>
           bind_outcome(
             o: find_named_child(
@@ -316,7 +316,7 @@ fn neutralize_edges_for_target(
 ) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   fold(
     edges,
-    init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -351,7 +351,7 @@ fn neutralize_node_for_target(
         f: fn(children) {
           v2.std.diagnostic.Accepted {
             value: node_rebuild(n: node, children: children),
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         }
       )

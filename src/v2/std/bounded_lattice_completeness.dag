@@ -80,9 +80,9 @@ fn infer_bounded_lattice_completeness_rejects(
 ) -> Outcome<v2.std.node.Node> {
   match completeness {
     NotBoundedLatticeInstance =>
-      v2.std.diagnostic.Accepted { value: instance, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: instance, diagnostics: v2.std.diagnostic.None }
     BoundedLatticeComplete =>
-      v2.std.diagnostic.Accepted { value: instance, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: instance, diagnostics: v2.std.diagnostic.None }
     BoundedLatticePartial { missing: m } =>
       outcome_rejected(
         infer_bounded_lattice_partial_instance_diagnostic(

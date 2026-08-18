@@ -141,12 +141,12 @@ type WorldVariant sole_constructor {
   delta: std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>
 }
 
-fn world_variant(base: World, delta: std.change.KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {
+fn world_variant(base: World, delta: std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> WorldVariant {
   WorldVariant { base: base, delta: delta }
 }
 
 fn variant_base(v: WorldVariant) -> World { v.base }
-fn variant_delta(v: WorldVariant) -> std.change.KeyedPatch<RoomIdentity, EnclosedSpace> { v.delta }
+fn variant_delta(v: WorldVariant) -> std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace> { v.delta }
 
 type ApplyAcc {
   rooms: List<PlacedSpace>
@@ -178,7 +178,7 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply
 // built against a different base apply cleanly and produce a world nobody described - the
 // fabricated plausible output DESIGN section 5 forbids, and the stale-parent case its
 // compare-and-swap discipline exists for.
-fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
+fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
     Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
     Absent =>

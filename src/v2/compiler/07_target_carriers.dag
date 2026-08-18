@@ -64,7 +64,7 @@ fn fidelity_quotient_decode_fidelity(quotient: v2.std.node.Node) -> Outcome<extd
     TypeNode { connective: Conj } =>
       fold(
         quotient.children,
-        init: v2.std.diagnostic.Accepted { value: Lossless, diagnostics: None },
+        init: v2.std.diagnostic.Accepted { value: Lossless, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

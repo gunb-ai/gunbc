@@ -272,9 +272,9 @@ data mc_integer_facts_catalog: List<MachineIntegerPrimitiveFacts> = [
   mc_facts_uint64,
 ]
 
-fn mc_inhabitant_atom(id: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+fn mc_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -306,31 +306,31 @@ fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> Node {
 }
 
 fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
         target: mc_inhabitant_atom(id: facts.surface_spelling)
       },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) },
         target: mc_int_kind_node(kind: facts.kind)
       },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) },
         target: mc_int_width_node(width: facts.width)
       },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) },
         target: mc_overflow_node(overflow: facts.overflow_release)
       },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
         target: mc_inhabitant_atom(id: ^mc_repr_twos_complement)
       },
-      Edge {
-        label: Named { name: ^mc_facts_field_std_projection },
+      v2.std.node.Edge {
+        label: v2.std.node.Named { name: ^mc_facts_field_std_projection },
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -338,18 +338,18 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
 }
 }
 
-fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
+fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+  std.types.Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: mc_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: mc_int_kind_node(kind: facts.kind) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: mc_overflow_node(overflow: facts.overflow_release) }
       } else {
           v2.std.optional.Absent
@@ -358,59 +358,59 @@ fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Nod
   }
 }
 
-fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: mc_integer_facts_node(facts: facts),
     spec_facts: mc_integer_spec_facts(facts: facts)
   }
 }
 
-fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+fn mc_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_map(xs: mc_integer_facts_catalog, f: fn(facts) {
     mc_primitive_bundle_from_integer_facts(facts: facts)
   })
 }
 
-fn machine_code_model_core() -> ModelCore {
-  ModelCore {
+fn machine_code_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: mc_primitive_bundles_from_integer_catalog(),
     inhabitance: [],
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
   }
 }
-fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
-  TokenRule { token_class: token_class, pattern: pattern }
+fn machine_code_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: pattern }
 }
 
-fn machine_code_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn machine_code_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn machine_code_lex(token_class: Symbol, spelling: String) -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
+fn machine_code_lex(token_class: v2.std.node.Symbol, spelling: String) -> v2.std.compilers.lexing.LexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        machine_code_lex_token(token_class: token_class, pattern: LiteralPattern { text: spelling })
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+        machine_code_lex_token(token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: spelling })
       ]
     }
   }
 }
 
 fn machine_code_grammar(
-  production_name: Symbol,
-  token_class: Symbol,
-  emitted_identity: Symbol
-) -> ParseGrammar {
-  let start = GrammarProduction {
+  production_name: v2.std.node.Symbol,
+  token_class: v2.std.node.Symbol,
+  emitted_identity: v2.std.node.Symbol
+) -> v2.std.grammar.ParseGrammar {
+  let start = v2.std.grammar.GrammarProduction {
     name: production_name,
     expression: machine_code_grammar_terminal(token_class: token_class),
     emitted: grammar_atom(identity: emitted_identity)
   }
-  ModeledGrammar {
-    root: GrammarRoot {
+  v2.std.grammar.ModeledGrammar {
+    root: v2.std.grammar.GrammarRoot {
       start: production_name,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
@@ -418,18 +418,18 @@ fn machine_code_grammar(
   }
 }
 
-fn machine_code_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
-  FormalProduction {
+fn machine_code_formal_production(production_name: v2.std.node.Symbol, token_class: v2.std.node.Symbol) -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: production_name),
     rhs: [grammar_formal_terminal(identity: token_class)]
   }
 }
 
-fn machine_code_x86_64_lex() -> LexRules {
+fn machine_code_x86_64_lex() -> v2.std.compilers.lexing.LexRules {
   machine_code_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
 }
 
-fn machine_code_x86_64_grammar() -> ParseGrammar {
+fn machine_code_x86_64_grammar() -> v2.std.grammar.ParseGrammar {
   machine_code_grammar(
     production_name: ^machine_code_production_x86_64_nop,
     token_class: ^machine_code_token_x86_64_nop,
@@ -437,17 +437,17 @@ fn machine_code_x86_64_grammar() -> ParseGrammar {
   )
 }
 
-fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn machine_code_x86_64_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: machine_code_x86_64_lex(),
     grammar: machine_code_x86_64_grammar()
   }
 }
 
-fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn machine_code_x86_64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: machine_code_x86_64_ingest_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_formal_production(
         production_name: ^machine_code_production_x86_64_nop,
@@ -458,11 +458,11 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_aarch64_lex() -> LexRules {
+fn machine_code_aarch64_lex() -> v2.std.compilers.lexing.LexRules {
   machine_code_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
 }
 
-fn machine_code_aarch64_grammar() -> ParseGrammar {
+fn machine_code_aarch64_grammar() -> v2.std.grammar.ParseGrammar {
   machine_code_grammar(
     production_name: ^machine_code_production_aarch64_nop,
     token_class: ^machine_code_token_aarch64_nop,
@@ -470,17 +470,17 @@ fn machine_code_aarch64_grammar() -> ParseGrammar {
   )
 }
 
-fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn machine_code_aarch64_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: machine_code_aarch64_lex(),
     grammar: machine_code_aarch64_grammar()
   }
 }
 
-fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn machine_code_aarch64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: machine_code_aarch64_ingest_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_formal_production(
         production_name: ^machine_code_production_aarch64_nop,
@@ -491,11 +491,11 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_riscv64_lex() -> LexRules {
+fn machine_code_riscv64_lex() -> v2.std.compilers.lexing.LexRules {
   machine_code_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
 }
 
-fn machine_code_riscv64_grammar() -> ParseGrammar {
+fn machine_code_riscv64_grammar() -> v2.std.grammar.ParseGrammar {
   machine_code_grammar(
     production_name: ^machine_code_production_riscv64_nop,
     token_class: ^machine_code_token_riscv64_nop,
@@ -503,17 +503,17 @@ fn machine_code_riscv64_grammar() -> ParseGrammar {
   )
 }
 
-fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn machine_code_riscv64_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: machine_code_riscv64_lex(),
     grammar: machine_code_riscv64_grammar()
   }
 }
 
-fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn machine_code_riscv64_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: machine_code_riscv64_ingest_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "nop",
       production: machine_code_formal_production(
         production_name: ^machine_code_production_riscv64_nop,

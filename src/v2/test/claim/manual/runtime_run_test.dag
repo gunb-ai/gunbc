@@ -60,7 +60,7 @@ fn runtime_run_allocate_literal(
   _node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  v2.std.diagnostic.Accepted { value: runtime_run_unit_value(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: runtime_run_unit_value(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn runtime_run_reject_primitive(
@@ -103,7 +103,7 @@ fn runtime_run_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn runtime_run_interpretation() -> v2.std.runtime.InterpretationAlgebra {

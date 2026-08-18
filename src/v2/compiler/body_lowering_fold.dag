@@ -61,7 +61,7 @@ fn body_lowering_any_diagnostic_is_wrapper_retained(ne: v2.std.diagnostic.NonEmp
 
 fn body_lowering_diagnostics_carry_wrapper_retention(d: v2.std.diagnostic.Diagnostics) -> Bool {
   match d {
-    None => false
+    v2.std.diagnostic.None => false
     Some { diagnostics: ne } => body_lowering_any_diagnostic_is_wrapper_retained(ne: ne)
   }
 }
@@ -71,7 +71,7 @@ fn body_lower_outcome_is_wrapper_retained(o: v2.std.diagnostic.Outcome<v2.std.no
     v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: ne } => body_lowering_any_diagnostic_is_wrapper_retained(ne: ne)
-        None => false
+        v2.std.diagnostic.None => false
       }
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -88,7 +88,7 @@ fn body_lower_outcome_frontier_disposition(o: v2.std.diagnostic.Outcome<v2.std.n
           } else {
             BodyLoweringLowered
           }
-        None => BodyLoweringLowered
+        v2.std.diagnostic.None => BodyLoweringLowered
       }
   }
 }
@@ -1271,7 +1271,7 @@ fn body_lower_reduce_passthrough(folded: v2.std.node.Node) -> v2.std.diagnostic.
 fn body_lower_reduce_or_keep(o: v2.std.diagnostic.Outcome<v2.std.node.Node>, folded: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match o {
     v2.std.diagnostic.Accepted { value: v, diagnostics: d } => v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: None, rejected: r) }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: v2.std.diagnostic.None, rejected: r) }
   }
 }
 

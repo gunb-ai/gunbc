@@ -14,7 +14,7 @@ type EnvironmentBindingKey {
   identity: v2.std.node.Symbol
 }
 
-fn environment_binding_key_for_symbol(sym: Symbol) -> EnvironmentBindingKey {
+fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> EnvironmentBindingKey {
   EnvironmentBindingKey {
     identity: sym
   }
@@ -88,17 +88,17 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   }
 }
 
-fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn runtime_value_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn runtime_value_conj_node(children: List<Edge>) -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+fn runtime_value_conj_node(children: List<v2.std.node.Edge>) -> Node {
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
 }
 
-fn runtime_value_symbol_atom(sym: Symbol) -> Node {
+fn runtime_value_symbol_atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
@@ -117,7 +117,7 @@ fn runtime_bits_list_node(bits: List<Bool>) -> Node {
   )
 }
 
-fn runtime_byte_node_projection(byte: Byte) -> Node {
+fn runtime_byte_node_projection(byte: v2.std.machine.Byte) -> Node {
   runtime_value_conj_node(children: [
     runtime_value_named_edge(
       name: ^runtime_byte_bits_node_projection,
@@ -126,7 +126,7 @@ fn runtime_byte_node_projection(byte: Byte) -> Node {
   ])
 }
 
-fn runtime_bytes_list_node(bytes: List<Byte>) -> Node {
+fn runtime_bytes_list_node(bytes: List<v2.std.machine.Byte>) -> Node {
   fold_list_node(
     xs: bytes,
     item_node: fn(byte) { runtime_byte_node_projection(byte: byte) }
@@ -324,7 +324,7 @@ type RuntimeBehaviorInterpreter
 
 fn interpretation_behavior_dispatch(
   interpretation: InterpretationAlgebra,
-  behavior: Behavior
+  behavior: v2.std.node.Behavior
 ) -> RuntimeBehaviorInterpreter {
   match behavior {
     Value => ValueRuntimeInterpreter { interpreter: interpretation.value }
@@ -336,7 +336,7 @@ fn interpretation_behavior_dispatch(
   }
 }
 
-data runtime_match_unimplemented: Symbol = ^runtime_match_unimplemented
+data runtime_match_unimplemented: v2.std.node.Symbol = ^runtime_match_unimplemented
 
 fn runtime_reject_match_arm(
   node: Node,
@@ -344,10 +344,10 @@ fn runtime_reject_match_arm(
   _env: EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<Node> {
   outcome_rejected(
-    Diagnostic {
+    v2.std.diagnostic.Diagnostic {
       reason: runtime_match_unimplemented,
       at: node_locus(node: node),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   )
 }

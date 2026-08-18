@@ -17,15 +17,15 @@ type BudgetNode {
 
 data budget_tree_method: extdeps.accounting.budget.BudgetingMethod = ZeroBased
 
-fn claim_items(claims: List<BudgetClaim>) -> List<extdeps.accounting.budget.LineItem<Memory, One>> {
+fn claim_items(claims: List<BudgetClaim>) -> List<extdeps.accounting.budget.LineItem<std.measure.Memory, std.measure.One>> {
   map(claims, c => c.item)
 }
 
-fn child_as_line_item(child: BudgetNode) -> extdeps.accounting.budget.LineItem<Memory, One> {
+fn child_as_line_item(child: BudgetNode) -> extdeps.accounting.budget.LineItem<std.measure.Memory, std.measure.One> {
   extdeps.accounting.budget.LineItem { purpose: child.name, amount: child.appropriation.ceiling }
 }
 
-fn node_commitments(node: BudgetNode) -> List<extdeps.accounting.budget.LineItem<Memory, One>> {
+fn node_commitments(node: BudgetNode) -> List<extdeps.accounting.budget.LineItem<std.measure.Memory, std.measure.One>> {
   concat(claim_items(claims: node.claims), map(node.children, child_as_line_item))
 }
 

@@ -61,7 +61,7 @@ fn admit_normalized_roots(
 ) -> v2.std.diagnostic.Outcome<FreeMonoid<NormalizedTree>> {
   match fold_list(
     xs: roots,
-    empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -71,7 +71,7 @@ fn admit_normalized_roots(
             v2.std.diagnostic.Accepted { value: one, diagnostics: _ } =>
               v2.std.diagnostic.Accepted {
                 value: list_snoc_item(xs: admitted, item: one),
-                diagnostics: None
+                diagnostics: v2.std.diagnostic.None
               }
           }
       }

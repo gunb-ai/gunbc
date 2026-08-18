@@ -103,7 +103,7 @@ fn ts_arc1_forward_row_dedup_cutover_green_body() -> Bool {
             rules: ts_arc1_dedup_cutover_rules()
           ) {
             v2.std.diagnostic.Accepted { value: emitted, diagnostics: d } =>
-              (d == None) && (emitted == ts_task_type_alias_emitted())
+              (d == v2.std.diagnostic.None) && (emitted == ts_task_type_alias_emitted())
             v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         v2.std.diagnostic.Rejected { diagnostics: _ } => false

@@ -75,7 +75,7 @@ fn bisect_through_grammar_validate() -> v2.std.diagnostic.Outcome<v2.std.grammar
     ModeledGrammar { root: root } =>
       grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port))
     _ =>
-      v2.std.diagnostic.Rejected { diagnostics: None }
+      v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
   }
 }
 
