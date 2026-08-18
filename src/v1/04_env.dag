@@ -554,11 +554,18 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
 
 data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide."
 
+// The single definition of "on the referencing module's ancestor chain", per
+// unique_on_chain_policy_note. Both the unique and the ambiguous global-bare arms consult
+// THIS predicate, so visibility is decided one way for one name regardless of how many
+// candidates happen to carry that spelling.
+fn global_bare_module_on_chain(env_module_path: String, cand_module_path: String) -> Bool {
+  let cand_segs = module_path_segments(path: cand_module_path)
+  segment_lcp_len(a: cand_segs, b: module_path_segments(path: env_module_path)) == (cand_segs |> count)
+}
+
 fn global_bare_chain_candidates(env_module_path: String, candidates: List<GlobalBareCandidate>) -> List<GlobalBareCandidate> {
-  let env_segs = module_path_segments(path: env_module_path)
   candidates |> filter(cand =>
-    let cand_segs = module_path_segments(path: cand.module_path)
-    segment_lcp_len(a: cand_segs, b: env_segs) == (cand_segs |> count)
+    global_bare_module_on_chain(env_module_path: env_module_path, cand_module_path: cand.module_path)
   )
 }
 
@@ -757,7 +764,16 @@ fn record_global_bare_ambiguous_silent_pick(
 
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: binding } } =>
+      if name_resolution_policy_is_namespace_only() {
+        if global_bare_module_on_chain(env_module_path: env.module_path, cand_module_path: mp) {
+          Present { value: binding }
+        } else {
+          Absent
+        }
+      } else {
+        Present { value: binding }
+      }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {

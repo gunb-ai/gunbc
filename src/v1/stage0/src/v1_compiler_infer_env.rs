@@ -984,6 +984,16 @@ pub fn unique_on_chain_policy_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+/// The single definition of "on the referencing module's ancestor chain"
+/// (`unique_on_chain_policy_note`). Both global-bare arms consult this.
+pub fn global_bare_module_on_chain(env_module_path: String, cand_module_path: String) -> bool {
+    let cand_segs = module_path_segments(cand_module_path.clone());
+    segment_lcp_len(
+        cand_segs.clone(),
+        module_path_segments(env_module_path.clone()),
+    ) == (cand_segs.clone().len() as i64)
+}
+
 pub fn global_bare_chain_candidates(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
@@ -1410,8 +1420,20 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: mp,
+            binding,
+            ..
+        }) => {
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                if global_bare_module_on_chain(env.module_path.clone(), mp.clone()) {
+                    Some(binding.clone())
+                } else {
+                    None
+                }
+            } else {
+                Some(binding.clone())
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
