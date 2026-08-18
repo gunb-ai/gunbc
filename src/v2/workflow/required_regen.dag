@@ -57,6 +57,8 @@ type RequiredRegenSyncAdmission
 
 data no_regen_refusals: List<RequiredRegenRefusal> = []
 
+data no_string_paths: List<String> = []
+
 fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
   match o {
     SurfaceDrifted { relative_path: _ } => true
@@ -133,7 +135,7 @@ fn required_regen_sync_admission(
   }
   let drift_paths = fold_list(
     xs: generated_outcomes,
-    empty: no_regen_refusals,
+    empty: no_string_paths,
     cons: fn(acc, o) {
       if surface_is_drift(o: o) {
         collect_generated_drift_paths(acc: acc, o: o)
@@ -152,7 +154,7 @@ fn required_regen_sync_admission(
   }
   let hand_bad = fold_list(
     xs: hand_outcomes,
-    empty: no_regen_refusals,
+    empty: no_string_paths,
     cons: fn(acc, o) {
       if hand_is_unverifiable(o: o) {
         collect_hand_unverifiable(acc: acc, o: o)
