@@ -4,20 +4,19 @@ use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
-use super::{
-    extract_import_paths, extract_module_path, is_cargo_target_output_dir, workspace_root,
-};
+use super::workspace_root;
 use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_compile::{
     compile_sources, stage0_self_compile_refusal_message, SourceFile,
 };
+use crate::v1_rt;
 use bootstrap_stage0_crate_layout_generated::{
     HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES,
 };
@@ -54,7 +53,7 @@ pub fn run_required_regen(
     let run_started = Instant::now();
 
     let commit_sha = git_head_sha(&workspace)?;
-    let sources = regen_input_sources(&workspace)?;
+    let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
     let phases = Vec::new();
@@ -148,7 +147,7 @@ pub fn run_required_regen_fixed_point(
     let pass1 = pass1_digest.unwrap_or(prior.candidate_generated_digest);
 
     let commit_sha = git_head_sha(&workspace)?;
-    let sources = regen_input_sources(&workspace)?;
+    let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
     let emitted = compile_stage0(&workspace)?;
     let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
@@ -186,49 +185,6 @@ pub fn run_required_regen_fixed_point(
     Ok(RequiredRegenOutcome { receipt, failures })
 }
 
-pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v1"), workspace.join("dag")]
-}
-
-pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
-    let roots = regen_source_roots(workspace);
-    let index = build_module_path_index(&roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
-    let mut entry_paths = Vec::new();
-    collect_dag_files_result(entry_root, &mut entry_paths)?;
-
-    let mut seen: HashMap<String, (String, String)> = HashMap::new();
-    let mut queue: Vec<String> = Vec::new();
-    for path in &entry_paths {
-        let content =
-            fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let rel = workspace_relative_path(path, workspace);
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel = workspace_relative_path(file_path, workspace);
-                seen.insert(module_path, (rel, file_content.clone()));
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(result)
-}
-
 struct SyncReport {
     matches: bool,
     drifted_paths: Vec<String>,
@@ -239,9 +195,12 @@ struct HandVerifyReport {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let roots = regen_source_roots(workspace);
-    let sources = source_files_for_roots(&roots, workspace)?;
-    let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
+    let sources = super::regen_input_sources(workspace)?;
+    let source_files: Vec<Rc<SourceFile>> = sources
+        .into_iter()
+        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .collect();
+    let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
     if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
         return Err(message);
     }
@@ -250,23 +209,6 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
         out.insert(file.path.clone(), file.content.clone());
     }
     Ok(out)
-}
-
-fn source_files_for_roots(
-    roots: &[PathBuf],
-    workspace: &Path,
-) -> Result<Vec<Rc<SourceFile>>, String> {
-    let expected = regen_source_roots(workspace);
-    if roots != expected.as_slice() {
-        return Err(format!(
-            "source_files_for_roots called with roots {roots:?}; expected {expected:?}"
-        ));
-    }
-    let sources = regen_input_sources(workspace)?;
-    Ok(sources
-        .into_iter()
-        .map(|(path, content)| Rc::new(SourceFile { path, content }))
-        .collect())
 }
 
 fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<String> {
@@ -509,62 +451,8 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn collect_dag_files_result(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = fs::read_dir(dir)
-        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
-        .map(|e| e.map_err(|e| format!("failed to read dir entry: {e}")))
-        .collect::<Result<Vec<_>, String>>()?;
-    entries.sort_by_key(|e| e.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            if is_cargo_target_output_dir(dir, &path) {
-                continue;
-            }
-            collect_dag_files_result(&path, files)?;
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn build_module_path_index(roots: &[PathBuf]) -> Result<HashMap<String, PathBuf>, String> {
-    let mut index: HashMap<String, PathBuf> = HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        collect_dag_files_result(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content =
-                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-fn workspace_relative_path(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
 fn digest_label(bytes: &[u8]) -> String {
-    format!("fnv1a64:{:016x}", fnv1a64(bytes))
+    format!("fnv1a64:{}", v1_rt::bytes_identity_hash(bytes))
 }
 
 fn authority_digest_from_sources(sources: &[(String, String)]) -> Result<String, String> {

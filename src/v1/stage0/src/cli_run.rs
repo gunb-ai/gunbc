@@ -111,11 +111,14 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
-        .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e)))
-        .collect();
+        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
+        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
+        .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
@@ -123,11 +126,16 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files(&path, files);
+            collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
         }
     }
+    Ok(())
+}
+
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -2403,6 +2411,61 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
+/// Source roots whose transitive import closure feeds stage0 self-compile (`required_regen`).
+pub fn regen_source_roots() -> Vec<String> {
+    vec!["src/v1".to_string(), "dag".to_string()]
+}
+
+/// Every `(repo-relative path, source text)` in the stage0 compile closure.
+///
+/// Seeds every `.dag` under `src/v1`; walks imports through `build_module_path_index`
+/// over `regen_source_roots()` so reachable `dag/` modules are included.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots();
+    let abs_roots: Vec<String> = roots
+        .iter()
+        .map(|r| workspace.join(r).to_string_lossy().into_owned())
+        .collect();
+    let index = build_module_path_index(&abs_roots);
+    let entry_root = workspace.join(
+        roots
+            .first()
+            .ok_or_else(|| "regen source root list must not be empty".to_string())?,
+    );
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new();
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = workspace_relative_repo_path(&path.to_string_lossy());
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = index.get(&module_path) {
+                let file_path = workspace.join(rel_path);
+                let file_content = std::fs::read_to_string(&file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
+}
+
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
@@ -3604,12 +3667,9 @@ fn collect_repo_files_under_prefix(
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
 /// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
-/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
-/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
-/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
-/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
-/// re-greens on it.
+/// `regen_input_sources` (whole-root seed under `src/v1` vs. declared entry list). They differ in
+/// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments).
 ///
 /// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
