@@ -43,8 +43,6 @@ import product.inventory {
   Unqualified,
   ZeroQuantityEvent,
   admit_consumption,
-  balance_owned_plus_departed_is_acquired,
-  balance_reconciles_to_acquired,
   derive_inventory_balance,
   inventory_lot_allocator_initial,
   inventory_lot_identity_eq,
@@ -171,7 +169,7 @@ test fn w_long_lifecycle_never_leaves_a_bucket_short() -> Bool {
 
 // --- WALL 2: every bucket reconciles to the acquired total ------------------------------------------
 
-data w_reconciliation_note: String = "The nine reported buckets are not nine independent tallies: the seven disjoint positions sum to the acquired quantity, and owned, received and qualified are aggregates over those same seven. Both readings are asserted on the SAME derived balance, so a bucket that drifted from the partition would break one of them."
+data w_reconciliation_note: String = "Every bucket is pinned to an INDEPENDENTLY STATED number, never compared to another derived field. An earlier revision called a balance_reconciles_to_acquired helper here, and review 53543 showed that helper reduced to total == total and could not fail — so this row was asserting a tautology and passing on it. Hand-computing the expected partition from the event list is what makes the assertion discriminating: ten acquired, all received and qualified, then three reserved, two installed from available, one disposed from available, leaving four available. Every one of those numbers comes from reading the events, not from the balance. The aggregates are pinned the same way, so a derived field that drifted from the partition reds against a constant rather than agreeing with its own sibling."
 
 test fn w_all_buckets_reconcile_to_acquired() -> Bool {
   let events = append(acquire_and_receive_all(), [
@@ -182,10 +180,16 @@ test fn w_all_buckets_reconcile_to_acquired() -> Bool {
   match balance_of(lot: ten_unit_lot(), events: events) {
     Absent => false
     Present { value: b } =>
-      balance_reconciles_to_acquired(balance: b)
-        && balance_owned_plus_departed_is_acquired(balance: b)
-        && b.qualified == b.available + b.reserved + b.installed
-        && b.acquired == 10
+      b.acquired == 10
+        && b.received == 10
+        && b.unqualified == 0
+        && b.quarantined == 0
+        && b.available == 4
+        && b.reserved == 3
+        && b.installed == 2
+        && b.departed == 1
+        && b.owned == 9
+        && b.qualified == 9
   }
 }
 
@@ -205,7 +209,10 @@ test fn w_partial_receipt_leaves_awaiting_stock_counted() -> Bool {
         && b.quarantined == 3
         && b.available == 1
         && b.unqualified == 0
-        && balance_reconciles_to_acquired(balance: b)
+        && b.reserved == 0
+        && b.installed == 0
+        && b.departed == 0
+        && b.qualified == 1
   }
 }
 

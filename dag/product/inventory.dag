@@ -808,20 +808,7 @@ fn derive_inventory_balance(
   }
 }
 
-fn balance_reconciles_to_acquired(balance: InventoryBalance) -> Bool {
-  balance.acquired
-    == (balance.acquired - balance.received)
-      + balance.unqualified
-      + balance.quarantined
-      + balance.available
-      + balance.reserved
-      + balance.installed
-      + balance.departed
-}
-
-fn balance_owned_plus_departed_is_acquired(balance: InventoryBalance) -> Bool {
-  balance.owned + balance.departed == balance.acquired
-}
+data reconciliation_has_no_predicate_note: String = "There is deliberately NO balance_reconciles_to_acquired function, and the reason is worth the row because an earlier revision shipped one. It read acquired == (acquired - received) + unqualified + quarantined + available + reserved + installed + departed, and since derive_inventory_balance computes acquired as the distribution total and received as that total minus awaiting_receipt, the subtraction reduces to awaiting_receipt and the whole expression reduces to total == total. It could only ever return true. A sibling, owned + departed == acquired, was the same tautology with fewer terms. Neither tested anything, and both invited a consumer to read a construction wall as a validated property — the DESIGN section 5 inversion exactly, a check standing where construction already holds, except this one could not even fail. The wall is real and it lives in transfer_stock: that function is the only mutation, it moves rather than creates, so the partition total is invariant under it and the reconciliation cannot be violated by any event sequence. What discriminates is the WITNESS, which pins each bucket to an independently stated number rather than comparing the derived fields to each other; a fold that invented stock reds there, and did, when transfer_stock was mutated to skip draining its source. Caught by review 53543."
 
 // --- admissibility of a consumption request ---------------------------------------------------
 
