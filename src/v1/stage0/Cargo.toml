@@ -150,14 +150,6 @@ name = "measure_selected_closure_overlap"
 path = "src/bin/measure_selected_closure_overlap.rs"
 
 [[bin]]
-name = "resolution_divergence_census"
-path = "src/bin/resolution_divergence_census.rs"
-
-[[bin]]
-name = "walk_target_alias_plan"
-path = "src/bin/walk_target_alias_plan.rs"
-
-[[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
 
@@ -281,6 +273,10 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
+
+[[bin]]
+name = "floor_prepared_toll_receipt"
+path = "src/bin/floor_prepared_toll_receipt.rs"
 
 # Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
 # GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
