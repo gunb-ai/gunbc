@@ -2391,52 +2391,12 @@ fn call_function_dispatch(
     result
 }
 
-const BOARD_ARTICLE_REFUSAL_CAUSE_NAME_FN: &str =
-    "product.compute_board.admission.board_article_refusal_cause_name";
-
-fn coproduct_arm_label(value: &Value, ctx: &InterpContext) -> Option<String> {
-    let last_segment = |s: &str| s.rsplit('.').next().unwrap_or(s).to_string();
-    match value {
-        Value::Variant { variant_name, .. } => Some(last_segment(&ctx.resolve(*variant_name))),
-        Value::Record { type_name, .. } => Some(last_segment(&ctx.resolve(*type_name))),
-        _ => None,
-    }
-}
-
-// HAND-RUST GATE explicit deferral (review 53386): prepared-subject scope still refuses
-// interpreted `match` on `BoardArticleRefusal` when the fold lives in `admission.dag`.
-// Route calls to `board_article_refusal_cause_name` through the structural label the
-// payload already carries (the `.dag` authority is the identity fold variant-name → same
-// string) until substrate cross-module variant-pattern matching is sound — same dissolve-on
-// as `admission.dag` `board_article_refusal_cause_name`. Operator receipt: review 53386
-// APPROVE with this intercept flagged; terminal fix is substrate root-cause, not growth
-// of per-fn native bypasses.
-fn try_board_article_refusal_cause_name_native(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    args: &[(Option<String>, Value)],
-) -> Option<InterpResult<Value>> {
-    if fn_node.name != BOARD_ARTICLE_REFUSAL_CAUSE_NAME_FN {
-        return None;
-    }
-    let r = args.first().map(|(_, value)| value)?;
-    let Some(label) = coproduct_arm_label(r, ctx) else {
-        return Some(Err(InterpError::PatternMatchFailure {
-            value: ctx.format_value(r),
-        }));
-    };
-    Some(Ok(str_value(label)))
-}
-
 fn call_function_inner(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(result) = try_board_article_refusal_cause_name_native(ctx, fn_node, args) {
-        return result;
-    }
     if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
         return result;
     }
@@ -12687,10 +12647,6 @@ macro_rules! v1_builtin_arms {
             },
             arm "free_call.census_corpus_roots_follow_layer_authority" { "census_corpus_roots_follow_layer_authority" } => Ok(Some(Value::Bool(
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
-            ))),
-
-            arm "free_call.resolution_divergence_silent_pick_gate_in_process" { "resolution_divergence_silent_pick_gate_in_process" } => Ok(Some(Value::Bool(
-                crate::cli_run::resolution_divergence_silent_pick_gate_in_process($ctx),
             ))),
 
         }

@@ -442,26 +442,20 @@ fn main() {
             entry,
         } => {
             // #6967/§13 silent-pick piggyback: drain resolution silent-pick
-            // telemetry over this same compile. This is NOT the shared
-            // resolution_divergence_silent_pick_refusal authority (cli_run.rs)
-            // — that requires the full whole-tree census join against
-            // containment_ambiguous_rows/diverge_rows, too costly to run on
-            // every `gunbc compile` (measured >90s/3GB+ RSS whole-tree, per
-            // ci_layer_roots.dag's falsifier_silent_pick_gate_note). This is a
-            // deliberately narrower, cost-motivated proxy, asymmetric in both
-            // directions from the shared authority (review 41032):
-            //   - fn_parent_first_hit: red-on-any raw count here, on the
-            //     construction-proven corpus invariant (with v2.test.* roster
-            //     exclusion) that every in-roster fn_parent_first_hit fire is
-            //     containment_ambiguous — verified by
-            //     resolution_divergence_fn_parent_first_hit_subset_holds_on_closure_scoped_corpus
-            //     and the nightly falsifier's subset refusal arm.
-            //   - global_bare_lcp: skipped entirely here (fires on whole-pool
-            //     name overlap alone — ~483 benign corpus sites, not genuine
-            //     under §13 unique-on-chain) — under-strict; a future genuine
-            //     global_bare_lcp pick is caught only by the nightly full-join
-            //     falsifier backstop, not at compile time.
-            // Tracked fast-follow, not a single authority today.
+            // telemetry over this same compile. This is NOT the join-filtered
+            // resolution-divergence census (deleted 2026-08-18 — see
+            // gunbc.ci_layer_roots resolution_divergence_silent_pick_gate_retirement_receipt).
+            // That path required a second whole-corpus resolve plus parent-plan
+            // capture this compile route never had. This is a deliberately narrower,
+            // cost-motivated proxy, asymmetric in both directions (review 41032):
+            //   - fn_parent_first_hit: red-on-any raw count here (bare reference
+            //     resolved by first-hit among multiple parents — containment-ambiguous).
+            //   - global_bare_lcp: skipped entirely here (whole-pool name overlap
+            //     alone — benign at compile-time scope, not genuine under §13
+            //     unique-on-chain).
+            // Join-filtered silent-pick divergence detection has no enrolled
+            // witness today; the retirement receipt carries the rung drop and
+            // rebuild constraints.
             v1_rt::resolution_silent_pick_enable();
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);

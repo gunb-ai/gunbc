@@ -334,31 +334,33 @@ fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-// Cause labels are authored beside the coproduct so cross-module witnesses compare strings
-// instead of matching imported variant patterns through the prepared-subject scope.
-// HAND-RUST GATE receipt (review 53386): v1_interpreter
-// `try_board_article_refusal_cause_name_native` realizes this fold until the dissolve-on
-// fires; structural label read only, not a parallel arm roster.
-// dissolve-on: substrate cross-module variant-pattern matching (or variant_tag_name
-// reflection) works in the prepared-subject scope; then delete this helper, the native
-// intercept, and match BoardArticleRefusal directly in witnesses again.
-fn board_article_refusal_cause_name(r: BoardArticleRefusal) -> String {
+// Match on BoardArticleRefusal in the module that owns the coproduct — imported variant
+// patterns in witness modules do not reconcile at runtime (non-exhaustive on every arm).
+fn refusal_matches_name(r: BoardArticleRefusal, wanted: String) -> Bool {
   match r {
-    DuplicateComponentIdentity { component: _ } => "DuplicateComponentIdentity"
-    DuplicateNetIdentity { net: _ } => "DuplicateNetIdentity"
-    DuplicateSignalName { signal: _ } => "DuplicateSignalName"
-    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => "NetMemberNamesNoTerminal"
-    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => "NetMemberBelongsToAnotherDesign"
-    BondTerminalNamesNoTerminal { component: _, terminal: _ } => "BondTerminalNamesNoTerminal"
-    BondNamesUndeclaredNet { net: _ } => "BondNamesUndeclaredNet"
-    ReferenceNetNotDeclared { net: _ } => "ReferenceNetNotDeclared"
-    DrivenSignalUndeclared { signal: _ } => "DrivenSignalUndeclared"
-    DrivenSignalIsAnInput { signal: _ } => "DrivenSignalIsAnInput"
-    EquationReferencesUndeclaredSignal { driven: _ } => "EquationReferencesUndeclaredSignal"
-    OutputWithNoDriver { signal: _ } => "OutputWithNoDriver"
-    OutputWithMultipleDrivers { signal: _ } => "OutputWithMultipleDrivers"
-    PreconditionSignalUndeclared { signal: _ } => "PreconditionSignalUndeclared"
-    PreconditionSignalIsNotAnOutput { signal: _ } => "PreconditionSignalIsNotAnOutput"
+    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
+    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
+    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
+    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
+    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
+    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
+    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
+    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
+    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
+    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
+    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
+    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
+    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
+    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
+    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
+  }
+}
+
+fn refuses_with_exactly_named_cause(a: BoardPowerInterfaceArticle, wanted: String) -> Bool {
+  match admit_board_article(a: a) {
+    BoardArticleAdmitted { article: _ } => false
+    BoardArticleRefused { causes: s } =>
+      refusal_set_count(s: s) == 1 && refusal_matches_name(r: s.first, wanted: wanted)
   }
 }
 
