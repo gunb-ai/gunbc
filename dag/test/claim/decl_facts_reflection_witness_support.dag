@@ -6,9 +6,9 @@ import test.fixture.decl_facts_reflection.globally_unique_carrier
 import test.fixture.decl_facts_reflection.specimens
 import test.fixture.decl_facts_reflection.unimported_globally_unique_user
 import test.fixture.decl_facts_reflection.witness_support {
-  decl_facts_reflection_fixture_pool_roots,
+  decl_facts_reflection_fixture_facts,
 }
-import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_index { DeclFact }
 import std.algebra { Empty }
 import v2.std.optional { optional_present, optional_absent }
 import v2.std.data_initializer_identity {
@@ -38,8 +38,13 @@ import v2.std.data_initializer_identity {
   plain_record_parent_qualified_name_optional,
 }
 
+// Projection of the fixture module's single `data` authority, NOT a second
+// decl_facts call over the same roots. A `data` initializer is evaluated once
+// per interpreter context and cached; a `fn` body re-runs the whole-pool scan
+// at every call site, which this cluster's rows make once each. Same facts,
+// one scan for the module instead of one per row.
 fn decl_facts_reflection_witness_support_facts() -> List<DeclFact> {
-  decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
+  decl_facts_reflection_fixture_facts
 }
 
 fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {

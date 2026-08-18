@@ -15,15 +15,12 @@ use v1_compiler::cli_run::{
     compute_histogram_data, discover_floor_witness_roster_with_snapshot,
     enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
-    resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
+    make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
     ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles, WitnessRowCost,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::derived_realization_schedule::{RealizationConcurrency, RealizationSlot};
 use v1_compiler::memory_governor::{
@@ -37,12 +34,10 @@ use v1_compiler::v1_interpreter::{
 
 /// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
 /// roster so a batch draws exactly the ceiling its lane declares. Self-host wet (green +
-/// known-red quarantine) share the 600s wall budget; silent-pick owns
-/// `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s); the Hermetic substrate
-/// long lane owns `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane
-/// inherits another's ceiling — the prior mis-scopes reddened silent-pick against the
-/// 600s self-host wall (2026-07-25) and the substrate long lane against the 5s per-PR
-/// fast-lane eval budget (run 30176416535, 7 of 10 rows killed at ~5001ms).
+/// known-red quarantine) share the 600s wall budget; the Hermetic substrate long lane owns
+/// `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane inherits another's
+/// ceiling — the substrate long lane must not inherit the 5s per-PR fast-lane eval budget
+/// (run 30176416535, 7 of 10 rows killed at ~5001ms).
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
@@ -54,8 +49,6 @@ struct FalsifierSelfHostWetBudgets {
     /// witness's; the path-grain hermetic twin of this field was deleted when function-grain
     /// expectation replaced it, rather than left beside its successor.
     known_red_entry_paths: Vec<String>,
-    silent_pick_wall_budget_ms: Option<u64>,
-    silent_pick_entry_paths: Vec<String>,
     /// Paths requiring the long eval ceiling (`witness_long_eval_budget_entries`) — the
     /// UNION of the long-lane batch roster and every admission row declaring
     /// `SubstrateLongLaneEvalBudget`.
@@ -3906,13 +3899,6 @@ fn select_discovery_batch_budgets(
             eval_budget_ms: None,
             wet_wall_budget_ms: budgets.wall_budget_ms,
             wet_interp_budget_ms: budgets.interp_eval_budget_ms,
-        };
-    }
-    if discovery_entries_intersect_roster(explicit_entries, &budgets.silent_pick_entry_paths) {
-        return DiscoveryBatchBudgets {
-            eval_budget_ms: None,
-            wet_wall_budget_ms: budgets.silent_pick_wall_budget_ms,
-            wet_interp_budget_ms: None,
         };
     }
     DiscoveryBatchBudgets {
@@ -10525,45 +10511,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
         // spawn width (wet) from the same resolved graph — this resolve was previously
         // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
-        let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
-        if resolution_divergence_receipt_armed {
-            if let Err(e) = reset_resolution_divergence_phase_receipt()
-                .and_then(|()| {
-                    record_resolution_divergence_phase(
-                        ResolutionDivergencePhase::ParentPlanResolve,
-                        ResolutionDivergencePhaseState::Started,
-                        &format!("{plan_entry}::{plan_function}"),
-                    )
-                })
-                .and_then(|()| resolution_divergence_parent_plan_capture_begin())
-            {
-                eprintln!("claim_executor: {e}");
-                return Err(ExitCode::from(1));
-            }
-        }
         let (plan_graph, plan_indices) =
             match resolve_entry_graph_shared(&source_roots, &plan_entry) {
                 Ok(resolved) => resolved,
                 Err(msg) => {
-                    if resolution_divergence_receipt_armed {
-                        let _ = resolution_divergence_parent_plan_capture_finish();
-                    }
                     eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
                     return Err(ExitCode::from(1));
                 }
             };
-        if resolution_divergence_receipt_armed {
-            if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
-                record_resolution_divergence_phase(
-                    ResolutionDivergencePhase::ParentPlanResolve,
-                    ResolutionDivergencePhaseState::Completed,
-                    &format!("{plan_entry}::{plan_function}"),
-                )
-            }) {
-                eprintln!("claim_executor: {e}");
-                return Err(ExitCode::from(1));
-            }
-        }
         phase_mark("plan resolve");
 
         let plan_ctx =
@@ -10841,26 +10796,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             known_red_entry_paths: match read_schedule_witness_entry_paths(
                 plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_known_red_roster",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
-            silent_pick_wall_budget_ms: match read_positive_budget_ms(
-                plan_ctx_or_refuse!("falsifier budget"),
-                "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
-            silent_pick_entry_paths: match read_schedule_witness_entry_paths(
-                plan_ctx_or_refuse!("plan read"),
-                "falsifier_silent_pick_gate_roster",
             ) {
                 Ok(v) => v,
                 Err(msg) => {
@@ -13473,12 +13408,11 @@ mod tests {
             )],
             &roster
         ));
-        // Silent-pick is Wet but not on the self-host roster — must not inherit
-        // the 600s whole-receipt ceiling (mis-scope receipt 2026-07-25).
+        // A non-self-host wet witness must not inherit the 600s whole-receipt ceiling.
         assert!(!discovery_entries_intersect_roster(
             &[(
-                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
-                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+                "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                "materialize_codex_runtime_bundle_produces_native_executable_holds".into()
             )],
             &roster
         ));
@@ -13489,26 +13423,6 @@ mod tests {
                 "self_host_logic_behavioral_receipt_holds".into()
             )],
             &[]
-        ));
-    }
-
-    #[test]
-    fn silent_pick_roster_intersection_scopes_own_wall_budget() {
-        let silent_pick =
-            vec!["dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into()];
-        assert!(discovery_entries_intersect_roster(
-            &[(
-                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
-                "resolution_divergence_silent_pick_gate_keystone_holds".into()
-            )],
-            &silent_pick
-        ));
-        assert!(!discovery_entries_intersect_roster(
-            &[(
-                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
-                "self_host_logic_behavioral_receipt_holds".into()
-            )],
-            &silent_pick
         ));
     }
 
@@ -13664,13 +13578,13 @@ mod tests {
         );
         assert_eq!(
             falsifier_failure_mode(&[
-                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+                "batch=3 fn=expensive_wet_witness detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
         assert_eq!(
             falsifier_failure_mode(&[
-                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+                "batch=3 fn=expensive_wet_witness detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
@@ -16602,15 +16516,7 @@ mod tests {
         assert_eq!(wet_witness_row_outcome_label("Refused"), "failed");
     }
 
-    /// Discovery is THE falsifier path — `resolution_divergence_silent_pick_gate_keystone_holds`
-    /// is a discovery row — so a budget kill there must classify structurally like any other.
-    ///
-    /// RED control for review 45220, which caught this as a live regression: a discovery batch
-    /// flattens N witness outcomes into one `ok`/`detail`, and this result previously hardcoded
-    /// `budget_refusal: None`. Combined with the new detail wording (which deliberately contains
-    /// none of `falsifier_failure_mode`'s substrings), a budget kill on the primary path fell
-    /// through to `WitnessRed` — the exact misclassification this change exists to remove, in
-    /// new prose. The assertion below on the string classifier keeps the control non-vacuous.
+    /// Discovery budget kills must classify structurally like any other batch.
     #[test]
     fn discovery_budget_kill_classifies_structurally_on_the_falsifier_path() {
         use v1_compiler::cli_run::{
@@ -16618,7 +16524,7 @@ mod tests {
             ResolveStageNanos,
         };
         let killed_detail =
-            "1 of 1 discovery witness(es) failed: fn=silent_pick killed at its wall budget: \
+            "1 of 1 discovery witness(es) failed: fn=expensive_witness killed at its wall budget: \
              900001ms elapsed > 900000ms budget";
         assert_eq!(
             falsifier_failure_mode(&[killed_detail.to_string()]),
@@ -16634,10 +16540,9 @@ mod tests {
             divergences: Vec::new(),
             failures: vec![killed_detail.into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
-                entry: "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag"
-                    .into(),
-                module_path: "test.claim.resolution_divergence_silent_pick_gate".into(),
-                function: "resolution_divergence_silent_pick_gate_keystone_holds".into(),
+                entry: "dag/test/claim/expensive_wet_witness_test.dag".into(),
+                module_path: "test.claim.expensive_wet_witness".into(),
+                function: "expensive_witness_keystone_holds".into(),
                 outcome,
                 execution_leg: "InterpretedLeg".into(),
             }],
