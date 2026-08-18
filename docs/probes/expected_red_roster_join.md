@@ -16,10 +16,18 @@ Every identity in `v2.workflow.floor_expected_red` receives exactly one:
 | --- | --- |
 | `still_red` | witness ran and failed on its subject |
 | `now_passes` | witness ran and returned true — **retire the enrollment, keep the witness** |
-| `not_evaluated` | no subject verdict (not in manifest, host tool missing, marginal budget, …) |
+| `not_evaluated` | no subject verdict (not in manifest, host tool missing, …) |
 
-`not_evaluated` is load-bearing: folding unevaluable rows into either other bucket is
-fail-open. A nonzero `not_evaluated` count is a headline number, not a footnote.
+`not_evaluated` is load-bearing for rows with **no subject verdict** (infra gaps, not-in-manifest).
+Budget kills and other witness failures classify as `still_red` — 500ms is a **hard cutoff**
+(operator 2026-08-18); a witness near that line is over-large regardless of host-load jitter.
+
+## Witness cost (operator ruling, 2026-08-18)
+
+500ms HARD, 100ms warn (`v2.workflow.required_floor`). The target is measured wall time, not
+the failure list: ~267 witnesses exceed the hard cutoff on main while only ~11–15 fail at the
+deadline (unpollable host builtins). Rank by measured ms and pare over-large witnesses into
+smaller discriminating fixtures; whole-corpus scans belong on a cadence, not per-PR.
 
 ## How verdicts are obtained
 

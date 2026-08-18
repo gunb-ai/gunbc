@@ -3,7 +3,7 @@
 //! Every enrolled identity receives exactly one of three outcomes:
 //! - `StillRed` — the witness ran and failed on its subject (not infra/budget flake).
 //! - `NowPasses` — the witness ran and returned true; retire the enrollment, keep the witness.
-//! - `NotEvaluated` — no subject verdict (not in manifest, host tool missing, marginal budget, …).
+//! - `NotEvaluated` — no subject verdict (not in manifest, host tool missing, …).
 //!
 //! Completeness is an identity join over the full roster, never a scan of failure-log lines.
 
@@ -152,44 +152,14 @@ pub fn classify_verdict(verdict: &WitnessEvalVerdict) -> (ExpectedRedJoinDisposi
             elapsed_ms,
             budget_ms,
             kind,
-        } => {
-            if is_marginal_budget_exceeded(*elapsed_ms, *budget_ms) {
-                (
-                    ExpectedRedJoinDisposition::NotEvaluated {
-                        reason: "marginal_budget_exceeded".to_string(),
-                    },
-                    format!(
-                        "{kind} budget {elapsed_ms}ms elapsed against {budget_ms}ms — verdict \
-                         decided by host load, not witness subject"
-                    ),
-                )
-            } else {
-                (
-                    ExpectedRedJoinDisposition::StillRed,
-                    format!(
-                        "exceeded {kind} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)"
-                    ),
-                )
-            }
-        }
+        } => (
+            ExpectedRedJoinDisposition::StillRed,
+            format!(
+                "exceeded {kind} budget ({elapsed_ms}ms elapsed against {budget_ms}ms hard \
+                 cutoff)"
+            ),
+        ),
     }
-}
-
-/// Basis: `v2.workflow.required_floor` `required_floor_claim_budget_ms` — 500ms HARD witness
-/// eval ceiling (operator 2026-08-17). Host-load overruns just above that line (501–509ms
-/// observed) relocate between runs and classify as `not_evaluated`, not `still_red`.
-pub const MARGINAL_BUDGET_RELATIVE_DIVISOR: u64 = 50;
-pub const MARGINAL_BUDGET_MIN_ABSOLUTE_MS: u64 = 10;
-
-/// Host-selected marginal overrun relative to a declared budget ceiling.
-pub fn is_marginal_budget_exceeded(elapsed_ms: u64, budget_ms: u64) -> bool {
-    if elapsed_ms <= budget_ms {
-        return false;
-    }
-    let over_ms = elapsed_ms.saturating_sub(budget_ms);
-    let margin =
-        (budget_ms / MARGINAL_BUDGET_RELATIVE_DIVISOR).max(MARGINAL_BUDGET_MIN_ABSOLUTE_MS);
-    over_ms <= margin
 }
 
 pub fn disposition_label(disposition: &ExpectedRedJoinDisposition) -> &'static str {
@@ -263,19 +233,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn marginal_budget_is_not_evaluated() {
+    fn budget_exceeded_at_hard_cutoff_is_still_red() {
         let verdict = WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms: 509,
             budget_ms: 500,
             kind: "wall",
         };
-        let (disp, _) = classify_verdict(&verdict);
-        assert!(matches!(
-            disp,
-            ExpectedRedJoinDisposition::NotEvaluated {
-                reason
-            } if reason == "marginal_budget_exceeded"
-        ));
+        let (disp, detail) = classify_verdict(&verdict);
+        assert_eq!(disp, ExpectedRedJoinDisposition::StillRed);
+        assert!(detail.contains("hard cutoff"));
     }
 
     #[test]
