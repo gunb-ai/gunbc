@@ -70,6 +70,9 @@ import v1.compiler.trait_derive_emit {
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
+import v1.compiler.trait_bound_witness {
+  v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names
+}
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
@@ -5777,13 +5780,41 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
+  let rc_match_clone_param_names = match body.expr_data {
+    ExprMatch =>
+      let scrutinee = match_scrutinee(texpr: body)
+      match scrutinee.inferred {
+        Present { value: Resolved { node: rt } } =>
+          let scrut_type = authored_name_at(source_indices: si, node: rt)
+          let arms = match_arm_nodes(texpr: body)
+          let rc_match = analyze_rc_match(
+            scrutinee: scrutinee,
+            arms: arms,
+            scrut_type: scrut_type,
+            shared_types: shared_types,
+            emit_info: emit_info,
+            source_indices: si
+          )
+          v1_rc_match_scrutinee_clone_bound_param_names(
+            generic_param_names: generic_param_names,
+            scrutinee_type_arg_names: rt.children |> map(c => authored_name_at(source_indices: si, node: c)),
+            rc_match_needs_deref: rc_match.needs_deref
+          )
+        _ => []
+      }
+    _ => []
+  }
+  let derived_clone_param_names_with_rc_match = v1_union_clone_param_names(
+    base: derived_clone_param_names,
+    extra: rc_match_clone_param_names
+  )
   let module_path = scope.type_env.module_path
   let clone_param_names = if (generic_param_names |> count) > 0 && (
     trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: module_path)
   ) {
     generic_param_names
   } else {
-    derived_clone_param_names
+    derived_clone_param_names_with_rc_match
   }
   let needs_clone_bound = (clone_param_names |> count) > 0
   let type_params_str = if needs_clone_bound {

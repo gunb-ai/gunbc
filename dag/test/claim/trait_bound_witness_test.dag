@@ -1,23 +1,21 @@
 module test.claim.trait_bound_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v1.compiler.trait_bound_witness { TraitBoundWitness, TraitBoundReason, v1_rc_match_scrutinee_clone_bound_witnesses }
+import v1.compiler.trait_bound_witness { v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data trait_bound_witness_test_note: String = "gunbc dashboard node://adhoc-d30225a0-531. The pure decision core v1_rc_match_scrutinee_clone_bound_witnesses (v1.compiler.trait_bound_witness) is unit-tested directly here with plain literals -- it needs no Node/EmitGraphInfo construction because it consumes already-extracted facts (generic_param_names, a resolved scrutinee type name and its type-argument names, and analyze_rc_match's needs_deref verdict), keeping this a real executing consumer rather than an inert function (DESIGN.md S5 specification-without-execution). w_current_defect_reproduces_bare_generic_no_clone_impl is the discriminating specimen: it compiles the minimal Choice<N>/describe<N> fixture (traced to reproduce the same shape as the real materialization_carriers E0599 specimens, dag/std/cache_interface.dag realize_route<T>/classify_write<T> -- a function whose body is directly a match on an Rc-wrapped, data-carrying, generic coproduct) through the REAL emit pipeline via compile_dag_rust_emit_check and asserts TODAY's actual (unfixed) emitted shape: a bare `fn describe<N>` with no `N: Clone` bound, whose body clones the dereferenced scrutinee -- exactly the rustc E0599 cause. This witness is expected to assert current behavior, not the fixed behavior: the consumer wiring (threading emit_fn_def's body into the Clone-bound decision, documented in trait_bound_witness_proposed_consumer_diff_note) lives in owned files (src/v1/05_emit_rust.dag, src/v1/trait_derive_emit.dag; witty-heron-413's materialization_carriers lane) and is intentionally not landed here. When that consumer diff lands, this specimen's assertions invert (must_contain becomes must_not_contain and vice versa) and it becomes the positive-fix regression control, per DESIGN.md S4b's expecting-red-flips-to-permanent-regression-control pattern -- it is not deleted."
+data trait_bound_witness_test_note: String = "gunbc dashboard node://adhoc-d30225a0-531. The pure decision core v1_rc_match_scrutinee_clone_bound_param_names (v1.compiler.trait_bound_witness) is unit-tested directly here with plain literals -- it needs no Node/EmitGraphInfo construction because it consumes already-extracted facts (generic_param_names, a resolved scrutinee's type-argument names, and analyze_rc_match's needs_deref verdict), keeping this a real executing consumer rather than an inert function (DESIGN.md S5 specification-without-execution). It returns plain List<String> param names -- the same shape v1_generic_params_needing_clone_bound (the real, now-wired consumer in src/v1/05_emit_rust.dag's emit_fn_def) already returns and unions -- deliberately minting no named carrier type (see trait_bound_witness_note for why RequiredTraitWitness was checked and rejected as the wrong home, not merely skipped). w_current_defect_reproduces_bare_generic_no_clone_impl is the discriminating specimen: it compiles the minimal Choice<N>/describe<N> fixture (traced to reproduce the same shape as the real materialization_carriers E0599 specimens, dag/std/cache_interface.dag realize_route<T>/classify_write<T> -- a function whose body is directly a match on an Rc-wrapped, data-carrying, generic coproduct) through the REAL emit pipeline via compile_dag_rust_emit_check and asserts the FIXED emitted shape now that emit_fn_def is wired: `fn describe<N: Clone>` rather than a bare `fn describe<N>`, per DESIGN.md S4b's expecting-red-flips-to-permanent-regression-control pattern -- this specimen previously asserted the defect (bare signature) before the consumer wiring landed and now asserts the fix, not deleted."
 
 fn w_rc_match_generic_scrutinee_arg_yields_clone_witness() -> Bool {
-  let witnesses = v1_rc_match_scrutinee_clone_bound_witnesses(
+  let names = v1_rc_match_scrutinee_clone_bound_param_names(
     generic_param_names: ["N"],
-    scrutinee_type_name: "Choice",
     scrutinee_type_arg_names: ["N"],
     rc_match_needs_deref: true
   )
-  match witnesses {
-    [TraitBoundWitness { param_name: p, trait_name: t, reason: RcMatchScrutineeClone { scrutinee_type: s } }] =>
-      p == "N" && t == "Clone" && s == "Choice"
-    _ => false
+  (names |> count == 1) && match names.first() {
+    Present { value: n } => n == "N"
+    Absent => false
   }
 }
 
@@ -26,13 +24,12 @@ test fn rc_match_generic_scrutinee_arg_yields_clone_witness() -> Bool {
 }
 
 fn w_no_deref_needed_yields_no_witness() -> Bool {
-  let witnesses = v1_rc_match_scrutinee_clone_bound_witnesses(
+  let names = v1_rc_match_scrutinee_clone_bound_param_names(
     generic_param_names: ["N"],
-    scrutinee_type_name: "Choice",
     scrutinee_type_arg_names: ["N"],
     rc_match_needs_deref: false
   )
-  witnesses |> count == 0
+  names |> count == 0
 }
 
 test fn no_deref_needed_yields_no_witness() -> Bool {
@@ -40,13 +37,12 @@ test fn no_deref_needed_yields_no_witness() -> Bool {
 }
 
 fn w_type_arg_not_a_generic_param_yields_no_witness() -> Bool {
-  let witnesses = v1_rc_match_scrutinee_clone_bound_witnesses(
+  let names = v1_rc_match_scrutinee_clone_bound_param_names(
     generic_param_names: ["N"],
-    scrutinee_type_name: "IntChoice",
     scrutinee_type_arg_names: ["Int"],
     rc_match_needs_deref: true
   )
-  witnesses |> count == 0
+  names |> count == 0
 }
 
 test fn type_arg_not_a_generic_param_yields_no_witness() -> Bool {
@@ -54,15 +50,14 @@ test fn type_arg_not_a_generic_param_yields_no_witness() -> Bool {
 }
 
 fn w_only_generic_matching_args_are_witnessed() -> Bool {
-  let witnesses = v1_rc_match_scrutinee_clone_bound_witnesses(
+  let names = v1_rc_match_scrutinee_clone_bound_param_names(
     generic_param_names: ["N"],
-    scrutinee_type_name: "Pair",
     scrutinee_type_arg_names: ["Int", "N"],
     rc_match_needs_deref: true
   )
-  match witnesses {
-    [TraitBoundWitness { param_name: p, trait_name: _, reason: _ }] => p == "N"
-    _ => false
+  (names |> count == 1) && match names.first() {
+    Present { value: n } => n == "N"
+    Absent => false
   }
 }
 
@@ -70,12 +65,29 @@ test fn only_generic_matching_args_are_witnessed() -> Bool {
   w_only_generic_matching_args_are_witnessed()
 }
 
+fn w_union_dedupes_against_base() -> Bool {
+  let unioned = v1_union_clone_param_names(base: ["N"], extra: ["N", "M"])
+  (unioned |> count == 2)
+  && match unioned.first() {
+    Present { value: a } => a == "N"
+    Absent => false
+  }
+  && match unioned.skip(n: 1).first() {
+    Present { value: b } => b == "M"
+    Absent => false
+  }
+}
+
+test fn union_dedupes_against_base() -> Bool {
+  w_union_dedupes_against_base()
+}
+
 fn w_current_defect_reproduces_bare_generic_no_clone_impl() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_clone_bound_witness.rc_match_scrutinee\ntype Choice<N>\n  = Holds { value: N }\n  | Empty\n\nfn describe<N>(c: Choice<N>) -> String {\n  match c {\n    Holds { value: v } => \"holds\"\n    Empty => \"empty\"\n  }\n}\n",
     "src/fn_clone_bound_witness_rc_match_scrutinee.rs",
-    ["fn describe<N>("],
-    ["fn describe<N: Clone>("]
+    ["fn describe<N: Clone>("],
+    ["fn describe<N>("]
   )
 }
 
