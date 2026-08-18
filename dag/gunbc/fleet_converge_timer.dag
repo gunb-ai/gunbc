@@ -16,11 +16,7 @@ import std.measure { Second, second }
 // Timer shape is the design doc's Option A (OnCalendar + Persistent=true + jitter):
 // Persistent only functions with OnCalendar (systemd ignores it on monotonic timers),
 // and calendar catch-up is exactly the offline-host property the arc requires.
-data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
-data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
-data fleet_converge_timer_on_calendar: String = "*:0/15"
-data fleet_converge_timer_randomized_delay: Second = second(count: 90)
-
+//
 // THE DEAD SELF-INSTALL RENDERER IS GONE (2026-08-18). What stood here was a SECOND systemd
 // renderer for these same two units -- `fleet_converge_service_content`,
 // `fleet_converge_timer_content`, `fleet_converge_service_content_self` -- feeding the
@@ -53,3 +49,7 @@ data fleet_converge_timer_randomized_delay: Second = second(count: 90)
 // WHAT SURVIVES HERE, and why each row is still load-bearing: the two unit NAMES are read by
 // `gunbc.fleet_converge_plan`, and the cadence and jitter are read by `gunbc.live_deploy.emit`.
 // This module remains the naming and cadence authority; it is no longer a renderer.
+data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
+data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
+data fleet_converge_timer_on_calendar: String = "*:0/15"
+data fleet_converge_timer_randomized_delay: Second = second(count: 90)
