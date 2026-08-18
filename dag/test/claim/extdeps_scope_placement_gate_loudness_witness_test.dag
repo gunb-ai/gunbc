@@ -13,14 +13,11 @@ import tools.extdeps_scope_placement_gate {
   scope_placement_freeze_verdict,
   manifest_remove_only_exit,
 }
-import tools.floor_effect_gate_witness {
-  extdeps_scope_placement_gate_failure_receipt_companion_name,
-  scope_placement_gate_loudness_seed_probe_passes_name,
-}
+import gunbc.test_module_hygiene { failure_receipt_companion }
 import std.process { ProcessExit, ExitSuccess }
 import std.types { String, Bool, List }
 
-data loudness_witness_note: String = "Floor loudness for tools.extdeps_scope_placement_gate (gunbc#7644): lands the seed-runner loudness path + extdeps_scope_placement_gate production companion only; six other production _passes gates remain mute (counted frontier in tools.floor_effect_gate_witness floor_gate_failure_receipt_note). Per-arm fixtures exercise gate REASON GENERATION with synthetic observations (supporting evidence). Executed RED: red_seed_runner_failure_detail_projects_located_receipt calls production seed_runner_bool_false_failure_detail against scope_placement_gate_loudness_seed_probe_passes on tools.floor_effect_gate_witness. Mutation control executed 2026-08-05 at b0a17f608a: disposable detached worktree, removed _passes handling from production failure_receipt_companion (holds-only), rebuilt claim_batch, re-ran witness — FAIL red_seed_runner_failure_detail_projects_located_receipt (eval_self 0ms, resolved; not resolution); detail collapsed to bare returned Bool(false) without THIS CHANGE or dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) | extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung: observed validation on the production seed_runner path; no construction wall claimed for seed/.dag mirror parity (DESIGN section 7 seed retention)."
+data loudness_witness_note: String = "Floor loudness for tools.extdeps_scope_placement_gate (gunbc#7644): lands the seed-runner loudness path + extdeps_scope_placement_gate production companion only; six other production _passes gates remain mute (counted frontier in tools.floor_effect_gate_witness floor_gate_failure_receipt_note). Per-arm fixtures exercise gate REASON GENERATION with synthetic observations (supporting evidence). Executed RED: red_seed_runner_failure_detail_projects_located_receipt calls production seed_runner_bool_false_failure_detail against seed_runner_loudness_probe_passes, an always-false _passes probe declared IN THIS ENTRY beside its _failure_receipt companion. THE PROBE PAIR MOVED HERE (2026-08-18) AND THAT MOVE IS THE POINT: claim_executor evaluates the derived companion in the WITNESS entry's context, so the pair has to be reachable from here — and reaching it by importing tools.floor_effect_gate_witness dragged that entry's whole gate closure (ci_gates, the compile-clean, generated-artifact and regen-verify gates) into a witness that asserts none of them. Measured import closure: 718 modules / 10.1 MB of source before, 62 modules / 0.49 MB after; the witness was the floor's second most expensive row at 78.6s. Nothing about the claim changed — the same production fn is called against the same located receipt text, and the probe pair is deleted from tools.floor_effect_gate_witness rather than duplicated. It is a func (not test fn), so floor discovery, which selects TestMarkedDecl only, does not enroll it. MUTATION CONTROL RE-EXECUTED AGAINST THE MOVED PAIR (2026-08-18, remote sandbox at 3abc17b54c9): renaming seed_runner_loudness_probe_failure_receipt so the companion derivation misses it makes this row FAIL (rc=1) while all seven rows of this entry pass at head (rc=0) — so the claim still discriminates on the production path after the move, and does not merely assert its own literal. Mutation control executed 2026-08-05 at b0a17f608a, when the probe pair still lived on tools.floor_effect_gate_witness: disposable detached worktree, removed _passes handling from production failure_receipt_companion (holds-only), rebuilt claim_batch, re-ran witness — FAIL red_seed_runner_failure_detail_projects_located_receipt (eval_self 0ms, resolved; not resolution); detail collapsed to bare returned Bool(false) without THIS CHANGE or dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) | extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung: observed validation on the production seed_runner path; no construction wall claimed for seed/.dag mirror parity (DESIGN section 7 seed retention)."
 
 fn read_manifest_rows() -> List<String> {
   parse_frontier_manifest(
@@ -41,13 +38,28 @@ fn reason_names_all(exit: ProcessExit, markers: List<String>) -> Bool {
   reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
 }
 
+func seed_runner_loudness_probe_passes() -> Bool {
+  false
+}
+
+func seed_runner_loudness_probe_failure_receipt() -> String {
+  scope_placement_failure_reason(
+    exit: scope_placement_membership_verdict(
+      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+}
+
 test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool {
-  extdeps_scope_placement_gate_failure_receipt_companion_name() == "extdeps_scope_placement_gate_failure_receipt"
+  match failure_receipt_companion(function: "extdeps_scope_placement_gate_passes") {
+    Present { value: companion } => companion == "extdeps_scope_placement_gate_failure_receipt"
+    Absent => false
+  }
 }
 
 test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
   let detail = seed_runner_bool_false_failure_detail(
-    witness: scope_placement_gate_loudness_seed_probe_passes_name
+    witness: "seed_runner_loudness_probe_passes"
   )
   detail != "returned Bool(false)"
     && string_contains(s: detail, pattern: "returned Bool(false) | ")
