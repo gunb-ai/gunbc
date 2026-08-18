@@ -16162,7 +16162,8 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
+/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
@@ -20639,7 +20640,8 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator 5s rule, 2026-07-12). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
+    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -39026,12 +39028,18 @@ pub fn claim_scope_for(
     // produced it are read off ONE field. Deriving the population from the authored module node
     // while deriving the closure from `func_env` would be two spellings of a module identity,
     // and a scope whose members disagree with its own closure is the defect one level up.
-    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+    let module_by_name: HashMap<&str, Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
-        .cloned()
+        .map(|m| (m.func_env.name.as_str(), m.clone()))
+        .collect();
+    // `in_scope` is collected from `order` immediately above, so this cannot drop a
+    // member that was in the scope: every in-graph name in `order` is in the map.
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
+        .iter()
+        .filter_map(|name| module_by_name.get(name.as_str()).cloned())
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
     // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
@@ -39040,9 +39048,11 @@ pub fn claim_scope_for(
     // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
     // `module_name` is not the module-path spelling the inventory carries, so the predicate
     // matched nothing and every data declaration was dropped. Functions still worked — they
-    // come from `fn_nodes`, built off the module list — so a function-only control would have
-    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
-    // no name comparison to be correct, which is why it is the projection used.
+    // come from `fn_nodes` — so a function-only control would have passed while
+    // `build_initial_env` bound nothing at all. Each module's own registry needs no name
+    // comparison to be correct, which is why it is the projection used. `fn_nodes` is built
+    // through the same precedence-ordered first-write-wins walk (see
+    // `build_scope_indexes_with_module_order` below) so bare calls and data bindings agree.
     // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
     // write wins.
     //
@@ -39114,9 +39124,10 @@ pub fn claim_scope_for(
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
             &scoped_graph,
             prepared.source_indices.clone(),
+            Some(&order),
         ),
         module_count,
         scope_identity,
@@ -39705,6 +39716,46 @@ pub fn run_required_floor(
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
+    //
+    // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
+    // `build_module_path_index_from_witness_roots`, which walks and PARSES every module under
+    // the default source roots. It is thread-local cached, so exactly one claim per process
+    // pays the build and every later one hits the cache. That claim is then billed ~45s
+    // against a 1552ms per-claim ceiling and reports as a budget failure, while its identical
+    // siblings run in ~760ms.
+    //
+    // MEASURED, three runs, same rows, evaluation order alphabetical and stable throughout:
+    //
+    //   run                     emitted_lib_rs...omits    emitter_nested...single
+    //   pre-quarantine              739ms                     761ms
+    //   32189985063               42647ms  <- billed           687ms
+    //   32193032348 (main)        quarantined                45941ms  <- billed
+    //
+    // The bill is POSITIONAL, not a property of any witness: quarantining the victim hands it
+    // to the next module in evaluation order. Three modules were quarantined down this chain
+    // (dissolution_census 55.5s, emitted_lib_rs 42.6s, and the 83.0s
+    // extdeps_scope_placement_gate row) before the pattern was read correctly -- each read as
+    // a slow test, all three were the same one-time build landing on whoever touched it first.
+    //
+    // Paying it in preparation is where the cost BELONGS: it is a fact of the subject, not of
+    // any claim, and the floor's whole design is one preparation serving every claim. Total
+    // run wall is unchanged -- the same work happens once either way; what changes is that no
+    // claim is charged for building the subject it was handed.
+    //
+    // dissolve-on: the index derives from the prepared inventory instead of a second disk
+    // walk. The bytes are already in hand -- the emit memo is keyed on
+    // `floor_inventory_content_digest` precisely because that index reads the same files --
+    // and `languages_decl_records_from_inventory` is the existing precedent for the
+    // inventory-sourced form of a census that used to scan. When that lands this warm call is
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let index_warm_started = std::time::Instant::now();
+    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    eprintln!(
+        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
+        index_warm_started.elapsed().as_millis(),
+        warmed_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -40093,6 +40144,34 @@ pub fn run_required_floor(
                 }
             }
         }
+        // AN EMPTY ROSTER REFUSES, because it is indistinguishable from a roster that could
+        // not be read. Every downstream guard here is a join over this set: the partition-sum
+        // check compares four counters against `len()`, and the did-not-execute check walks
+        // the roster looking for identities no claim reported. At zero, all of them are
+        // VACUOUSLY TRUE -- 0+0+0+0 == 0 passes, and nothing is missing from an empty set. So
+        // the one shape that disables every check is the one shape nothing was checking.
+        //
+        // This is the empty-observation narrow, and it is the mirror of the absorbing fallback
+        // rather than an instance of it: a widen is merely expensive, a narrow is silently
+        // uncovered. It ran live on main. #8437 flipped prepared-floor scope to bind bare
+        // helper names last-write-wins, `floor_expected_red_roster` began evaluating to the
+        // empty list, and the run reported `roster carries 0 enrolled identity(ies)` followed
+        // by 469 ordinary FAILs -- 469 enrolled rows each re-labelled a regression, with the
+        // remainder absorbed as passes. The immediately preceding commit reported 661.
+        //
+        // The roster is a debt ledger shrinking toward zero, so an empty one WILL eventually
+        // be legitimate. It is not legitimate SILENTLY: the day the last row is removed, this
+        // refusal is what makes someone delete it deliberately and say so, rather than a read
+        // failure quietly wearing the same face as success.
+        if out.is_empty() {
+            return Err("REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterEmpty — \
+                 v2.workflow.floor_expected_red.floor_expected_red_roster evaluated to zero \
+                 identities. An empty roster makes the partition-sum and did-not-execute \
+                 checks vacuous, so every enrolled row reports as an ordinary failure and no \
+                 guard can fire. If the roster is genuinely empty, delete this refusal in the \
+                 same change that empties it."
+                .to_string());
+        }
         out
     };
     eprintln!(
@@ -40412,9 +40491,13 @@ pub fn run_required_floor(
                     outcome.budget_refused.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
-                         produces none, so the enrolled claim went undecided. Reduce the row's \
-                         cost, or move it to a lane that declares its own ceiling — removing it \
-                         from the roster would not help, because it is not passing either.",
+                         produces none, so the enrolled claim went undecided — THIS ROW'S \
+                         CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
+                         the verdict, so a content defect here would be indistinguishable from \
+                         the enrolled failure. Reducing the row's cost, or moving it to a lane \
+                         that declares its own ceiling, is what lets it reach a verdict at all; \
+                         removing it from the roster would not help, because it is not passing \
+                         either.",
                         claim.qualified, detail
                     ));
                     continue;
