@@ -1,0 +1,270 @@
+module test.claim.codex_supervised_turn_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_app_server_press { AmbientCodexCredentialContext }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  ProviderTurnNotObserved,
+  press_display_finished,
+}
+import gunbc.codex_supervised_turn {
+  CodexThreadAbsent,
+  CodexThreadIdle,
+  CodexThreadBusy,
+  CodexTurnStartAdmitted,
+  CodexTurnStartRefusedDuplicateExecution,
+  CodexTurnStartRefusedOutcomeUnobserved,
+  GenerationAbsent,
+  GenerationStoreMalformed,
+  GenerationStoreNegative,
+  GenerationStoreUnreadable,
+  SupervisedRpcOk,
+  codex_supervised_turn_binding,
+  codex_supervised_turn_client_command_id,
+  codex_supervised_turn_session_policy,
+  codex_supervised_turn_start_line_template,
+  codex_supervised_generation_read_from_store,
+  codex_supervised_turn_generation_admission,
+  codex_turn_start_admission,
+  codex_runner_turn_terminal_receipt,
+  disposition_from_supervised_parse,
+  empty_supervised_turn_parse_acc,
+  parse_supervised_turn_stdout,
+  supervised_thread_id_from_line,
+}
+
+import extdeps.languages.json.parse { parse_json }
+
+import std.temporal_effect {
+  HeldSessionLease,
+  LeaseAbsent,
+  LeaseRunningExpected,
+}
+
+data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
+
+data supervised_turn_fixture_stdout: String = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"turn-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/completed\",\"params\":{}}\n"
+
+fn fixture_turn() -> WorkerTurn {
+  WorkerTurn {
+    turn_key: "turn-1",
+    attempt_key: "attempt-1",
+    consumed_feedback: "",
+    resulting_head: none,
+  }
+}
+
+fn fixture_credential() -> AmbientCodexCredentialContext {
+  AmbientCodexCredentialContext {
+    codex_home: "/home/briansrls/.codex@gunbc-roadmap" as FilePath,
+  }
+}
+
+test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  match binding.execution_policy {
+    HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadIdle) {
+    CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_absent_thread_admits_turn_start() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadAbsent) {
+    CodexTurnStartAdmitted => true
+    _ => false
+  }
+}
+
+test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadBusy) {
+    CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseRunningExpected,
+    standing_receipt: none,
+  )
+  match binding.lease.observed {
+    LeaseRunningExpected => true
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match parse.thread_start {
+    SupervisedRpcOk { native_id: tid } =>
+      (tid as String) == "thread-uuid-1"
+        && match parse.turn_start {
+          SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnCompleted => true
+    _ => false
+  }
+}
+
+test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  let receipt = codex_runner_turn_terminal_receipt(
+    binding: binding,
+    parse: parse,
+    disposition: ProviderTurnCompleted,
+    wire: none,
+  )
+  (receipt.client_command_id as String) == "attempt-1/turn-1"
+    && codex_supervised_turn_client_command_id(turn: fixture_turn()) == receipt.client_command_id
+    && press_display_finished(disposition: receipt.disposition)
+}
+
+test fn witness_parse_turn_failed_notification_disposition() -> Bool {
+  let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
+  let stdout =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnNotObserved => true
+    _ => false
+  }
+}
+
+test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
+  let line =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
+  match supervised_thread_id_from_line(line: line) {
+    Present { value: id } => (id as String) == "thread-uuid-1"
+    Absent => false
+  }
+}
+
+test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
+  let user_input = "say \"hello\"\nline2\\backslash"
+  let line = codex_supervised_turn_start_line_template(user_input: user_input)
+  match parse_json(s: line) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
+  let parse = empty_supervised_turn_parse_acc()
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_missing_generation_store_reads_as_zero() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: false,
+    read_success: true,
+    content: "",
+  ) {
+    GenerationAbsent => true
+    _ => false
+  }
+}
+
+test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "garbage",
+  )
+  match read {
+    GenerationStoreMalformed { content: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "-3",
+  )
+  match read {
+    GenerationStoreNegative { value: v } =>
+      v == -3
+        && match codex_supervised_turn_generation_admission(read: read) {
+          CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "   ",
+  ) {
+    GenerationStoreMalformed { content: _ } => true
+    GenerationAbsent => false
+    _ => false
+  }
+}
+
+test fn witness_unreadable_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: false,
+    content: "",
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

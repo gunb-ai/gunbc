@@ -10,6 +10,7 @@ import extdeps.languages.json.emit {
   json_int,
   json_string,
   json_object,
+  json_array,
   serialize_json,
 }
 
@@ -127,6 +128,68 @@ fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
   )
 }
 
+data codex_supervised_session_rpc_id_note: String = "Supervised turn session ids: initialize=1, account/read=2, account/rateLimits/read=3, thread/start=4, turn/start=5. account/read and account/rateLimits/read run in the same app-server occurrence as turn/start; standing is parsed from that session stdout, not from a prior preflight receipt. turn/start json-rpc id is fixed at 5; client_command_id on CodexRunnerTurnTerminalReceipt is the attempt/turn identity string for exactly-once correlation, not necessarily equal to the wire id."
+
+data codex_supervised_thread_start_id: Int = 4
+data codex_supervised_turn_start_wire_id: Int = 5
+
+data codex_thread_start_result_thread_key: NonEmptyStr = "thread" as NonEmptyStr
+data codex_turn_start_result_turn_key: NonEmptyStr = "turn" as NonEmptyStr
+data codex_entity_id_key: NonEmptyStr = "id" as NonEmptyStr
+data codex_turn_start_params_thread_id_key: NonEmptyStr = "threadId" as NonEmptyStr
+data codex_turn_start_params_input_key: NonEmptyStr = "input" as NonEmptyStr
+data codex_turn_input_text_type_key: NonEmptyStr = "type" as NonEmptyStr
+data codex_turn_input_text_value_key: NonEmptyStr = "text" as NonEmptyStr
+
+fn codex_app_server_thread_start_request_line(cwd: FilePath) -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: codex_supervised_thread_start_id,
+    method: "thread/start",
+    params: json_object(
+      members: [
+        json_kv(key: "cwd", value: json_string(s: cwd as String)),
+      ],
+    ),
+  )
+}
+
+fn codex_app_server_turn_start_request_line(
+  thread_id: NonEmptyStr,
+  user_input: String,
+) -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: codex_supervised_turn_start_wire_id,
+    method: "turn/start",
+    params: json_object(
+      members: [
+        json_kv(
+          key: codex_turn_start_params_thread_id_key as String,
+          value: json_string(s: thread_id as String),
+        ),
+        json_kv(
+          key: codex_turn_start_params_input_key as String,
+          value: json_array(
+            elements: [
+              json_object(
+                members: [
+                  json_kv(
+                    key: codex_turn_input_text_type_key as String,
+                    value: json_string(s: "text"),
+                  ),
+                  json_kv(
+                    key: codex_turn_input_text_value_key as String,
+                    value: json_string(s: user_input),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  )
+}
+
 data codex_app_server_initialized_handshake_note: String = "After initialize succeeds the client MUST send the initialized ClientNotification (method initialized, no id) before account/rateLimits/read. Without it the server may return no id=3 response at all — a missing-handshake Incomplete, not a wrong method name."
 
 data codex_app_server_response_shape_note: String = "Response carriers for initialize / account/read / account/rateLimits/read are grounded here as cited wire field keys from the 0.146 generate-json-schema ClientRequest companion responses. Full AST decoder types that bind protocol_schema_identity are the dissolve-on; until then product modules MUST consume these keys rather than invent alternate spellings."
@@ -149,6 +212,59 @@ data codex_bengalfox_rate_limit_id: NonEmptyStr = "codex_bengalfox" as NonEmptyS
 data codex_structured_error_code_rate_limit_reached: NonEmptyStr = "rate_limit_reached" as NonEmptyStr
 data codex_structured_error_code_quota_exceeded: NonEmptyStr = "quota_exceeded" as NonEmptyStr
 data codex_structured_error_code_authentication_required: NonEmptyStr = "authentication_required" as NonEmptyStr
+
+data codex_account_union_note: String = "GetAccountResponse.account IS A CLOSED DISCRIMINATED UNION, not an opaque object. Read from `codex app-server generate-json-schema --out` against @openai/codex 0.146.0 — the version pinned by gunbc.package_delivery codex_required_package_version and materialized by the committed provider-runtime/codex lock — v2/GetAccountResponse.json: Account is a oneOf over ApiKeyAccount \{type:'apiKey'\}, ChatgptAccount \{type:'chatgpt', planType, email\} and AmazonBedrockAccount \{type:'amazonBedrock', usesCodexManagedCredentials\}, discriminated by the required `type` member. `account` itself is nullable and, unlike requiresOpenaiAuth, is NOT in the response's required list — an absent account and a null account are both reachable.\n\nTHESE ARE THREE DIFFERENT CREDENTIAL REALIZATIONS, not three spellings of one account. An apiKey account bills a platform key; an amazonBedrock account bills a cloud contract; only chatgpt is the personal OAuth subscription. A consumer whose profile requires personal ChatGPT OAuth is not satisfied by the other two, so decoding this member to a bare `the object was nonempty` discards the only fact that distinguishes them.\n\nplanType is REQUIRED on ChatgptAccount. A chatgpt account without one is a malformed frame, not an account on an unnamed plan."
+
+data codex_plan_type_note: String = "PlanType IS A CLOSED ENUM of exactly 13 values, cited from the same v2/GetAccountResponse.json definitions block at 0.146.0. It is enumerated here rather than kept as an open string because upstream closes it, and modeling a closed upstream vocabulary as an open one is the anemic leaf §2 names.\n\nTHE LOAD-BEARING MEMBER IS `unknown`. It is a real enum value, so the wire can carry a plan whose identity upstream itself does not assert. Treating any decoded planType as a positive entitlement signal would therefore read upstream's own I-do-not-know as a yes — the fabricated-plausible-output failure with an authoritative-looking source. `unknown` decodes successfully and entitles nothing.\n\nA plan string OUTSIDE this enum is a different state again: upstream added a plan this pin does not know. That is CodexPlanTypeUnrecognized, carrying the native token, never silently folded into CodexPlanUnknown — the first says our model is stale, the second says upstream is uncertain, and the remedies differ.\n\nONE RUNTIME PRODUCES ALL PROTOCOL FACTS. This enum was first authored with 15 members read from a 0.147.0 executable that happened to be installed on the build host, while every other fact in this module — and the materialized bundle the turn actually executes — is 0.146.0. Measured, the two differ: 0.147.0 adds self_serve_business_prolite and enterprise_cbp_automation, so the modeled interface described plans the pinned executable cannot emit and no exact runtime implemented the composite. The account union is structurally identical across both, which is precisely why the defect was easy to miss — the part that changed was the part nobody diffed.\n\nThe rule the correction establishes is not which version wins. It is that a protocol fact is cited from the exact executable the runtime receipt admits; a version bump moves the manifest, lock, admitted artifacts, runtime receipt and every fact in this module together, or it does not happen. Under 0.146.0 the two 0.147.0-only plan strings decode as CodexPlanTypeUnrecognized, which is the honest reading — a bumped runtime would then surface them as a stale pin rather than silently widening the model."
+
+type CodexAccountType
+  = CodexAccountTypeApiKey
+  | CodexAccountTypeChatgpt
+  | CodexAccountTypeAmazonBedrock
+
+fn codex_account_type_wire_name(t: CodexAccountType) -> NonEmptyStr {
+  match t {
+    CodexAccountTypeApiKey => "apiKey" as NonEmptyStr
+    CodexAccountTypeChatgpt => "chatgpt" as NonEmptyStr
+    CodexAccountTypeAmazonBedrock => "amazonBedrock" as NonEmptyStr
+  }
+}
+
+type CodexPlanType
+  = CodexPlanFree
+  | CodexPlanGo
+  | CodexPlanPlus
+  | CodexPlanPro
+  | CodexPlanProlite
+  | CodexPlanTeam
+  | CodexPlanSelfServeBusinessUsageBased
+  | CodexPlanBusiness
+  | CodexPlanEnt26
+  | CodexPlanEnterpriseCbpUsageBased
+  | CodexPlanEnterprise
+  | CodexPlanEdu
+  | CodexPlanUnknown
+
+fn codex_plan_type_wire_name(p: CodexPlanType) -> NonEmptyStr {
+  match p {
+    CodexPlanFree => "free" as NonEmptyStr
+    CodexPlanGo => "go" as NonEmptyStr
+    CodexPlanPlus => "plus" as NonEmptyStr
+    CodexPlanPro => "pro" as NonEmptyStr
+    CodexPlanProlite => "prolite" as NonEmptyStr
+    CodexPlanTeam => "team" as NonEmptyStr
+    CodexPlanSelfServeBusinessUsageBased => "self_serve_business_usage_based" as NonEmptyStr
+    CodexPlanBusiness => "business" as NonEmptyStr
+    CodexPlanEnt26 => "ent26" as NonEmptyStr
+    CodexPlanEnterpriseCbpUsageBased => "enterprise_cbp_usage_based" as NonEmptyStr
+    CodexPlanEnterprise => "enterprise" as NonEmptyStr
+    CodexPlanEdu => "edu" as NonEmptyStr
+    CodexPlanUnknown => "unknown" as NonEmptyStr
+  }
+}
+
+data codex_account_type_key: NonEmptyStr = "type" as NonEmptyStr
+data codex_account_plan_type_key: NonEmptyStr = "planType" as NonEmptyStr
 
 data codex_rate_limits_capacity_decode_note: String = "GetAccountRateLimitsResponse carries rateLimits (backward-compatible single-bucket mirror) AND rateLimitsByLimitId (multi-bucket map keyed by limit_id, e.g. codex vs codex_bengalfox). Live exhausted Pro accounts can have codex at usedPercent 100 with rateLimitReachedType rate_limit_reached while another limit_id remains at 0 — a single account-level Ready|QuotaReached is therefore false. Decode every by-limit-id entry; keep native limit tokens open. spendControlReached true is an exhaustion signal when present, but live exhaustion often has spendControlReached false — usedPercent 100 and rateLimitReachedType are the operative facts. Empty rateLimits:\{\} answers the endpoint without proving capacity."
 

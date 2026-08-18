@@ -1,0 +1,157 @@
+module gunbc.host_effect_codex_supervised_turn
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { String, NonEmptyStr, Int, List, Bool }
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.ci_release_bins { release_bin_is_enrolled }
+
+data host_effect_codex_supervised_turn_bin_name: String = "codex_app_server_stdio_session"
+
+data host_effect_codex_supervised_turn_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_effect_codex_supervised_turn — typed WitnessBin argv transport for CodexSupervisedWorkerTurn (#8166). DISSOLVES WHEN session driver is a native host_effect builtin with no separate release bin.")
+
+fn host_effect_codex_supervised_session_preamble_path(
+  client_command_id_path: String,
+) -> String {
+  concat(client_command_id_path, ".preamble.lines")
+}
+
+fn host_effect_codex_supervised_session_bin_path(root: String) -> String {
+  concat(root, concat("/target/release/", host_effect_codex_supervised_turn_bin_name))
+}
+
+fn host_effect_codex_supervised_session_preamble_content(
+  lines: List<NonEmptyStr>,
+) -> String {
+  fold(
+    lines,
+    init: "",
+    f: (acc, line) =>
+      if acc == "" {
+        line as String
+      } else {
+        concat(acc, concat("\n", line as String))
+      },
+  )
+}
+
+type CodexSupervisedSessionApplyOutcome
+  = CodexSupervisedSessionApplyConverged {
+      stdout: String,
+      stderr: String,
+      exit_code: Int,
+    }
+  | CodexSupervisedSessionApplyRefused { reason: String }
+
+fn host_effect_codex_supervised_turn_apply_refused(
+  transport: HostEffectTransport,
+) -> CodexSupervisedSessionApplyOutcome {
+  match transport {
+    LocalShell => CodexSupervisedSessionApplyRefused {
+      reason: concat(
+        "CodexSupervisedWorkerTurn requires LocalShell on the executor host; got unsupported transport",
+      ),
+    }
+    SshShell { ssh_host: h } =>
+      CodexSupervisedSessionApplyRefused {
+        reason: concat(
+          "CodexSupervisedWorkerTurn app-server stdio session refused over ssh host=",
+          concat(h, ": in-band coprocess must run on executor HostOs"),
+        ),
+      }
+    FleetSsh { target: t, context: _ } =>
+      CodexSupervisedSessionApplyRefused {
+        reason: concat(
+          "CodexSupervisedWorkerTurn app-server stdio session refused over fleet ssh endpoint=",
+          concat(t.endpoint as String, ": in-band coprocess must run on executor HostOs"),
+        ),
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      CodexSupervisedSessionApplyRefused {
+        reason: "CodexSupervisedWorkerTurn app-server stdio session refused over EmitArtifactThenThinRun",
+      }
+  }
+}
+
+fn host_effect_codex_supervised_turn_session_argv(
+  intent: CodexAppServerStdioSessionIntent,
+  preamble_path: String,
+  client_command_id: NonEmptyStr,
+) -> List<String> {
+  [
+    "--executable",
+    intent.executable as String,
+    "--codex-home",
+    intent.codex_home as String,
+    "--cwd",
+    intent.cwd as String,
+    "--preamble-file",
+    preamble_path,
+    "--user-input",
+    intent.user_input,
+    "--client-command-id",
+    client_command_id as String,
+    "--client-command-id-path",
+    intent.client_command_id_path,
+    "--thread-start-id",
+    to_string(n: intent.thread_start_rpc_id),
+    "--turn-start-id",
+    to_string(n: intent.turn_start_wire_id),
+  ]
+}
+
+fn host_effect_codex_supervised_turn_apply(
+  intent: CodexAppServerStdioSessionIntent,
+  lease_key: NonEmptyStr,
+  client_command_id: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> CodexSupervisedSessionApplyOutcome {
+  match transport {
+    LocalShell => {
+      let root = git.Inspect.Toplevel().path as String
+      let bin_path = host_effect_codex_supervised_session_bin_path(root: root)
+      if !release_bin_is_enrolled(bin_name: host_effect_codex_supervised_turn_bin_name) {
+        CodexSupervisedSessionApplyRefused {
+          reason: concat(
+            "codex_app_server_stdio_session not enrolled in ci_release_bins: ",
+            bin_path,
+          ),
+        }
+      } else {
+        let preamble_path = host_effect_codex_supervised_session_preamble_path(
+          client_command_id_path: intent.client_command_id_path,
+        )
+        let preamble_body = host_effect_codex_supervised_session_preamble_content(
+          lines: intent.preamble_lines,
+        )
+        if Filesystem.Write(path: preamble_path, content: preamble_body).success == false {
+          CodexSupervisedSessionApplyRefused {
+            reason: concat(
+              "failed to write codex supervised session preamble at ",
+              preamble_path,
+            ),
+          }
+        } else {
+          let run = gunbc.WitnessBin.Run(
+            workdir: root,
+            bin_path: bin_path,
+            args: host_effect_codex_supervised_turn_session_argv(
+              intent: intent,
+              preamble_path: preamble_path,
+              client_command_id: client_command_id,
+            ),
+          )
+          CodexSupervisedSessionApplyConverged {
+            stdout: run.stdout,
+            stderr: run.stderr,
+            exit_code: run.exit_code,
+          }
+        }
+      }
+    }
+    _ => host_effect_codex_supervised_turn_apply_refused(transport: transport)
+  }
+}
