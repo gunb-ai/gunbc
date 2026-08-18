@@ -53,7 +53,7 @@ fn diagnose_host_network(
   observed: InterfaceObservation,
 ) -> HostNetworkDiagnosis {
   match config {
-    std.upsert_decision.Absent =>
+    Absent =>
       NetworkConfigAbsent {
         detail: "no netplan configuration present for this host",
       }
