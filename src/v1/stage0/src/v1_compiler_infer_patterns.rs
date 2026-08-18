@@ -890,7 +890,11 @@ pub fn check_match_exhaustiveness(
                         let uncovered = Rc::new({
                             let mut __result = Vec::new();
                             for v in variant_names.clone().iter().cloned() {
-                                if (emit_map_has(covered_set.clone(), v.clone()) == false) {
+                                if (emit_map_has(
+                                    covered_set.clone(),
+                                    variant_pattern_coverage_key(v.clone()),
+                                ) == false)
+                                {
                                     __result.push(v);
                                 }
                             }
