@@ -1589,6 +1589,10 @@ pub struct PreparedScopeIndexes {
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
+    /// Pure `data` rows evaluated under Hermetic mode, keyed by the declaring node pointer.
+    /// Shared across claims that reuse the same `PreparedClaimScope` indexes so floor witnesses
+    /// do not re-run an expensive emit once per enrolled `test fn` in the same module.
+    scope_data_cache: std::cell::RefCell<HashMap<usize, Value>>,
 }
 
 thread_local! {
@@ -1906,6 +1910,7 @@ impl InterpContext {
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
+            scope_data_cache: std::cell::RefCell::new(HashMap::new()),
         })
     }
 
@@ -2934,11 +2939,23 @@ fn eval_var(
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
+                    if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
+                        if let Some(v) = ctx.indexes.scope_data_cache.borrow().get(&key).cloned() {
+                            ctx.data_cache.borrow_mut().insert(key, v.clone());
+                            return Ok(v);
+                        }
+                    }
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
                     ctx.data_cache.borrow_mut().insert(key, v.clone());
+                    if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
+                        ctx.indexes
+                            .scope_data_cache
+                            .borrow_mut()
+                            .insert(key, v.clone());
+                    }
                     return Ok(v);
                 }
             }
@@ -2961,11 +2978,25 @@ fn eval_var(
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
                         let key = Rc::as_ptr(fn_node) as usize;
+                        if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
+                            if let Some(v) =
+                                ctx.indexes.scope_data_cache.borrow().get(&key).cloned()
+                            {
+                                ctx.data_cache.borrow_mut().insert(key, v.clone());
+                                return Ok(v);
+                            }
+                        }
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
                         }
                         let v = eval_expr(body, &Env::empty(), ctx)?;
                         ctx.data_cache.borrow_mut().insert(key, v.clone());
+                        if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
+                            ctx.indexes
+                                .scope_data_cache
+                                .borrow_mut()
+                                .insert(key, v.clone());
+                        }
                         return Ok(v);
                     }
                 }
@@ -3739,14 +3770,24 @@ fn match_pattern(
                     let arm_matches =
                         coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone());
                     if let Some(parent) = parent_enum.as_ref() {
+                        let value_parent = resolve_sym(*type_name);
                         let parent_matches =
-                            coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent);
+                            coproduct_parent_spellings_match(ctx, value_parent.clone(), parent);
                         if !parent_matches {
-                            // Bare `Absent` / `Drifted` collide across Optional,
-                            // ConvergeVerdict, and ObservationVerdict; infer may stamp
-                            // Optional's parent on patterns whose scrutinee is another
-                            // coproduct. Trust the arm identity when the names align.
-                            if !arm_matches || (name_last != "Absent" && name_last != "Drifted") {
+                            // Infer may stamp the wrong coproduct parent on a pattern arm
+                            // (Optional cardinality, imported variant spellings, qualified
+                            // containment paths). When the runtime value names a declared arm
+                            // of its own coproduct parent, trust the arm identity.
+                            let declared_under_value_parent = arm_matches
+                                && record_nominal_is_declared_variant_of_coproduct(
+                                    ctx,
+                                    resolve_sym(*variant_name),
+                                    &value_parent,
+                                );
+                            if !declared_under_value_parent
+                                && (!arm_matches
+                                    || (name_last != "Absent" && name_last != "Drifted"))
+                            {
                                 return None;
                             }
                         } else if !arm_matches {
