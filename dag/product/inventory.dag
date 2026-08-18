@@ -121,19 +121,18 @@ fn lot_landed_cost_currency(lot: ProcurementLot) -> CurrencyCode {
   lot.landed_cost.currency
 }
 
+data landed_cost_empty_is_its_own_state_note: String = "LandedCostEmpty is a THIRD arm, not a refusal carrying a sentinel. An earlier revision seeded the fold with LandedCostSumRefused { cause: \"no_lots\" } and told the empty accumulator apart from a genuine currency mismatch by comparing that String — which is the DESIGN section 5 state-space conflation exactly, one level down: two states with completely different remedies (supply lots versus reconcile currencies) shared one constructor, and any consumer wanting to tell them apart had to parse prose out of a diagnostic field. Summing nothing is not a failure and must not be reported as one; it is the empty case, and it has its own inhabitant. Caught by review 53528."
+
 type LandedCostSum
-  = LandedCostTotal { total: MoneyOnce }
+  = LandedCostEmpty
+  | LandedCostTotal { total: MoneyOnce }
   | LandedCostSumRefused { cause: NonEmptyStr }
 
 fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
-  fold(lots, init: LandedCostSumRefused { cause: "no_lots" as NonEmptyStr }, f: fn(acc, lot) {
+  fold(lots, init: LandedCostEmpty, f: fn(acc, lot) {
     match acc {
-      LandedCostSumRefused { cause: c } =>
-        if (c as String) == "no_lots" {
-          LandedCostTotal { total: lot.landed_cost }
-        } else {
-          LandedCostSumRefused { cause: c }
-        }
+      LandedCostSumRefused { cause: c } => LandedCostSumRefused { cause: c }
+      LandedCostEmpty => LandedCostTotal { total: lot.landed_cost }
       LandedCostTotal { total: t } =>
         if t.currency == lot.landed_cost.currency {
           LandedCostTotal {

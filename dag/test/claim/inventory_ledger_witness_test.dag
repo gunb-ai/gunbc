@@ -20,6 +20,7 @@ import product.inventory {
   InventoryBalance,
   InventoryEvent,
   InventoryLotIdentity,
+  LandedCostEmpty,
   LandedCostSumRefused,
   LandedCostTotal,
   LotAcquired,
@@ -487,10 +488,41 @@ test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
       money_once_micros(q: t) == 1500003
         && match sum_landed_cost(lots: [lot, euro_lot]) {
           LandedCostTotal { total: _ } => false
+          LandedCostEmpty => false
           LandedCostSumRefused { cause: c } => (c as String) == "currency_mismatch_across_lots"
         }
+    LandedCostEmpty => false
     LandedCostSumRefused { cause: _ } => false
   }
+}
+
+data w_empty_sum_is_not_a_refusal_note: String = "The control for review 53528: summing no lots must report the EMPTY arm, not a refusal. The two states have different remedies — supply lots versus reconcile currencies — and an earlier revision returned a refusal carrying the sentinel string 'no_lots' for the first, which a consumer could only tell from a genuine mismatch by parsing prose. This row asserts the empty and the refusing cases land on different constructors, so collapsing them back into one reds here."
+
+test fn w_summing_no_lots_is_empty_not_refused() -> Bool {
+  let lot = ten_unit_lot()
+  let euro_lot = ProcurementLot {
+    identity: second_lot_identity(),
+    receipt: "receipt-c" as ProcurementReceiptIdentity,
+    catalog: lot.catalog,
+    display_label: lot.display_label,
+    quantity_acquired: 5,
+    landed_cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur },
+  }
+  match sum_landed_cost(lots: []) {
+    LandedCostEmpty => true
+    LandedCostTotal { total: _ } => false
+    LandedCostSumRefused { cause: _ } => false
+  }
+    && match sum_landed_cost(lots: [lot]) {
+      LandedCostEmpty => false
+      LandedCostTotal { total: t } => money_once_micros(q: t) == 1000003
+      LandedCostSumRefused { cause: _ } => false
+    }
+    && match sum_landed_cost(lots: [lot, euro_lot]) {
+      LandedCostEmpty => false
+      LandedCostTotal { total: _ } => false
+      LandedCostSumRefused { cause: c } => (c as String) == "currency_mismatch_across_lots"
+    }
 }
 
 // --- WALL 5: lot identity is not inferable from display labels --------------------------------------
