@@ -41866,7 +41866,7 @@ pub fn run_required_floor(
     );
     floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
-    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
         "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),

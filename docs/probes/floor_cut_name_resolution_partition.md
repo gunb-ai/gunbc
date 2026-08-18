@@ -24,11 +24,32 @@ three error shapes. The partition refutes a single mechanism:
 | --- | --- |
 | `floor_cut_name_resolution_census.tsv` | raw identity-grain census (808 held rows) |
 | `floor_cut_name_resolution_partition.tsv` | import-analysis + `reach_vs_binding` enrichment |
-| `floor_cut_name_resolution_partition.py` | **offline authority** for how `partition.tsv` was derived from `census.tsv` |
+| `floor_cut_name_resolution_partition.py` | derivation from `census.tsv` → `partition.tsv` (see below) |
 
 No workflow, shell runner, or Rust census binary ships in this PR — the measurement was
 executed once on a self-hosted runner (GHA run `32080685910`) and the output is committed
 as data, same pattern as `docs/plans/measurements/`.
+
+## Derivation authority (not a reconstruction)
+
+Two steps; only the second is reproducible from this tree today.
+
+1. **`census.tsv`** — produced by the one-shot `required_floor_failure_census` run on GHA
+   `32080685910` (Rust transport since deleted; receipt is the committed TSV + run id).
+   Each row records witness module, bare name, selected decl module, candidate decl modules,
+   failure class, and error message as observed at eval time.
+
+2. **`partition.tsv`** — produced by running the committed script against that census file:
+
+   ```bash
+   python3 docs/probes/floor_cut_name_resolution_partition.py \
+     docs/probes/floor_cut_name_resolution_census.tsv
+   ```
+
+   The script adds `intended_declaration_identity` (import scan of witness module under
+   `dag/` + `src/v2/`) and `reach_vs_binding` (rule table in the script). Re-running at
+   HEAD reproduces `partition.tsv` byte-for-byte; it is the authority for those two columns,
+   not a cleaned-up retelling.
 
 ## Execution receipt
 
