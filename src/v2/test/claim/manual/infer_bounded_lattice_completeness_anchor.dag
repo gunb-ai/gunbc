@@ -156,7 +156,7 @@ data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> = infer_bound
   partials: [anchor_partial_bounded_lattice_instance]
 )
 
-data anchor_infer_rejects_consumer_tree: Outcome<v2.compiler.infer.InferredTree> = infer(tree: anchor_module_with_partial_and_consumer)
+data anchor_infer_rejects_consumer_tree: v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> = infer(tree: anchor_module_with_partial_and_consumer)
 
 fn anchor_infer_consumer_tree_is_rejected() -> Bool {
   match anchor_infer_rejects_consumer_tree {

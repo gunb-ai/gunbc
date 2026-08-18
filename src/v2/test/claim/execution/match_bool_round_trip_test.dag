@@ -112,7 +112,7 @@ fn match_bool_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: match_bool_inferred_tree, target: match_bool_target_model)
 }
 
-data match_bool_emit_receipt: Outcome<Medium<String>> = match_bool_emit_accepts()
+data match_bool_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = match_bool_emit_accepts()
 
 fn match_bool_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {

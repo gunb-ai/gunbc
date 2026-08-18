@@ -1618,7 +1618,7 @@ fn decision_for_dispatch_lease_verdict(
 fn classify_dispatch_lease_upsert(
   scope: TmuxSessionScope,
   obs: TmuxSessionObservation,
-) -> UpsertClassification<DispatchLeasePlan> {
+) -> std.upsert_decision.UpsertClassification<DispatchLeasePlan> {
   let verdict = classify_tmux_session(scope: scope, obs: obs)
   std.upsert_decision.UpsertClassification {
     verdict: verdict,

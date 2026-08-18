@@ -126,7 +126,7 @@ fn loop_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: loop_inferred_tree, target: loop_target_model)
 }
 
-data loop_emit_receipt: Outcome<Medium<String>> = loop_emit_accepts()
+data loop_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = loop_emit_accepts()
 
 fn loop_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {

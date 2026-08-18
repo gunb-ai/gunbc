@@ -786,7 +786,7 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
   }
 })
 
-data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+data bootstrap_plan: v2.std.diagnostic.Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [^v2_dag_source],
     produces: ^v2_stage0_binary,

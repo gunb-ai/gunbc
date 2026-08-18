@@ -56,7 +56,7 @@ fn anchor_typescript_add_serialize_rejects_missing_translation_rules() -> v2.std
   )
 }
 
-data typescript_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
+data typescript_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
 
 test fn typescript_add_serialize_reject_receipt_holds() -> Bool {
   match typescript_add_serialize_reject_receipt {
@@ -218,7 +218,7 @@ fn anchor_typescript_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome
   )
 }
 
-data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_add_emit_accepts()
+data typescript_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_typescript_add_emit_accepts()
 
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {
@@ -228,7 +228,7 @@ test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-data typescript_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_add_compile_inferred_accepts()
+data typescript_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_add_compile_inferred_accepts()
 
 test fn typescript_add_compile_inferred_receipt_holds() -> Bool {
   match typescript_add_compile_inferred_receipt {

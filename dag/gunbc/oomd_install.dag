@@ -189,7 +189,7 @@ fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation
   }
 }
 
-data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = std.realization_reconcile.ReadAbsent {
+data gunbc_oomd_show_effective_read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead> = std.realization_reconcile.ReadAbsent {
   reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 

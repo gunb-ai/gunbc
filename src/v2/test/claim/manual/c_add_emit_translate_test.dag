@@ -96,7 +96,7 @@ fn c_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: c_add_inferred_tree, target: c_add_target_model)
 }
 
-data c_add_emit_receipt: Outcome<Medium<String>> = c_add_emit_accepts()
+data c_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = c_add_emit_accepts()
 
 fn c_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
   target_serialize_source_from_model(
@@ -105,7 +105,7 @@ fn c_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outc
   )
 }
 
-data c_add_serialize_reject_receipt: Outcome<Medium<String>> = c_add_serialize_rejects_missing_translation_rules()
+data c_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = c_add_serialize_rejects_missing_translation_rules()
 
 test fn c_add_emit_add_fn_accepts_holds() -> Bool {
   match c_add_emit_receipt {

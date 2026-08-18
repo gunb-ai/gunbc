@@ -51,9 +51,9 @@ fn anchor_nominal_distinct_control_compile() -> v2.std.diagnostic.Outcome<Medium
   )
 }
 
-data nominal_distinct_records_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_records_compile()
-data nominal_distinct_brands_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_brands_compile()
-data nominal_distinct_control_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_control_compile()
+data nominal_distinct_records_compile_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_nominal_distinct_records_compile()
+data nominal_distinct_brands_compile_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_nominal_distinct_brands_compile()
+data nominal_distinct_control_compile_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_nominal_distinct_control_compile()
 
 fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {

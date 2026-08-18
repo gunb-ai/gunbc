@@ -96,7 +96,7 @@ fn anchor_dag_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: dag_add_inferred_tree, target: dag_add_target_model)
 }
 
-data dag_add_emit_receipt: Outcome<Medium<String>> = anchor_dag_add_emit_accepts()
+data dag_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_dag_add_emit_accepts()
 
 fn dag_add_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {

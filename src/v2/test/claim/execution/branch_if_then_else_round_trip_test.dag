@@ -112,7 +112,7 @@ fn branch_if_then_else_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String
   emit(tree: branch_if_then_else_inferred_tree, target: branch_if_then_else_target_model)
 }
 
-data branch_if_then_else_emit_receipt: Outcome<Medium<String>> = branch_if_then_else_emit_accepts()
+data branch_if_then_else_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = branch_if_then_else_emit_accepts()
 
 fn branch_if_then_else_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {

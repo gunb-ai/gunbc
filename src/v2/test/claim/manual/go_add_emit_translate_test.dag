@@ -53,7 +53,7 @@ fn anchor_go_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnos
   )
 }
 
-data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
+data go_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_go_add_serialize_rejects_missing_translation_rules()
 
 test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
@@ -222,7 +222,7 @@ fn anchor_go_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.comp
   )
 }
 
-data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
+data go_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
@@ -232,7 +232,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-data go_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_go_add_compile_inferred_accepts()
+data go_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> = anchor_go_add_compile_inferred_accepts()
 
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {

@@ -28,7 +28,7 @@ fn gcloud_access_ensure_refusal_reason(stderr: String) -> std.types.NonEmptyStr 
 fn gcloud_access_ensure_classification(
   success: Bool,
   stderr: String,
-) -> UpsertClassification<AccessEnsurePlan> {
+) -> std.upsert_decision.UpsertClassification<AccessEnsurePlan> {
   if success {
     std.upsert_decision.UpsertClassification {
       verdict: std.upsert_decision.Converged,
