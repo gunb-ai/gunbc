@@ -46,7 +46,7 @@ test fn raw_get_miss_differs_from_optional_absent() -> Bool {
 }
 
 test fn witness_holds_matches_holds_pattern() -> Bool {
-  match v2.std.witness.Holds { value: 1 } {
+  match (v2.std.witness.Holds { value: 1 }) {
     Holds { value: v } => v == 1
     Violates { diagnostic: _ } => false
   }
