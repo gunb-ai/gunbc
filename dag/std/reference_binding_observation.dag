@@ -5,19 +5,19 @@ data reference_binding_observation_note: String = "Neutral structural-binding ob
 
 type StructuralBindingResolution
   = StructuralBindingResolved {
-      binding_outcome: std.occurrence_binding_resolve.OccurrenceReferenceBindingOutcome,
+      binding_outcome: OccurrenceReferenceBindingOutcome,
     }
   | StructuralBindingIndexTransportRefused {
-      refusal: std.occurrence_identity.OccurrenceTransportRefusal,
+      refusal: OccurrenceTransportRefusal,
     }
   | StructuralBindingIndexModulePathRefused {
-      refusal: std.occurrence_binding_candidates.OccurrenceModulePathIndexRefusal,
+      refusal: OccurrenceModulePathIndexRefusal,
     }
   | StructuralBindingIndexExposureRefused {
-      refusal: std.occurrence_binding_candidates.DeclarationExposureIndexRefusal,
+      refusal: DeclarationExposureIndexRefusal,
     }
   | StructuralBindingIndexAuthoredOrderRefused {
-      refusal: std.occurrence_binding_candidates.AuthoredOrderIndexRefusal,
+      refusal: AuthoredOrderIndexRefusal,
     }
   | StructuralBindingIndexDeclarationBucketRefused {
       occurrence: std.occurrence_identity.OccurrenceId,

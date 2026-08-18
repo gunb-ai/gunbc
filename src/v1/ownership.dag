@@ -13,7 +13,7 @@ type EdgeClassification {
 
 type BindingUsage {
   name: String
-  binding_kind: v1.std.core.VarBindingKind?
+  binding_kind: VarBindingKind?
   consumers: List<EdgeClassification>
 }
 

@@ -18,9 +18,9 @@ data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: ta
 
 // The rule the shape now enforces: a AnnotationParsedSource is produced once per distinct SOURCE TEXT and passed down. The round trip parses exactly twice by construction — the authored source, and the rendered source — because those are two different texts, which is the property.
 type AnnotationParsedSource {
-  artifact: v1.compiler.tokenize.V1LexArtifact
-  parse: v1.compiler.parse.ParseWithTableResult
-  admitted: v1.compiler.annotation_bind.AdmittedSourceAnnotations
+  artifact: V1LexArtifact
+  parse: ParseWithTableResult
+  admitted: AdmittedSourceAnnotations
 }
 
 fn annotation_parsed_of(source: String) -> AnnotationParsedSource {

@@ -14,7 +14,7 @@ type DagCollectSlot {
 type DagCollectAcc {
   seen: Map<String, String>
   order: List<Node>
-  collision_errors: List<v1.std.core.ErrorNode>
+  collision_errors: List<ErrorNode>
 }
 
 fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {

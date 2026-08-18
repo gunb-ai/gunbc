@@ -24,10 +24,10 @@ module std.euclidean_geometry
 // Which of the two reasons applies is a fact about the vector, and a later kernel with an integer
 // square root splits them.
 type ExactLength
-  = LengthExact { value: std.measure.Millimeter }
+  = LengthExact { value: Millimeter }
   | LengthRootUnresolvedInExactKernel {
-      squared: std.measure.SquareMillimeter
-      reason: std.types.NonEmptyStr
+      squared: SquareMillimeter
+      reason: NonEmptyStr
     }
 
 
@@ -89,10 +89,10 @@ fn dot3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult
 // rather than merely wrong, and it is deliberately NOT an alias of Vector3: sharing three numeric
 // components is not sharing a dimension.
 type AreaVector3 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  x: std.measure.SignedSquareMillimeter
-  y: std.measure.SignedSquareMillimeter
-  z: std.measure.SignedSquareMillimeter
+  frame: CoordinateFrameIdentity
+  x: SignedSquareMillimeter
+  y: SignedSquareMillimeter
+  z: SignedSquareMillimeter
 }
 
 // THREE LABELS RATHER THAN ONE, which is why leaving this unguarded was worse than the scalar
@@ -332,11 +332,11 @@ fn axis_direction_of(axis: Axis3, negative: Bool) -> AxisDirection3 {
 }
 
 type Direction3Result
-  = DirectionExact { frame: std.coordinate_frame.CoordinateFrameIdentity, direction: AxisDirection3 }
+  = DirectionExact { frame: CoordinateFrameIdentity, direction: AxisDirection3 }
   | DirectionZeroVectorHasNone
   | DirectionUnresolvedInAxisKernel {
-      squared_magnitude: std.measure.SquareMillimeter
-      reason: std.types.NonEmptyStr
+      squared_magnitude: SquareMillimeter
+      reason: NonEmptyStr
     }
 
 // Normalization refuses the zero vector because zero has magnitude but no direction - that is a

@@ -2,6 +2,6 @@ module wt.a
 
 
 
-fn wt_a_wired(p: wt.common.Flag) -> wt.common.Flag {
+fn wt_a_wired(p: Flag) -> Flag {
   p
 }

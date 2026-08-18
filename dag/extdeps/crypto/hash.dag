@@ -19,7 +19,7 @@ data sha512_authority_note: NonEmptyStr = "SHA-512 per FIPS 180-4 (Secure Hash S
 
 type Digest {
   algorithm: HashAlgorithm
-  hex: std.types.NonEmptyStr
+  hex: NonEmptyStr
 }
 
 fn sha256_digest(hex: NonEmptyStr) -> Digest {

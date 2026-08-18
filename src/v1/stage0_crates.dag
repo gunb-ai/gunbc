@@ -14,8 +14,8 @@ type Stage0CrateSpec {
   header_doc: String
   modules: List<String>
   reexport_packages: List<String>
-  dependencies: List<extdeps.cargo.CargoDependency>
-  features: List<extdeps.cargo.CargoFeature>
+  dependencies: List<CargoDependency>
+  features: List<CargoFeature>
   carries_non_empty_wrappers: Bool
 }
 
@@ -109,7 +109,7 @@ type Stage0PackageCrateDirLookup
   | Stage0PackageCrateDirRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0ReexportPathDepsOutcome
-  = Stage0ReexportPathDepsOk { deps: List<extdeps.cargo.CargoDependency> }
+  = Stage0ReexportPathDepsOk { deps: List<CargoDependency> }
   | Stage0ReexportPathDepsRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0EmitShellReexportsOutcome
@@ -117,7 +117,7 @@ type Stage0EmitShellReexportsOutcome
   | Stage0EmitShellReexportsRefused { cause: Stage0ModuleOwnerRefusalCause }
 
 type Stage0PartitionRowDepsOutcome
-  = Stage0PartitionRowDepsOk { deps: List<extdeps.cargo.CargoDependency> }
+  = Stage0PartitionRowDepsOk { deps: List<CargoDependency> }
   | Stage0PartitionRowDepsRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0PartitionRowSpecOutcome
@@ -129,7 +129,7 @@ type Stage0CratePlanOutcome
   | Stage0CratePlanRefused { cause: Stage0PackageCrateDirRefusalCause }
 
 type Stage0CrateLibEmitOutcome
-  = Stage0CrateLibEmitOk { file: v1.std.core.TextFile }
+  = Stage0CrateLibEmitOk { file: TextFile }
   | Stage0CrateLibEmitRefused { cause: Stage0ModuleOwnerRefusalCause }
 
 type Stage0CrateBoundaryEmitRefusalCause
@@ -137,7 +137,7 @@ type Stage0CrateBoundaryEmitRefusalCause
   | Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: String }
 
 type Stage0CrateBoundaryEmitOutcome
-  = Stage0CrateBoundaryEmitOk { files: List<v1.std.core.TextFile> }
+  = Stage0CrateBoundaryEmitOk { files: List<TextFile> }
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {

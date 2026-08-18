@@ -12,9 +12,9 @@ type TypeEnv {
   parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
-  inductive_fields: Map<String, List<std.induction.InductiveField>>
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-  intern_table: v1.std.core.InternTable
+  inductive_fields: Map<String, List<InductiveField>>
+  source_indices: Map<String, NewlineIndex>
+  intern_table: InternTable
   source_visible_names: Map<String, Bool>
   symbol_index: SymbolIndex
   module_path: String
@@ -23,7 +23,7 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: Node
-  provenance: std.induction.SubValueRelation
+  provenance: SubValueRelation
 }
 
 data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
@@ -47,7 +47,7 @@ type ImportBinding {
 type ScopeBinding {
   name: String
   resolved: Node
-  provenance: std.induction.SubValueRelation
+  provenance: SubValueRelation
 }
 
 type ServiceCensusEntry {
@@ -182,7 +182,7 @@ type TypeEnvCacheMergeConflict {
   import_path: String
   existing_site: String
   incoming_site: String
-  span: std.types.SourceSpan
+  span: SourceSpan
   same_tree: Bool
 }
 

@@ -103,19 +103,19 @@ fn copper_layer_function(r: CopperLayerRef) -> product.pcb.stackup.CopperLayerFu
 // the net's members, because membership is the schematic's fact and duplicating it here is how the
 // two representations start to disagree.
 type NetCopperRealization {
-  net: product.electrical.connectivity.NetIdentity
+  net: NetIdentity
   layer: CopperLayerRef
 }
 
 type CopperRefusalCause
-  = RealizationNamesNoSuchNet { net: product.electrical.connectivity.NetIdentity }
-  | RealizationSelectedAgainstAnotherStackup { net: product.electrical.connectivity.NetIdentity }
-  | NetSplitAcrossLayersWithoutAConnection { net: product.electrical.connectivity.NetIdentity }
-  | NetHasTwoConductorsOnOneLayer { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionNamesNoSuchNet { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionSelectedAgainstAnotherStackup { net: product.electrical.connectivity.NetIdentity }
-  | InterlayerConnectionJoinsALayerToItself { net: product.electrical.connectivity.NetIdentity, ordinal: Int }
-  | InterlayerConnectionEndpointHasNoConductor { net: product.electrical.connectivity.NetIdentity, ordinal: Int }
+  = RealizationNamesNoSuchNet { net: NetIdentity }
+  | RealizationSelectedAgainstAnotherStackup { net: NetIdentity }
+  | NetSplitAcrossLayersWithoutAConnection { net: NetIdentity }
+  | NetHasTwoConductorsOnOneLayer { net: NetIdentity }
+  | InterlayerConnectionNamesNoSuchNet { net: NetIdentity }
+  | InterlayerConnectionSelectedAgainstAnotherStackup { net: NetIdentity }
+  | InterlayerConnectionJoinsALayerToItself { net: NetIdentity, ordinal: Int }
+  | InterlayerConnectionEndpointHasNoConductor { net: NetIdentity, ordinal: Int }
 
 // ADMISSION IS AN IDENTITY JOIN, NOT A COUNT. The failure this catches is ordinary and quiet: a net
 // is renamed in the schematic and its copper realization keeps the old identity, so the board has a
@@ -189,7 +189,7 @@ fn copper_refusal_causes(
 // two values rather than a property of either, so it is a checked refusal, and a via from a layer to
 // itself is a drilled hole that connects nothing.
 type InterlayerConnection {
-  net: product.electrical.connectivity.NetIdentity
+  net: NetIdentity
   from_layer: CopperLayerRef
   to_layer: CopperLayerRef
 }
@@ -370,7 +370,7 @@ fn interlayer_refusal_causes(
 // board is not the same net as VCC on another, and an admitted result must not be replayable against
 // a different board whose net labels happen to agree.
 type AdmittedCopper sole_constructor {
-  board: std.decl_ref.DeclarationRef
+  board: DeclarationRef
   realizations: List<NetCopperRealization>
   interlayer_connections: List<InterlayerConnection>
 }

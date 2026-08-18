@@ -3,8 +3,8 @@ module v1.probe.emit_interp
 
 
 
-fn probe_source() -> v1.compiler.compile.SourceFile {
-  v1.compiler.compile.SourceFile {
+fn probe_source() -> SourceFile {
+  SourceFile {
     path: "src/v1/probe_add.dag",
     content: "module v1.probe.add\nfn add(x: Int, y: Int) -> Int {\n  x + y\n}\n"
   }

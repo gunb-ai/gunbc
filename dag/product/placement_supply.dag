@@ -30,7 +30,7 @@ type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIde
 type RackUnitPosition = Int
 
 type RackPositionStanding
-  = RackUnitsObserved { first_u: RackUnitPosition, height: std.measure.RackUnit }
+  = RackUnitsObserved { first_u: RackUnitPosition, height: RackUnit }
   | RackPositionUnobserved
 
 type RackResidence
@@ -52,17 +52,17 @@ type PhysicalContainment
 
 type PhysicalAsset {
   identity: PhysicalAssetIdentity
-  catalog: std.decl_ref.DeclarationRef
-  physical_serial: std.types.NonEmptyStr?
+  catalog: DeclarationRef
+  physical_serial: NonEmptyStr?
   procurement: ProcurementReceiptIdentity?
 }
 
 type StationModeStanding
-  = StationModeObserved { mode: std.types.NonEmptyStr }
+  = StationModeObserved { mode: NonEmptyStr }
   | StationModeUnobserved
 
 type WirelessAdapterStanding
-  = WirelessAdapterPresent { interface: std.types.NonEmptyStr, station_mode: StationModeStanding }
+  = WirelessAdapterPresent { interface: NonEmptyStr, station_mode: StationModeStanding }
   | WirelessAdapterAbsent
   | WirelessAdapterUnobserved
 
@@ -78,19 +78,19 @@ type WirelessReachStanding
   = TargetSsidObserved {
       controller: HostIdentity,
       target: HostIdentity,
-      interface: std.types.NonEmptyStr,
+      interface: NonEmptyStr,
       bssid: extdeps.dhcp.v4.MacAddress,
       signal: SignalStrength?,
     }
   | TargetAssociationObserved {
       controller: HostIdentity,
       target: HostIdentity,
-      interface: std.types.NonEmptyStr,
+      interface: NonEmptyStr,
       management_path_preserved: Bool,
     }
   | TargetNotObserved
   | WirelessReachUnobserved
-  | WirelessReachRefused { cause: std.types.NonEmptyStr }
+  | WirelessReachRefused { cause: NonEmptyStr }
 
 type WifiRelayProvision
   = RelayProvisioned
@@ -113,7 +113,7 @@ type WifiBootstrapChain {
 
 type WifiBootstrapAdmissibility
   = WifiBootstrapAdmissible
-  | WifiBootstrapRefused { cause: std.types.NonEmptyStr }
+  | WifiBootstrapRefused { cause: NonEmptyStr }
 
 type HostSpatialFacts {
   host: HostIdentity

@@ -39,11 +39,11 @@ type DhcpAddressOrigin =
 type DhcpLeaseObservation
   = DynamicDhcpLease {
       client_hostname: DhcpClientHostNameOption12?
-      lease_time_remaining: std.measure.Second
+      lease_time_remaining: Second
       status: DhcpLeaseStatus
     }
   | StaticDhcpReservation {
-      reservation_label: std.types.NonEmptyStr
+      reservation_label: NonEmptyStr
       status: DhcpLeaseStatus
     }
 

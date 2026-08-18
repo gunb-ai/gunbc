@@ -53,16 +53,16 @@ type Axis2
 type OrthogonalRefusal
   = SegmentEndpointsCoincide
   | SegmentNotAxisAligned
-  | ExtentNotPositive { axis: std.euclidean_geometry.Axis3 }
-  | OrthogonalFrameMismatch { expected: std.coordinate_frame.CoordinateFrameIdentity, observed: std.coordinate_frame.CoordinateFrameIdentity }
+  | ExtentNotPositive { axis: Axis3 }
+  | OrthogonalFrameMismatch { expected: CoordinateFrameIdentity, observed: CoordinateFrameIdentity }
   | LoopTooFewVertices { supplied: Int }
   | LoopEdgeNotAxisAligned
   | LoopEdgesNotPerpendicular
   | LoopSelfIntersects
-  | MillimetreFrameRequiredForMetric { frame: std.coordinate_frame.CoordinateFrameIdentity }
+  | MillimetreFrameRequiredForMetric { frame: CoordinateFrameIdentity }
   | RotationAxesParallel
   | BoundingBoxHasNoPoints
-  | ShellArithmeticRefused { cause: std.checked_arithmetic.IntegerOverflow }
+  | ShellArithmeticRefused { cause: IntegerOverflow }
   | SpacesInterpenetrate
 
 type OrthogonalConstruction<T>
@@ -84,8 +84,8 @@ type OrthogonalConstruction<T>
 // checking the determinant concedes that the reflected state is writable and then validates it away,
 // which is the construction-over-validation inversion DESIGN section 5 names.
 type OrthogonalRotation3 sole_constructor {
-  x_image: std.euclidean_geometry.AxisDirection3
-  y_image: std.euclidean_geometry.AxisDirection3
+  x_image: AxisDirection3
+  y_image: AxisDirection3
 }
 
 // Cross product of two PERPENDICULAR signed unit axes. The caller establishes perpendicularity; this
@@ -137,9 +137,9 @@ fn rotation_z_image(r: OrthogonalRotation3) -> AxisDirection3 {
 // represent. Same rejection, different fact, so a caller can tell an authoring slip from a modelling
 // limit.
 type AxisAlignedSegment2 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  start: std.affine_space.Point2
-  end: std.affine_space.Point2
+  frame: CoordinateFrameIdentity
+  start: Point2
+  end: Point2
   axis: Axis2
 }
 
@@ -198,9 +198,9 @@ fn segment2_extent(registry: SpatialFrameRegistry, s: AxisAlignedSegment2) -> Fr
 // and a rectangle with zero height is a segment; admitting either means every downstream area,
 // containment and intersection operation carries a special case for a shape that is not a rectangle.
 type AxisAlignedRectangle2 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  min: std.affine_space.Point2
-  max: std.affine_space.Point2
+  frame: CoordinateFrameIdentity
+  min: Point2
+  max: Point2
 }
 
 fn axis_aligned_rectangle2(min: Point2, max: Point2) -> OrthogonalConstruction<AxisAlignedRectangle2> {
@@ -280,9 +280,9 @@ fn rectangle2_height(registry: SpatialFrameRegistry, r: AxisAlignedRectangle2) -
 // root. That restriction is the carrier's meaning rather than a limitation hidden inside it - a
 // general plane is a different carrier, arriving with the approximate-numeric realization.
 type Plane3 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  normal_axis: std.euclidean_geometry.Axis3
-  offset: std.affine_space.SignedFrameComponent
+  frame: CoordinateFrameIdentity
+  normal_axis: Axis3
+  offset: SignedFrameComponent
 }
 
 fn plane3(frame: CoordinateFrameIdentity, normal_axis: Axis3, offset: Int) -> Plane3 {
@@ -310,9 +310,9 @@ fn plane3_contains_point(plane: Plane3, p: Point3) -> Bool {
 // axes rather than two. The refusal NAMES WHICH AXIS collapsed, because "the box is degenerate" sends
 // a caller to inspect three numbers when the mint already knows which one is wrong.
 type AxisAlignedBox3 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  min: std.affine_space.Point3
-  max: std.affine_space.Point3
+  frame: CoordinateFrameIdentity
+  min: Point3
+  max: Point3
 }
 
 fn axis_aligned_box3(min: Point3, max: Point3) -> OrthogonalConstruction<AxisAlignedBox3> {
@@ -371,9 +371,9 @@ fn box3_overlaps(a: AxisAlignedBox3, b: AxisAlignedBox3) -> OrthogonalConstructi
 // needs a box passes the corners to axis_aligned_box3 and receives the degeneracy refusal with the
 // axis named, which is strictly more information than this function collapsing the two cases.
 type BoundingBox3 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  min: std.affine_space.Point3
-  max: std.affine_space.Point3
+  frame: CoordinateFrameIdentity
+  min: Point3
+  max: Point3
 }
 
 fn min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
@@ -429,8 +429,8 @@ fn bounding_box3_max(b: BoundingBox3) -> Point3 { b.max }
 //   - consecutive edges perpendicular (the axis alternates, including across the closing edge)
 //   - no self-intersection
 type OrthogonalLoop2 sole_constructor {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  vertices: List<std.affine_space.Point2>
+  frame: CoordinateFrameIdentity
+  vertices: List<Point2>
 }
 
 fn point2_x(p: Point2) -> Int { signed_frame_component_count(c: p.x) }
@@ -520,13 +520,13 @@ fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
 // appending because `concat(list, [x])` is itself quadratic - the closing edge is added after the
 // single reverse.
 type LoopEdge {
-  start: std.affine_space.Point2
-  end: std.affine_space.Point2
+  start: Point2
+  end: Point2
 }
 
 type LoopEdgeAccum {
   edges: List<LoopEdge>
-  prev: std.affine_space.Point2?
+  prev: Point2?
 }
 
 fn loop_edges(vertices: List<Point2>) -> List<LoopEdge> {
@@ -677,8 +677,8 @@ fn surface3_frame(s: AxisAlignedSurface3) -> CoordinateFrameIdentity { s.plane.f
 // is a surface, and admitting it makes every volume and containment operation carry a special case.
 type OrthogonalPrism3 sole_constructor {
   footprint: OrthogonalLoop2
-  low: std.affine_space.SignedFrameComponent
-  high: std.affine_space.SignedFrameComponent
+  low: SignedFrameComponent
+  high: SignedFrameComponent
 }
 
 // THE EXTRUSION AXIS IS DERIVED, NOT SUPPLIED. It was an Axis3 parameter, and any of the three was

@@ -39,11 +39,11 @@ data signoff_evidence_note: String = "Acceptance was three hand-set Bools, so a 
 
 type RedControlEvidence
   = RedControlNotRun
-  | RedControlExecuted { witness_module: std.types.NonEmptyStr, witness_fn: std.types.NonEmptyStr, executed_on: std.types.NonEmptyStr }
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
 
 type HandbackEvidence
   = HandbackNotDelivered
-  | HandbackDelivered { first_artifact: std.types.NonEmptyStr, further_artifacts: List<std.types.NonEmptyStr> }
+  | HandbackDelivered { first_artifact: NonEmptyStr, further_artifacts: List<NonEmptyStr> }
 
 type Signoff
   = Unsigned

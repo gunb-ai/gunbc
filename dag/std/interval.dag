@@ -23,7 +23,7 @@ type OrderedClosedInterval<T> sole_constructor {
 
 type IntervalConstruction<T>
   = IntervalReady { interval: OrderedClosedInterval<T> }
-  | IntervalRefused { reason: std.types.NonEmptyStr }
+  | IntervalRefused { reason: NonEmptyStr }
 
 // The ONE mint. A reversed pair is refused, typed and located, never silently swapped into order —
 // swapping would be the absorbing fallback (DESIGN section 5): it would answer plausibly while

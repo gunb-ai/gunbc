@@ -15,7 +15,7 @@ type UriScheme
 
 type Uri {
   scheme: UriScheme
-  locator: std.types.NonEmptyStr
+  locator: NonEmptyStr
 }
 
 fn uri_https(locator: NonEmptyStr) -> Uri {
@@ -159,7 +159,7 @@ type UriPercentEncodeRefusalCause
   | UriPercentEncodeEmptyInputRefused
 
 type UriPercentEncodeComponent
-  = UriPercentComponentEncoded(std.types.NonEmptyStr)
+  = UriPercentComponentEncoded(NonEmptyStr)
   | UriPercentComponentRefused { cause: UriPercentEncodeRefusalCause }
 
 fn uri_component_is_unreserved(cp: Int) -> Bool {

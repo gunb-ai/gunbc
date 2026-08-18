@@ -98,7 +98,7 @@ fn kahn_cycle_drain(
 
 fn detect_type_cycles_kahn(
     deps_map: Map<String, List<String>>,
-    bindings: Map<String, v1.compiler.infer_env.TypeBinding>
+    bindings: Map<String, TypeBinding>
 ) -> List<String> {
   let all_names = map(map_values(bindings), b => b.name)
   let name_set = fold(all_names, init: empty_set(), f: (acc, n) => set_insert(acc, n))

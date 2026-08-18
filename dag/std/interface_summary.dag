@@ -20,13 +20,13 @@ type ExportKind
   | ExportService
 
 type ExportEntry {
-  name: std.types.NonEmptyStr
+  name: NonEmptyStr
   kind: ExportKind
   contract: InterfaceContract
 }
 
 type InterfaceSummary {
-  module_path: std.types.NonEmptyStr
+  module_path: NonEmptyStr
   exports: List<ExportEntry>
   interface_hash: InterfaceHash
 }

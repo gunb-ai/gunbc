@@ -8,8 +8,8 @@ module v1.compiler.emit_core_support
 
 
 type EmitResult {
-  files: List<v1.std.core.TextFile>
-  diagnostics: List<v1.std.core.ErrorNode>
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
 }
 
 type TestProjection {
@@ -19,8 +19,8 @@ type TestProjection {
   inferred: Node
   params: List<Node>
   mock_field_inits: List<Node>
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-  type_env: v1.compiler.infer_env.TypeEnv
+  source_indices: Map<String, NewlineIndex>
+  type_env: TypeEnv
 }
 
 fn escape_json_string(s: String) -> String {

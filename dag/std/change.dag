@@ -75,7 +75,7 @@ fn keyed_patch_append<K, V>(
 }
 
 fn keyed_patch_monoid<K, V>() -> Monoid<KeyedPatch<K, V>> {
-  std.algebra.Monoid {
+  Monoid {
     op: keyed_patch_append,
     identity: keyed_patch_empty(),
   }
@@ -148,7 +148,7 @@ fn keyed_three_way_patch_monoid<K, V>(
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Monoid<KeyedThreeWayPatch<K, V>> {
-  std.algebra.Monoid {
+  Monoid {
     op: fn(left, right) {
       keyed_three_way_patch_append(
         left: left,
@@ -474,10 +474,10 @@ fn keyed_apply_row<K, V>(
 ) -> KeyedRow<K, V> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: _, to: v } =>
-      std.keyed_row.KeyedRow { row_key: row.row_key, value: v }
+      KeyedRow { row_key: row.row_key, value: v }
     KeyedDiffRemovedHunk { hunk_key: _, from: _ } => row
     KeyedDiffModifiedHunk { hunk_key: _, from: _, to: v } =>
-      std.keyed_row.KeyedRow { row_key: row.row_key, value: v }
+      KeyedRow { row_key: row.row_key, value: v }
   }
 }
 
@@ -491,7 +491,7 @@ fn keyed_apply_patch<K, V>(
       KeyedDiffAddedHunk { hunk_key: k, to: v } =>
         concat(
           filter(acc, fn(row) { !key_eq(row.row_key, k) }),
-          [std.keyed_row.KeyedRow { row_key: k, value: v }],
+          [KeyedRow { row_key: k, value: v }],
         )
       KeyedDiffRemovedHunk { hunk_key: k, from: _ } =>
         filter(acc, fn(row) { !key_eq(row.row_key, k) })

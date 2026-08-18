@@ -13,7 +13,7 @@ type SimpleMethodSpec {
 }
 
 type MethodTemplateContract {
-  dag_method: std.decl_ref.DeclarationRef
+  dag_method: DeclarationRef
   runtime_template: String
   emit_template: String
   wraps_result: Bool

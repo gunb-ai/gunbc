@@ -614,7 +614,7 @@ type Once
 
 type MoneyRate<P> {
   amount: MoneyAmountMicro
-  currency: std.currency.CurrencyCode
+  currency: CurrencyCode
 }
 
 type MoneyPerMinute = MoneyRate<PerMinute>
@@ -996,8 +996,8 @@ data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(descrip
 // console timestamp is not a substitute either: it is formatted wall time, reordered by buffering
 // and rounded to the millisecond.
 type ClockDomain
-  = ProcessMonotonic { process: std.types.NonEmptyStr }
-  | SharedMonotonic { origin: std.types.NonEmptyStr }
+  = ProcessMonotonic { process: NonEmptyStr }
+  | SharedMonotonic { origin: NonEmptyStr }
 
 fn clock_domain_eq(a: ClockDomain, b: ClockDomain) -> Bool {
   match a {

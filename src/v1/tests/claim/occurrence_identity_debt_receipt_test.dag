@@ -10,8 +10,8 @@ data occurrence_identity_debt_receipt_boundary_note: String = "Acceptance receip
 fn oid_receipt_parse(
   source: String,
   file: String,
-  allocator: std.occurrence_identity.OccurrenceIdAllocator
-) -> v1.compiler.parse.ParseWithTableResult {
+  allocator: OccurrenceIdAllocator
+) -> ParseWithTableResult {
   parse_with_table_in_occurrence_scope(
     tokens: tokenize(source: source, file: file),
     source_indices: map_insert(
@@ -25,7 +25,7 @@ fn oid_receipt_parse(
 }
 
 fn oid_receipt_name_for_occurrence(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> String? {
   match transport.index.entries
@@ -37,9 +37,9 @@ fn oid_receipt_name_for_occurrence(
 }
 
 fn oid_receipt_lexical_declarations_named(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String
-) -> List<std.occurrence_identity.DeclarationOccurrence> {
+) -> List<DeclarationOccurrence> {
   transport.declarations
     |> filter(declaration =>
       match declaration.category {
@@ -54,9 +54,9 @@ fn oid_receipt_lexical_declarations_named(
 }
 
 fn oid_receipt_lexical_references_named(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String
-) -> List<std.occurrence_identity.ReferenceOccurrence> {
+) -> List<ReferenceOccurrence> {
   transport.references
     |> filter(reference =>
       match reference.category {
@@ -71,9 +71,9 @@ fn oid_receipt_lexical_references_named(
 }
 
 fn oid_receipt_exact_binding_holds(
-  transport: std.occurrence_identity.OccurrenceTransport,
-  reference: std.occurrence_identity.ReferenceOccurrence,
-  declaration: std.occurrence_identity.DeclarationOccurrence
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence,
+  declaration: DeclarationOccurrence
 ) -> Bool {
   match resolve_reference_occurrence_binding(
     transport: transport,
@@ -84,14 +84,14 @@ fn oid_receipt_exact_binding_holds(
       result: OccurrenceBound { binding: binding },
     } =>
       occurrence_containment_paths_equal(
-        left: std.occurrence_identity.OccurrenceContainmentPath {
+        left: OccurrenceContainmentPath {
           ancestors: binding.occurrence.containment.ancestors,
           terminal: binding.occurrence.containment.terminal,
         },
         right: reference.containment,
       ) &&
       occurrence_containment_paths_equal(
-        left: std.occurrence_identity.OccurrenceContainmentPath {
+        left: OccurrenceContainmentPath {
           ancestors: binding.candidate.containment.ancestors,
           terminal: binding.candidate.containment.terminal,
         },
@@ -102,8 +102,8 @@ fn oid_receipt_exact_binding_holds(
 }
 
 fn oid_receipt_unbound_reference_holds(
-  transport: std.occurrence_identity.OccurrenceTransport,
-  reference: std.occurrence_identity.ReferenceOccurrence
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence
 ) -> Bool {
   match resolve_reference_occurrence_binding(
     transport: transport,
@@ -114,7 +114,7 @@ fn oid_receipt_unbound_reference_holds(
       result: OccurrenceUnbound { occurrence: occurrence },
     } =>
       occurrence_containment_paths_equal(
-        left: std.occurrence_identity.OccurrenceContainmentPath {
+        left: OccurrenceContainmentPath {
           ancestors: occurrence.containment.ancestors,
           terminal: occurrence.containment.terminal,
         },
@@ -125,9 +125,9 @@ fn oid_receipt_unbound_reference_holds(
 }
 
 fn oid_receipt_all_pairs_bind_exactly(
-  transport: std.occurrence_identity.OccurrenceTransport,
-  references: List<std.occurrence_identity.ReferenceOccurrence>,
-  declarations: List<std.occurrence_identity.DeclarationOccurrence>
+  transport: OccurrenceTransport,
+  references: List<ReferenceOccurrence>,
+  declarations: List<DeclarationOccurrence>
 ) -> Bool {
   references |> all(reference =>
     declarations |> all(declaration =>
@@ -141,9 +141,9 @@ fn oid_receipt_all_pairs_bind_exactly(
 }
 
 fn oid_receipt_single_pair_binds_exactly(
-  transport: std.occurrence_identity.OccurrenceTransport,
-  references: List<std.occurrence_identity.ReferenceOccurrence>,
-  declarations: List<std.occurrence_identity.DeclarationOccurrence>
+  transport: OccurrenceTransport,
+  references: List<ReferenceOccurrence>,
+  declarations: List<DeclarationOccurrence>
 ) -> Bool {
   if (references |> count) != 1 || (declarations |> count) != 1 {
     false
@@ -165,10 +165,10 @@ fn oid_receipt_single_pair_binds_exactly(
 }
 
 fn oid_receipt_single_populations_have_distinct_ids(
-  first_references: List<std.occurrence_identity.ReferenceOccurrence>,
-  first_declarations: List<std.occurrence_identity.DeclarationOccurrence>,
-  second_references: List<std.occurrence_identity.ReferenceOccurrence>,
-  second_declarations: List<std.occurrence_identity.DeclarationOccurrence>
+  first_references: List<ReferenceOccurrence>,
+  first_declarations: List<DeclarationOccurrence>,
+  second_references: List<ReferenceOccurrence>,
+  second_declarations: List<DeclarationOccurrence>
 ) -> Bool {
   match first_references |> first {
     Absent => false
@@ -201,7 +201,7 @@ fn oid_receipt_occurrence_ids_are_pairwise_distinct(
 }
 
 fn oid_receipt_containments_are_pairwise_distinct(
-  containments: List<std.occurrence_identity.OccurrenceContainmentPath>
+  containments: List<OccurrenceContainmentPath>
 ) -> Bool {
   containments |> enumerate |> all(left =>
     containments |> enumerate |> all(right =>
@@ -215,7 +215,7 @@ fn oid_receipt_containments_are_pairwise_distinct(
 }
 
 fn oid_receipt_same_name_population_holds(
-  transport: std.occurrence_identity.OccurrenceTransport,
+  transport: OccurrenceTransport,
   name: String,
   declaration_count: Int,
   reference_count: Int

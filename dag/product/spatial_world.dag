@@ -35,7 +35,7 @@ module product.spatial_world
 // produce. The two arms of its own are identity facts, which the geometry layer cannot have an
 // opinion about because it has no identities.
 type WorldRefusal
-  = WorldGeometryRefused { cause: std.orthogonal_geometry.OrthogonalRefusal }
+  = WorldGeometryRefused { cause: OrthogonalRefusal }
   | DuplicateRoomIdentity { identity: product.placement_supply.RoomIdentity }
   | VariantTargetMissing { identity: product.placement_supply.RoomIdentity }
   | VariantTargetAlreadyPresent { identity: product.placement_supply.RoomIdentity }
@@ -47,7 +47,7 @@ type WorldConstruction<T>
 
 type PlacedSpace {
   identity: product.placement_supply.RoomIdentity
-  space: std.orthogonal_topology.EnclosedSpace
+  space: EnclosedSpace
 }
 
 // The complex is NOT stored beside the rooms. Admission is proven at the mint, and keeping the

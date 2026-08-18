@@ -69,27 +69,27 @@ fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
 // lands with the spatial-world carrier that actually registers frames.
 
 type Vector3 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
   z: SignedFrameComponent
 }
 
 type Point3 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
   z: SignedFrameComponent
 }
 
 type Vector2 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
 }
 
 type Point2 {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
+  frame: CoordinateFrameIdentity
   x: SignedFrameComponent
   y: SignedFrameComponent
 }
@@ -179,14 +179,14 @@ type SpatialFrameRelation
 
 type SpatialFrameRefusal {
   operation: SpatialOperationIdentity
-  left_frame: std.coordinate_frame.CoordinateFrameIdentity
-  right_frame: std.coordinate_frame.CoordinateFrameIdentity
+  left_frame: CoordinateFrameIdentity
+  right_frame: CoordinateFrameIdentity
   relation: SpatialFrameRelation
 }
 
 type SpatialResult<T>
   = SpatialReady { value: T }
-  | SpatialArithmeticRefused { cause: std.checked_arithmetic.IntegerOverflow }
+  | SpatialArithmeticRefused { cause: IntegerOverflow }
   | SpatialFrameRefused { refusal: SpatialFrameRefusal }
 
 // FIRST CROSSING WINS, and every component is computed before the fold rather than after a partial
@@ -423,8 +423,8 @@ fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResul
 // physical consumer should derive the orientation operation it actually requires rather than
 // inherit a preselected rotation group.
 type ZQuarterTurnTransform3 {
-  from_frame: std.coordinate_frame.CoordinateFrameIdentity
-  to_frame: std.coordinate_frame.CoordinateFrameIdentity
+  from_frame: CoordinateFrameIdentity
+  to_frame: CoordinateFrameIdentity
   rotation_about_z: QuarterTurns
   translation: Vector3
 }

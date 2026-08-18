@@ -5,7 +5,7 @@ module v1.compiler.parse
 
 
 type TokenStream {
-  all: List<v1.std.core.Token>
+  all: List<Token>
   pos: Int
 }
 
@@ -34,24 +34,24 @@ fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
 }
 
 type ParseContext {
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-  intern_table: v1.std.core.InternTable
-  occurrence_allocator: std.occurrence_identity.OccurrenceIdAllocator?
-  occurrence_index: std.occurrence_identity.OccurrenceIndex?
-  declaration_occurrences: List<std.occurrence_identity.DeclarationOccurrence>?
-  reference_occurrences: List<std.occurrence_identity.ReferenceOccurrence>?
+  source_indices: Map<String, NewlineIndex>
+  intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator?
+  occurrence_index: OccurrenceIndex?
+  declaration_occurrences: List<DeclarationOccurrence>?
+  reference_occurrences: List<ReferenceOccurrence>?
 }
 
 type ParseResult {
   module: Node?
-  error: v1.std.core.ErrorNode?
+  error: ErrorNode?
 }
 
 type ParseWithTableResult {
   result: ParseResult
-  intern_table: v1.std.core.InternTable
-  occurrence_allocator: std.occurrence_identity.OccurrenceIdAllocator
-  occurrence_transport: std.occurrence_identity.OccurrenceTransport
+  intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator
+  occurrence_transport: OccurrenceTransport
 }
 
 type ParsedNodeStampResult {
@@ -76,8 +76,8 @@ type ParsedPatternStampResult {
 
 type ParsedOccurrenceRole
   = ParsedOccurrenceUnclassified
-  | ParsedOccurrenceDeclaration { category: std.occurrence_identity.OccurrenceCategory }
-  | ParsedOccurrenceReference { category: std.occurrence_identity.OccurrenceCategory }
+  | ParsedOccurrenceDeclaration { category: OccurrenceCategory }
+  | ParsedOccurrenceReference { category: OccurrenceCategory }
 
 fn parse_context_occurrence_allocator(ctx: ParseContext) -> OccurrenceIdAllocator {
   match ctx.occurrence_allocator {
@@ -166,46 +166,46 @@ fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
 }
 
 type AdvanceResult
-  = AdvanceOk { token: v1.std.core.Token, tokens: TokenStream }
+  = AdvanceOk { token: Token, tokens: TokenStream }
   | AdvanceEof
 type EatResult
-  = EatConsumed { token: v1.std.core.Token, tokens: TokenStream }
+  = EatConsumed { token: Token, tokens: TokenStream }
   | EatUnchanged { tokens: TokenStream }
 
-type TokenResult { token: v1.std.core.Token, tokens: TokenStream, err: v1.std.core.ErrorNode? }
-type NameResult { name: String, span: v1.std.core.SourceSpan, tokens: TokenStream, err: v1.std.core.ErrorNode? }
-type ExprResult { expr: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ItemResult { item: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type TypeResult { type_expr: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ModuleResult { module: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type VariantResult { variant: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type PredResult { predicate: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ParamResult { param: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type TransportResult { transport: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type OpResult { operation: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type CapResult { capability: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type PatternResult { pattern: MatchPattern, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ArmResult { arm: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ArgResult { arg: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type FieldResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type FieldInitResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type AdmitCallersResult { props: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ResUseResult { resource_use: Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type TokenResult { token: Token, tokens: TokenStream, err: ErrorNode? }
+type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: ErrorNode? }
+type ExprResult { expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ItemResult { item: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type TypeResult { type_expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ModuleResult { module: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type VariantResult { variant: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PredResult { predicate: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ParamResult { param: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type TransportResult { transport: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type OpResult { operation: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type CapResult { capability: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PatternResult { pattern: MatchPattern, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ArmResult { arm: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ArgResult { arg: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type FieldResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type FieldInitResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type AdmitCallersResult { props: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ResUseResult { resource_use: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type ItemPrefixResult {
   name: String
-  name_span: v1.std.core.SourceSpan
+  name_span: SourceSpan
   type_params: List<Node>
   params: List<Node>
   inferred: InferredNode?
   uses: List<Node>
   tokens: TokenStream
   ctx: ParseContext
-  err: v1.std.core.ErrorNode?
+  err: ErrorNode?
 }
 
 type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
-type ConfigResult { config: ServiceConfig, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type ConfigResult { config: ServiceConfig, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type BindingPower { left: Int, right: Int }
 
@@ -228,19 +228,19 @@ type ExpectedToken
   | ExpectQuestion
   | ExpectPipe
 
-type ItemsResult { items: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type FieldsResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type FieldInitsResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type VariantsResult { variants: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type PredsResult { predicates: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ParamsResult { params: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type UsesResult { uses: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ArgsResult { args: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type StmtsResult { stmts: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ExprsResult { exprs: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ArmsResult { arms: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ModsResult { modifiers: List<v1.std.core.OperationModifier>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type BindingsResult { field_bindings: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type ItemsResult { items: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type FieldsResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type FieldInitsResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type VariantsResult { variants: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PredsResult { predicates: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ParamsResult { params: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type UsesResult { uses: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ArgsResult { args: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type StmtsResult { stmts: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ExprsResult { exprs: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ArmsResult { arms: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ModsResult { modifiers: List<OperationModifier>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type BindingsResult { field_bindings: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
   make_expr_error_node(kind: ParseRecoveryError, message: message, span: span)
@@ -253,34 +253,34 @@ fn parse_recovery_placeholder() -> Node {
   )
 }
 
-type OptRetResult { inferred: InferredNode?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type GuardResult { guard: Node?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type FromKeyResult { from_key: String?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type OptRetResult { inferred: InferredNode?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type GuardResult { guard: Node?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type FromKeyResult { from_key: String?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
-type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ParserParam { name: String, span: v1.std.core.SourceSpan }
-type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type NamedIntResult { arg_name: String, arg_value: Int, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type IOResult { inputs: List<Node>, outputs: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ResPropResult { properties: List<Node>, capabilities: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ResponsesResult { responses: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type MocksResult { mocks: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ExitEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type RespEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type MockEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ParserParam { name: String, span: SourceSpan }
+type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type NamedIntResult { arg_name: String, arg_value: Int, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type IOResult { inputs: List<Node>, outputs: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ResPropResult { properties: List<Node>, capabilities: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ResponsesResult { responses: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type MocksResult { mocks: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type ExitEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type RespEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type MockEntriesResult { entries: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type OpBodyResult {
   inputs: List<Node>, outputs: List<Node>,
   modifier_props: List<Node>, transport: Node?,
   exit_props: List<Node>, response_props: List<Node>,
   mock_props: List<Node>,
-  tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode?
+  tokens: TokenStream, ctx: ParseContext, err: ErrorNode?
 }
-type UnitResult { tokens: TokenStream, err: v1.std.core.ErrorNode? }
-type StringLitResult { value: String, tokens: TokenStream, err: v1.std.core.ErrorNode? }
-type IntLitResult { value: Int, tokens: TokenStream, err: v1.std.core.ErrorNode? }
+type UnitResult { tokens: TokenStream, err: ErrorNode? }
+type StringLitResult { value: String, tokens: TokenStream, err: ErrorNode? }
+type IntLitResult { value: Int, tokens: TokenStream, err: ErrorNode? }
 
 type ParserHelperIdentity
   = ParserHelperSkipNewlines
@@ -2170,7 +2170,7 @@ type TypeArgsResult {
   args: List<Node>
   tokens: TokenStream
   ctx: ParseContext
-  err: v1.std.core.ErrorNode?
+  err: ErrorNode?
 }
 
 fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -> TypeArgsResult {
@@ -2547,7 +2547,7 @@ fn parse_uses_entry(tokens: TokenStream, ctx: ParseContext) -> ResUseResult {
   }
 }
 
-type ResConfigResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type ResConfigResult { fields: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_resource_config_args(tokens: TokenStream, ctx: ParseContext) -> ResConfigResult {
   parse_resource_config_acc(tokens: skip_newlines(tokens: tokens), ctx: ctx, acc: [])
@@ -4241,7 +4241,7 @@ fn is_constraint_bracket(tokens: TokenStream) -> Bool {
   }
 }
 
-type ConstraintsResult { constraints: List<Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
+type ConstraintsResult { constraints: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_constraint_annotations(tokens: TokenStream, ctx: ParseContext) -> ConstraintsResult {
   match eat(tokens: tokens, expected: ExpectLBracket) {

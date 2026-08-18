@@ -220,7 +220,7 @@ type ItemKeywords {
   import_from_keyword: String
 }
 
-fn item_keyword_for_kind(forms: List<std.syntax.ItemForm>, kind: std.syntax.ItemFormKind) -> String {
+fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
   let matching = forms |> filter(f => f.kind == kind)
   match matching |> first {
     Present { value: f } => f.keyword
@@ -914,7 +914,7 @@ fn dag_spec() -> LanguageSpec {
   }
 }
 
-fn language_spec_for_target(target: v1.compiler.artifact.RenderTarget) -> LanguageSpec {
+fn language_spec_for_target(target: RenderTarget) -> LanguageSpec {
   match target {
     Rust => rust_spec()
     Go => go_spec()
@@ -923,7 +923,7 @@ fn language_spec_for_target(target: v1.compiler.artifact.RenderTarget) -> Langua
   }
 }
 
-fn target_keyword(target: v1.compiler.artifact.RenderTarget, key: String) -> String {
+fn target_keyword(target: RenderTarget, key: String) -> String {
   match target {
     Rust => match lookup(rust_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Go => match lookup(go_keywords, key: key) { Present { value: kw } => kw  Absent => key }
@@ -932,7 +932,7 @@ fn target_keyword(target: v1.compiler.artifact.RenderTarget, key: String) -> Str
   }
 }
 
-fn target_operators(target: v1.compiler.artifact.RenderTarget) -> List<std.syntax.OperatorSpec> {
+fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
   match target {
     Rust => rust_operators
     Python => python_operators
@@ -941,7 +941,7 @@ fn target_operators(target: v1.compiler.artifact.RenderTarget) -> List<std.synta
   }
 }
 
-fn binop_symbol(target: v1.compiler.artifact.RenderTarget, op: std.syntax.BinOp, algebra_field: std.syntax.AlgebraFieldKind?) -> String? {
+fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind?) -> String? {
   let ops = target_operators(target: target)
   let op_matching = ops |> filter(spec => match spec.binop {
     Present { value: b } => b == op
@@ -962,7 +962,7 @@ fn binop_symbol(target: v1.compiler.artifact.RenderTarget, op: std.syntax.BinOp,
   }
 }
 
-fn is_string_like(target: v1.compiler.artifact.RenderTarget, name: String) -> Bool {
+fn is_string_like(target: RenderTarget, name: String) -> Bool {
   match target {
     Rust => rust_string_types |> any(t => t == name)
     Go => go_string_types |> any(t => t == name)
@@ -971,49 +971,49 @@ fn is_string_like(target: v1.compiler.artifact.RenderTarget, name: String) -> Bo
   }
 }
 
-fn scaffold_for_target(target: v1.compiler.artifact.RenderTarget) -> ProjectScaffold {
+fn scaffold_for_target(target: RenderTarget) -> ProjectScaffold {
   language_spec_for_target(target: target).scaffold
 }
 
-fn serialization_for_target(target: v1.compiler.artifact.RenderTarget) -> SerializationSpec {
+fn serialization_for_target(target: RenderTarget) -> SerializationSpec {
   language_spec_for_target(target: target).serialization
 }
 
-fn test_conventions_for_target(target: v1.compiler.artifact.RenderTarget) -> TestConventions {
+fn test_conventions_for_target(target: RenderTarget) -> TestConventions {
   language_spec_for_target(target: target).test_conventions
 }
 
-fn visibility_for_target(target: v1.compiler.artifact.RenderTarget) -> VisibilitySpec {
+fn visibility_for_target(target: RenderTarget) -> VisibilitySpec {
   language_spec_for_target(target: target).visibility
 }
 
-fn sharing_for_target(target: v1.compiler.artifact.RenderTarget) -> SharingStrategy {
+fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
 }
 
-fn expression_semantics_for_target(target: v1.compiler.artifact.RenderTarget) -> ExpressionSemantics {
+fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
   language_spec_for_target(target: target).expression_semantics
 }
 
-fn wrap_shared_type(target: v1.compiler.artifact.RenderTarget, inner: String) -> String {
+fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)
 }
 
-fn sharing_wrap_ctor_for_target(target: v1.compiler.artifact.RenderTarget, inner_expr: String) -> String {
+fn sharing_wrap_ctor_for_target(target: RenderTarget, inner_expr: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_ctor_template
   replace(tmpl, "{0}", inner_expr)
 }
 
-fn sharing_wrap_ctor_open_for_target(target: v1.compiler.artifact.RenderTarget) -> String {
+fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> String {
   sharing_for_target(target: target).wrap_ctor_open
 }
 
-fn sharing_wrap_ctor_close_for_target(target: v1.compiler.artifact.RenderTarget) -> String {
+fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> String {
   sharing_for_target(target: target).wrap_ctor_close
 }
 
-fn sharing_type_is_wrapped_for_target(target: v1.compiler.artifact.RenderTarget, type_name: String) -> Bool {
+fn sharing_type_is_wrapped_for_target(target: RenderTarget, type_name: String) -> Bool {
   let prefix = sharing_for_target(target: target).wrap_type_prefix
   let prefix_len = string_length(s: prefix)
   if prefix_len == 0 {

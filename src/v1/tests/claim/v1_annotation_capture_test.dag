@@ -15,7 +15,7 @@ data src_clean: String = "fn a() -> Int { 1 }\n"
 data src_eof_comment: String = "fn a() -> Int { 1 }\n// at eof"
 data src_url_in_string: String = "data u: String = \"http://example.com\"\n"
 
-fn captures(source: String) -> List<std.source_annotation.UnboundAnnotationCapture> {
+fn captures(source: String) -> List<UnboundAnnotationCapture> {
   tokenize_artifact(source: source, file: "probe.dag").annotations
 }
 
@@ -27,11 +27,11 @@ data portable_projection_note: String = "Captures are projected with fold rather
 
 Rendering the whole sequence is also the stronger assertion: it pins content AND order AND count at once, where indexing two positions says nothing about a third capture appearing between them."
 
-fn render_lexemes(caps: List<std.source_annotation.UnboundAnnotationCapture>) -> String {
+fn render_lexemes(caps: List<UnboundAnnotationCapture>) -> String {
   fold(caps, init: "", f: (acc, c) => concat(acc, concat("|", c.lexeme)))
 }
 
-fn render_placements(caps: List<std.source_annotation.UnboundAnnotationCapture>) -> String {
+fn render_placements(caps: List<UnboundAnnotationCapture>) -> String {
   fold(
     caps,
     init: "",

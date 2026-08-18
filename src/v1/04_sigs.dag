@@ -10,8 +10,8 @@ type ResolvedFuncSig {
   params: List<Node>
   inferred: Node
   is_async: Bool
-  output_provenance: List<Map<String, std.induction.SubValueRelation>>
-  variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
+  output_provenance: List<Map<String, SubValueRelation>>
+  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
 type ResolvedFuncEnv {
@@ -22,12 +22,12 @@ type ResolvedFuncEnv {
 
 type ResolveFuncSigsResult {
   func_env: ResolvedFuncEnv
-  diagnostics: List<v1.std.core.ErrorNode>
+  diagnostics: List<ErrorNode>
 }
 
 type SigsAccum {
   signatures: Map<String, ResolvedFuncSig>
-  diagnostics: List<v1.std.core.ErrorNode>
+  diagnostics: List<ErrorNode>
 }
 
 type CallEdge {

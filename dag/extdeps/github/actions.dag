@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitHubActionsRuntime {
-  oidc_request_url_env: std.types.NonEmptyStr
-  oidc_request_token_env: std.types.NonEmptyStr
+  oidc_request_url_env: NonEmptyStr
+  oidc_request_token_env: NonEmptyStr
 }
 
 data github_actions_runtime: GitHubActionsRuntime = {
@@ -48,7 +48,7 @@ type Workflow {
   concurrency: ConcurrencySpec?
   jobs: List<Job>
 
-  env: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  env: List<YamlKeyValue>?
   permissions: WorkflowPermissions?
 }
 
@@ -65,7 +65,7 @@ type PermissionLevel = PermRead | PermWrite | PermNone
 type WorkflowTrigger
   = Push { branches: List<String>, paths: List<String> }
   | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
-  | Schedule { cron: extdeps.cron.schedule_model.CronSchedule }
+  | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
   | WorkflowRunCompleted { workflows: List<String> }
@@ -99,7 +99,7 @@ type DispatchInputType
 type SecretScope = StepScope | JobScope | WorkflowScope
 
 type WorkflowSecret {
-  name: std.types.SecretName
+  name: SecretName
   scope: SecretScope
 }
 
@@ -110,9 +110,9 @@ type Job {
   steps: List<Step>
   needs: List<String>
 
-  env: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  env: List<YamlKeyValue>?
 
-  outputs: List<extdeps.languages.yaml.types.YamlKeyValue>?
+  outputs: List<YamlKeyValue>?
   if_condition: String?
   timeout_minutes: Int?
   continue_on_error: Bool?
@@ -166,7 +166,7 @@ type Step
       id: String?,
       run: String,
       shell: ShellType?,
-      env: List<extdeps.languages.yaml.types.YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
       working_directory: String?,
       if_condition: String?,
       continue_on_error: Bool?,
@@ -177,8 +177,8 @@ type Step
       id: String?,
       uses: ActionRef,
 
-      with: List<extdeps.languages.yaml.types.YamlKeyValue>?,
-      env: List<extdeps.languages.yaml.types.YamlKeyValue>?,
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
       if_condition: String?,
       continue_on_error: Bool?,
       timeout_minutes: Int?

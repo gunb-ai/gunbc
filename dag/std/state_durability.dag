@@ -80,7 +80,7 @@ type DurabilityCommitBarrier
   | SynchronizedCommit
 
 type StateRealizationIdentity {
-  realization_id: std.types.NonEmptyStr
+  realization_id: NonEmptyStr
   definition_linkages: StateRealizationDefinitionLinkages
 }
 
@@ -92,8 +92,8 @@ data symbol_index_subtree_digest_dissolution: DissolutionCondition = unbound_dis
 
 type StateDefinitionLinkage
   = CallerAssertedDefinitionLinkage {
-      reason: std.types.NonEmptyStr,
-      dissolution: std.dissolution.DissolutionCondition,
+      reason: NonEmptyStr,
+      dissolution: DissolutionCondition,
     }
 
 type StateDefinitionRole
@@ -106,8 +106,8 @@ type StateDefinitionRole
 
 type StateDefinitionCallerAssertion {
   role: StateDefinitionRole
-  reason: std.types.NonEmptyStr
-  dissolution: std.dissolution.DissolutionCondition
+  reason: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 type StateRealizationDefinitionLinkages {
@@ -234,7 +234,7 @@ fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
 }
 
 type StateDurabilityCapabilityVersion {
-  version: std.types.NonEmptyStr
+  version: NonEmptyStr
   definition_linkage: StateDefinitionLinkage
 }
 
@@ -245,7 +245,7 @@ type StateDurabilityInstant = EpochMs
 
 type StateDurabilityAdmission<Target, ReadbackSubject> {
   target: Target
-  desired_state_digest: extdeps.crypto.hash.Digest
+  desired_state_digest: Digest
   realization: StateRealizationIdentity
   capability_version: StateDurabilityCapabilityVersion
   perturbation_generation: StatePerturbationGeneration
@@ -260,28 +260,28 @@ type StateDurabilityCapability {
 }
 
 type StatePerturbationReceipt<Target> {
-  receipt_id: std.types.NonEmptyStr
+  receipt_id: NonEmptyStr
   target: Target
   boundary: StateDurabilityBoundary
   generation: StatePerturbationGeneration
-  started_after_before_readback: std.measure.PositiveMillisecond
-  duration: std.measure.PositiveMillisecond
+  started_after_before_readback: PositiveMillisecond
+  duration: PositiveMillisecond
 }
 
 type StateBeforeReadbackReceipt<Target, ReadbackSubject> {
-  perturbation_receipt_id: std.types.NonEmptyStr
+  perturbation_receipt_id: NonEmptyStr
   target: Target
   subject: ReadbackSubject
-  state_digest: extdeps.crypto.hash.Digest
+  state_digest: Digest
   observed_at: StateDurabilityInstant
 }
 
 type StateAfterReadbackReceipt<Target, ReadbackSubject> {
-  perturbation_receipt_id: std.types.NonEmptyStr
+  perturbation_receipt_id: NonEmptyStr
   target: Target
   subject: ReadbackSubject
-  state_digest: extdeps.crypto.hash.Digest
-  observed_after_perturbation_completion: std.measure.PositiveMillisecond
+  state_digest: Digest
+  observed_after_perturbation_completion: PositiveMillisecond
 }
 
 fn state_durability_perturbation_started_at<Target, ReadbackSubject>(
@@ -322,10 +322,10 @@ fn state_durability_after_readback_at<Target, ReadbackSubject>(
 }
 
 type StateActivationReceipt<Target, ReadbackSubject> {
-  perturbation_receipt_id: std.types.NonEmptyStr
+  perturbation_receipt_id: NonEmptyStr
   target: Target
   subject: ReadbackSubject
-  desired_state_digest: extdeps.crypto.hash.Digest
+  desired_state_digest: Digest
   realization: StateRealizationIdentity
   capability_version: StateDurabilityCapabilityVersion
   perturbation_generation: StatePerturbationGeneration
@@ -409,8 +409,8 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
     }
   | DurabilityReadbackReceiptLinkMismatch {
       position: StateReadbackPosition,
-      expected_receipt_id: std.types.NonEmptyStr,
-      observed_receipt_id: std.types.NonEmptyStr,
+      expected_receipt_id: NonEmptyStr,
+      observed_receipt_id: NonEmptyStr,
     }
   | DurabilityReadbackTargetMismatch {
       position: StateReadbackPosition,
@@ -423,13 +423,13 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
       observed: ReadbackSubject,
     }
   | DurabilityDesiredStateMismatch {
-      desired: extdeps.crypto.hash.Digest,
-      before: extdeps.crypto.hash.Digest,
-      after: extdeps.crypto.hash.Digest,
+      desired: Digest,
+      before: Digest,
+      after: Digest,
     }
   | DurabilityActivationReceiptLinkMismatch {
-      expected_receipt_id: std.types.NonEmptyStr,
-      observed_receipt_id: std.types.NonEmptyStr,
+      expected_receipt_id: NonEmptyStr,
+      observed_receipt_id: NonEmptyStr,
     }
   | DurabilityActivationScopeMismatch {
       expected: StateDurabilityAdmission<Target, ReadbackSubject>,

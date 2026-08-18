@@ -7,8 +7,8 @@ data namespace_reference_derived_closure_production_fixture_note: String = "Four
 
 type NrdfcParsed
   = NrdfcParsedReady {
-      transport: std.occurrence_identity.OccurrenceTransport,
-      inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
     }
   | NrdfcParsedRefused
 

@@ -28,27 +28,27 @@ module product.pcb.world
 // arm changes what the type can express rather than what any board carries. A PARTIAL world is a
 // preview whose outline constructed; it is not an admitted board.
 type PcbBoard {
-  frame: std.coordinate_frame.CoordinateFrameIdentity
-  outline: std.orthogonal_geometry.AxisAlignedRectangle2
+  frame: CoordinateFrameIdentity
+  outline: AxisAlignedRectangle2
 }
 
 type PcbObligationCause
-  = MissingDocument { what_is_missing: std.types.NonEmptyStr }
-  | CommercialAccess { subject: std.types.NonEmptyStr }
-  | LegalCarriage { reason: std.types.NonEmptyStr }
-  | UnselectedPart { because: std.types.NonEmptyStr }
-  | DrawingMustBeRead { figure: std.types.NonEmptyStr, what_is_drawn: std.types.NonEmptyStr }
-  | StandingIsSelfContradictory { what_is_wrong: std.types.NonEmptyStr }
-  | NamedAttachmentTypePartUnresolved { designation: std.types.NonEmptyStr, missing: std.types.NonEmptyStr }
+  = MissingDocument { what_is_missing: NonEmptyStr }
+  | CommercialAccess { subject: NonEmptyStr }
+  | LegalCarriage { reason: NonEmptyStr }
+  | UnselectedPart { because: NonEmptyStr }
+  | DrawingMustBeRead { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  | StandingIsSelfContradictory { what_is_wrong: NonEmptyStr }
+  | NamedAttachmentTypePartUnresolved { designation: NonEmptyStr, missing: NonEmptyStr }
 
 type PcbComponentObligation {
-  identity: std.types.NonEmptyStr
-  origin: std.affine_space.Point2
+  identity: NonEmptyStr
+  origin: Point2
   cause: PcbObligationCause
 }
 
 type PcbAttachmentObligation {
-  layer: std.types.NonEmptyStr
+  layer: NonEmptyStr
   cause: PcbObligationCause
 }
 
@@ -57,12 +57,12 @@ type PcbAttachmentObligation {
 // known. Reporting it here is what keeps it from being dropped between the design's requirement
 // and the physical roster.
 type PcbFunctionalObligation {
-  function: std.types.NonEmptyStr
+  function: NonEmptyStr
   cause: PcbObligationCause
 }
 
 type PcbCapabilityObligation {
-  what_is_owed: std.types.NonEmptyStr
+  what_is_owed: NonEmptyStr
 }
 
 type NonemptyCapabilityObligations {
@@ -84,8 +84,8 @@ type NonemptyCapabilityObligations {
 // what makes a status record start impersonating the thing it reports on.
 type PcbCapabilityStanding
   = CapabilityPending { owed: NonemptyCapabilityObligations }
-  | CapabilityRefused { cause: std.types.NonEmptyStr }
-  | CapabilityEstablished { authority: std.decl_ref.DeclarationRef }
+  | CapabilityRefused { cause: NonEmptyStr }
+  | CapabilityEstablished { authority: DeclarationRef }
 
 // FOUR ARMS, BECAUSE "CHECKED" WAS HIDING A REFUSAL. The subset arm previously carried only a
 // count, and the projection that produced it discarded the nested geometry result -- so a world
@@ -97,17 +97,17 @@ type PcbCapabilityStanding
 type PcbBodyLayoutStanding
   = PcbBodyLayoutAdmittedOverEveryRequiredPart
   | PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: Int }
-  | PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: Int, causes: product.pcb.physical.PhysicalRefusalSet }
-  | PcbBodyLayoutRefusedOverCompletePopulation { causes: product.pcb.physical.PhysicalRefusalSet }
+  | PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: Int, causes: PhysicalRefusalSet }
+  | PcbBodyLayoutRefusedOverCompletePopulation { causes: PhysicalRefusalSet }
 
 type EstablishedEnvelopeRead {
-  identity: std.types.NonEmptyStr
-  source: std.decl_ref.DeclarationRef
+  identity: NonEmptyStr
+  source: DeclarationRef
 }
 
 type PcbPhysicalWorld {
   board: PcbBoard
-  components: List<product.pcb.physical.ComponentPlacement>
+  components: List<ComponentPlacement>
   envelope_reads: List<EstablishedEnvelopeRead>
   obligations: List<PcbComponentObligation>
   attachment_obligations: List<PcbAttachmentObligation>
@@ -128,18 +128,18 @@ type PcbManufacturingWorld {
 }
 
 type PcbWorld sole_constructor {
-  design: std.decl_ref.DeclarationRef
+  design: DeclarationRef
   electrical: PcbElectricalWorld
   physical: PcbPhysicalWorld
   manufacturing: PcbManufacturingWorld
 }
 
 type PcbWorldRefusal
-  = PcbBoardOutlineRefused { cause: std.orthogonal_geometry.OrthogonalRefusal }
-  | PcbDesignPlanUnavailable { only_available: std.decl_ref.DeclarationRef }
-  | PcbPlanWasBuiltFromADifferentDesign { plan_design: std.decl_ref.DeclarationRef, admitted_against: std.decl_ref.DeclarationRef }
-  | PcbCapabilityStillPending { capability: std.types.NonEmptyStr }
-  | PcbCapabilityRefused { capability: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
+  = PcbBoardOutlineRefused { cause: OrthogonalRefusal }
+  | PcbDesignPlanUnavailable { only_available: DeclarationRef }
+  | PcbPlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
+  | PcbCapabilityStillPending { capability: NonEmptyStr }
+  | PcbCapabilityRefused { capability: NonEmptyStr, cause: NonEmptyStr }
   | PcbPlacementNotAdmitted
   | PcbOutlineCopiedFromCitedForeignBoard
 

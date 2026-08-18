@@ -2,7 +2,7 @@ module extdeps.external_authority
 
 
 type ExternalAuthority {
-  uri: extdeps.uri.Uri
+  uri: Uri
 }
 
 data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
@@ -10,7 +10,7 @@ data external_model_scope_law: String = "DESIGN §3 'External upstream decomposi
 data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactAuthorityOverride.fact off prose applies to every identity this carrier holds."
 
 type ExternalSubjectRef {
-  declaration: std.decl_ref.DeclarationRef
+  declaration: DeclarationRef
 }
 
 data external_model_scope_revision_grain_note: String = "ExternalModelScope deliberately carries NO revision field (operator verdict on gunbc#7571): a subject module legitimately models multiple releases of one upstream (Chromium 151/152/153 are one subject, not one module each), so an exact revision is a fact on the specific build/release/fact row, symbolically referenced where needed — never a property of the module scope. An earlier revision carried 'revision: ExternalRevision?' with a free label; both the optional module-grain slot and the label-typed revision (which erased semver vs commit vs release vs specification-edition distinctions) were removed."
@@ -34,7 +34,7 @@ fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool
 data fact_authority_override_ref_note: String = "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text."
 
 type FactAuthorityOverride {
-  fact: std.decl_ref.DeclarationRef
+  fact: DeclarationRef
   authority: ExternalAuthority
 }
 
@@ -43,21 +43,21 @@ data external_model_scope_decision_kernel_note: String = "HONESTY BOUNDARY (oper
 data declared_scope_facts_note: String = "DeclaredScopeFacts is one extdeps module's caller-declared scope facts: its declared scope, the per-row subject attribution of the product-/engine-/distribution-specific fact rows it carries, and the consumer-coverage/observation-state declarations it stores (each a DeclarationRef — coverage identity is symbolic for the same reason subject identity is)."
 
 type DeclaredScopeFacts {
-  module: std.types.NonEmptyStr
+  module: NonEmptyStr
   scope: ExternalModelScope
   product_fact_subjects: List<ExternalSubjectRef>
-  consumer_coverage_rows: List<std.decl_ref.DeclarationRef>
+  consumer_coverage_rows: List<DeclarationRef>
 }
 
 type ScopeFinding
   = ForeignSubjectRow {
-      module: std.types.NonEmptyStr
+      module: NonEmptyStr
       declared: ExternalSubjectRef
       foreign: ExternalSubjectRef
     }
   | ConsumerCoverageInUpstream {
-      module: std.types.NonEmptyStr
-      coverage_row: std.decl_ref.DeclarationRef
+      module: NonEmptyStr
+      coverage_row: DeclarationRef
     }
 
 type ScopeDecision
@@ -109,8 +109,8 @@ fn external_model_scope_portfolio_decision(mods: List<DeclaredScopeFacts>) -> Sc
 data downstream_support_roster_note: String = "Where the refused rows GO: a support/coverage roster is a downstream (product/workflow layer) fact join over the per-subject upstream modules — DESIGN §3's gunbc.served_surface_browser_support example. It is deliberately NOT judged by external_model_scope_decision: consumer policy and coverage state are exactly what an upstream module may not carry and a downstream module exists to carry."
 
 type DownstreamSupportRoster {
-  module: std.types.NonEmptyStr
-  coverage_rows: List<std.decl_ref.DeclarationRef>
+  module: NonEmptyStr
+  coverage_rows: List<DeclarationRef>
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

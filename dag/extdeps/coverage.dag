@@ -9,19 +9,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type CoverageClosureFact
-  = Subject { path: std.types.NonEmptyStr }
-  | VariantPending { variant: std.types.NonEmptyStr }
-  | JsonPending { field: std.types.NonEmptyStr }
-  | Residue { description: std.types.NonEmptyStr }
-  | Paid { item: std.types.NonEmptyStr }
-  | Missing { item: std.types.NonEmptyStr }
-  | DeclaredMetadata { field: std.types.NonEmptyStr }
-  | ExternalSpecWatch { item: std.types.NonEmptyStr }
-  | Blocked { reason: std.types.NonEmptyStr }
-  | PathRef { path: std.types.NonEmptyStr }
-  | RequiresArm { arm: std.types.NonEmptyStr }
+  = Subject { path: NonEmptyStr }
+  | VariantPending { variant: NonEmptyStr }
+  | JsonPending { field: NonEmptyStr }
+  | Residue { description: NonEmptyStr }
+  | Paid { item: NonEmptyStr }
+  | Missing { item: NonEmptyStr }
+  | DeclaredMetadata { field: NonEmptyStr }
+  | ExternalSpecWatch { item: NonEmptyStr }
+  | Blocked { reason: NonEmptyStr }
+  | PathRef { path: NonEmptyStr }
+  | RequiresArm { arm: NonEmptyStr }
 
 type CoverageClosureEntry {
   facts: List<CoverageClosureFact>
-  trigger: std.types.NonEmptyStr?
+  trigger: NonEmptyStr?
 }

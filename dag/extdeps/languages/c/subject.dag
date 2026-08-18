@@ -1,8 +1,8 @@
 module extdeps.languages.c.subject
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https,
     locator: "www.open-std.org/jtc1/sc22/wg14/"
   }
@@ -15,9 +15,9 @@ type C
 
 data c_language: C = CTarget
 
-data c_language_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
-  subject: extdeps.external_authority.ExternalSubjectRef {
-    declaration: std.decl_ref.DeclarationRef {
+data c_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
       module_path: "extdeps.languages.c.subject",
       decl_name: "c_language",
       field: WholeDeclaration
@@ -27,4 +27,4 @@ data c_language_model_scope: extdeps.external_authority.ExternalModelScope = ext
   further_citations: []
 }
 
-data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = c_language_model_scope
+data extdeps_model_scope: ExternalModelScope = c_language_model_scope

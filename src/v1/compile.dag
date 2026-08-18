@@ -25,38 +25,38 @@ type SourceFile {
 }
 
 type PipelineResult {
-  files: List<v1.std.core.TextFile>
-  diagnostics: List<v1.std.core.ErrorNode>
-  complexity: v1.compiler.complexity.ComplexityReport
-  ownership: List<v1.compiler.ownership.OwnershipProof>
-  artifact_plan: v1.compiler.artifact.ArtifactPlan
-  newline_indices: List<v1.std.core.NewlineIndex>
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  artifact_plan: ArtifactPlan
+  newline_indices: List<NewlineIndex>
 }
 
 data frontend_result_authored_note: String = "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped."
 
 type FrontendResult {
-  graph: v1.compiler.resolve.ModuleGraph?
-  diagnostics: List<v1.std.core.ErrorNode>
-  newline_indices: List<v1.std.core.NewlineIndex>
-  intern_table: v1.std.core.InternTable
-  occurrence_transport: std.occurrence_identity.OccurrenceTransport
-  annotations: std.source_annotation.SourceAnnotationGraph
+  graph: ModuleGraph?
+  diagnostics: List<ErrorNode>
+  newline_indices: List<NewlineIndex>
+  intern_table: InternTable
+  occurrence_transport: OccurrenceTransport
+  annotations: SourceAnnotationGraph
 }
 
 type FrontendOccurrenceResolution {
-  graph: v1.compiler.resolve.ModuleGraph?
-  diagnostics: List<v1.std.core.ErrorNode>
+  graph: ModuleGraph?
+  diagnostics: List<ErrorNode>
 }
 
 type FrontendAccum {
-  parse_results: List<v1.compiler.parse.ParseResult>
-  module_inputs: List<v1.compiler.resolve.ModuleOccurrenceInput>
-  newline_indices: List<v1.std.core.NewlineIndex>
-  intern_table: v1.std.core.InternTable
-  occurrence_allocator: std.occurrence_identity.OccurrenceIdAllocator
-  annotations: std.source_annotation.SourceAnnotationGraph
-  annotation_diagnostics: List<v1.std.core.ErrorNode>
+  parse_results: List<ParseResult>
+  module_inputs: List<ModuleOccurrenceInput>
+  newline_indices: List<NewlineIndex>
+  intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator
+  annotations: SourceAnnotationGraph
+  annotation_diagnostics: List<ErrorNode>
 }
 
 data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass, and `source_length` is what the binder needs to bound the last module item's extent.
@@ -64,10 +64,10 @@ data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical res
 Threading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone."
 
 type FrontendPrepared {
-  tokens: List<v1.std.core.Token>
-  annotations: List<std.source_annotation.UnboundAnnotationCapture>
+  tokens: List<Token>
+  annotations: List<UnboundAnnotationCapture>
   source_length: Int
-  newline_index: v1.std.core.NewlineIndex
+  newline_index: NewlineIndex
 }
 
 fn merge_occurrence_transports(
@@ -856,7 +856,7 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
 }
 
 type EmittableGraph sole_constructor {
-  graph: v1.compiler.infer_items.ResolvedGraph
+  graph: ResolvedGraph
 }
 
 fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
@@ -1014,10 +1014,10 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 
 type CensusFillParse {
   modules: List<Node>,
-  newline_indices: List<v1.std.core.NewlineIndex>,
-  diagnostics: List<v1.std.core.ErrorNode>
-  occurrence_transport: std.occurrence_identity.OccurrenceTransport
-  annotations: std.source_annotation.SourceAnnotationGraph
+  newline_indices: List<NewlineIndex>,
+  diagnostics: List<ErrorNode>
+  occurrence_transport: OccurrenceTransport
+  annotations: SourceAnnotationGraph
 }
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
@@ -1152,12 +1152,12 @@ fn stage0_self_compile_refusal_message(result: PipelineResult) -> String? {
 }
 
 type ResolvedPipelineResult {
-  graph: v1.compiler.infer_items.ResolvedGraph?
-  diagnostics: List<v1.std.core.ErrorNode>
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-  complexity: v1.compiler.complexity.ComplexityReport
-  ownership: List<v1.compiler.ownership.OwnershipProof>
-  newline_indices: List<v1.std.core.NewlineIndex>
+  graph: ResolvedGraph?
+  diagnostics: List<ErrorNode>
+  source_indices: Map<String, NewlineIndex>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  newline_indices: List<NewlineIndex>
 }
 
 fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {

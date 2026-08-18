@@ -800,7 +800,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "    }\n\n")
 }
 
-fn render_target_rust_enum(target: v1.compiler.artifact.RenderTarget) -> String {
+fn render_target_rust_enum(target: RenderTarget) -> String {
   match target {
     Rust => "RenderTarget::Rust"
     Python => "RenderTarget::Python"
@@ -809,7 +809,7 @@ fn render_target_rust_enum(target: v1.compiler.artifact.RenderTarget) -> String 
   }
 }
 
-fn render_coercion_test_rust(entry: v1.compiler.coercion.CoercionTestEntry) -> String {
+fn render_coercion_test_rust(entry: CoercionTestEntry) -> String {
   let assertions = entry.assertions |> map(a => render_coercion_assertion_rust(a: a))
   concat(
     "    #[test]\n",
@@ -833,7 +833,7 @@ fn second_or_empty(items: List<String>) -> String {
   }
 }
 
-fn render_coercion_assertion_rust(a: v1.compiler.coercion.CoercionAssertion) -> String {
+fn render_coercion_assertion_rust(a: CoercionAssertion) -> String {
   match a {
     CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
       concat("        assert_eq!(coerce_primitive_type(", render_target_rust_enum(target: t),

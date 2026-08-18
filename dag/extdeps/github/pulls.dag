@@ -22,8 +22,8 @@ type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
 type ReviewEvent = Approve | RequestChanges | Comment | PendingEvent
 
 type PullRequestRef {
-  ref: std.types.GitRef
-  sha: std.types.CommitSha
+  ref: GitRef
+  sha: CommitSha
   label: String
 }
 
@@ -32,13 +32,13 @@ type PullRequest {
   title: String
   body: String?
   state: PullRequestState
-  html_url: std.types.NonEmptyStr
-  user: extdeps.github.github.GitHubUser
+  html_url: NonEmptyStr
+  user: GitHubUser
   head: PullRequestRef
   base: PullRequestRef
-  created_at: std.types.Timestamp
-  updated_at: std.types.Timestamp
-  merged_at: std.types.Timestamp?
+  created_at: Timestamp
+  updated_at: Timestamp
+  merged_at: Timestamp?
   draft: Bool
 }
 
@@ -46,10 +46,10 @@ data pull_timing_observation_provenance_note: String = "One-time GitHub REST pul
 
 type PullTimingObservation {
   pull_number: Int
-  opened_at: std.types.EpochMs
-  merged_at: std.types.EpochMs
-  source_url: std.types.NonEmptyStr
-  fetched_on: std.types.NonEmptyStr
+  opened_at: EpochMs
+  merged_at: EpochMs
+  source_url: NonEmptyStr
+  fetched_on: NonEmptyStr
 }
 
 fn pull_timing_observation(
@@ -319,8 +319,8 @@ type PullReview {
   id: Int
   body: String
   state: ReviewState
-  commit_id: std.types.CommitSha
-  html_url: std.types.NonEmptyStr
+  commit_id: CommitSha
+  html_url: NonEmptyStr
 }
 
 data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
@@ -345,5 +345,5 @@ type ReviewComment {
   line: Int?
   original_line: Int?
   body: String
-  html_url: std.types.NonEmptyStr
+  html_url: NonEmptyStr
 }

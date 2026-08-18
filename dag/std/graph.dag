@@ -36,7 +36,7 @@ fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
   )
 }
 
-fn build_call_graph_from_proof_edges(names: List<String>, edges: List<std.termination.ProofEdge>) -> CallGraph {
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
   CallGraph {
     edges: edges
       |> filter(e => e.caller != e.callee)
@@ -179,7 +179,7 @@ fn graph_reverse_reachable_members(
   reached.members |> filter(member => member != start)
 }
 
-fn is_lexicographic_descent(evidence: List<std.termination.DescentEvidence>) -> Bool {
+fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
   match evidence |> first {
     Absent => false
     Present { value: e } =>
@@ -191,7 +191,7 @@ fn is_lexicographic_descent(evidence: List<std.termination.DescentEvidence>) -> 
   }
 }
 
-fn is_valid_proof(proof: std.termination.TerminationProof, edges: List<std.termination.ProofEdge>) -> Bool {
+fn is_valid_proof(proof: std.termination.TerminationProof, edges: List<ProofEdge>) -> Bool {
   let expected_dims = proof.dimensions |> count
   let non_descending = edges |> filter(e =>
     (e.evidence |> count != expected_dims) || is_lexicographic_descent(evidence: e.evidence) == false

@@ -27,18 +27,18 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type BlockEmitState {
   text: List<String>
-  scope: v1.compiler.infer.InferScope
+  scope: InferScope
 }
 
 type TcoFrame {
   expr: Node
-  scope: v1.compiler.infer.InferScope
+  scope: InferScope
   depth: Int
 }
 
 type TcoReassignInput {
   args: List<Node>
-  scope: v1.compiler.infer.InferScope
+  scope: InferScope
   depth: Int
 }
 

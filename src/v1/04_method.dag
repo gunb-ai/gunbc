@@ -11,7 +11,7 @@ fn filesystem_read_result_type() -> Node {
 }
 
 fn type_variable_node(id: String) -> Node {
-  v1.std.core.Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_of_type_variables() -> Node {
@@ -30,7 +30,7 @@ fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }
 
-fn builtin_kernel_seed_diagnostics() -> List<v1.std.core.ErrorNode> {
+fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
   concat(
     concat(
       make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,

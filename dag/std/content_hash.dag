@@ -114,7 +114,7 @@ fn as_content_hash_sha512(digest: Sha512Digest) -> ContentHash {
   Sha512Hash(digest)
 }
 
-fn content_hash_of_value(value: std.types.NonEmptyStr) -> ContentHash {
+fn content_hash_of_value(value: NonEmptyStr) -> ContentHash {
   as_content_hash_structural(structural: content_hash_atom(value: value))
 }
 
@@ -126,7 +126,7 @@ fn content_hash_from_structural_digest(digest: String) -> ContentHash? {
   }
 }
 
-fn content_hash_atom(value: std.types.NonEmptyStr) -> Fnv1a64Structural {
+fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural {
   structural_content_hash(digest: atom_identity_hash(value))
 }
 
@@ -136,14 +136,14 @@ fn content_hash_combine_structural(left: Fnv1a64Structural, right: Fnv1a64Struct
   )
 }
 
-fn content_hash_tagged_structural(tag: std.types.NonEmptyStr, payload: Fnv1a64Structural) -> Fnv1a64Structural {
+fn content_hash_tagged_structural(tag: NonEmptyStr, payload: Fnv1a64Structural) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_atom(value: tag),
     right: payload
   )
 }
 
-fn content_hash_tagged(tag: std.types.NonEmptyStr, payload: Fnv1a64Structural) -> ContentHash {
+fn content_hash_tagged(tag: NonEmptyStr, payload: Fnv1a64Structural) -> ContentHash {
   as_content_hash_structural(
     structural: content_hash_tagged_structural(tag: tag, payload: payload)
   )
@@ -225,19 +225,19 @@ fn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashCom
   }
 }
 
-fn serialize_content_hash(hash: ContentHash) -> std.types.NonEmptyStr {
+fn serialize_content_hash(hash: ContentHash) -> NonEmptyStr {
   match hash {
-    Fnv1a64(s) => s.digest as std.types.NonEmptyStr
+    Fnv1a64(s) => s.digest as NonEmptyStr
     Sha256Hash(d) => sha256_digest_wire_form(digest: d)
-    Sha1Hash(d) => d.hex as std.types.NonEmptyStr
+    Sha1Hash(d) => d.hex as NonEmptyStr
     Sha512Hash(d) => sha512_digest_wire_form(digest: d)
   }
 }
 
-fn sha256_digest_wire_form(digest: Sha256Digest) -> std.types.NonEmptyStr {
-  join(["sha256:", digest.hex as String], "") as std.types.NonEmptyStr
+fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr {
+  join(["sha256:", digest.hex as String], "") as NonEmptyStr
 }
 
-fn sha512_digest_wire_form(digest: Sha512Digest) -> std.types.NonEmptyStr {
-  join(["sha512:", digest.hex as String], "") as std.types.NonEmptyStr
+fn sha512_digest_wire_form(digest: Sha512Digest) -> NonEmptyStr {
+  join(["sha512:", digest.hex as String], "") as NonEmptyStr
 }

@@ -1,8 +1,8 @@
 module extdeps.languages.go.emit
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "go.dev/ref/spec"
   }
@@ -55,7 +55,7 @@ data go_source_extension: String = ".go"
 
 data go_string_types: List<String> = ["String", "Secret"]
 
-data go_simple_method_specs: List<std.emit_model.SimpleMethodSpec> = [
+data go_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",            template: "len(\{recv\})",                          wraps_result: false },
   { method_name: "join",             template: "strings.Join(\{recv\}, \{arg\})",        wraps_result: false },
   { method_name: "split",            template: "strings.Split(\{recv\}, \{arg\})",       wraps_result: false },
