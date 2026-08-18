@@ -167,7 +167,7 @@ fn emit_simple_string_interp(parts: List<v1.std.core.StringPart>, target: v1.com
 }
 
 fn empty_emit_scope() -> v1.compiler.infer.InferScope {
-  InferScope {
+  v1.compiler.infer.InferScope {
     type_env: v1.compiler.infer_env.TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() },
     func_env: v1.compiler.infer_sigs.ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
@@ -182,7 +182,7 @@ fn empty_emit_scope() -> v1.compiler.infer.InferScope {
 }
 
 fn module_emit_scope(typed_module: v1.compiler.infer_items.TypedModule) -> v1.compiler.infer.InferScope {
-  InferScope {
+  v1.compiler.infer.InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),

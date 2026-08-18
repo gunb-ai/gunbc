@@ -154,7 +154,7 @@ fn obcpw_reference_with_occurrence(
   reference: std.occurrence_identity.ReferenceOccurrence,
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> std.occurrence_identity.ReferenceOccurrence {
-  ReferenceOccurrence {
+  std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
     containment: reference.containment,
     category: reference.category,
@@ -554,7 +554,7 @@ fn obcpw_inputs_with_lexical_fn_a(
       match obcpw_declaration_for_occurrence(transport: transport, occurrence: fn_a_id) {
         Absent => inputs
         Present { value: fn_a_declaration } =>
-          OccurrenceBindingCandidateInputs {
+          std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
             module_paths: inputs.module_paths,
             authored_order_rows: inputs.authored_order_rows,
             exposure_rows: reverse(fold(
@@ -564,7 +564,7 @@ fn obcpw_inputs_with_lexical_fn_a(
                 match row.occurrence.value == fn_a_id.value {
                   true =>
                     concat([
-                      DeclarationExposureRow {
+                      std.occurrence_binding_candidates.DeclarationExposureRow {
                         occurrence: row.occurrence,
                         exposure: std.occurrence_binding_candidates.LexicalExposure {
                           exposing_scope: fn_a_declaration.containment,
@@ -586,7 +586,7 @@ fn obcpw_inputs_without_fn_a_exposure(
   match occurrence_id_for_authored_name(transport: transport, name: "fn_a") {
     Absent => inputs
     Present { value: fn_a_id } =>
-      OccurrenceBindingCandidateInputs {
+      std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
         module_paths: inputs.module_paths,
         authored_order_rows: inputs.authored_order_rows,
         exposure_rows: fold(
@@ -607,7 +607,7 @@ fn obcpw_inputs_without_reference_authored_order(
   inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: std.occurrence_identity.ReferenceOccurrence
 ) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: inputs.module_paths,
     exposure_rows: inputs.exposure_rows,
     authored_order_rows: fold(

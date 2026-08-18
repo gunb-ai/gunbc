@@ -33,7 +33,7 @@ fn parse_authored_occurrence_binding_source(
 data declaration_exposure_from_containment_note: String = "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under ModuleLocalMemberExposure grounding (N3-B0): module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note)."
 
 fn authored_order_row_from_entry(entry: std.occurrence_identity.OccurrenceIndexEntry) -> std.occurrence_binding_candidates.AuthoredOrderRow {
-  AuthoredOrderRow {
+  std.occurrence_binding_candidates.AuthoredOrderRow {
     occurrence: entry.projection.occurrence,
     ordinal: std.occurrence_identity.AuthoredTokenOrdinal {
       value: entry.projection.diagnostic_span.start,
@@ -47,13 +47,13 @@ fn occurrence_binding_inputs_from_transport(
   module_path: std.types.NonEmptyStr,
   transport: std.occurrence_identity.OccurrenceTransport
 ) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
       transport.index.entries,
       init: [],
       f: (acc, entry) =>
         concat([
-          OccurrenceModulePathRow {
+          std.occurrence_binding_candidates.OccurrenceModulePathRow {
             occurrence: entry.projection.occurrence,
             module_path: module_path,
           },
@@ -64,7 +64,7 @@ fn occurrence_binding_inputs_from_transport(
       init: [],
       f: (acc, declaration) =>
         concat([
-          DeclarationExposureRow {
+          std.occurrence_binding_candidates.DeclarationExposureRow {
             occurrence: declaration.occurrence,
             exposure: declaration_exposure_from_containment(
               module_path: module_path,

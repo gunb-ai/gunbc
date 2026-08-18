@@ -238,7 +238,7 @@ fn keyed_annotation_rows(
 }
 
 fn normalize_dag_annotation(capture: std.source_annotation.UnboundAnnotationCapture) -> std.source_annotation.NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
+  std.source_annotation.NormalizedAnnotationCapture {
     text: strip_line_comment_delimiter(lexeme: capture.lexeme),
     origin: capture.origin,
     placement: capture.placement,

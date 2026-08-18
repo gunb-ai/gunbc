@@ -209,7 +209,7 @@ fn stage0_crate_boundary_emit_refusal_message(
 
 fn stage0_foundation_runtime_dependencies() -> List<extdeps.cargo.CargoDependency> {
   [
-    CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
     extdeps.cargo.CargoDependency { name: "im", source: extdeps.cargo.RegistryDep { version: "15.1", features: ["serde"] } },
     extdeps.cargo.CargoDependency { name: "serde", source: extdeps.cargo.RegistryDep { version: "1", features: ["derive", "rc"] } },
     extdeps.cargo.CargoDependency { name: "serde_json", source: extdeps.cargo.RegistryDep { version: "1", features: [] } },
@@ -220,7 +220,7 @@ fn stage0_foundation_runtime_dependencies() -> List<extdeps.cargo.CargoDependenc
 
 fn stage0_emit_shell_registry_dependencies() -> List<extdeps.cargo.CargoDependency> {
   [
-    CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
     extdeps.cargo.CargoDependency { name: "im", source: extdeps.cargo.RegistryDep { version: "15.1", features: ["serde"] } },
     extdeps.cargo.CargoDependency { name: "serde", source: extdeps.cargo.RegistryDep { version: "1", features: ["derive", "rc"] } }
   ]
@@ -239,7 +239,7 @@ fn stage0_reexport_path_dependencies_outcome(
             Stage0PackageCrateDirFound { crate_dir: crate_dir } =>
               Stage0ReexportPathDepsOk {
                 deps: deps |> concat([
-                  CargoDependency {
+                  extdeps.cargo.CargoDependency {
                     name: pkg,
                     source: extdeps.cargo.LocalPathDep {
                       path: stage0_crate_dir_to_sibling_dep_path(crate_dir: crate_dir)
@@ -258,7 +258,7 @@ fn stage0_emit_shell_path_dependencies() -> List<extdeps.cargo.CargoDependency> 
   generated_partition_crate_rows
     |> filter(row => stage0_partition_row_is_module_bearing(row: row))
     |> map(row =>
-      CargoDependency {
+      extdeps.cargo.CargoDependency {
         name: row.package_name,
         source: extdeps.cargo.LocalPathDep { path: stage0_crate_dir_to_sibling_dep_path(crate_dir: row.crate_dir) }
       }
@@ -306,7 +306,7 @@ fn stage0_partition_row_dependencies_outcome(
 
 fn stage0_partition_row_features(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> List<extdeps.cargo.CargoFeature> {
   match row.kind {
-    GeneratedFoundationCrate => [CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
+    GeneratedFoundationCrate => [extdeps.cargo.CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
     GeneratedLayeredCoreCrate => []
     GeneratedEmitCoreCrate => []
   }
@@ -374,7 +374,7 @@ fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> v1.std.core.TextFile {
     "\n\n[dependencies]\n",
     deps
   )
-  TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
+  v1.std.core.TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
 }
 
 fn stage0_crate_mod_include(module_basename: String) -> String {

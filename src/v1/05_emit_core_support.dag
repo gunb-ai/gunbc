@@ -45,7 +45,7 @@ fn make_indent(level: Int) -> String {
 fn unique_strings(items: List<String>) -> List<String> {
   let result = items |> fold(init: v1.compiler.infer_service.UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
-    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
+    else { v1.compiler.infer_service.UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
 }

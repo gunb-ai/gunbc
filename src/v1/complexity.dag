@@ -974,10 +974,10 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 }
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> std.graph.CallGraph {
-  CallGraph {
+  std.graph.CallGraph {
     edges: edges
       |> filter(edge => edge.caller != edge.callee)
-      |> map(edge => GraphEdge { caller: edge.caller, callee: edge.callee })
+      |> map(edge => std.graph.GraphEdge { caller: edge.caller, callee: edge.callee })
   }
 }
 
@@ -2637,7 +2637,7 @@ fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: 
   let this_edges = match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
-      if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
+      if set_has(m: local_func_set, key: callee) { [v1.compiler.infer_sigs.CallEdge { caller: caller, callee: callee }] }
       else { [] }
     _ => []
   }
@@ -2655,10 +2655,10 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, v1.std.core.N
   let edges = func_entries |> flat_map(entry =>
     collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set, si: si)
   )
-  CallGraph {
+  std.graph.CallGraph {
     edges: edges
       |> filter(edge => edge.caller != edge.callee)
-      |> map(edge => GraphEdge { caller: edge.caller, callee: edge.callee })
+      |> map(edge => std.graph.GraphEdge { caller: edge.caller, callee: edge.callee })
   }
 }
 
@@ -2922,7 +2922,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
 }
 
 fn progress_edge_to_proof_edge(pe: ParserProgressEdge) -> std.termination.ProofEdge {
-  ProofEdge { caller: pe.caller, callee: pe.callee, evidence: [pe.progress] }
+  std.termination.ProofEdge { caller: pe.caller, callee: pe.callee, evidence: [pe.progress] }
 }
 
 fn count_unknown_progress_edges(edges: List<ParserProgressEdge>) -> Int {
@@ -2952,7 +2952,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
         )
         map_keys(best_map) |> map(callee =>
           let ev = match map_get(best_map, callee) { Present { value: e } => e   Absent => DescentUnknown }
-          ProofEdge { caller: name, callee: callee, evidence: [ev] }
+          std.termination.ProofEdge { caller: name, callee: callee, evidence: [ev] }
         )
       Absent => []
     }
@@ -2999,7 +2999,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         map_keys(unique_keys) |> map(callee =>
           let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
           let list_ev = match map_get(list_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
-          ProofEdge { caller: name, callee: callee, evidence: [tree_ev, list_ev] }
+          std.termination.ProofEdge { caller: name, callee: callee, evidence: [tree_ev, list_ev] }
         )
       Absent => []
     }
@@ -3035,7 +3035,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           map_keys(unique_keys) |> map(callee =>
             let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
             let parser_ev = match map_get(parser_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
-            ProofEdge { caller: name, callee: callee, evidence: [tree_ev, parser_ev] }
+            std.termination.ProofEdge { caller: name, callee: callee, evidence: [tree_ev, parser_ev] }
           )
         Absent => []
       }
@@ -3085,9 +3085,9 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
               )
               descent_evidence_lattice_meet(a: worst, b: call_best)
             )
-            [ProofEdge { caller: name, callee: name, evidence: [derived] }]
+            [std.termination.ProofEdge { caller: name, callee: name, evidence: [derived] }]
           } else {
-            [ProofEdge { caller: name, callee: name, evidence: [DescentUnknown] }]
+            [std.termination.ProofEdge { caller: name, callee: name, evidence: [DescentUnknown] }]
           }
         } else { [] }
 
@@ -3096,7 +3096,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
           let callee_evidence = collect_callee_evidence(body: entry.body, callee_name: callee, si: si)
           if callee_evidence |> count > 0 {
             let ev = derive_edge_evidence(all_calls: callee_evidence)
-            [ProofEdge { caller: name, callee: callee, evidence: [ev] }]
+            [std.termination.ProofEdge { caller: name, callee: callee, evidence: [ev] }]
           } else { [] }
         )
         concat(self_edge, cross_edges)

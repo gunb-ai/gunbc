@@ -32,7 +32,7 @@ fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.Ca
     Rust => rust_callable
     Python => python_callable
     Go => go_callable
-    Dag => CallableRepr {
+    Dag => std.coercion.CallableRepr {
       template: "fn(\{params\}) -> \{return\}",
       param_separator: ", ",
       return_separator: " -> ",
@@ -69,7 +69,7 @@ fn can_cast(target: v1.compiler.artifact.RenderTarget, source_type: String, targ
 fn render_cast(expr_str: String, type_str: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let syntax = match target_cast_syntax(target: target) {
     Present { value: s } => s
-    Absent => CastSyntax { template: "\{expr\}", cast_rules: [] }
+    Absent => std.coercion.CastSyntax { template: "\{expr\}", cast_rules: [] }
   }
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
