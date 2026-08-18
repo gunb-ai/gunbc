@@ -2,7 +2,7 @@ module gunbc.spark_serving_loaded_release
 
 import std.types { String, NonEmptyStr }
 import product.placement_supply { HostIdentity }
-import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_observed_release }
+import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_observed_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
 import gunbc.spark_serving_readback_parse {
@@ -76,7 +76,7 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
           match spark_serving_readback_field_present_value(field: readback.runtime_release_asset_digest) {
             Absent => none
             Present { value: asset_digest_hex } =>
-              match ollama_runtime_closure_digest_for_observed_release(
+              match ollama_runtime_materialization_identity_for_observed_release(
                 version: ver,
                 asset_digest_hex: asset_digest_hex,
               ) {

@@ -27,9 +27,9 @@ import extdeps.ollama.binary_release {
   ollama_v0_32_9_jetpack5_release,
 }
 import gunbc.ollama_runtime_bundle {
-  ollama_runtime_closure_digest,
-  ollama_runtime_closure_digest_for_observed_release,
-  ollama_runtime_closure_digest_for_required_release,
+  ollama_runtime_materialization_identity,
+  ollama_runtime_materialization_identity_for_observed_release,
+  ollama_runtime_materialization_identity_for_required_release,
 }
 import gunbc.spark_serving_observe {
   spark_serving_unit_outcome_from_probe_results,
@@ -515,13 +515,13 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
 }
 
 test fn jetpack5_asset_digest_does_not_match_required_closure_digest() -> Bool {
-  match ollama_runtime_closure_digest_for_observed_release(
+  match ollama_runtime_materialization_identity_for_observed_release(
     version: witness_pinned_runtime_version_wire,
     asset_digest_hex: witness_jetpack5_release_asset_digest_hex,
   ) {
     Present { value: jetpack_digest } =>
-      (jetpack_digest.digest as String) != (ollama_runtime_closure_digest_for_required_release().digest as String)
-        && (jetpack_digest.digest as String) == (ollama_runtime_closure_digest(rel: ollama_v0_32_9_jetpack5_release).digest as String)
+      (jetpack_digest.digest as String) != (ollama_runtime_materialization_identity_for_required_release().digest as String)
+        && (jetpack_digest.digest as String) == (ollama_runtime_materialization_identity(rel: ollama_v0_32_9_jetpack5_release).digest as String)
     Absent => false
   }
 }

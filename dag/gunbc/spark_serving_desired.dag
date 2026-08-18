@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_required_release }
+import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
 import extdeps.ollama.api {
   OllamaModelRef,
@@ -111,7 +111,7 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
       SparkServingDesiredAdmitted {
         serving_release: SparkServingRelease {
           runtime: RuntimeArtifactIdentity {
-            closure_digest: ollama_runtime_closure_digest_for_required_release().digest as NonEmptyStr,
+            closure_digest: ollama_runtime_materialization_identity_for_required_release().digest as NonEmptyStr,
           },
           model: spark_serving_desired_model_artifact(),
         },
