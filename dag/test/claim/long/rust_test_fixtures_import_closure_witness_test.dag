@@ -1,0 +1,17 @@
+module test.claim.long.rust_test_fixtures_import_closure_witness
+
+import v2.workflow.class_b_import_closure_transport {
+  class_b_declared_import_closure_lists_rust_import,
+  class_b_ambient_pool_provider_preserves_listed_import
+}
+import std.types { Bool }
+
+data class_b_witness_note: String = "Rows 1-2 of the Class B rust_test_fixtures control (#6985), delegated to v2.workflow.class_b_import_closure_transport for single authority. PATH-EXCLUDED from per-PR discovery (FalsifierSubstrateLongLane): each function has an exact explicit_witness_admission row for the falsifier cold-control cadence. Per-PR merge-blocking execution is run_class_b_import_closure_gate on source_root_ingest_gate. Predicate unit controls live in class_b_import_closure_binding_refusal_witness_test.dag and class_b_strip_receipt_witness_test.dag (discovery-admitted)."
+
+test fn declared_import_closure_lists_rust_import() -> Bool {
+  class_b_declared_import_closure_lists_rust_import()
+}
+
+test fn ambient_pool_provider_preserves_listed_import() -> Bool {
+  class_b_ambient_pool_provider_preserves_listed_import()
+}
