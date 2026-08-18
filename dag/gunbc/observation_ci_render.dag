@@ -800,7 +800,7 @@ fn ci_witness_budget_warn_text(
   )
 }
 
-data ci_shared_fill_row_note: String = "One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports one row\'s wall time: this reports the part of that wall time that was not the row\'s. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+data ci_shared_fill_row_note: String = "One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
 
 fn ci_shared_fill_row_text(
   cache: String,
