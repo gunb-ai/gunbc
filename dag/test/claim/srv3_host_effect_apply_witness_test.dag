@@ -259,7 +259,7 @@ test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_s
 }
 
 
-// THE FOUR WITNESSES BELOW DISCRIMINATE THE BMCWEB TOKEN-EXTRACT FAIL-OPEN.
+// THE FIVE WITNESSES BELOW DISCRIMINATE THE BMCWEB TOKEN-EXTRACT FAIL-OPEN.
 // jq's `// empty` alternative turns an absent or null `.token` into a run that
 // exits 0 and prints nothing, so the pre-fix realization wrote an EMPTY file to
 // srv3_bmcweb_token_path and reconciled Converged — a rejected BMC login
@@ -267,6 +267,16 @@ test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_s
 // fabricated plausible output). The verdict now lives in
 // bmcweb_token_extraction_verdict, ahead of the write, so an absent token has no
 // path to Filesystem.Write at all rather than being caught after the fact.
+//
+// THE ARGV CLAIM IS ABOUT THE FILTER, NOT THE FLAG. It asserts that the filter does not
+// carry an absence-swallowing alternative — the exact defect as found — and deliberately
+// does NOT assert the `-e` spelling. `-e` is loudness at the transport: it makes jq itself
+// report the absence rather than leaving the caller to infer it from empty output, and the
+// argv-migration lane will delete this flattened-argv form outright, so pinning its spelling
+// would pin a deletion-bound artifact instead of the requirement. The WALL is the verdict
+// below, which refuses blank stdout on its own — that is what makes `-e` optional rather
+// than load-bearing here, and it is also why `-e` alone would be insufficient: jq exits zero
+// on an empty-STRING token, which the blank arm catches and the flag does not.
 test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool {
   let argv = bmcweb_token_extract_jq_args(response_path: srv3_bmcweb_login_response_path)
   let surface = fold(
@@ -274,8 +284,7 @@ test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool {
     init: "" as String,
     f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
   )
-  string_contains(s: surface, pattern: "-e")
-    && string_contains(s: surface, pattern: ".token")
+  string_contains(s: surface, pattern: ".token")
     && !string_contains(s: surface, pattern: "// empty")
     && string_contains(s: surface, pattern: srv3_bmcweb_login_response_path)
 }

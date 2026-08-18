@@ -718,9 +718,16 @@ fn realize_bmcweb_session_login_on_host(
 // jq_run.stdout to srv3_bmcweb_token_path unconditionally and reconciled on the WRITE's
 // success, so a rejected or malformed BMC login produced an EMPTY CREDENTIAL FILE reported
 // as Converged: the fabricated plausible output DESIGN §5 forbids, at a credential seam.
-// `-e` is what makes absence loud — jq exits 1 on a null/false last output and 4 when the
-// filter produced none — and BmcwebTokenExtraction is where that exit becomes a typed,
-// located verdict. Absence now has no path to Filesystem.Write at all; the fix is not a
+// BmcwebTokenExtraction, not the flag, is the wall. `-e` is loudness at the transport — jq
+// exits 1 on a null/false last output and 4 when the filter produced none, so jq itself
+// reports the absence instead of leaving the caller to infer it from empty output — but it
+// is deliberately NOT what this fold relies on, for two reasons. `-e` reads the LAST OUTPUT,
+// so on an arbitrary filter it would convert a legitimate `false` or `null` extraction into
+// a failure; that is why it belongs at this site, where a token is required to be a nonempty
+// string, and not as a blanket flag on a general extraction operation. And `-e` still admits
+// the EMPTY STRING, which is a token this seam must refuse — so the blank arm below is
+// load-bearing and the flag is defence in depth. Absence has no path to Filesystem.Write
+// under either. The fix is not a
 // non-empty check after the write, because such a check concedes the empty file is writable
 // and was in fact satisfied by editing nothing (it lived in gunbc.srv3_os_install_actuate
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
