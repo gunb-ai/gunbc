@@ -2010,22 +2010,57 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     ) -> Rc<PreparedScopeIndexes> {
+        Self::build_scope_indexes_with_module_order(graph, source_indices, None)
+    }
+
+    /// Same walk as [`build_scope_indexes`], but when `module_order` is present the modules are
+    /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
+    /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
+    /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    ///
+    /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
+    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
+    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
+    pub fn build_scope_indexes_with_module_order(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        module_order: Option<&[String]>,
+    ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
+        let first_write_wins = module_order.is_some();
+        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
+            match module_order {
+                Some(order) => {
+                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
+                        graph
+                            .modules
+                            .iter()
+                            .map(|m| (m.func_env.name.as_str(), m))
+                            .collect();
+                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                    // `modules` from the same `order` (`in_scope` is that list), so the
+                    // filter_map cannot drop a scoped member.
+                    order
+                        .iter()
+                        .filter_map(|name| by_name.get(name.as_str()).copied())
+                        .collect()
+                }
+                None => graph.modules.iter().collect(),
+            };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
-        for module in graph.modules.iter() {
+        for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    // Bare names collide across modules; the population order is precedence
-                    // (entry module first, then import closure, then reference closure). First
-                    // write wins here to match `claim_scope_for`'s item_registry union — a
-                    // later module must not overwrite the entry's own `refusal_is` with another
-                    // witness module's homonym.
-                    if !fn_nodes.contains_key(&name) {
+                    if first_write_wins {
+                        fn_nodes.entry(name.clone()).or_insert(item.clone());
+                    } else {
                         fn_nodes.insert(name.clone(), item.clone());
                     }
                     if !module_path.is_empty() {
