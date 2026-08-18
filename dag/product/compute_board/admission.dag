@@ -12,6 +12,11 @@ import product.electrical.connectivity {
   ElectricalNet,
   ElectricalTerminalRef,
   NetIdentity,
+  component_identity_eq,
+  component_local_label,
+  design_identity_eq,
+  net_identity_eq,
+  net_local_label,
   terminal_ref_equal,
 }
 import product.compute_board.digital_control {
@@ -46,6 +51,7 @@ type BoardArticleRefusal
   | DuplicateNetIdentity { net: NonEmptyStr }
   | DuplicateSignalName { signal: NonEmptyStr }
   | NetMemberNamesNoTerminal { net: NonEmptyStr, component: NonEmptyStr, terminal: NonEmptyStr }
+  | NetMemberBelongsToAnotherDesign { net: NonEmptyStr, net_design: NonEmptyStr, member_design: NonEmptyStr }
   | BondTerminalNamesNoTerminal { component: NonEmptyStr, terminal: NonEmptyStr }
   | BondNamesUndeclaredNet { net: NonEmptyStr }
   | ReferenceNetNotDeclared { net: NonEmptyStr }
@@ -81,7 +87,7 @@ type BoardArticleAdmission
   | BoardArticleRefused { causes: BoardArticleRefusalSet }
 
 fn count_matching(names: List<NonEmptyStr>, name: NonEmptyStr) -> Nat {
-  fold(names, init: 0, f: fn(acc, n) { if (n as String) == (name as String) { acc + 1 } else { acc } })
+  fold(names, init: 0, f: fn(acc, n) { if n == name { acc + 1 } else { acc } })
 }
 
 fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
@@ -103,20 +109,20 @@ fn terminal_exists(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Boo
 }
 
 fn net_declared(intent: AnalogCircuitIntent, n: NetIdentity) -> Bool {
-  fold(intent.nets, init: false, f: fn(acc, net) { acc || (net.identity as String) == (n as String) })
+  fold(intent.nets, init: false, f: fn(acc, net) { acc || net_identity_eq(a: net.identity, b: n) })
 }
 
 // ----- analog structure -----
 
 fn duplicate_component_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_identity(c: c) as NonEmptyStr]) })
+  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_local_label(c: component_identity(c: c))]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateComponentIdentity { component: n }])
   })
 }
 
 fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net.identity as NonEmptyStr]) })
+  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net_local_label(n: net.identity)]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateNetIdentity { net: n }])
   })
@@ -125,15 +131,46 @@ fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefus
 // A net member naming a terminal no component owns is the defect the identity brands were
 // introduced to make DECIDABLE rather than to make impossible: the brand stops a chassis feature
 // being compared to a circuit node, and it does not stop a typo. This is where the typo is caught.
+// A NET MEMBER FROM ANOTHER BOARD IS A QUIETER DEFECT THAN A TYPO, and the design axis on the
+// identity does not catch it on its own. Scoped identities make the two boards' terminals UNEQUAL,
+// which is what stops a foreign terminal from being FOUND on this net -- but nothing stops such a
+// net being authored. The result is a member that is silently never on its own net: every
+// membership question about it answers no, and no question answers WHY. That is the state-space
+// conflation DESIGN section 5 forbids, one level up from the equality -- absent and wrong-board are
+// different states with different remedies, and only the refusal distinguishes them.
+//
+// It is a separate cause from the dangling member below, not a widening of it, because the remedies
+// differ: a dangling member is a typo in a terminal name, a foreign member means two designs were
+// spliced and the author has to decide which board this net belongs to. And it REPLACES the dangling
+// cause rather than accompanying it -- a foreign member never resolves to a terminal on this board,
+// so reporting both would name one problem twice and send the author hunting a typo that is not
+// there. One cause per problem, which is the same rule the net-grain causes already follow.
+fn foreign_design_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
+  fold(intent.nets, init: [], f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(inner, m) {
+      if design_identity_eq(a: net.identity.design, b: m.component.design) {
+        inner
+      } else {
+        concat(inner, [NetMemberBelongsToAnotherDesign {
+          net: net_local_label(n: net.identity),
+          net_design: net.identity.design as NonEmptyStr,
+          member_design: m.component.design as NonEmptyStr,
+        }])
+      }
+    })
+  })
+}
+
 fn dangling_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
   fold(intent.nets, init: [], f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(inner, m) {
-      if terminal_exists(intent: intent, t: m) {
+      if terminal_exists(intent: intent, t: m)
+        || !design_identity_eq(a: net.identity.design, b: m.component.design) {
         inner
       } else {
         concat(inner, [NetMemberNamesNoTerminal {
-          net: net.identity as NonEmptyStr,
-          component: m.component as NonEmptyStr,
+          net: net_local_label(n: net.identity),
+          component: component_local_label(c: m.component),
           terminal: m.terminal as NonEmptyStr,
         }])
       }
@@ -158,14 +195,14 @@ fn bond_refusals(intent: AnalogCircuitIntent, bonds: List<ElectricalBond>) -> Li
 }
 
 fn net_refusal(intent: AnalogCircuitIntent, n: NetIdentity) -> List<BoardArticleRefusal> {
-  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: n as NonEmptyStr }] }
+  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: net_local_label(n: n) }] }
 }
 
 fn terminal_refusal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> List<BoardArticleRefusal> {
   if terminal_exists(intent: intent, t: t) {
     []
   } else {
-    [BondTerminalNamesNoTerminal { component: t.component as NonEmptyStr, terminal: t.terminal as NonEmptyStr }]
+    [BondTerminalNamesNoTerminal { component: component_local_label(c: t.component), terminal: t.terminal as NonEmptyStr }]
   }
 }
 
@@ -173,7 +210,7 @@ fn reference_net_refusals(intent: AnalogCircuitIntent, reference: NetIdentity) -
   if net_declared(intent: intent, n: reference) {
     []
   } else {
-    [ReferenceNetNotDeclared { net: reference as NonEmptyStr }]
+    [ReferenceNetNotDeclared { net: net_local_label(n: reference) }]
   }
 }
 
@@ -273,7 +310,7 @@ fn article_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> 
   concat(
     concat(
       concat(duplicate_component_refusals(intent: a.analog), duplicate_net_refusals(intent: a.analog)),
-      concat(dangling_net_member_refusals(intent: a.analog), reference_net_refusals(intent: a.analog, reference: a.reference_net))
+      concat(concat(dangling_net_member_refusals(intent: a.analog), foreign_design_net_member_refusals(intent: a.analog)), reference_net_refusals(intent: a.analog, reference: a.reference_net))
     ),
     concat(
       concat(bond_refusals(intent: a.analog, bonds: a.bonds), duplicate_signal_refusals(control: a.digital_control)),
