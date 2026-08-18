@@ -171,31 +171,63 @@ by position, mean of both orders:
 spread around a 238ms mean, which is as uniform as this harness measures. So
 they are not eight independently expensive witnesses. But the first row in a
 batch is also the CHEAPEST, not the most expensive, which is the opposite of a
-shared fill with free riders.
-
-What the reversal establishes is that **cost tracks position, not identity**.
+shared fill with free riders. Cost tracks position, not identity:
 `path_data_init_derived_host_reading` costs 252ms at position 1 and 511ms at
-position 8; `live_03_normalize_witness_derived_host_reading` costs 514ms at
-position 8 and 231ms at position 1. Same rows, same closure, same head — the
-figure follows the slot. Position 1 reproduces the alone cost; every later
-position carries roughly double it.
+position 8, while `live_03_normalize_witness_derived_host_reading` costs 514ms
+at position 8 and 231ms at position 1. Same rows, same closure, same head.
 
-So there is a per-row overhead that appears once more than one witness runs in
-a batch, and it is not the first-touch shape the g2 pair shows. Both are
-attribution defects and they are not the same defect, which is worth keeping
-distinct: first-touch charges one row for a shared computation others then use
-free; this charges every row after the first for something that does not scale
-with what the row does.
+### The step is a claim_batch artifact, not a floor cost — corrected
 
-**What this does NOT license.** These figures are not a delta against the floor's
-1954-2122ms. Those eight are refused rows, so their floor numbers are
-overshoot-past-the-poll — lower bounds, not measurements — and the isolated
-figures here are measurements of a different context (71 modules, 2694 resolved
-items, against the floor's whole-corpus subject). The honest statement of the
-pair is: each row's own work measures ~238ms in isolation, and the floor
-attributes it at least 1954ms. The gap is real; its composition is not
-established by this measurement.
+An earlier revision of this section called that step "a second attribution
+defect", which implied the production path. It does not belong to the floor, and
+three independent checks say so.
 
-The one firm consequence for the lane: `effect_reach_test` is not a paring
-target. There is no version of "reduce what these witnesses reach for" that
-addresses a cost which changes when you reorder the batch.
+**Source.** `claim_batch` `run_entry_group` builds ONE ctx per entry group and
+runs every function in the group against it, calling
+`eval_call_memo_frame_exit` after each — so position 1 meets a virgin context and
+positions 2..N meet one that has already had an eviction pass. The floor's
+claim-evaluation fold in `cli_run.rs` builds `evaluation_frame` FRESH INSIDE the
+per-claim loop, and says why in source: claims sharing one immutable scope must
+not share the mutable evaluation caches a context owns. The mechanism that
+produces a once-off step in a shared ctx is one the floor deliberately does not
+have.
+
+**Cross-entry measurement.** Batching two different entries shows no step at all
+— each row costs its alone figure in either order, because each entry gets its
+own ctx:
+
+```
+                              effect_reach row    root_d row
+alone                              239               1774
+batch [effect_reach, root_d]       229               1802
+batch [root_d, effect_reach]       219               1732
+```
+
+Within one entry the step reproduces (235ms then 396ms for two rows of the same
+file). So the effect is bounded by the entry group — a property of the shared
+ctx, exactly where the source says it would be.
+
+**Floor data.** If the floor had the same step, later rows within an entry would
+cost about twice the first. Across the 32 modules in this run carrying five or
+more uncensored slow rows, the mean ratio of rest-to-first is **1.27**, spanning
+0.75 to 3.48 — several modules have a first row MORE expensive than its
+siblings, which is the first-touch shape and the opposite of the step. A shared
+mechanism would cluster near 2.0. It does not reproduce.
+
+So the position step stands as a fact about `claim_batch` and says nothing about
+floor attribution. The additive-versus-multiplicative question that would follow
+from it is therefore not a question about the production path.
+
+### What this did establish: the first confirmed paring target
+
+`root_d_checkpoint_scalar_declared_arity_witness_holds` costs **1774ms of its
+own work** run alone, in a closure of 5 modules and 160 resolved items. That
+closure is far too small for the cost to be context: it is the witness's own
+evaluation. The floor attributes 2792ms, so unlike every other row examined in
+this lane the gap is modest — about 1.6x, not a thousandfold.
+
+That makes it the first row in this lane whose expense survives isolation, and
+therefore the first genuine subject for the operator's decomposition brief. It
+is also the most stable over-budget row across runs (2792 / 2849 / 2855, a 2.3%
+spread, against 22-30% for the large ones), which is what a real cost looks like
+and what an attribution artifact does not.
