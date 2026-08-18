@@ -17,7 +17,8 @@ import gunbc.spark_serving_realization {
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
 }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark_serving_desired { spark_serving_automation_principal_login, spark_serving_desired_model_ref }
+import extdeps.ollama.api { ollama_model_ref_wire }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
 import gunbc.typed_remote_file_write {
@@ -118,6 +119,36 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
   spark_serving_admit_portable_remote_argv(
     identity: "enable-user-unit" as NonEmptyStr,
     raws: ["systemctl", "--user", "enable", "--now", spark_serving_unit_name],
+  )
+}
+
+// PULLING THE MODEL IS ONE MUTATION, AND THE NO-REPULL LAW IS NOT ENFORCED HERE.
+//
+// There is no "is it already present" check in this step, and its absence is the design rather than
+// an omission. Presence is a question about the model-slot member's OBSERVED state, answered before
+// any effect is selected: a host whose manifest identity matches desired and whose blob closure is
+// complete reconciles as converged, so no MemberAction is emitted, so this operation is never
+// reached. The law is that nothing is planned -- which is a stronger and cheaper guarantee than a
+// guard in front of a pull, because a guard still requires the pull path to run and be trusted to
+// decline, while an unplanned operation cannot contact upstream at all.
+//
+// Putting the check here would also have put it in the wrong place twice over: it would re-derive,
+// at actuation time and from a second source, a fact the observation already established; and it
+// would make the operation's behavior depend on host state read AFTER the plan was frozen, which is
+// exactly what the compare-and-swap baseline exists to prevent.
+//
+// EXIT ZERO PERMITS CONTINUATION, IT DOES NOT ESTABLISH CONVERGENCE. `ollama pull` exiting zero says
+// the command ran without error; whether the store now holds the manifest and its complete blob
+// closure is settled by re-observing the member after apply, never by this step's status.
+//
+// The ref is the wire label rather than the digest because that is what the pull interface takes.
+// The digest remains the identity every comparison is made on -- the label names what to fetch, and
+// the observation says what arrived, and conflating those is how a moved tag becomes an undetected
+// substitution.
+fn spark_serving_pull_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "pull-model-artifact" as NonEmptyStr,
+    raws: ["ollama", "pull", ollama_model_ref_wire(ref: spark_serving_desired_model_ref)],
   )
 }
 
@@ -393,10 +424,7 @@ fn realize_spark_serving_install_effect_command(
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
       }
     InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
-    PullModelArtifact =>
-      SparkServingInstallRemoteCommandsRefused {
-        reason: "spark_serving_converge_realize: PullModelArtifact is not implemented in the Spark serving slice",
-      }
+    PullModelArtifact => spark_serving_pull_model_artifact_steps()
     GrantContainerRuntimeAccess =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",

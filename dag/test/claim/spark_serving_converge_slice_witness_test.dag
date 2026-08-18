@@ -36,7 +36,9 @@ import gunbc.spark_serving_desired {
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
 }
+import std.content_hash { serialize_content_hash }
 import gunbc.ollama_runtime_bundle {
+  ModelStoreComplete,
   RuntimeMaterializationComplete,
   RuntimeMaterializationIncomplete,
   RuntimeMaterializationAbsent,
@@ -184,6 +186,10 @@ fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> Spar
     observation: SparkServingObserved { host: witness_host_srv5 as HostIdentity, loaded_release: r },
     runtime: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),
+    },
+    store: ModelStoreComplete {
+      manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
+      blob_closure_size: 1,
     },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitEnabled,

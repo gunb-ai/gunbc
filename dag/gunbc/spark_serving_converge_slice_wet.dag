@@ -53,6 +53,7 @@ import gunbc.spark_serving_observe {
   spark_serving_observe_host_via_locus,
   spark_serving_observe_user_unit_pair,
   spark_serving_observe_runtime_materialization,
+  spark_serving_observe_model_store,
   spark_serving_observed_members_for_unit,
 }
 import gunbc.remote_operation {
@@ -236,6 +237,7 @@ fn spark_serving_applied_replan_verdict(
     projection: spark_serving_observed_members_for_unit(
       observation: spark_serving_observe_host_via_locus(context: context, host: host),
       runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
+      store: spark_serving_observe_model_store(context: context, host: host),
       observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
       linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
     ),
@@ -366,6 +368,7 @@ fn spark_serving_converge_slice_wet_host_report(
               projection: spark_serving_observed_members_for_unit(
                 observation: spark_serving_observe_host_via_locus(context: context, host: host),
                 runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
+                store: spark_serving_observe_model_store(context: context, host: host),
                 observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
                 linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
               ),

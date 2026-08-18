@@ -1,6 +1,6 @@
 module gunbc.ollama_runtime_bundle
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
@@ -207,5 +207,109 @@ fn runtime_materialization_was_observed(observation: RuntimeMaterializationObser
     RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
     RuntimeMaterializationAbsent => true
     RuntimeMaterializationObservationRefused { cause: _ } => false
+  }
+}
+
+// WHAT A MODEL STORE OBSERVATION CAN HONESTLY SAY.
+//
+// The same four-way shape the runtime materialization uses, for the same reasons -- but the
+// incomplete arm here is the one that actually bites, because a model pull is long and interruptible
+// and the store's two addressing schemes fail apart.
+//
+// A MANIFEST IS NOT A MODEL. The manifest is addressed by reference and lists the blobs; the blobs
+// carry the weights. An interrupted pull leaves the manifest written and some blobs missing, which
+// is a store that LOOKS installed to any check that stops at the manifest and cannot serve a single
+// token. So `ModelStoreComplete` requires the manifest AND the closure of blobs it names, and
+// `ModelStoreIncomplete` carries which blobs are missing rather than a bare "not ready".
+//
+// Naming the missing blobs is not diagnostics for its own sake: it is what lets a repair fetch what
+// is absent instead of re-pulling a multi-gigabyte model to recover one truncated layer.
+type ModelStoreObservation
+  = ModelStoreAbsent
+  | ModelStoreIncomplete {
+      manifest_identity: NonEmptyStr
+      first_missing_blob: NonEmptyStr
+      further_missing_blobs: List<NonEmptyStr>
+    }
+  | ModelStoreComplete {
+      manifest_identity: NonEmptyStr
+      blob_closure_size: Int
+    }
+  | ModelStoreObservationRefused { cause: NonEmptyStr }
+
+// Incomplete carries at least one missing blob BY CONSTRUCTION. "Incomplete with nothing missing" is
+// not a state, and an empty list would report exactly that while reading as a real observation.
+fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmptyStr> {
+  match observation {
+    ModelStoreIncomplete {
+      manifest_identity: _,
+      first_missing_blob: b,
+      further_missing_blobs: rest,
+    } => concat([b], rest)
+    ModelStoreAbsent => []
+    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => []
+    ModelStoreObservationRefused { cause: _ } => []
+  }
+}
+
+// THE NO-REPULL LAW, stated as a projection rather than enforced by a check at the call site.
+//
+// Only a complete store contributes an observed member, and only a member's absence or difference
+// makes reconcile plan a pull. So an exact manifest with a complete blob closure yields the desired
+// value, the member compares equal, no MemberAction is produced, no PullModelArtifact is selected,
+// and nothing contacts upstream -- by construction of the projection, not by a guard someone must
+// remember to write.
+//
+// Incomplete projects a DIFFERING value derived from what is missing, so reconcile plans a repair as
+// MemberChanged rather than MemberAdded. Absent projects nothing, so a bare host plans the pull.
+// Refusal projects nothing either, and its consumer must refuse on the completeness bit rather than
+// read the absence as a fact.
+// A COMPLETE STORE'S STATE IS ITS MANIFEST IDENTITY, PASSED THROUGH UNCHANGED.
+//
+// It used to re-hash the identity with content_hash_atom together with the blob count. That
+// produced an fnv1a64 structural digest, while the desired model member carries a Sha256 identity
+// off an ollama model digest, so observed and desired could never be equal strings and the slot
+// reconciled as drift on every run -- a pull planned forever against a host that already held the
+// model. Reading a sha256 off the host was necessary but not sufficient; anything that re-digests
+// it on the way out re-opens the same gap one level up.
+//
+// The blob count is deliberately NOT folded in. "Complete" already means the closure the manifest
+// names is satisfied, so the count is derivable from the manifest rather than an independent
+// degree of freedom -- and including it would make two hosts holding the identical model disagree
+// if one of them also had an unrelated blob, which is not a difference in this member's state.
+fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? {
+  match observation {
+    ModelStoreComplete { manifest_identity: id, blob_closure_size: _ } => Present { value: id }
+    ModelStoreIncomplete {
+      manifest_identity: id,
+      first_missing_blob: b,
+      further_missing_blobs: rest,
+    } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-model-store-incomplete|manifest=", id as String,
+            "|missing=",
+            fold(concat([b], rest), init: "", f: fn(acc, blob) {
+              join([acc, ",", blob as String], "")
+            }),
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
+    ModelStoreAbsent => none
+    ModelStoreObservationRefused { cause: _ } => none
+  }
+}
+
+fn model_store_was_observed(observation: ModelStoreObservation) -> Bool {
+  match observation {
+    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => true
+    ModelStoreIncomplete {
+      manifest_identity: _,
+      first_missing_blob: _,
+      further_missing_blobs: _,
+    } => true
+    ModelStoreAbsent => true
+    ModelStoreObservationRefused { cause: _ } => false
   }
 }

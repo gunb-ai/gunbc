@@ -1,7 +1,6 @@
 module gunbc.spark_serving_observed_members
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { serialize_content_hash, content_hash_of_value }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Owned, Ensured }
 import gunbc.spark_serving_release {
@@ -9,19 +8,20 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingAbsent,
   SparkServingObservationRefused,
-  SparkServingRelease,
 }
 import extdeps.systemd.systemctl { systemctl_user_is_enabled_argv }
 import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark_serving_unit_render {
-  spark_serving_desired_user_unit_text,
   spark_serving_user_unit_content_identity,
 }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
   runtime_materialization_state_digest,
   runtime_materialization_was_observed,
+  ModelStoreObservation,
+  model_store_state_digest,
+  model_store_was_observed,
 }
 import gunbc.spark_serving_membership {
   SparkServingMember,
@@ -69,9 +69,11 @@ import gunbc.spark_serving_membership {
 // WHAT AN OBSERVATION CAN AND CANNOT ESTABLISH, as a typed value rather than an assumption.
 //
 // `SparkServingObserved` carries a `SparkServingReleaseIdentity` -- one digest over the runtime and
-// model the host actually has loaded. That is enough to state the runtime and model members. It says
-// NOTHING about the unit file's bytes: the live observer reads LoadState and is-active, not the
-// file's content and not `is-enabled`.
+// model a RUNNING server reports. An earlier revision of this comment said that was enough to state
+// the runtime and model members; it was not, and believing it is what put a process's self-report
+// behind two members keyed on bytes at rest. It says nothing about the runtime root's extraction,
+// nothing about the model store's blob closure, and nothing about the unit file's bytes -- the live
+// observer reads LoadState and is-active, not content and not `is-enabled`.
 //
 // So a converged-looking host cannot yet have its user-unit member OBSERVED, and this type says so
 // instead of guessing. `UserUnitStateUnobserved` is not a failure -- it is the honest answer for an
@@ -90,7 +92,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
   | SparkServingObservedMembersRefused { cause: String }
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -170,6 +172,41 @@ fn spark_serving_observed_runtime_members(
   }
 }
 
+// THE MODEL SLOT IS OBSERVED FROM THE STORE ON DISK, for the same reason the runtime root is.
+//
+// It was projected from `loaded.model.identity` -- the model a RUNNING server reports having loaded.
+// That is a fact about a process's current state, not about the address the member names, and the
+// two come apart in both directions that matter here. A host can hold a complete manifest and blob
+// closure with nothing running, which is a materialized model slot reporting as absent; and a server
+// can report a loaded model whose blobs were since removed underneath it, which is an absent slot
+// reporting as converged. The second is the dangerous one, because it is the state a plan would
+// decline to repair.
+//
+// Reading the address from the thing the address names also makes the no-repull law derivable rather
+// than asserted: an exact manifest identity plus a complete blob closure IS the observed digest, so
+// it equals desired and reconcile emits no action. Nothing has to check whether a pull is needed --
+// the pull is simply not planned, which is the construction form of the law rather than a guard in
+// front of it.
+//
+// Projected in BOTH arms, since a materialized store with no serving process is a real state.
+fn spark_serving_observed_model_members(
+  host: HostIdentity,
+  store: ModelStoreObservation,
+) -> List<SparkServingMember> {
+  match model_store_state_digest(observation: store) {
+    Absent => []
+    Present { value: d } => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
+        state_digest: d,
+        ownership: Owned,
+      ),
+    ]
+  }
+}
+
 // THE PROJECTION.
 //
 // `SparkServingAbsent` is a real observation, not ignorance: the host was reached and the serving
@@ -183,9 +220,24 @@ fn spark_serving_observed_runtime_members(
 //
 // `unit_observed` travels beside the members so a consumer can tell a plan built on a complete
 // observation from one built on a partial one, without inferring it from list length.
+// THE TWO REACHED ARMS ARE ONE ARM, and that is the point rather than an accident.
+//
+// They used to differ: the observed arm added a model member from `loaded.model.identity`. With
+// every member now projected from the evidence for its own address, the serving observation
+// contributes exactly two things to this population -- which host, and whether we reached it --
+// and `SparkServingObserved` versus `SparkServingAbsent` decides nothing here. Keeping them
+// written out separately would have implied a distinction the code no longer makes, and the next
+// reader would look for it.
+//
+// Note what this does NOT say. Whether a server answers is still a real and necessary fact; it is
+// simply not a fact about membership. It belongs to terminal health -- /api/version agreement,
+// loaded-model agreement, a generation completing -- which is asked after convergence, of the
+// running system, not of the addresses a plan acts on. Conflating the two is what let a running
+// server vouch for bytes on disk in the first place.
 fn spark_serving_observed_members(
   observation: SparkServingObservation,
   runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
@@ -199,52 +251,44 @@ fn spark_serving_observed_members(
           "), and an observation that could not be made must not be rendered as an empty population",
         ], ""),
       }
-    SparkServingAbsent { host: h } =>
-      SparkServingObservedMembers {
-        members: concat(
-          spark_serving_observed_runtime_members(host: h, runtime: runtime),
-          concat(
-            concat(
-              spark_serving_observed_unit_members(host: h, unit: unit),
-              spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
-            ),
-            spark_serving_observed_linger_members(host: h, linger: linger),
-          ),
-        ),
-        runtime_observed: runtime_materialization_was_observed(observation: runtime),
-        unit_observed: spark_serving_unit_state_was_observed(unit: unit),
-        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
-        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
-      }
-    SparkServingObserved { host: h, loaded_release: loaded } =>
-      SparkServingObservedMembers {
-        members: concat(
-          concat(
-            spark_serving_observed_runtime_members(host: h, runtime: runtime),
-            [
-            spark_serving_member(
-              host: h,
-              principal: spark_serving_serving_principal(),
-              address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
-              state_digest: serialize_content_hash(hash: loaded.model.identity) as NonEmptyStr,
-              ownership: Owned,
-            ),
-            ]
-          ),
-          concat(
-            concat(
-              spark_serving_observed_unit_members(host: h, unit: unit),
-              spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
-            ),
-            spark_serving_observed_linger_members(host: h, linger: linger),
-          ),
-        ),
-        runtime_observed: runtime_materialization_was_observed(observation: runtime),
-        unit_observed: spark_serving_unit_state_was_observed(unit: unit),
-        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
-        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
-      }
+    SparkServingAbsent { host: h } => spark_serving_reached_host_members(
+      host: h, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
+    )
+    SparkServingObserved { host: h, loaded_release: _ } => spark_serving_reached_host_members(
+      host: h, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
+    )
   }
+}
+
+fn spark_serving_reached_host_members(
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitEnablement,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingObservedMemberProjection {
+  SparkServingObservedMembers {
+    members: concat(
+      concat(
+        spark_serving_observed_runtime_members(host: host, runtime: runtime),
+        spark_serving_observed_model_members(host: host, store: store),
+      ),
+      concat(
+        concat(
+          spark_serving_observed_unit_members(host: host, unit: unit),
+          spark_serving_observed_unit_enablement_members(host: host, enablement: enablement),
+        ),
+        spark_serving_observed_linger_members(host: host, linger: linger),
+      ),
+    ),
+    runtime_observed: runtime_materialization_was_observed(observation: runtime),
+    model_observed: model_store_was_observed(observation: store),
+    unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+    enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
+    linger_observed: spark_serving_linger_state_was_observed(linger: linger),
+  }
+
 }
 
 // AN UNOBSERVED LINGER IS NOT A DISABLED LINGER. Both project to the empty member list -- absence is
@@ -292,8 +336,14 @@ fn spark_serving_projection_supports_empty_replan(
 ) -> Bool {
   match projection {
     SparkServingObservedMembersRefused { cause: _ } => false
-    SparkServingObservedMembers { members: _, unit_observed: observed, enablement_observed: enab_seen, linger_observed: linger_seen } =>
-      observed && enab_seen && linger_seen
+    SparkServingObservedMembers {
+      members: _,
+      runtime_observed: rt_seen,
+      model_observed: model_seen,
+      unit_observed: observed,
+      enablement_observed: enab_seen,
+      linger_observed: linger_seen,
+    } => rt_seen && model_seen && observed && enab_seen && linger_seen
   }
 }
 

@@ -2,6 +2,25 @@ module gunbc.spark_serving_observe
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
+import std.content_hash { serialize_content_hash, as_content_hash_cryptographic, sha256_hex_digest }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  json_string_value_or_empty,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonString, JsonNumber, JsonBool, JsonNull }
+import extdeps.ollama.model_store { ollama_blob_file_name }
+import gunbc.ollama_runtime_bundle {
+  ModelStoreObservation,
+  ModelStoreAbsent,
+  ModelStoreIncomplete,
+  ModelStoreComplete,
+  ModelStoreObservationRefused,
+}
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
   RuntimeMaterializationAbsent,
@@ -696,6 +715,363 @@ type SparkServingObservedUnit {
   enablement: SparkServingUnitEnablement
 }
 
+// THE MODEL STORE PRODUCER -- the evidence behind the model-slot member.
+//
+// TWO LEGS, AND THE SECOND IS THE ONE THAT MATTERS. The manifest leg answers whether the reference
+// resolves to anything at all; the blob leg answers whether the bytes it names are actually there.
+// A check that stopped at the manifest would report a store as installed when an interrupted pull
+// left the manifest written and layers missing -- a host that looks converged and cannot serve a
+// token, which is precisely the state a long, interruptible pull produces.
+//
+// THE BLOB CLOSURE IS READ FROM THE MANIFEST, NOT ASSUMED. The manifest lists its layers by digest,
+// so the set of blobs to require is upstream's answer rather than ours; deriving it from the model
+// reference would be inventing a fact the store already carries.
+//
+// The counting leg is deliberately a single argv rather than one probe per blob: a model has many
+// layers, and paying a remote round trip each would make observation cost scale with model size for
+// a fact one command answers. `grep -o` over the manifest yields the digests, and the comparison is
+// against what the blobs directory holds.
+//
+// WHAT THIS DOES NOT ESTABLISH: that the blobs are INTACT. Presence is a filename fact; a truncated
+// layer has the right name. Verifying each blob's digest is a further rung this producer does not
+// reach, and `ModelStoreComplete` is documented as meaning present-and-named, not verified.
+fn spark_serving_model_manifest_probe_argv() -> List<String> {
+  ["cat", spark_serving_desired_model_manifest_path() as String]
+}
+
+fn spark_serving_model_blobs_listing_argv() -> List<String> {
+  ["ls", "-A", spark_serving_desired_model_blobs_dir() as String]
+}
+
+// THE MANIFEST'S BLOB CLOSURE, DECODED BY THE JSON PARSER RATHER THAN SCANNED FOR.
+//
+// A `grep -o sha256:[0-9a-f]*` over the body would find the same digests today and would also find
+// any digest that appeared anywhere for any reason -- in an annotation, a media type, a field this
+// decoder does not model. Reading the structure the manifest actually declares is the difference
+// between knowing which blobs are REQUIRED and knowing which hex strings are present in a file.
+//
+// An OCI-shaped manifest carries `config` (one descriptor) and `layers` (many). Both are blobs the
+// store must hold, and omitting the config is the kind of gap that shows up as a model that pulls
+// forever because one always-missing blob is never counted.
+// A DECODE VERDICT, NOT A BARE LIST. An empty list answered for three different things -- the body
+// did not parse, a key was duplicated, the manifest genuinely named nothing -- and all three then
+// refused with the same cause, which would tell an operator "names no blob digests" about a file
+// that is in fact unparseable. The refusal was already fail-closed; what was wrong was the sentence
+// it produced, and a diagnostic that misdescribes the fault sends the reader to the wrong place.
+type SparkServingManifestDecode
+  = SparkServingManifestDigests { first: NonEmptyStr, further: List<NonEmptyStr> }
+  | SparkServingManifestUnparseable
+  | SparkServingManifestMalformed { detail: NonEmptyStr }
+  | SparkServingManifestNamesNoBlobs
+
+fn spark_serving_manifest_decode(body: String) -> SparkServingManifestDecode {
+  match parse_json(s: body) {
+    Absent => SparkServingManifestUnparseable
+    Present { value: doc } =>
+      match spark_serving_manifest_descriptor_lists(doc: doc) {
+        SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+        SparkServingManifestUnparseable => SparkServingManifestUnparseable
+        SparkServingManifestNamesNoBlobs => SparkServingManifestNamesNoBlobs
+        SparkServingManifestDigests { first: f, further: r } =>
+          SparkServingManifestDigests { first: f, further: r }
+      }
+  }
+}
+
+fn spark_serving_manifest_descriptor_lists(doc: JsonValue) -> SparkServingManifestDecode {
+  match spark_serving_manifest_config_digest(doc: doc) {
+    SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+    SparkServingManifestUnparseable => SparkServingManifestUnparseable
+    SparkServingManifestDigests { first: _, further: _ } =>
+      spark_serving_manifest_join_layers(
+        doc: doc,
+        config: spark_serving_manifest_digest_list(v: spark_serving_manifest_config_digest(doc: doc)),
+      )
+    SparkServingManifestNamesNoBlobs =>
+      spark_serving_manifest_join_layers(doc: doc, config: [])
+  }
+}
+
+fn spark_serving_manifest_join_layers(
+  doc: JsonValue,
+  config: List<NonEmptyStr>,
+) -> SparkServingManifestDecode {
+  match spark_serving_manifest_layer_digests(doc: doc) {
+    SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+    SparkServingManifestUnparseable => SparkServingManifestUnparseable
+    SparkServingManifestNamesNoBlobs =>
+      match config.first() {
+        Absent => SparkServingManifestNamesNoBlobs
+        Present { value: h } => SparkServingManifestDigests { first: h, further: config.skip(n: 1) }
+      }
+    SparkServingManifestDigests { first: lf, further: lr } => {
+      let all = concat(config, concat([lf], lr))
+      match all.first() {
+        Absent => SparkServingManifestNamesNoBlobs
+        Present { value: h } => SparkServingManifestDigests { first: h, further: all.skip(n: 1) }
+      }
+    }
+  }
+}
+
+fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<NonEmptyStr> {
+  match v {
+    SparkServingManifestDigests { first: f, further: r } => concat([f], r)
+    SparkServingManifestUnparseable => []
+    SparkServingManifestMalformed { detail: _ } => []
+    SparkServingManifestNamesNoBlobs => []
+  }
+}
+
+// A DESCRIPTOR WITHOUT A USABLE DIGEST IS MALFORMED, NOT EMPTY. A layer entry that carries no
+// digest, carries two, or carries one this decoder cannot read means the manifest is not the shape
+// upstream documents -- and treating it as "this layer requires nothing" would quietly shrink the
+// required closure, which is the direction that reports a store complete when it is not.
+fn spark_serving_descriptor_digest(v: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: v, key: "digest") {
+    JsonMemberFound { value: d } =>
+      match spark_serving_digest_hex_from_wire(wire: json_string_value_or_empty(v: d)) {
+        Absent =>
+          SparkServingManifestMalformed {
+            detail: "a descriptor digest is not a readable sha256 wire value" as NonEmptyStr,
+          }
+        Present { value: hex } => SparkServingManifestDigests { first: hex, further: [] }
+      }
+    JsonMemberAbsent =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor carries no digest" as NonEmptyStr,
+      }
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor carries more than one digest" as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor is not an object" as NonEmptyStr,
+      }
+  }
+}
+
+// `sha256:<hex>` is the WIRE spelling. The on-disk file is `sha256-<hex>`, and conflating the two is
+// how a consumer ends up looking for a file that exists on no host. The prefix is stripped here so
+// the digest travels as its hex alone and each side spells it its own way.
+fn spark_serving_digest_hex_from_wire(wire: String) -> NonEmptyStr? {
+  let parts = split(wire, ":")
+  if length(parts) == 2 && parts[0] == "sha256" && parts[1] != "" {
+    Present { value: parts[1] as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+fn spark_serving_manifest_config_digest(doc: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: doc, key: "config") {
+    JsonMemberFound { value: cfg } => spark_serving_descriptor_digest(v: cfg)
+    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one config" as NonEmptyStr }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+  }
+}
+
+fn spark_serving_manifest_layer_digests(doc: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: doc, key: "layers") {
+    JsonMemberFound { value: layers } =>
+      match layers {
+        JsonArray { elements: els } =>
+          fold(els, init: SparkServingManifestNamesNoBlobs, f: fn(acc, el) {
+            match acc {
+              SparkServingManifestMalformed { detail: d } =>
+                SparkServingManifestMalformed { detail: d }
+              SparkServingManifestUnparseable => SparkServingManifestUnparseable
+              SparkServingManifestNamesNoBlobs => spark_serving_descriptor_digest(v: el)
+              SparkServingManifestDigests { first: f, further: r } =>
+                match spark_serving_descriptor_digest(v: el) {
+                  SparkServingManifestMalformed { detail: d } =>
+                    SparkServingManifestMalformed { detail: d }
+                  SparkServingManifestUnparseable => SparkServingManifestUnparseable
+                  SparkServingManifestNamesNoBlobs =>
+                    SparkServingManifestDigests { first: f, further: r }
+                  SparkServingManifestDigests { first: nf, further: nr } =>
+                    SparkServingManifestDigests {
+                      first: f,
+                      further: concat(r, concat([nf], nr)),
+                    }
+                }
+            }
+          })
+        JsonObject { members: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonString { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonBool { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonNull =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+      }
+    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one layers key" as NonEmptyStr }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+  }
+}
+
+fn spark_serving_blob_file_name_for(digest_hex: NonEmptyStr) -> String {
+  ollama_blob_file_name(digest_hex: digest_hex)
+}
+
+// THE IDENTITY IS READ, NOT COMPUTED THIS SIDE, AND THE FAMILY IS WHY.
+//
+// An earlier revision identified the observed manifest with content_hash_atom over the bytes -- an
+// fnv1a64 structural digest. Desired carries `ModelArtifact.identity`, which comes off an ollama
+// model digest and is therefore Sha256. Comparing them does not yield "different"; it yields
+// ContentHashCrossFamilyIncomparable, so the model member could never have converged and the plan
+// could never have emptied. The cross-family wall was doing its job -- what was wrong was minting an
+// identity in whichever family happened to be convenient at the observation site.
+//
+// So the host computes it, in the family desired already speaks.
+//
+// STATED, NOT ASSUMED: that sha256 of the manifest file equals the digest `/api/tags` reports for
+// that model is an upstream property this repository has NOT verified against a live store. If it
+// does not hold, the failure is a permanently non-empty plan -- the member reconciles as drift on
+// every run and a pull is planned forever. That is loud and self-announcing, which is the direction
+// an unverified assumption is allowed to fail in; the srv6 canary is what decides it, and the empty
+// second plan is exactly the observation that would confirm or refute it.
+fn spark_serving_model_manifest_digest_argv() -> List<String> {
+  ["sha256sum", spark_serving_desired_model_manifest_path() as String]
+}
+
+fn spark_serving_observe_model_store(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> ModelStoreObservation {
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_model_manifest_probe_argv(),
+  ) {
+    Absent =>
+      ModelStoreObservationRefused {
+        cause: "model manifest probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: manifest } =>
+      if manifest.success == false {
+        if cat_reported_missing_file(result: manifest) {
+          ModelStoreAbsent
+        } else {
+          ModelStoreObservationRefused {
+            cause: join([
+              "model manifest unreadable exit=", to_string(manifest.exit_code),
+              " stderr=", manifest.stderr,
+            ], "") as NonEmptyStr,
+          }
+        }
+      } else {
+        match spark_serving_probe_leg(
+          context: context, host: host, raw_words: spark_serving_model_blobs_listing_argv(),
+        ) {
+          Absent =>
+            ModelStoreObservationRefused {
+              cause: "model blob listing leg did not run, so a complete manifest cannot be told from a complete store" as NonEmptyStr,
+            }
+          Present { value: blobs } =>
+            if blobs.success == false {
+              ModelStoreObservationRefused {
+                cause: join([
+                  "model blob listing failed exit=", to_string(blobs.exit_code),
+                  " stderr=", blobs.stderr,
+                ], "") as NonEmptyStr,
+              }
+            } else {
+              match spark_serving_probe_leg(
+                context: context, host: host,
+                raw_words: spark_serving_model_manifest_digest_argv(),
+              ) {
+                Absent =>
+                  ModelStoreObservationRefused {
+                    cause: "model manifest digest leg did not run, and an identity this side invented would not be comparable to the desired one" as NonEmptyStr,
+                  }
+                Present { value: digest } =>
+                  if digest.success == false {
+                    ModelStoreObservationRefused {
+                      cause: join([
+                        "model manifest digest failed exit=", to_string(digest.exit_code),
+                        " stderr=", digest.stderr,
+                      ], "") as NonEmptyStr,
+                    }
+                  } else {
+                    spark_serving_classify_model_store(
+                      manifest_body: manifest.stdout,
+                      manifest_digest_stdout: digest.stdout,
+                      blobs_listing: blobs.stdout,
+                    )
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// A MANIFEST THAT PARSES TO NO LAYERS IS A REFUSAL, NOT AN EMPTY STORE. A readable file naming zero
+// blobs means either the manifest is not the shape this decoder expects or upstream changed it, and
+// answering "complete with zero blobs" to either would be the emptiest possible fabrication: every
+// blob it requires is present because it requires none.
+fn spark_serving_classify_model_store(
+  manifest_body: String,
+  manifest_digest_stdout: String,
+  blobs_listing: String,
+) -> ModelStoreObservation {
+  let present = split(trim(s: blobs_listing), "\n")
+  match spark_serving_manifest_decode(body: manifest_body) {
+    SparkServingManifestUnparseable =>
+      ModelStoreObservationRefused {
+        cause: "model manifest is not parseable JSON" as NonEmptyStr,
+      }
+    SparkServingManifestMalformed { detail: d } =>
+      ModelStoreObservationRefused {
+        cause: join(["model manifest is malformed: ", d as String], "") as NonEmptyStr,
+      }
+    SparkServingManifestNamesNoBlobs =>
+      ModelStoreObservationRefused {
+        cause: "model manifest names no blob digests — refusing rather than reporting a store complete against an empty requirement" as NonEmptyStr,
+      }
+    SparkServingManifestDigests { first: rf, further: rr } => {
+      let required = concat([rf], rr)
+      let observed_identity = spark_serving_sha256sum_identity(stdout: manifest_digest_stdout)
+      let missing = fold(required, init: [], f: fn(acc, want) {
+        if any(present, p => trim(s: p) == spark_serving_blob_file_name_for(digest_hex: want)) {
+          acc
+        } else {
+          concat(acc, [want])
+        }
+      })
+      match observed_identity {
+        Absent =>
+          ModelStoreObservationRefused {
+            cause: "sha256sum output is not a readable sha256 hex digest" as NonEmptyStr,
+          }
+        Present { value: ident } =>
+          match missing.first() {
+            Absent =>
+              ModelStoreComplete {
+                manifest_identity: ident,
+                blob_closure_size: length(required),
+              }
+            Present { value: head } =>
+              ModelStoreIncomplete {
+                manifest_identity: ident,
+                first_missing_blob: head,
+                further_missing_blobs: missing.skip(n: 1),
+              }
+          }
+      }
+    }
+  }
+}
+
 fn spark_serving_observe_user_unit_pair(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -873,14 +1249,32 @@ fn spark_serving_observe_runtime_materialization(
 fn spark_serving_observed_members_for_unit(
   observation: SparkServingObservation,
   runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     observation: observation,
     runtime: runtime,
+    store: store,
     unit: observed_unit.state,
     enablement: observed_unit.enablement,
     linger: linger,
   )
+}
+
+// `sha256sum` prints "<hex>  <path>". Only the hex is taken, and it must parse as a real sha256 --
+// a truncated or error-shaped line refuses rather than becoming an identity nothing can compare.
+fn spark_serving_sha256sum_identity(stdout: String) -> NonEmptyStr? {
+  match split(trim(s: stdout), " ").first() {
+    Absent => none
+    Present { value: hex } =>
+      match sha256_hex_digest(hex: trim(s: hex)) {
+        Absent => none
+        Present { value: d } =>
+          Present {
+            value: serialize_content_hash(hash: as_content_hash_cryptographic(digest: d)) as NonEmptyStr,
+          }
+      }
+  }
 }

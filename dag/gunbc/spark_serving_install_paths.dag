@@ -11,6 +11,8 @@ import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import extdeps.ollama.binary_release { ollama_required_release, ollama_binary_release_asset_name }
+import extdeps.ollama.model_store { ollama_manifest_rel_path, ollama_model_store_layout }
+import gunbc.spark_serving_desired { spark_serving_desired_model_ref }
 
 data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
 
@@ -53,6 +55,27 @@ type SparkServingUserUnitSpec {
   exec_subcommand: NonEmptyStr
   restart: NonEmptyStr
   wanted_by: NonEmptyStr
+}
+
+// THE MODEL STORE PATHS, derived from the same models root the unit's OLLAMA_MODELS points at, so
+// the directory the server writes and the directory the observer reads cannot drift apart. The
+// reference is split into model and tag by the cited store layout rather than by string surgery
+// here, because how a reference maps to a manifest path is upstream's rule and not ours.
+fn spark_serving_desired_model_manifest_path() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", ollama_manifest_rel_path(
+      model: spark_serving_desired_model_ref.name,
+      tag: spark_serving_desired_model_ref.tag,
+    )),
+  ) as FilePath
+}
+
+fn spark_serving_desired_model_blobs_dir() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", ollama_model_store_layout.blobs_dir_rel),
+  ) as FilePath
 }
 
 fn spark_serving_user_unit_rel() -> String {
