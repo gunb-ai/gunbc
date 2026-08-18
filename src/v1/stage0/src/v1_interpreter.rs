@@ -32,10 +32,10 @@ use crate::v1_std_core::{
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
-    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, UnaryOpKind, VarBindingKind,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -3748,14 +3748,8 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if *variant_name != ctx.sym(name) {
-                        // Qualified PATTERN spellings (module.Variant) carry the containment
-                        // path; variant identity is the bare arm name, normalized at value
-                        // construction — so only the pattern side needs the last segment.
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *variant_name != ctx.sym(pat_last) {
-                            return None;
-                        }
+                    if !type_name_compatible(resolve_sym(*variant_name), name.clone()) {
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3771,7 +3765,7 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
-                    if *type_name != ctx.sym(name) {
+                    if !type_name_compatible(resolve_sym(*type_name), name.clone()) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
