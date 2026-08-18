@@ -34,6 +34,9 @@ import v2.std.text { String }
 // POPULATION: 827 identities. Cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
 // removal path working exactly as designed rather than a roster edit.
+// This branch sits 7 above that cut: 500ms-ceiling kills observed on the prepared-inventory floor
+// (clone-bound, forecast, ci_heal flaps) enrolled at identity grain. The 820 figure is still the
+// cut tree's count, not a cap this roster is allowed to grow toward.
 // The count is a fact about that exact tree and nothing else — this branch's diagnostic
 // sensitivity is not monotone across trees, so these names may not be comparable to a count taken
 // on main or on an earlier head. Each is enrolled at exact qualified-name grain, never by prefix,
