@@ -1755,30 +1755,7 @@ fn belt_observe_from_result(
   }
 }
 
-fn belt_observe_for_instance(instance: HostDashboardInstance) -> BeltObserve {
-  let ls = tmux_ls_argv_for_instance(instance: instance)
-  if belt_program_available(program: ls.program) {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: ls.program as FilePath,
-      args: ls.args,
-      expect: OutcomeIsData,
-    )
-    belt_observe_from_result(
-      success: result.success,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    )
-  } else {
-    ObserveRefused {
-      reason: "belt_observe: tmux not found on PATH; cannot observe belt session set; fail-closed (no blind spawn/reap on an unknowable observed set)",
-    }
-  }
-}
-
-fn belt_observe() -> BeltObserve {
-  belt_observe_for_instance(instance: srv1_live_dashboard_instance())
-}
+data belt_observe_entry_dissolution_note: String = "belt_observe and belt_observe_for_instance ARE DELETED. They observed the tmux session NAME set only, so a retained dead pane read as a live agent — the defect this arc removed. Both dispatch and tick now call belt_sessions_observe_for_instance, which classifies each row's process evidence.\n\nbelt_observe_from_result SURVIVES DELIBERATELY and is now reached only by witnesses. Its subject is the tmux stdout parse (nonzero exit with no documented no-server marker, unparseable line, empty set), and deleting it would delete that evidence along with the caller — the §4b rule is that a climb dissolves the lower-rung production handling, never the discriminating evidence that the higher rung stays real. Its parse duty is subsumed by classify_tmux_session_list, which the live observer uses; the dissolve-on is those parse witnesses being re-pointed at classify_tmux_session_list with the refusal cases preserved one-for-one, at which point this function and this note go together."
 
 type BeltPassOutcome
   = BeltPassRecorded
@@ -2111,26 +2088,58 @@ fn belt_tick_node_row_count(live: List<DispatchLiveSession>, node_id: String) ->
   count(filter(live, s => s.node_id == node_id))
 }
 
-fn belt_tick_session_is(live: List<DispatchLiveSession>, s: DispatchLiveSession, arm: String) -> Bool {
-  if belt_tick_node_row_count(live: live, node_id: s.node_id) > 1 {
-    arm == "conflict"
-  } else {
-    match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
-      BeltSessionRunning { session_name: _, command: _ } => arm == "running"
-      BeltSessionStaleTerminal { session_name: _, detail: _ } => arm == "stale"
-      BeltSessionLivenessUnobserved { session_name: _, reason: _ } => arm == "refused"
-      BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => arm == "conflict"
-      BeltSessionAbsent => false
+data belt_tick_session_class_note: String = "THE PARTITION READS THE COPRODUCT, NOT A PARALLEL STRING VOCABULARY (review artifact 51309). The first cut asked belt_tick_session_is(s, arm: \"running\") and compared string arms — a second naming scheme for BeltSessionLiveness, which already names exactly these states. Two vocabularies for one concept is the nicknaming class, and the string one is strictly worse: a typo in an arm name compiles and silently empties a bucket, where a missing coproduct arm is a non-exhaustive match the compiler catches.\n\nThe node-awareness stays here rather than moving into belt_session_liveness_from_process, because multiplicity is a fact about a NODE's rows and that function sees one row's process. belt_node_session_liveness makes the same distinction on the dispatch path."
+
+fn belt_tick_session_class(
+  live: List<DispatchLiveSession>,
+  s: DispatchLiveSession,
+) -> BeltSessionLiveness {
+  let n = belt_tick_node_row_count(live: live, node_id: s.node_id)
+  if n > 1 {
+    BeltSessionMultiplicityConflict {
+      session_names: join(
+        map(filter(live, r => r.node_id == s.node_id), r => r.session_name), ", "),
+      session_count: n,
     }
+  } else {
+    belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process)
+  }
+}
+
+fn belt_tick_is_running(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionRunning { session_name: _, command: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_stale(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_refused(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_conflicted(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
+    _ => false
   }
 }
 
 fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
   BeltTickSessionPartition {
-    running: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "running")),
-    stale: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "stale")),
-    refused: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "refused")),
-    conflicted: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "conflict")),
+    running: filter(live, s => belt_tick_is_running(live: live, s: s)),
+    stale: filter(live, s => belt_tick_is_stale(live: live, s: s)),
+    refused: filter(live, s => belt_tick_is_refused(live: live, s: s)),
+    conflicted: filter(live, s => belt_tick_is_conflicted(live: live, s: s)),
   }
 }
 
@@ -4899,7 +4908,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
   }
 }
 
-data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: an 8th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
+data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a NEW variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
 fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
   [

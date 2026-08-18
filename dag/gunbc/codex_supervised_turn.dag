@@ -1,0 +1,747 @@
+module gunbc.codex_supervised_turn
+
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.algebra { trim }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.temporal_effect {
+  HeldLease,
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeasePortForeign,
+  LeaseInaccessible,
+  TemporalEffectPolicy,
+  HeldSessionLease,
+}
+import gunbc.roadmap_workflow_command { WorkerTurn, AttemptKey }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnDisposition,
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  ProviderTurnNotObserved,
+  ProviderNativeCauseUnknown,
+  press_display_finished,
+}
+import gunbc.codex_app_server_press {
+  CodexAccountStandingReceipt,
+  AmbientCodexCredentialContext,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
+  parse_account_trip_session,
+  AccountTripDigestRetainPrivateSha512,
+  AccountStandingClassification,
+  AccountStandingAuthenticatedRateLimitsReadable,
+  AccountStandingLoginRequired,
+  AccountStandingQuotaReached,
+  AccountStandingInitializeMissing,
+  AccountStandingIncomplete,
+}
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import gunbc.provider_standing_probe_bridge {
+  provider_standing_bundle_from_codex_press_receipt,
+}
+import gunbc.provider_standing { ProviderStandingBundle }
+import gunbc.provider_wire_evidence {
+  ProviderWireEvidenceReceipt,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
+  retain_provider_wire_capture,
+}
+import extdeps.llm.codex_app_server {
+  codex_supervised_thread_start_id,
+  codex_supervised_turn_start_wire_id,
+  codex_thread_start_result_thread_key,
+  codex_turn_start_result_turn_key,
+  codex_entity_id_key,
+  codex_app_server_turn_start_request_line,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonObject,
+  JsonString,
+  JsonNumber,
+  JsonBool,
+  JsonArray,
+  JsonNull,
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+
+data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
+
+data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
+
+data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
+
+data codex_supervised_turn_wet_handoff_note: String = "BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses — admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1 only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b: wet_select_codex_exact_target_closure_only (2G). Step 2: wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle fixed; then enroll via gunbc.explicit_witness_admission."
+
+data codex_supervised_client_command_id_file_name: String = "/codex_supervised_client_command_id"
+
+data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
+
+data codex_supervised_operator_verdict_note: String = "OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold. codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until session driver lands."
+
+data codex_supervised_thread_id_slot: NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as NonEmptyStr
+type CodexThreadActivity
+  = CodexThreadAbsent
+  | CodexThreadIdle
+  | CodexThreadBusy
+  | CodexThreadActivityUnobserved { reason: NonEmptyStr }
+
+type CodexSupervisedTurnBinding {
+  turn: WorkerTurn
+  lease: HeldLease
+  execution_policy: TemporalEffectPolicy
+  standing_receipt: CodexAccountStandingReceipt?
+}
+
+type CodexSupervisedTurnBindingPrepare
+  = CodexSupervisedTurnBindingPrepared { binding: CodexSupervisedTurnBinding }
+  | CodexSupervisedTurnBindingPrepareRefused { reason: NonEmptyStr }
+
+type CodexRunnerTurnTerminalReceipt {
+  binding: CodexSupervisedTurnBinding
+  native_thread_id: NonEmptyStr?
+  native_turn_id: NonEmptyStr?
+  client_command_id: NonEmptyStr
+  disposition: ProviderTurnDisposition
+  wire_evidence: ProviderWireEvidenceReceipt?
+}
+
+type CodexTurnStartAdmission
+  = CodexTurnStartAdmitted
+  | CodexTurnStartRefusedDuplicateExecution { reason: NonEmptyStr }
+  | CodexTurnStartRefusedOutcomeUnobserved { reason: NonEmptyStr }
+
+type CodexSupervisedGenerationRead
+  = GenerationAbsent
+  | GenerationRead { generation: Int }
+  | GenerationStoreUnreadable { reason: NonEmptyStr }
+  | GenerationStoreMalformed { content: String }
+  | GenerationStoreNegative { value: Int }
+
+type CodexSupervisedTurnOutcome
+  = CodexSupervisedTurnOk { receipt: CodexRunnerTurnTerminalReceipt }
+  | CodexSupervisedTurnRefused { reason: NonEmptyStr }
+  | CodexSupervisedTurnUnavailable { reason: NonEmptyStr, process: ProviderProcessReceipt }
+
+type SupervisedRpcObservation
+  = SupervisedRpcAbsent
+  | SupervisedRpcOk { native_id: NonEmptyStr }
+  | SupervisedRpcError { reason: NonEmptyStr }
+  | SupervisedRpcDuplicate { count: Int }
+
+type SupervisedTurnTerminalSignal
+  = SupervisedTurnTerminalAbsent
+  | SupervisedTurnTerminalCompleted
+  | SupervisedTurnTerminalFailed { reason: NonEmptyStr }
+
+type SupervisedTurnParseAcc {
+  thread_start: SupervisedRpcObservation
+  turn_start: SupervisedRpcObservation
+  turn_terminal: SupervisedTurnTerminalSignal
+}
+
+fn codex_supervised_turn_lease_key(attempt_key: AttemptKey, turn_key: String) -> NonEmptyStr {
+  concat(attempt_key, concat("/", turn_key)) as NonEmptyStr
+}
+
+fn codex_supervised_turn_resource_fingerprint(
+  credential: AmbientCodexCredentialContext,
+  attempt_key: AttemptKey,
+) -> ContentHash {
+  content_hash_of_value(
+    value: join([credential.codex_home as String, attempt_key], "|"),
+  )
+}
+
+fn codex_supervised_turn_owner_fingerprint(turn: WorkerTurn) -> ContentHash {
+  content_hash_of_value(
+    value: codex_supervised_turn_client_command_id(turn: turn) as String,
+  )
+}
+
+fn codex_supervised_turn_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
+  HeldSessionLease { lease_key: lease_key }
+}
+
+fn codex_supervised_turn_client_command_id(turn: WorkerTurn) -> NonEmptyStr {
+  concat(turn.attempt_key, concat("/", turn.turn_key)) as NonEmptyStr
+}
+
+fn codex_supervised_turn_binding(
+  turn: WorkerTurn,
+  credential: AmbientCodexCredentialContext,
+  prior_generation: Int,
+  observed: HeldLeaseObservedState,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> CodexSupervisedTurnBinding {
+  let lease_key = codex_supervised_turn_lease_key(
+    attempt_key: turn.attempt_key,
+    turn_key: turn.turn_key,
+  )
+  CodexSupervisedTurnBinding {
+    turn: turn,
+    lease: HeldLease {
+      lease_key: lease_key,
+      resource_fingerprint: codex_supervised_turn_resource_fingerprint(
+        credential: credential,
+        attempt_key: turn.attempt_key,
+      ),
+      owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
+      generation: prior_generation + 1,
+      observed: observed,
+    },
+    execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
+    standing_receipt: standing_receipt,
+  }
+}
+
+fn codex_supervised_turn_binding_with_observed(
+  binding: CodexSupervisedTurnBinding,
+  observed: HeldLeaseObservedState,
+) -> CodexSupervisedTurnBinding {
+  CodexSupervisedTurnBinding {
+    turn: binding.turn,
+    lease: HeldLease {
+      lease_key: binding.lease.lease_key,
+      resource_fingerprint: binding.lease.resource_fingerprint,
+      owner_fingerprint: binding.lease.owner_fingerprint,
+      generation: binding.lease.generation,
+      observed: observed,
+    },
+    execution_policy: binding.execution_policy,
+    standing_receipt: binding.standing_receipt,
+  }
+}
+
+fn codex_supervised_turn_client_command_id_store_path(evidence_root: FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_client_command_id_file_name)
+}
+
+fn codex_supervised_turn_generation_store_path(evidence_root: FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_turn_generation_file_name)
+}
+
+fn codex_supervised_generation_read_from_content(content: String) -> CodexSupervisedGenerationRead {
+  let trimmed = trim(s: content)
+  if trimmed == "" {
+    GenerationStoreMalformed { content: content }
+  } else {
+    match parse_int(s: trimmed) {
+      Absent => GenerationStoreMalformed { content: content }
+      Present { value: n } =>
+        if n >= 0 {
+          GenerationRead { generation: n }
+        } else {
+          GenerationStoreNegative { value: n }
+        }
+    }
+  }
+}
+
+fn codex_supervised_generation_read_from_store(
+  store_present: Bool,
+  read_success: Bool,
+  content: String,
+) -> CodexSupervisedGenerationRead {
+  if store_present == false {
+    GenerationAbsent
+  } else if read_success == false {
+    GenerationStoreUnreadable {
+      reason: "supervised turn generation store unreadable" as NonEmptyStr,
+    }
+  } else {
+    codex_supervised_generation_read_from_content(content: content)
+  }
+}
+
+fn read_codex_supervised_turn_prior_generation(evidence_root: FilePath) -> CodexSupervisedGenerationRead {
+  let path = codex_supervised_turn_generation_store_path(evidence_root: evidence_root)
+  if shell.Test.IsFile(path: path as FilePath).is_file == false {
+    GenerationAbsent
+  } else {
+    let read = Filesystem.Read(path: path)
+    codex_supervised_generation_read_from_store(
+      store_present: true,
+      read_success: read.success,
+      content: read.content,
+    )
+  }
+}
+
+fn codex_supervised_turn_generation_admission(
+  read: CodexSupervisedGenerationRead,
+) -> CodexTurnStartAdmission {
+  match read {
+    GenerationAbsent => CodexTurnStartAdmitted
+    GenerationRead { generation: _ } => CodexTurnStartAdmitted
+    GenerationStoreUnreadable { reason: r } =>
+      CodexTurnStartRefusedDuplicateExecution { reason: r }
+    GenerationStoreMalformed { content: c } =>
+      CodexTurnStartRefusedDuplicateExecution {
+        reason: concat("generation store malformed: ", c) as NonEmptyStr,
+      }
+    GenerationStoreNegative { value: v } =>
+      CodexTurnStartRefusedDuplicateExecution {
+        reason: concat("generation store negative: ", to_string(n: v)) as NonEmptyStr,
+      }
+  }
+}
+
+fn persist_codex_supervised_turn_generation(
+  evidence_root: FilePath,
+  generation: Int,
+) -> Bool {
+  Filesystem.Write(
+    path: codex_supervised_turn_generation_store_path(evidence_root: evidence_root),
+    content: to_string(n: generation),
+  ).success
+}
+
+fn persist_codex_supervised_turn_client_command_id(
+  evidence_root: FilePath,
+  client_command_id: NonEmptyStr,
+) -> Bool {
+  Filesystem.Write(
+    path: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
+    content: client_command_id as String,
+  ).success
+}
+
+fn prepare_codex_supervised_turn_binding(
+  turn: WorkerTurn,
+  credential: AmbientCodexCredentialContext,
+  evidence_root: FilePath,
+  observed: HeldLeaseObservedState,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> CodexSupervisedTurnBindingPrepare {
+  let generation_read = read_codex_supervised_turn_prior_generation(evidence_root: evidence_root)
+  match codex_supervised_turn_generation_admission(read: generation_read) {
+    CodexTurnStartAdmitted => {
+      let prior_generation = match generation_read {
+        GenerationAbsent => 0
+        GenerationRead { generation: g } => g
+        _ => 0
+      }
+      CodexSupervisedTurnBindingPrepared {
+        binding: codex_supervised_turn_binding(
+          turn: turn,
+          credential: credential,
+          prior_generation: prior_generation,
+          observed: observed,
+          standing_receipt: standing_receipt,
+        ),
+      }
+    }
+    CodexTurnStartRefusedDuplicateExecution { reason: r } =>
+      CodexSupervisedTurnBindingPrepareRefused { reason: r }
+    CodexTurnStartRefusedOutcomeUnobserved { reason: r } =>
+      CodexSupervisedTurnBindingPrepareRefused { reason: r }
+  }
+}
+
+fn codex_supervised_turn_session_standing_admits(
+  classification: AccountStandingClassification,
+) -> Bool {
+  match classification {
+    AccountStandingAuthenticatedRateLimitsReadable => true
+    AccountStandingLoginRequired => false
+    AccountStandingQuotaReached => false
+    AccountStandingInitializeMissing => false
+    AccountStandingIncomplete => false
+  }
+}
+
+fn codex_turn_start_admission(
+  terminal_receipt: CodexRunnerTurnTerminalReceipt?,
+  thread: CodexThreadActivity,
+) -> CodexTurnStartAdmission {
+  match thread {
+    CodexThreadBusy =>
+      CodexTurnStartRefusedOutcomeUnobserved {
+        reason: "thread reports a turn in flight; await runner terminal receipt" as NonEmptyStr,
+      }
+    CodexThreadActivityUnobserved { reason: r } =>
+      CodexTurnStartRefusedOutcomeUnobserved { reason: r }
+    CodexThreadAbsent => CodexTurnStartAdmitted
+    CodexThreadIdle =>
+      match terminal_receipt {
+        Absent =>
+          CodexTurnStartRefusedDuplicateExecution {
+            reason: "thread idle without runner terminal receipt; partial work may exist on disk" as NonEmptyStr,
+          }
+        Present { value: receipt } =>
+          if press_display_finished(disposition: receipt.disposition) {
+            CodexTurnStartAdmitted
+          } else {
+            CodexTurnStartRefusedOutcomeUnobserved {
+              reason: "prior turn lacks a finished terminal disposition from the runner" as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+fn provider_standing_bundle_from_codex_supervised_binding(
+  binding: CodexSupervisedTurnBinding,
+) -> ProviderStandingBundle? {
+  match binding.standing_receipt {
+    Absent => none
+    Present { value: receipt } =>
+      Present {
+        value: provider_standing_bundle_from_codex_press_receipt(receipt: receipt),
+      }
+  }
+}
+
+fn codex_supervised_turn_start_line_template(user_input: String) -> String {
+  codex_app_server_turn_start_request_line(
+    thread_id: codex_supervised_thread_id_slot,
+    user_input: user_input,
+  ) as String
+}
+
+fn supervised_thread_id_from_line(line: String) -> NonEmptyStr? {
+  let trimmed = line.trim()
+  if trimmed == "" {
+    none
+  } else {
+    match parse_json(s: trimmed) {
+      Absent => none
+      Present { value: parsed } =>
+        match supervised_rpc_from_id_response(
+          id: codex_supervised_thread_start_id,
+          obj: parsed,
+          entity_key: codex_thread_start_result_thread_key as String,
+        ) {
+          SupervisedRpcOk { native_id: id } => Present { value: id }
+          _ => none
+        }
+    }
+  }
+}
+
+fn native_id_from_entity_result(result: JsonValue, entity_key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: result, key: entity_key) {
+    JsonMemberFound { value: entity } =>
+      match entity {
+        JsonObject { members: _ } =>
+          match json_object_unique_member(
+            v: entity,
+            key: codex_entity_id_key as String,
+          ) {
+            JsonMemberFound { value: JsonString { value: id } } =>
+              if id == "" {
+                none
+              } else {
+                Present { value: id as NonEmptyStr }
+              }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn supervised_rpc_from_id_response(
+  id: Int,
+  obj: JsonValue,
+  entity_key: String,
+) -> SupervisedRpcObservation {
+  match json_object_unique_member(v: obj, key: "error") {
+    JsonMemberFound { value: err } =>
+      SupervisedRpcError {
+        reason: concat(
+          "json-rpc error on id ",
+          concat(to_string(n: id), concat(": ", serialize_supervised_rpc_error(err: err))),
+        ) as NonEmptyStr,
+      }
+    JsonMemberAbsent =>
+      match json_object_unique_member(v: obj, key: "result") {
+        JsonMemberFound { value: result } =>
+          match native_id_from_entity_result(result: result, entity_key: entity_key) {
+            Present { value: native_id } => SupervisedRpcOk { native_id: native_id }
+            Absent =>
+              SupervisedRpcError {
+                reason: concat(
+                  "id ",
+                  concat(
+                    to_string(n: id),
+                    concat(": result missing ", concat(entity_key, " id")),
+                  ),
+                ) as NonEmptyStr,
+              }
+          }
+        JsonMemberAbsent =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": missing result")) as NonEmptyStr,
+          }
+        JsonMemberDuplicated { count: _ } =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": duplicate result")) as NonEmptyStr,
+          }
+        JsonMemberNotAnObject =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": result not object")) as NonEmptyStr,
+          }
+      }
+    JsonMemberDuplicated { count: _ } =>
+      SupervisedRpcError {
+        reason: concat("id ", concat(to_string(n: id), ": duplicate error")) as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      SupervisedRpcError {
+        reason: concat("id ", concat(to_string(n: id), ": error not object")) as NonEmptyStr,
+      }
+  }
+}
+
+fn serialize_supervised_rpc_error(err: JsonValue) -> String {
+  match err {
+    JsonObject { members: _ } => "structured error" as String
+    JsonNull => "unstructured error" as String
+    JsonBool { value: _ } => "unstructured error" as String
+    JsonNumber { lexeme: _ } => "unstructured error" as String
+    JsonString { value: _ } => "unstructured error" as String
+    JsonArray { elements: _ } => "unstructured error" as String
+  }
+}
+
+fn supervised_turn_terminal_from_notification(parsed: JsonValue) -> SupervisedTurnTerminalSignal {
+  match json_object_unique_member(v: parsed, key: "method") {
+    JsonMemberFound { value: JsonString { value: method } } =>
+      if method == "turn/completed" {
+        SupervisedTurnTerminalCompleted
+      } else if method == "turn/failed" {
+        SupervisedTurnTerminalFailed {
+          reason: "turn/failed notification" as NonEmptyStr,
+        }
+      } else {
+        SupervisedTurnTerminalAbsent
+      }
+    _ => SupervisedTurnTerminalAbsent
+  }
+}
+
+fn absorb_supervised_rpc(
+  current: SupervisedRpcObservation,
+  next: SupervisedRpcObservation,
+) -> SupervisedRpcObservation {
+  match current {
+    SupervisedRpcAbsent => next
+    SupervisedRpcOk { native_id: _ } =>
+      SupervisedRpcDuplicate { count: 2 }
+    SupervisedRpcError { reason: _ } =>
+      SupervisedRpcDuplicate { count: 2 }
+    SupervisedRpcDuplicate { count: c } => SupervisedRpcDuplicate { count: c + 1 }
+  }
+}
+
+fn absorb_supervised_turn_line(
+  acc: SupervisedTurnParseAcc,
+  line: String,
+) -> SupervisedTurnParseAcc {
+  let trimmed = line.trim()
+  if trimmed == "" {
+    acc
+  } else {
+    match parse_json(s: trimmed) {
+      Absent => acc
+      Present { value: parsed } =>
+        match json_object_unique_member(v: parsed, key: "id") {
+          JsonMemberFound { value: idv } =>
+            match json_rpc_id_as_int(v: idv) {
+              Present { value: n } =>
+                if n == codex_supervised_thread_start_id {
+                  SupervisedTurnParseAcc {
+                    thread_start: absorb_supervised_rpc(
+                      current: acc.thread_start,
+                      next: supervised_rpc_from_id_response(
+                        id: n,
+                        obj: parsed,
+                        entity_key: codex_thread_start_result_thread_key as String,
+                      ),
+                    ),
+                    turn_start: acc.turn_start,
+                    turn_terminal: acc.turn_terminal,
+                  }
+                } else if n == codex_supervised_turn_start_wire_id {
+                  SupervisedTurnParseAcc {
+                    thread_start: acc.thread_start,
+                    turn_start: absorb_supervised_rpc(
+                      current: acc.turn_start,
+                      next: supervised_rpc_from_id_response(
+                        id: n,
+                        obj: parsed,
+                        entity_key: codex_turn_start_result_turn_key as String,
+                      ),
+                    ),
+                    turn_terminal: acc.turn_terminal,
+                  }
+                } else {
+                  acc
+                }
+              Absent =>
+                match supervised_turn_terminal_from_notification(parsed: parsed) {
+                  SupervisedTurnTerminalAbsent => acc
+                  signal =>
+                    SupervisedTurnParseAcc {
+                      thread_start: acc.thread_start,
+                      turn_start: acc.turn_start,
+                      turn_terminal: signal,
+                    }
+                }
+            }
+          _ =>
+            match supervised_turn_terminal_from_notification(parsed: parsed) {
+              SupervisedTurnTerminalAbsent => acc
+              signal =>
+                SupervisedTurnParseAcc {
+                  thread_start: acc.thread_start,
+                  turn_start: acc.turn_start,
+                  turn_terminal: signal,
+                }
+            }
+        }
+    }
+  }
+}
+
+fn json_rpc_id_as_int(v: JsonValue) -> Int? {
+  match v {
+    JsonNumber { lexeme: l } => parse_int(s: l as String)
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn empty_supervised_turn_parse_acc() -> SupervisedTurnParseAcc {
+  SupervisedTurnParseAcc {
+    thread_start: SupervisedRpcAbsent,
+    turn_start: SupervisedRpcAbsent,
+    turn_terminal: SupervisedTurnTerminalAbsent,
+  }
+}
+
+fn parse_supervised_turn_stdout(stdout: String) -> SupervisedTurnParseAcc {
+  fold(
+    split(s: stdout, delimiter: "\n"),
+    init: empty_supervised_turn_parse_acc(),
+    f: (acc, line) => absorb_supervised_turn_line(acc: acc, line: line),
+  )
+}
+
+fn disposition_from_supervised_parse(
+  parse: SupervisedTurnParseAcc,
+  exit_code: Int?,
+) -> ProviderTurnDisposition {
+  match parse.turn_terminal {
+    SupervisedTurnTerminalCompleted => ProviderTurnCompleted
+    SupervisedTurnTerminalFailed { reason: r } =>
+      ProviderTurnFailed {
+        cause: ProviderNativeCauseUnknown { evidence: r },
+      }
+    SupervisedTurnTerminalAbsent =>
+      match exit_code {
+        Present { value: code } =>
+          if code == 0 {
+            ProviderTurnNotObserved
+          } else {
+            ProviderTurnFailed {
+              cause: ProviderNativeCauseUnknown {
+                evidence: concat(
+                  "app-server exited ",
+                  to_string(n: code),
+                  "",
+                ) as NonEmptyStr,
+              },
+            }
+          }
+        Absent => ProviderTurnNotObserved
+      }
+  }
+}
+
+fn codex_runner_turn_terminal_receipt(
+  binding: CodexSupervisedTurnBinding,
+  parse: SupervisedTurnParseAcc,
+  disposition: ProviderTurnDisposition,
+  wire: ProviderWireEvidenceReceipt?,
+) -> CodexRunnerTurnTerminalReceipt {
+  CodexRunnerTurnTerminalReceipt {
+    binding: binding,
+    native_thread_id: match parse.thread_start {
+      SupervisedRpcOk { native_id: id } => Present { value: id }
+      _ => none
+    },
+    native_turn_id: match parse.turn_start {
+      SupervisedRpcOk { native_id: id } => Present { value: id }
+      _ => none
+    },
+    client_command_id: codex_supervised_turn_client_command_id(turn: binding.turn),
+    disposition: disposition,
+    wire_evidence: wire,
+  }
+}
+
+fn codex_supervised_turn_outcome_from_capture(
+  running_binding: CodexSupervisedTurnBinding,
+  stdout: String,
+  stderr: String,
+  exit_code: Int?,
+  wire: ProviderWireEvidenceReceipt?,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
+  let session_standing = parse_account_trip_session(
+    stdout: stdout,
+    stderr: stderr,
+    evidence_root: evidence_root,
+    mode: AccountTripDigestRetainPrivateSha512,
+  )
+  if codex_supervised_turn_session_standing_admits(
+    classification: session_standing.classification,
+  ) == false {
+    CodexSupervisedTurnRefused {
+      reason: "in-session account/rateLimits standing not readable" as NonEmptyStr,
+    }
+  } else {
+    let parse = parse_supervised_turn_stdout(stdout: stdout)
+    let disposition = disposition_from_supervised_parse(
+      parse: parse,
+      exit_code: exit_code,
+    )
+    let terminal_binding = codex_supervised_turn_binding_with_observed(
+      binding: running_binding,
+      observed: LeaseAbsent,
+    )
+    if persist_codex_supervised_turn_generation(
+      evidence_root: evidence_root,
+      generation: terminal_binding.lease.generation,
+    ) == false {
+      CodexSupervisedTurnRefused {
+        reason: "failed to persist supervised turn generation fence" as NonEmptyStr,
+      }
+    } else {
+      let receipt = codex_runner_turn_terminal_receipt(
+        binding: terminal_binding,
+        parse: parse,
+        disposition: disposition,
+        wire: wire,
+      )
+      CodexSupervisedTurnOk { receipt: receipt }
+    }
+  }
+}

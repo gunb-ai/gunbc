@@ -3409,6 +3409,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: s } => s.params
         Absent => []
       }
+      let call_sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
@@ -3434,9 +3435,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } }
       } else {
 
-        let sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
-        let value_params = sig_split.value_params
-        let generic_names = sig_split.generic_names
+        let value_params = call_sig_split.value_params
+        let generic_names = call_sig_split.generic_names
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -3483,7 +3483,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
-        let value_params_for_check = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices).value_params
+        let value_params_for_check = call_sig_split.value_params
         let arg_shape_diags = direct_call_shape_diags(
           func_name: func_name,
           sig_params: sig_params,
@@ -5033,10 +5033,11 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     Absent => ""
   }
   let si_presence = scope.type_env.source_indices
+  let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
   let presence_fields = if tn_str == "" {
     []
   } else {
-    match variant_owner_node(scope: scope, name: tn_str) {
+    match presence_variant_owner {
       Present { value: variant_owner } =>
         match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == qualified_last_segment(name: tn_str)) |> first {
           Present { value: variant_node } => variant_node.children
@@ -5046,7 +5047,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
         match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
           Present { value: variant_node } => variant_node.children
           Absent =>
-        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+        match instantiated_struct_fields {
           Present { value: inst_fields } => inst_fields
           Absent =>
             match lookup_type_by_name(env: scope.type_env, name: tn_str) {
@@ -5063,7 +5064,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     }
   }
   let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
-    && variant_owner_node(scope: scope, name: tn_str) != none
+    && presence_variant_owner != none
   let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
     && map_get(scope.type_env.str_bindings, tn_str) == none
   let presence_ambiguity_refusal_diags = if tn_str != "" && map_get(scope.type_env.str_bindings, tn_str) == none {
@@ -9373,6 +9374,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
+  let module_type_env_cache = TypeEnvCache {
+    deps_map: env_cache.deps_map,
+    str_bindings: env_cache.str_bindings,
+    cycle_set_str: env_cache.cycle_set_str,
+    variant_locals: ctx.variant_locals
+  }
   let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
@@ -9381,22 +9388,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       module: typed_module,
       items: reannotated_items,
       type_env: env,
-      type_env_cache: TypeEnvCache {
-        deps_map: env_cache.deps_map,
-        str_bindings: env_cache.str_bindings,
-        cycle_set_str: env_cache.cycle_set_str,
-        variant_locals: ctx.variant_locals
-      },
+      type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
         env: env,
-        cache: TypeEnvCache {
-          deps_map: env_cache.deps_map,
-          str_bindings: env_cache.str_bindings,
-          cycle_set_str: env_cache.cycle_set_str,
-          variant_locals: ctx.variant_locals
-        },
+        cache: module_type_env_cache,
         source_indices: source_indices
       ),
       func_env: updated_func_env,

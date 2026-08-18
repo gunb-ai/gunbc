@@ -64,7 +64,6 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
-  belt_observe, belt_observe_for_instance,
   belt_sessions_observe_for_instance,
   belt_sessions_observed_json, belt_sessions_http_status,
   BeltAttempts, AttemptsObserved, AttemptsRefused,

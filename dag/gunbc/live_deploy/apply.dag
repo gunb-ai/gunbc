@@ -402,6 +402,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
           evidence: ShellEffectApplied {
             exit_code: 0,
             stdout: deploy_access_preflight_pass_message(access: access),
+            stderr: "",
           },
           applied: intent,
         }
