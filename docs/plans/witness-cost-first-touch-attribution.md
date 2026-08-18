@@ -341,3 +341,47 @@ cluster's residual ~820ms is assertion work or per-process warm-up of a
 those needs two rows of one module measured on a harness without `claim_batch`'s
 shared-ctx step, which does not exist today. Until then the honest reading is
 that ~820ms is *not shared across the eighteen* — not that it is assertion work.
+
+## root_d: the cost is one claim's fixture import, not the witness
+
+`root_d_checkpoint_scalar_declared_arity_witness_holds` is one `test fn`
+conjoining three claims, two of which call `compile_dag_rust_emit_check` on a
+small virtual module. Measured by splitting them temporarily and running each in
+isolation (5 modules, 163 resolved items):
+
+```
+claim                                              verdict     cpu
+positive fixture (declared-arity leaf)               PASS      36ms
+arity-0 scalar still strips phantom arguments        PASS    1782ms
+authority answers for both fixtures                  PASS       0ms
+```
+
+**All three pass**, and one claim carries essentially the entire 1774ms. Two
+things follow, and the first corrects an assumption made before measuring.
+
+**The expensive claim is not the one carrying the defect.** The row is enrolled
+in `floor_expected_red`, which invites the reading that its positive fixture is
+red and expensive. It is neither: the positive fixture costs 36ms and passes.
+The row passes as a whole and is therefore a stale quarantine, consistent with
+the floor's `stale_quarantine=5`.
+
+**The cost is an import in a fixture string, not an assertion.** Both expensive-
+looking claims call the same checker on a two-line module. The difference between
+36ms and 1782ms is that the second fixture's source begins
+`import std.integer { Int8 }`, so the emit check compiles that closure, while the
+first declares its `Witness<C>` inline and imports nothing. The 1774ms is the
+cost of compiling `std.integer` inside a virtual fixture — not the cost of
+proving anything about checkpoint-scalar arity.
+
+**Why no split is proposed here.** Splitting would move the 1782ms onto a new
+identity that is not on the expected-red roster, turning a budget-refused
+quarantined row into an ordinary over-budget failure — worse than the state it
+replaces. The decomposition only becomes correct together with the fixture fix,
+and that fix is a judgement about whether the arity-0 wall can be witnessed by a
+scalar that does not drag `std.integer` in, which belongs to whoever owns Root D
+rather than to a cost lane. Recorded here with the measurement so that decision
+can be made on facts rather than on the row's size.
+
+So the corpus's one row whose cost survived every screen is, on inspection, also
+not a witness-decomposition subject. Its expense is a fixture-authoring choice
+with a localised cause and a plausibly cheap fix.
