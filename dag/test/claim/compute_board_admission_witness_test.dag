@@ -11,7 +11,9 @@ import product.compute_board.analog {
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
   ElectricalDesignIdentity,
+  ElectricalTerminalRef,
   ElectricalNet,
+  ElectricalTerminalRef,
   NetIdentity,
   TerminalIdentity,
   component_identity_eq,
@@ -181,17 +183,17 @@ test fn w_a_coherent_fixture_is_admitted() -> Bool {
 
 // Exactly one cause, and it is the named one. "Contains the cause" would pass on an admission
 // that reports every cause for every article.
+data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "admission fixture",
+  components: [r_one, c_one, r_one_again],
+  nets: coherent_analog.nets,
+}
+
 test fn w_two_components_sharing_an_identity_refuse() -> Bool {
   refuses_with_exactly_named_cause(
     a: fixture_article(analog: duplicate_component_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "DuplicateComponentIdentity"
   )
-}
-
-data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
-  title: "admission fixture",
-  components: [r_one, c_one, r_one_again],
-  nets: coherent_analog.nets,
 }
 
 data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {

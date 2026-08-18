@@ -14715,6 +14715,194 @@ mod tests {
         );
     }
 
+    fn run_seed_witness_claim_result_text(
+        source_roots: &[String],
+        subject: &str,
+        function: &str,
+        passed: bool,
+        wall_nanos: u128,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_ci_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let wall = run_in_context_with_args(
+            &ctx,
+            "nanosecond",
+            &[(Some("count".to_string()), Value::Int(wall_nanos as i64))],
+            false,
+        )
+        .ok()?;
+        let out = run_in_context_with_args(
+            &ctx,
+            "ci_witness_claim_result_text",
+            &[
+                (Some("subject".to_string()), str_value(subject.to_string())),
+                (
+                    Some("function".to_string()),
+                    str_value(function.to_string()),
+                ),
+                (Some("passed".to_string()), Value::Bool(passed)),
+                (Some("wall".to_string()), wall),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    fn run_seed_witness_budget_warn_text(
+        source_roots: &[String],
+        qualified: &str,
+        wall_ms: u64,
+        warn_ms: u64,
+        budget_ms: u64,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_ci_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let wall = millisecond_value(&ctx, u128::from(wall_ms)).ok()?;
+        let warn = millisecond_value(&ctx, u128::from(warn_ms)).ok()?;
+        let budget = millisecond_value(&ctx, u128::from(budget_ms)).ok()?;
+        let out = run_in_context_with_args(
+            &ctx,
+            "ci_witness_budget_warn_text",
+            &[
+                (
+                    Some("qualified".to_string()),
+                    str_value(qualified.to_string()),
+                ),
+                (Some("wall".to_string()), wall),
+                (Some("warn".to_string()), warn),
+                (Some("budget".to_string()), budget),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    // Wiring flip: the Rust mirror is proven byte-equal to the `.dag` oracle. The hot path
+    // cannot call the interpreter per line (~800 anomaly rows); this pin is what keeps the
+    // mirror honest. RED: changing the mirror token, padding, or bracket family fails the
+    // byte-equal assert or the legacy-shape asserts below.
+    #[test]
+    fn render_witness_claim_result_text_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.observation_ci_render_witness_test",
+            "w_witness_claim_line_from_module_path_holds",
+            true,
+            230_000_000,
+        )
+        .expect("ci_witness_claim_result_text must resolve and render");
+        let mirror = v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+            "test.claim.observation_ci_render_witness_test",
+            "w_witness_claim_line_from_module_path_holds",
+            230_000_000,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "witness claim-result mirror must be byte-equal to the .dag oracle"
+        );
+        assert!(
+            mirror.contains("PASSED in 230ms") && !mirror.contains("PASS in "),
+            "drift control: legacy PASS token must not return: {mirror:?}"
+        );
+        assert!(
+            mirror.starts_with("//test/claim/observation_ci_render_witness_test:"),
+            "drift control: Bazel label prefix required: {mirror:?}"
+        );
+
+        let under_boundary = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.foo",
+            "w_bar",
+            true,
+            89_000_000_000,
+        )
+        .expect("89s boundary oracle");
+        let at_boundary = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.foo",
+            "w_bar",
+            true,
+            90_000_000_000,
+        )
+        .expect("90s boundary oracle");
+        assert_eq!(
+            v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                89_000_000_000,
+                true,
+            ),
+            under_boundary,
+            "89s minute-switch boundary must match oracle"
+        );
+        assert_eq!(
+            v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                90_000_000_000,
+                true,
+            ),
+            at_boundary,
+            "90s minute-switch boundary must match oracle"
+        );
+        assert!(
+            under_boundary.contains("89 seconds") && at_boundary.contains("1 minutes"),
+            "minute-switch drift control: {under_boundary:?} vs {at_boundary:?}"
+        );
+    }
+
+    #[test]
+    fn render_witness_budget_warn_text_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle =
+            run_seed_witness_budget_warn_text(&roots, "test.claim.foo.w_bar", 600, 500, 1000)
+                .expect("ci_witness_budget_warn_text must resolve and render");
+        let mirror = v1_compiler::cli_run::render_witness_budget_warn_text_mirror(
+            "test.claim.foo.w_bar",
+            600,
+            500,
+            1000,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "witness budget-warn mirror must be byte-equal to the .dag oracle"
+        );
+        assert!(
+            mirror.contains("(ceiling 1000ms)") && mirror.starts_with("[floor-witness-slow]"),
+            "drift control: ceiling clause and marker required: {mirror:?}"
+        );
+    }
+
     fn run_seed_peak_rss_line(
         source_roots: &[String],
         label: &str,
