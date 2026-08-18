@@ -12649,10 +12649,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
             ))),
 
-            arm "free_call.resolution_divergence_silent_pick_gate_in_process" { "resolution_divergence_silent_pick_gate_in_process" } => Ok(Some(Value::Bool(
-                crate::cli_run::resolution_divergence_silent_pick_gate_in_process($ctx),
-            ))),
-
         }
     }};
 }
