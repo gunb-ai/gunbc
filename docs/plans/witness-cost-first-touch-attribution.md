@@ -141,3 +141,61 @@ already rules that such a harness characterizes itself rather than the floor.
 That is exactly why the comparison above is drawn on the per-row `[witness]` CPU
 line and not on process wall. An earlier attempt here did compare process wall,
 made the cheap sibling look like an 82-second row, and established nothing.
+
+## The eight-sibling test: identity does not predict cost, position does
+
+`v2.test.claim.effect_reach_test` carries eight rows that land within a 346ms
+band just past the ceiling on the floor (1954-2122ms). Eight siblings clustered
+like that admits two obvious readings — one shared fill with seven free riders,
+or eight genuinely expensive witnesses — and they make opposite predictions
+under isolation. Measured, with the order-reversal control that distinguishes
+them:
+
+```
+row                                             alone    fwd(pos)    rev(pos)
+path_data_init_derived_host_reading               246     252(1)     511(8)
+path_data_init_red_when_import_severed            217     441(2)     488(7)
+path_touch_selects_on_normalize_path              225     497(3)     459(6)
+unrelated_path_does_not_select                    244     517(4)     518(5)
+hermetic_fixture_stays_local                      241     589(5)     446(4)
+prose_string_path_does_not_classify               251     498(6)     421(3)
+concat_built_path_frontier_not_classified         247     496(7)     385(2)
+live_03_normalize_witness_derived_host_reading    234     514(8)     231(1)
+
+by position, mean of both orders:
+  pos 1: 242   pos 2: 413   pos 3: 459   pos 4: 482
+  pos 5: 554   pos 6: 478   pos 7: 492   pos 8: 512
+```
+
+**Neither reading is right.** Run alone, all eight cost 217-251ms — a 34ms
+spread around a 238ms mean, which is as uniform as this harness measures. So
+they are not eight independently expensive witnesses. But the first row in a
+batch is also the CHEAPEST, not the most expensive, which is the opposite of a
+shared fill with free riders.
+
+What the reversal establishes is that **cost tracks position, not identity**.
+`path_data_init_derived_host_reading` costs 252ms at position 1 and 511ms at
+position 8; `live_03_normalize_witness_derived_host_reading` costs 514ms at
+position 8 and 231ms at position 1. Same rows, same closure, same head — the
+figure follows the slot. Position 1 reproduces the alone cost; every later
+position carries roughly double it.
+
+So there is a per-row overhead that appears once more than one witness runs in
+a batch, and it is not the first-touch shape the g2 pair shows. Both are
+attribution defects and they are not the same defect, which is worth keeping
+distinct: first-touch charges one row for a shared computation others then use
+free; this charges every row after the first for something that does not scale
+with what the row does.
+
+**What this does NOT license.** These figures are not a delta against the floor's
+1954-2122ms. Those eight are refused rows, so their floor numbers are
+overshoot-past-the-poll — lower bounds, not measurements — and the isolated
+figures here are measurements of a different context (71 modules, 2694 resolved
+items, against the floor's whole-corpus subject). The honest statement of the
+pair is: each row's own work measures ~238ms in isolation, and the floor
+attributes it at least 1954ms. The gap is real; its composition is not
+established by this measurement.
+
+The one firm consequence for the lane: `effect_reach_test` is not a paring
+target. There is no version of "reduce what these witnesses reach for" that
+addresses a cost which changes when you reorder the batch.
