@@ -42,7 +42,6 @@ test fn a_unit_matching_the_rendering_observes_the_desired_digest() -> Bool {
       read_succeeded: true,
       read_stdout: spark_serving_desired_user_unit_text(),
       file_absent: false,
-      enablement: UserUnitEnabled,
     ),
   ) == (spark_serving_user_unit_state_digest() as String)
 }
@@ -58,7 +57,6 @@ test fn a_drifted_unit_does_not_observe_the_desired_digest() -> Bool {
       read_succeeded: true,
       read_stdout: "[Unit]\nDescription=something else\n",
       file_absent: false,
-      enablement: UserUnitEnabled,
     ),
   ) != (spark_serving_user_unit_state_digest() as String)
 }
@@ -71,7 +69,6 @@ test fn a_drifted_unit_is_still_observed() -> Bool {
       read_succeeded: true,
       read_stdout: "[Unit]\nDescription=something else\n",
       file_absent: false,
-      enablement: UserUnitEnabled,
     ),
   )
 }
@@ -85,7 +82,6 @@ test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
       read_succeeded: true,
       read_stdout: "[Unit]\nDescription=x",
       file_absent: false,
-      enablement: UserUnitEnabled,
     ),
   ) != (spark_serving_user_unit_state_digest() as String)
 }
@@ -96,7 +92,7 @@ test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
 // means the member is absent. The remedies differ -- write the unit, versus fix why it is unreadable
 // -- so a failed read that did not establish absence stays unobserved.
 test fn a_failed_read_that_did_not_establish_absence_stays_unobserved() -> Bool {
-  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false, enablement: UserUnitEnabled) {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false) {
     UserUnitStateUnobserved => true
     UserUnitStateAbsent => false
     UserUnitStateObserved { unit_state_digest: _ } => false
@@ -104,7 +100,7 @@ test fn a_failed_read_that_did_not_establish_absence_stays_unobserved() -> Bool 
 }
 
 test fn a_read_that_established_absence_observes_absence() -> Bool {
-  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true, enablement: UserUnitEnabled) {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true) {
     UserUnitStateAbsent => true
     UserUnitStateUnobserved => false
     UserUnitStateObserved { unit_state_digest: _ } => false
@@ -114,13 +110,13 @@ test fn a_read_that_established_absence_observes_absence() -> Bool {
 // The two failure arms must not collapse: this asserts they are DIFFERENT, which is the property a
 // single "not found" arm would silently destroy.
 test fn a_failed_read_and_an_established_absence_are_different_states() -> Bool {
-  digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false, enablement: UserUnitEnabled))
-    != digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true, enablement: UserUnitEnabled))
+  digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false))
+    != digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true))
 }
 
 // An empty successful read is NOT absence either -- an empty file is a file, and it is drift.
 test fn an_empty_successful_read_is_drift_not_absence() -> Bool {
-  match classify_observed_user_unit(read_succeeded: true, read_stdout: "", file_absent: false, enablement: UserUnitEnabled) {
+  match classify_observed_user_unit(read_succeeded: true, read_stdout: "", file_absent: false) {
     UserUnitStateObserved { unit_state_digest: _ } => true
     UserUnitStateAbsent => false
     UserUnitStateUnobserved => false
@@ -155,7 +151,6 @@ test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
       read_succeeded: true,
       read_stdout: spark_serving_desired_user_unit_text(),
       file_absent: false,
-      enablement: UserUnitEnabled,
     ),
   ) == (spark_serving_user_unit_content_identity(bytes: spark_serving_desired_user_unit_text()) as String)
 }
@@ -165,7 +160,7 @@ test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
 test fn an_empty_file_gets_a_real_identity_rather_than_a_cast() -> Bool {
   let e = digest_of(
     state: classify_observed_user_unit(
-      read_succeeded: true, read_stdout: "", file_absent: false, enablement: UserUnitEnabled,
+      read_succeeded: true, read_stdout: "", file_absent: false,
     ),
   )
   e != "<absent>" && e != "<unobserved>"
@@ -173,43 +168,45 @@ test fn an_empty_file_gets_a_real_identity_rather_than_a_cast() -> Bool {
 }
 
 // ENABLEMENT IS PART OF THE STATE. A unit with exactly the right bytes that is DISABLED will not
-// survive a reboot, so reporting it as matching desired claims a convergence the next power cycle
-// refutes. `is-enabled` is now consumed rather than merely declared.
-test fn exact_bytes_that_are_disabled_do_not_match_desired() -> Bool {
+// RETIRED AND REPLACED, with its receipt. This asserted that exact bytes which are disabled produce
+// a DIFFERENT content digest than desired -- true only under the `disabled:` prefix encoding, which
+// folded enablement into the content identity and thereby planned a file rewrite to fix an
+// enablement. The claim it was protecting is real and survives: a disabled unit is not converged.
+// It now lands where it belongs, on the enablement member, and the content claim inverts.
+test fn exact_bytes_that_are_disabled_still_match_the_desired_content() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
       read_stdout: spark_serving_desired_user_unit_text(),
       file_absent: false,
-      enablement: UserUnitDisabled,
     ),
-  ) != (spark_serving_user_unit_state_digest() as String)
+  ) == (spark_serving_user_unit_state_digest() as String)
 }
 
-// An unregistered unit is distinct from a disabled one: different remedies, different states.
+// An unregistered unit is distinct from a disabled one: different remedies, different states. That
+// is now a claim about the ENABLEMENT classifier, since the content identity no longer carries it.
 test fn a_not_found_enablement_is_distinct_from_disabled() -> Bool {
-  digest_of(
-    state: classify_observed_user_unit(
-      read_succeeded: true, read_stdout: spark_serving_desired_user_unit_text(),
-      file_absent: false, enablement: UserUnitEnablementNotFound,
-    ),
-  ) != digest_of(
-    state: classify_observed_user_unit(
-      read_succeeded: true, read_stdout: spark_serving_desired_user_unit_text(),
-      file_absent: false, enablement: UserUnitDisabled,
-    ),
-  )
+  spark_serving_user_unit_not_registered_state != spark_serving_user_unit_disabled_state
+    && spark_serving_user_unit_disabled_state != spark_serving_user_unit_enabled_state
 }
 
-// An unobserved enablement means the unit's state was not established, even though the bytes were
-// read -- so it must not report as observed.
-test fn an_unobserved_enablement_leaves_the_unit_unobserved() -> Bool {
+// THIS TEST ASSERTED THE DEFECT, and is retired with its receipt rather than left standing.
+//
+// It required that an unobserved enablement leave the UNIT unobserved -- which is exactly the
+// coupling that let a failed enablement probe erase a successfully read file. A test whose only
+// subject is behavior the model now rejects is how obsolete behavior grants itself immortality.
+//
+// The successor claim is the opposite, and it is the one that had to be true all along: the read
+// succeeded, so the content is established, and the enablement's failure scopes to the enablement.
+test fn an_unobserved_enablement_leaves_the_read_content_observed() -> Bool {
   match classify_observed_user_unit(
-    read_succeeded: true, read_stdout: spark_serving_desired_user_unit_text(),
-    file_absent: false, enablement: UserUnitEnablementUnobserved,
+    read_succeeded: true,
+    read_stdout: spark_serving_desired_user_unit_text(),
+    file_absent: false,
   ) {
-    UserUnitStateUnobserved => true
-    UserUnitStateObserved { unit_state_digest: _ } => false
+    UserUnitStateObserved { unit_state_digest: d } =>
+      (d as String) == (spark_serving_user_unit_state_digest() as String)
+    UserUnitStateUnobserved => false
     UserUnitStateAbsent => false
   }
 }
