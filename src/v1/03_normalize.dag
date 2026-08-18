@@ -5,8 +5,8 @@ module v1.compiler.normalize
 
 
 type NormalizeResult {
-  graph: ModuleGraph
-  diagnostics: List<ErrorNode>
+  graph: v1.compiler.resolve.ModuleGraph
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {

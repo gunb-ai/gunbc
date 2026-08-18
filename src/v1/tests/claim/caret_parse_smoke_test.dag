@@ -3,9 +3,9 @@ module v1.tests.claim.caret_parse_smoke_test
 
 data caret_parse_smoke_parser_transport_enrollment: String = "Scheduled per PR through gunbc.ci_layer_roots v1_claim_scoped_witness_entries and v1_claim_scoped_witness_batch, enrolled by scoped_witness_batches; v2.workflow.ci_floor_plan gunbc_ci_floor_ordinary_batches folds those generic instances into the floor. The scoped batch supplies exactly dag plus src/v1 without widening ordinary witness discovery. Local reproduction: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_paren_full_pipeline,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren. The native compile and emit claims remain on cargo test -p v1-compiler --lib caret_parse_smoke_native_compile_emit_witnesses until v1.compile_sources is interpreter-runnable (same map_keys gap as probe_emit_interp.dag)."
 
-fn caret_parse_ctx() -> ParseContext {
-  let empty: Map<String, NewlineIndex> = empty_map()
-  ParseContext {
+fn caret_parse_ctx() -> v1.compiler.parse.ParseContext {
+  let empty: Map<String, v1.std.core.NewlineIndex> = empty_map()
+  v1.compiler.parse.ParseContext {
     source_indices: empty,
     intern_table: empty_intern_table(),
     occurrence_allocator: none,
@@ -69,25 +69,25 @@ fn caret_emit_disc_source() -> String {
   )
 }
 
-fn caret_source_file(path: String, content: String) -> SourceFile {
-  SourceFile { path: path, content: content }
+fn caret_source_file(path: String, content: String) -> v1.compiler.compile.SourceFile {
+  v1.compiler.compile.SourceFile { path: path, content: content }
 }
 
-fn caret_compile_rust_emitted(source: SourceFile) -> String {
+fn caret_compile_rust_emitted(source: v1.compiler.compile.SourceFile) -> String {
   let result = compile_sources(sources: [source], target: Rust)
   result.files |> map(f => f.content) |> join(separator: "\n")
 }
 
-fn caret_compile_rust_has_no_errors(source: SourceFile) -> Bool {
+fn caret_compile_rust_has_no_errors(source: v1.compiler.compile.SourceFile) -> Bool {
   let result = compile_sources(sources: [source], target: Rust)
   (result.diagnostics |> any(d => is_error_diagnostic(d.diagnostic))) == false
 }
 
-fn caret_diagnostics_contain_pattern(diagnostics: List<ErrorNode>, pattern: String) -> Bool {
+fn caret_diagnostics_contain_pattern(diagnostics: List<v1.std.core.ErrorNode>, pattern: String) -> Bool {
   any(diagnostics, d => contains(diagnostic_to_message(d.diagnostic), pattern))
 }
 
-fn caret_token_stream_only_eof_remains(stream: TokenStream) -> Bool {
+fn caret_token_stream_only_eof_remains(stream: v1.compiler.parse.TokenStream) -> Bool {
   let remaining = stream.all |> skip(count: stream.pos)
   all(remaining, t => t.shape == ShEof)
 }

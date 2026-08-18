@@ -27,7 +27,7 @@ data two_line_body_block_source: String = "module p.q\n\nfn go(x: String) -> Str
 
 data trailing_source: String = "module p.q\n\ndata alpha: String = \"a\" // trailing prose\n"
 
-fn transport_of(source: String) -> OccurrenceTransport {
+fn transport_of(source: String) -> std.occurrence_identity.OccurrenceTransport {
   parse_with_table(
     tokens: tokenize_artifact(source: source, file: "probe.dag").tokens,
     source_indices: map_insert(empty_map(), "probe.dag", build_newline_index(file: "probe.dag", source: source)),
@@ -35,7 +35,7 @@ fn transport_of(source: String) -> OccurrenceTransport {
   ).occurrence_transport
 }
 
-fn bound(source: String) -> AnnotationAttachmentResult {
+fn bound(source: String) -> std.source_annotation.AnnotationAttachmentResult {
   bind_annotations(
     transport: transport_of(source: source),
     captures: tokenize_artifact(source: source, file: "probe.dag").annotations,
@@ -45,7 +45,7 @@ fn bound(source: String) -> AnnotationAttachmentResult {
 
 data name_lookup_note: String = "Resolves an occurrence back to the name the author wrote, through the same index the roster was built from. An unresolvable id renders as a marker rather than an empty string so a lookup miss cannot be mistaken for an anonymous declaration."
 
-fn name_of(transport: OccurrenceTransport, id: std.occurrence_identity.OccurrenceId) -> String {
+fn name_of(transport: std.occurrence_identity.OccurrenceTransport, id: std.occurrence_identity.OccurrenceId) -> String {
   fold(
     transport.index.entries,
     init: "<unresolved>",
@@ -64,7 +64,7 @@ fn render(source: String) -> String {
   )
 }
 
-fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+fn count_body_grain(refusals: List<std.source_annotation.AnnotationAttachmentRefusal>) -> Int {
   fold(
     refusals,
     init: 0,
@@ -77,7 +77,7 @@ fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
   )
 }
 
-fn count_trailing(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+fn count_trailing(refusals: List<std.source_annotation.AnnotationAttachmentRefusal>) -> Int {
   fold(
     refusals,
     init: 0,
@@ -155,7 +155,7 @@ test fn w_delimiter_normalization_keeps_authored_indentation() -> Bool {
 
 data admission_gate_note: String = "The P0 wall, by execution: unclassified prose does not ride along inside a successful result. A source whose only annotation is trailing yields NO graph rows and at least one blocking diagnostic, while the same source with the prose moved above the declaration yields the row and no diagnostic. The pair is what distinguishes a wall from a filter — a filter would have produced the admissible rows either way."
 
-fn admitted(source: String) -> AdmittedSourceAnnotations {
+fn admitted(source: String) -> v1.compiler.annotation_bind.AdmittedSourceAnnotations {
   admit_source_annotations(
     transport: transport_of(source: source),
     captures: tokenize_artifact(source: source, file: "probe.dag").annotations,

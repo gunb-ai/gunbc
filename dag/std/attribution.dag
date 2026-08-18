@@ -19,8 +19,8 @@ module std.attribution
 // mixing clocks has no representation. Comparing instants pairwise would let a mixed set exist and
 // be caught late; carrying one frame means the mixed set cannot be assembled.
 type ClockFrame {
-  domain: ClockDomain
-  basis: ClockBasis
+  domain: std.measure.ClockDomain
+  basis: std.measure.ClockBasis
 }
 
 fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
@@ -29,12 +29,12 @@ fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
 
 type OccurrenceExtent {
   occurrence: std.observation.OccurrenceId
-  interval: OrderedClosedInterval<Nanosecond>
+  interval: OrderedClosedInterval<std.measure.Nanosecond>
 }
 
 type ExtentConstruction
   = ExtentReady { frame: ClockFrame, extent: OccurrenceExtent }
-  | ExtentRefused { cause: NonEmptyStr }
+  | ExtentRefused { cause: std.types.NonEmptyStr }
 
 fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
   nanosecond_count(n: a) <= nanosecond_count(n: b)
@@ -77,14 +77,14 @@ fn extent_from_ordered(
 // Unattributed is the complement of their union, so no instant is ever unattributed and attributed
 // at once.
 type AttributionSpan
-  = Attributed { occurrence: std.observation.OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
-  | Unattributed { parent: std.observation.OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  = Attributed { occurrence: std.observation.OccurrenceId, interval: OrderedClosedInterval<std.measure.Nanosecond> }
+  | Unattributed { parent: std.observation.OccurrenceId, interval: OrderedClosedInterval<std.measure.Nanosecond> }
 
 type AttributionResult
   = AttributionComputed { spans: List<AttributionSpan> }
   | AttributionRefusedForeignClock { child: std.observation.OccurrenceId }
   | AttributionRefusedChildOutsideParent { child: std.observation.OccurrenceId }
-  | AttributionRefusedImpossibleInterval { cause: NonEmptyStr }
+  | AttributionRefusedImpossibleInterval { cause: std.types.NonEmptyStr }
 
 type ExtentInFrame {
   frame: ClockFrame
@@ -114,7 +114,7 @@ type AttributionScan {
 type GapConstruction
   = GapEmpty
   | GapReady { span: AttributionSpan }
-  | GapRefused { cause: NonEmptyStr }
+  | GapRefused { cause: std.types.NonEmptyStr }
 
 fn gap_span(parent: std.observation.OccurrenceId, from: std.nat.Nat, to: std.nat.Nat) -> GapConstruction {
   if to > from {
@@ -230,7 +230,7 @@ type ExtentSpec {
 
 type SpecConstruction
   = SpecReady { extent: ExtentInFrame }
-  | SpecRefused { cause: NonEmptyStr }
+  | SpecRefused { cause: std.types.NonEmptyStr }
 
 fn extent_from_spec(spec: ExtentSpec) -> SpecConstruction {
   match closed_interval(
@@ -251,7 +251,7 @@ fn extent_from_spec(spec: ExtentSpec) -> SpecConstruction {
 
 type SpecScan {
   extents: List<ExtentInFrame>
-  refusal: NonEmptyStr?
+  refusal: std.types.NonEmptyStr?
 }
 
 fn spec_scan_step(acc: SpecScan, spec: ExtentSpec) -> SpecScan {

@@ -78,7 +78,7 @@ type Grant {
 }
 
 type Envelope {
-  frame: Frame
+  frame: std.materialization_ladder.Frame
   grants: List<Grant>
 }
 
@@ -111,7 +111,7 @@ fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
 
 type CoveringGrant
   = CoveredBy { grant: Grant }
-  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame }
 
 type GrantCoverage
   = GrantCoveredBy { grant: Grant }

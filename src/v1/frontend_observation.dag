@@ -18,9 +18,9 @@ type FrontendPhaseReceipt {
 }
 
 type OrdinaryFrontendObservation {
-  subject: List<SourceFile>
-  occurrence_transport: OccurrenceTransport
-  diagnostics: List<ErrorNode>
+  subject: List<v1.compiler.compile.SourceFile>
+  occurrence_transport: std.occurrence_identity.OccurrenceTransport
+  diagnostics: List<v1.std.core.ErrorNode>
   receipt: FrontendPhaseReceipt
 }
 

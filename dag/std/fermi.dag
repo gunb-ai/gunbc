@@ -51,8 +51,8 @@ fn fermi_within_budget(depth: FermiDepth, budget: FermiDepth) -> Bool {
 }
 
 type FermiTimeout {
-  depth: FermiDepth
-  timeout_ms: Milliseconds
+  depth: std.types.FermiDepth
+  timeout_ms: std.types.Milliseconds
   label: String
 }
 

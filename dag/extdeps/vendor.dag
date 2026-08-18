@@ -10,5 +10,5 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Vendor<Domain> {
-  legal_name: NonEmptyStr
+  legal_name: std.types.NonEmptyStr
 }

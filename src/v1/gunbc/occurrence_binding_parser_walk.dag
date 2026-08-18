@@ -5,8 +5,8 @@ data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk 
 
 type ParsedOccurrenceBindingSource
   = ParsedOccurrenceBindingSourceReady {
-      transport: OccurrenceTransport,
-      module_path: NonEmptyStr,
+      transport: std.occurrence_identity.OccurrenceTransport,
+      module_path: std.types.NonEmptyStr,
     }
   | ParsedOccurrenceBindingSourceRefused
 

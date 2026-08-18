@@ -19,7 +19,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 type KnownMethodResolution {
   semantics: MethodSemantics?
   result_type: Node?
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
@@ -440,14 +440,14 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 type MethodFieldResult {
   field_node: Node
   result_type: Node
-  size_effect: CollectionSizeEffect?
-  cost_shape: CostShape?
-  algebra_template: AlgebraFieldTemplate?
+  size_effect: std.algebra.CollectionSizeEffect?
+  cost_shape: std.algebra.CostShape?
+  algebra_template: std.algebra.AlgebraFieldTemplate?
 }
 
 type StructuralMethodLookup {
   resolution: MethodFieldResult?
-  kernel_diagnostics: List<ErrorNode>
+  kernel_diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn product_field_result_type(field: Node) -> Node? {

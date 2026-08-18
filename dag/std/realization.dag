@@ -48,7 +48,7 @@ type Placement
 type Materialization = Recompute | Memoize | Share
 
 type RealizedStep<S> {
-  shape: EffectShape<KeySource>
+  shape: EffectShape<std.effects.KeySource>
   placement: Placement
   materialization: Materialization
   cost: CostAccount<S>

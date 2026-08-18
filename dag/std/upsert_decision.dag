@@ -12,7 +12,7 @@ type ObservationVerdict
 type UpsertDecision<P>
   = Noop
   | Apply { plan: P }
-  | Refuse { reason: NonEmptyStr }
+  | Refuse { reason: std.types.NonEmptyStr }
 
 type UpsertClassification<P> {
   verdict: ObservationVerdict

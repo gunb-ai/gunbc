@@ -18,9 +18,9 @@ type ExecutionCapability
 type ValidationOperation
   = GunbcClaimValidation {
       entry: std.types.FilePath,
-      function: NonEmptyStr,
+      function: std.types.NonEmptyStr,
     }
-  | CargoTestValidation { filter: NonEmptyStr }
+  | CargoTestValidation { filter: std.types.NonEmptyStr }
   | CargoFmtValidation
 
 type WorkItemExecutionContract
@@ -34,8 +34,8 @@ type CapabilityRealization {
   capability: ExecutionCapability
   executable: std.types.FilePath
   identity_args: List<String>
-  identity_contains: NonEmptyStr
-  ensure_policy: EnsurePolicy
+  identity_contains: std.types.NonEmptyStr
+  ensure_policy: gunbc.ensure.EnsurePolicy
 }
 
 type DispatchHostEnvironment {
@@ -43,7 +43,7 @@ type DispatchHostEnvironment {
 }
 
 type ModeledValidationCommand {
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   program: std.types.FilePath
   args: List<String>
 }

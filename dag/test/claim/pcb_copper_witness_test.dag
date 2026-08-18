@@ -33,17 +33,17 @@ data board_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef 
   field: std.decl_ref.WholeDeclaration,
 }
 
-data vcc: NetIdentity = net_identity(design: fixture_design, local_identity: "VCC")
-data gnd_net: NetIdentity = net_identity(design: fixture_design, local_identity: "GND")
-data absent_net: NetIdentity = net_identity(design: fixture_design, local_identity: "SPI_CLK")
+data vcc: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "VCC")
+data gnd_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "GND")
+data absent_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "SPI_CLK")
 
 // THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
 // intent, so this witness hands it a roster belonging to no analog article at all. If the carrier
 // still required an AnalogCircuitIntent this file would not compile, which makes the decoupling a
 // fact the suite depends on rather than a claim in a comment.
-data board_nets: List<ElectricalNet> = [
-  ElectricalNet { identity: vcc, members: [] },
-  ElectricalNet { identity: gnd_net, members: [] },
+data board_nets: List<product.electrical.connectivity.ElectricalNet> = [
+  product.electrical.connectivity.ElectricalNet { identity: vcc, members: [] },
+  product.electrical.connectivity.ElectricalNet { identity: gnd_net, members: [] },
 ]
 
 // A SECOND, DIFFERENT BOARD. Same layer count and same functions at every ordinal, differing only
@@ -148,7 +148,7 @@ test fn w_red_a_negative_ordinal_refuses() -> Bool {
     && admitted_three_layer_selection(ordinal: 0)
 }
 
-fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef, net: NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
+fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef, net: product.electrical.connectivity.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: s, authority: authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => []
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -159,7 +159,7 @@ fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.D
   }
 }
 
-fn realization_on(net: NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
+fn realization_on(net: product.electrical.connectivity.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
     product.pcb.stackup.StackupRefused { causes: _ } => []
     product.pcb.stackup.StackupAdmitted { admitted: a } =>
@@ -299,7 +299,7 @@ test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
   }
 }
 
-fn layer_of(a: AdmittedStackup, ordinal: Int) -> CopperLayerRef? {
+fn layer_of(a: product.pcb.stackup.AdmittedStackup, ordinal: Int) -> product.pcb.copper.CopperLayerRef? {
   match select_copper_layer(a: a, ordinal: ordinal) {
     LayerSelected { layer: l } => Present { value: l }
     LayerOutsideStackup { requested: _, layer_count: _ } => none
@@ -320,7 +320,7 @@ test fn w_a_via_makes_a_split_net_admissible() -> Bool {
           match layer_of(a: board, ordinal: 2) {
             Absent => false
             Present { value: bottom } => {
-              let joined = [InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
+              let joined = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
               count(split) == 2
                 && match admit_copper(nets: board_nets, board: board, rs: split, vs: []) {
                   CopperAdmitted { admitted: _ } => false
@@ -350,7 +350,7 @@ test fn w_red_a_via_on_another_net_does_not_route_this_one() -> Bool {
           match layer_of(a: board, ordinal: 2) {
             Absent => false
             Present { value: bottom } => {
-              let wrong_net = [InterlayerConnection { net: gnd_net, from_layer: top, to_layer: bottom }]
+              let wrong_net = [product.pcb.copper.InterlayerConnection { net: gnd_net, from_layer: top, to_layer: bottom }]
               match admit_copper(nets: board_nets, board: board, rs: split, vs: wrong_net) {
                 CopperAdmitted { admitted: _ } => false
                 CopperRefused { causes: c } =>
@@ -381,7 +381,7 @@ test fn w_red_a_via_from_a_layer_to_itself_is_refused() -> Bool {
       match layer_of(a: board, ordinal: 1) {
         Absent => false
         Present { value: mid } => {
-          let degenerate = [InterlayerConnection { net: vcc, from_layer: mid, to_layer: mid }]
+          let degenerate = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: mid, to_layer: mid }]
           match admit_copper(nets: board_nets, board: board, rs: realization_on(net: vcc, ordinal: 1), vs: degenerate) {
             CopperAdmitted { admitted: _ } => false
             CopperRefused { causes: c } =>
@@ -416,7 +416,7 @@ test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool {
               match layer_of(a: elsewhere, ordinal: 2) {
                 Absent => false
                 Present { value: there } => {
-                  let crossed = [InterlayerConnection { net: vcc, from_layer: here, to_layer: there }]
+                  let crossed = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: here, to_layer: there }]
                   match admit_copper(nets: board_nets, board: board, rs: realization_on(net: vcc, ordinal: 0), vs: crossed) {
                     CopperAdmitted { admitted: _ } => false
                     CopperRefused { causes: c } =>
@@ -453,7 +453,7 @@ test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool 
           match layer_of(a: board, ordinal: 1) {
             Absent => false
             Present { value: mid } => {
-              let v = [InterlayerConnection { net: vcc, from_layer: top, to_layer: mid }]
+              let v = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: top, to_layer: mid }]
               count(dup) == 2
                 && match admit_copper(nets: board_nets, board: board, rs: dup, vs: v) {
                   CopperAdmitted { admitted: _ } => false
@@ -515,14 +515,14 @@ test fn w_two_islands_of_one_net_refuse() -> Bool {
 
 // realization_on is pinned to the three-layer fixture, so it cannot reach ordinal 3. This selects
 // against whichever board it is handed, which is what the four-layer cases need.
-fn realization_at(board: AdmittedStackup, net: NetIdentity, ordinal: Int) -> List<NetCopperRealization> {
+fn realization_at(board: product.pcb.stackup.AdmittedStackup, net: product.electrical.connectivity.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match layer_of(a: board, ordinal: ordinal) {
     Absent => []
-    Present { value: l } => [NetCopperRealization { net: net, layer: l }]
+    Present { value: l } => [product.pcb.copper.NetCopperRealization { net: net, layer: l }]
   }
 }
 
-fn islanded_connections(board: AdmittedStackup) -> List<InterlayerConnection>? {
+fn islanded_connections(board: product.pcb.stackup.AdmittedStackup) -> List<product.pcb.copper.InterlayerConnection>? {
   match layer_of(a: board, ordinal: 0) {
     Absent => none
     Present { value: l0 } =>
@@ -535,8 +535,8 @@ fn islanded_connections(board: AdmittedStackup) -> List<InterlayerConnection>? {
               match layer_of(a: board, ordinal: 3) {
                 Absent => none
                 Present { value: l3 } => Present { value: [
-                  InterlayerConnection { net: vcc, from_layer: l0, to_layer: l1 },
-                  InterlayerConnection { net: vcc, from_layer: l2, to_layer: l3 },
+                  product.pcb.copper.InterlayerConnection { net: vcc, from_layer: l0, to_layer: l1 },
+                  product.pcb.copper.InterlayerConnection { net: vcc, from_layer: l2, to_layer: l3 },
                 ] }
               }
           }
@@ -563,7 +563,7 @@ test fn w_islands_joined_into_one_conductor_admits() -> Bool {
               match layer_of(a: board, ordinal: 2) {
                 Absent => false
                 Present { value: l2 } => {
-                  let bridged = conns + [InterlayerConnection { net: vcc, from_layer: l1, to_layer: l2 }]
+                  let bridged = conns + [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: l1, to_layer: l2 }]
                   match admit_copper(nets: board_nets, board: board, rs: all, vs: bridged) {
                     CopperRefused { causes: _ } => false
                     CopperAdmitted { admitted: out } =>
@@ -593,7 +593,7 @@ test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
           match layer_of(a: board, ordinal: 2) {
             Absent => false
             Present { value: bottom } => {
-              let joined = [InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
+              let joined = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: top, to_layer: bottom }]
               match admit_copper(nets: board_nets, board: board, rs: split, vs: joined) {
                 CopperRefused { causes: _ } => false
                 CopperAdmitted { admitted: out } => {
@@ -624,7 +624,7 @@ test fn w_a_connection_endpoint_with_no_conductor_refuses() -> Bool {
           match layer_of(a: board, ordinal: 1) {
             Absent => false
             Present { value: middle } => {
-              let dangling = [InterlayerConnection { net: vcc, from_layer: top, to_layer: middle }]
+              let dangling = [product.pcb.copper.InterlayerConnection { net: vcc, from_layer: top, to_layer: middle }]
               match admit_copper(nets: board_nets, board: board, rs: split, vs: dangling) {
                 CopperAdmitted { admitted: _ } => false
                 CopperRefused { causes: c } =>

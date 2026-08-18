@@ -57,8 +57,8 @@ fn refused(
 }
 
 fn binding_outcome_from_resolution(
-  resolution: StructuralBindingResolution,
-) -> OccurrenceReferenceBindingOutcome? {
+  resolution: std.reference_binding_observation.StructuralBindingResolution,
+) -> std.occurrence_binding_resolve.OccurrenceReferenceBindingOutcome? {
   match resolution {
     StructuralBindingResolved { binding_outcome: binding_outcome } =>
       Present { value: binding_outcome }
@@ -67,7 +67,7 @@ fn binding_outcome_from_resolution(
 }
 
 fn assess_reference_binding_observation(
-  observation: ReferenceBindingObservation,
+  observation: std.reference_binding_observation.ReferenceBindingObservation,
 ) -> ReferenceDerivedClosureAdmission {
   match observation {
     SameFileNeighbourProductionRefused { gap: _ } =>
