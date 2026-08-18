@@ -33896,6 +33896,24 @@ pub struct LanguagesDeclConsumerRecord {
     pub external_consumer_paths: Vec<String>,
 }
 
+fn languages_census_record_tokens(
+    rel: &str,
+    content: &str,
+    decl_name_set: &HashSet<String>,
+    by_decl: &mut HashMap<String, HashSet<String>>,
+) {
+    if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(rel) {
+        return;
+    }
+    let tokens = languages_census_tokenize(content);
+    for decl_name in tokens.intersection(decl_name_set) {
+        by_decl
+            .get_mut(decl_name)
+            .expect("decl map key")
+            .insert(rel.to_string());
+    }
+}
+
 fn languages_decl_records_from_inventory(
     inventory: &[PreparedSourceView],
 ) -> Vec<LanguagesDeclConsumerRecord> {
@@ -33916,21 +33934,37 @@ fn languages_decl_records_from_inventory(
         .map(|name| (name.clone(), HashSet::new()))
         .collect();
 
+    let mut seen: HashSet<String> = HashSet::new();
     for entry in inventory {
         let rel = entry.source.path.replace('\\', "/");
-        if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(&rel) {
-            continue;
-        }
         if !rel.starts_with("dag/") && !rel.starts_with("src/") {
             continue;
         }
-        let tokens = languages_census_tokenize(&entry.source.content);
-        for decl_name in tokens.intersection(&decl_name_set) {
-            by_decl
-                .get_mut(decl_name)
-                .expect("decl map key")
-                .insert(rel.clone());
+        seen.insert(rel.clone());
+        languages_census_record_tokens(&rel, &entry.source.content, &decl_name_set, &mut by_decl);
+    }
+
+    // Prepared inventory is dag + src/v2 `.dag` only. The disk census also tokenizes
+    // `src/v1` and every `.rs` file; those are the external consumers of `rust_spec`.
+    let ws = workspace_root();
+    let mut extra = Vec::new();
+    let src_root = ws.join("src");
+    if src_root.is_dir() {
+        languages_census_collect_source_files(&src_root, &mut extra);
+    }
+    for path in extra {
+        let rel = path
+            .strip_prefix(&ws)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if seen.contains(&rel) {
+            continue;
         }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
     }
 
     let mut records = Vec::new();
@@ -33996,13 +34030,7 @@ fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let tokens = languages_census_tokenize(&content);
-        for decl_name in tokens.intersection(&decl_name_set) {
-            by_decl
-                .get_mut(decl_name)
-                .expect("decl map key")
-                .insert(rel.clone());
-        }
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
     }
 
     let mut records = Vec::new();
