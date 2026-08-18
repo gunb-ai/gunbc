@@ -13,6 +13,7 @@ import product.electrical.connectivity {
   ElectricalTerminalRef,
   NetIdentity,
   TerminalIdentity,
+  component_identity_eq,
   terminal_ref,
   terminal_ref_equal,
 }
@@ -147,7 +148,7 @@ fn duplicate_pad_causes(f: Footprint) -> List<FootprintRefusalCause> {
 // fact with one authority; two rows for one component identity means two drawings were read and
 // neither was chosen, and every downstream join would silently take whichever came first.
 fn component_has_duplicate_footprint(fs: List<Footprint>, c: ComponentInstanceIdentity) -> Bool {
-  count(filter(fs, f => (f.component as NonEmptyStr) == (c as NonEmptyStr))) > 1
+  count(filter(fs, f => component_identity_eq(a: f.component, b: c))) > 1
 }
 
 fn duplicate_component_causes(fs: List<Footprint>) -> List<FootprintRefusalCause> {

@@ -8,10 +8,15 @@ import std.affine_space { point2 }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
   ElectricalNet,
   ElectricalTerminalRef,
   NetIdentity,
   TerminalIdentity,
+  component_instance_identity,
+  component_local_label,
+  net_identity,
+  net_local_label,
   terminal_ref,
 }
 import product.pcb.stackup {
@@ -74,7 +79,9 @@ data fixture_drawing: DeclarationRef = decl_ref(module_path: "test.claim.pcb_foo
 
 data board_frame: CoordinateFrameIdentity = coordinate_frame_identity(occurrence: 71)
 
-data vcc: NetIdentity = "VCC" as NetIdentity
+data fixture_design: ElectricalDesignIdentity = "test.pcb_footprint.fixture" as ElectricalDesignIdentity
+
+data vcc: NetIdentity = net_identity(design: fixture_design, local_identity: "VCC")
 
 fn admitted_board(s: Stackup, authority: DeclarationRef) -> AdmittedStackup? {
   match admit_stackup(s: s, authority: authority) {
@@ -100,7 +107,7 @@ fn pad_at(layer: CopperLayerRef, terminal: NonEmptyStr, x: Int, y: Int) -> Pad {
 
 fn footprint_of(component: NonEmptyStr, pads: List<Pad>) -> Footprint {
   Footprint {
-    component: component as ComponentInstanceIdentity,
+    component: component_instance_identity(design: fixture_design, local_identity: component),
     pads: pads,
     drawing_authority: fixture_drawing,
   }
@@ -111,7 +118,7 @@ fn net_over(members: List<ElectricalTerminalRef>) -> List<ElectricalNet> {
 }
 
 fn t(component: NonEmptyStr, terminal: NonEmptyStr) -> ElectricalTerminalRef {
-  terminal_ref(component: component as ComponentInstanceIdentity, terminal: terminal as TerminalIdentity)
+  terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: component), terminal: terminal as TerminalIdentity)
 }
 
 // THE JOIN, ASSERTED IN THE DIRECTION THAT MATTERS: a net whose members every have a pad admits, and
@@ -163,7 +170,7 @@ test fn w_red_a_net_member_with_no_pad_refuses() -> Bool {
             FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
                 NetMemberHasNoPad { net: n, component: comp, terminal: term } =>
-                  n == vcc && (comp as NonEmptyStr) == "u1" && (term as NonEmptyStr) == "9"
+                  n == vcc && component_local_label(c: comp) == "u1" && (term as NonEmptyStr) == "9"
                 TerminalHasTwoPads { component: _, terminal: _ } => false
                 PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
                 TwoFootprintsForOneComponent { component: _ } => false
@@ -193,7 +200,7 @@ test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool {
             FootprintsAdmitted { admitted: _ } => false
             FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                NetMemberHasNoPad { net: _, component: comp, terminal: _ } => (comp as NonEmptyStr) == "u2"
+                NetMemberHasNoPad { net: _, component: comp, terminal: _ } => component_local_label(c: comp) == "u2"
                 TerminalHasTwoPads { component: _, terminal: _ } => false
                 PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
                 TwoFootprintsForOneComponent { component: _ } => false
@@ -225,7 +232,7 @@ test fn w_red_two_pads_on_one_terminal_refuse() -> Bool {
             FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
                 TerminalHasTwoPads { component: comp, terminal: term } =>
-                  (comp as NonEmptyStr) == "u1" && (term as NonEmptyStr) == "1"
+                  component_local_label(c: comp) == "u1" && (term as NonEmptyStr) == "1"
                 NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
                 PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
                 TwoFootprintsForOneComponent { component: _ } => false
@@ -258,7 +265,7 @@ test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool {
                 FootprintsRefused { causes: c } =>
                   count(filter(c, x => match x {
                     PadSelectedAgainstAnotherStackup { component: comp, terminal: _ } =>
-                      (comp as NonEmptyStr) == "u1"
+                      component_local_label(c: comp) == "u1"
                     NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
                     TerminalHasTwoPads { component: _, terminal: _ } => false
                     TwoFootprintsForOneComponent { component: _ } => false
@@ -288,7 +295,7 @@ test fn w_red_two_footprints_for_one_component_refuse() -> Bool {
             FootprintsAdmitted { admitted: _ } => false
             FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                TwoFootprintsForOneComponent { component: comp } => (comp as NonEmptyStr) == "u1"
+                TwoFootprintsForOneComponent { component: comp } => component_local_label(c: comp) == "u1"
                 NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
                 TerminalHasTwoPads { component: _, terminal: _ } => false
                 PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
