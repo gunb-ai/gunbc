@@ -9,11 +9,11 @@ data emit_host_native_only_verdict_vs_native_routing_frontier_note: v2.std.text.
 
 data emit_host_native_only_verdict_ci_placement_note: v2.std.text.String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): the real-compile-and-run witness below (emit_host_native_only_verdict_all_holds) runs OFFLINE/NIGHTLY only — enrolled in falsifier_self_host_wet_template_entries (wet_receipt_enrollment.dag), the same lane self_host_logic_behavioral_transport uses; it is not a per-PR CommitCheckEnrollment row (removed from commit_workflow.dag). The per-PR proof of this cutover is the layer-boundary mock pair below (emit_host_native_only_verdict_stdout_match_mock_holds / _mismatch_mock_holds), which exercises native_only_stdout_matches — the SAME comparator the real witness calls — against a literal, mocked v2.std.host_run.HostRunStdout with no compile/run step, templated on v2.test.std_grounding.terminal_gate's mocked-v2.std.host_run.HostLogicalRun shape. This mirrors ingested_classical_not_emit_source_arm_shape_holds's existing per-PR mock-v2.compiler.emit.emit proof (no separate mock is needed for the v2.compiler.emit.emit-to-text half; that shape already exists and is enrolled)."
 
-fn native_only_stdout_matches(stdout: v2.std.host_run.HostRunStdout, expected_octet: v2.std.integer.Int) -> v2.Bool {
+fn native_only_stdout_matches(stdout: v2.std.host_run.HostRunStdout, expected_octet: v2.std.integer.Int) -> Bool {
   stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
 }
 
-fn native_only_matches_expected(source: v2.std.text.String, expected_octet: v2.std.integer.Int) -> v2.Bool {
+fn native_only_matches_expected(source: v2.std.text.String, expected_octet: v2.std.integer.Int) -> Bool {
   match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_wet_emit_eval_composed_tree_from_source(source: source) {
     v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging()) {
@@ -42,22 +42,22 @@ fn native_only_matches_expected(source: v2.std.text.String, expected_octet: v2.s
   }
 }
 
-test fn emit_host_native_only_classical_not_holds() -> v2.Bool {
+test fn emit_host_native_only_classical_not_holds() -> Bool {
   native_only_matches_expected(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_source, expected_octet: 0)
 }
 
-test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> v2.Bool {
+test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> Bool {
   native_only_matches_expected(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_source, expected_octet: 0) == false
 }
 
-test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> v2.Bool {
+test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool {
   native_only_stdout_matches(
     stdout: v2.std.host_run.HostRunStdout { bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0]) },
     expected_octet: 0
   )
 }
 
-test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> v2.Bool {
+test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool {
   native_only_stdout_matches(
     stdout: v2.std.host_run.HostRunStdout { bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, 1, 0, 0, 0]) },
     expected_octet: 0
