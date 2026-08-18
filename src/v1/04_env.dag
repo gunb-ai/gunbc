@@ -605,9 +605,9 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
 fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: std.types.SourceSpan) -> v1.std.core.CompilerDiagnostic {
   let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
   if cands |> count > 0 {
-    AmbiguousReference { name: name, candidates: cands, span: span }
+    v1.std.core.AmbiguousReference { name: name, candidates: cands, span: span }
   } else {
-    UnresolvedType { name: name, span: span }
+    v1.std.core.UnresolvedType { name: name, span: span }
   }
 }
 

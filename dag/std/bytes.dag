@@ -23,7 +23,7 @@ fn utf8_encode_bytes(s: String) -> Bytes {
   s as Bytes
 }
 
-data bytes_seam_host_realization_marker: std.disposition.Disposition = Scaffold {
+data bytes_seam_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",

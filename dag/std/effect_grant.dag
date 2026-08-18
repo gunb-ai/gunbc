@@ -180,7 +180,7 @@ fn effect_grant_decide(
     target: request.object,
   ) {
     CoveredBy { grant: grant } => Permit
-    NoCoveringGrant { verb: verb, target: target, frame: frame } => Deny {
+    NoCoveringGrant { verb: verb, target: target, frame: frame } => std.access.Deny {
       refusal: std.access.AccessRefusal {
         cause: std.access.AccessActionNotGranted { action: effect_verb_label(verb: verb) },
         location: std.access.AccessRefusalLocation {

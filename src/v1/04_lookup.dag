@@ -31,8 +31,8 @@ fn lookup_in_scope(locals: Map<String, v1.compiler.infer_env.TypeBinding>, name:
 
 fn lookup_func_sig(func_env: v1.compiler.infer_sigs.ResolvedFuncEnv, type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
   match lookup_resolved_sig(env: func_env, name: name) {
-    FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
-    FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+    FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
+    FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
     FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
   }
 }
@@ -206,7 +206,7 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
           }
         }
         if bd.owner_module_path == type_env.module_path {
-          FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig {
+          v1.compiler.infer_sigs.FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig {
             name: name,
             params: node.params,
             inferred: raw_return,
@@ -216,7 +216,7 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
           } }
         } else {
           let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
-          FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig {
+          v1.compiler.infer_sigs.FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig {
             name: name,
             params: node.params,
             inferred: qualified_return,
@@ -535,7 +535,7 @@ fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.c
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {
     Present { value: mfr } =>
-      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
+      let semantics = v1.std.core.AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
       KnownMethodResolution {
         semantics: Present { value: semantics },
         result_type: Present { value: mfr.result_type },

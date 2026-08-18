@@ -31,7 +31,7 @@ type InterfaceSummary {
   interface_hash: InterfaceHash
 }
 
-data interface_summary_v0_dissolution_trigger: std.disposition.Disposition = Scaffold {
+data interface_summary_v0_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.interface_summary",

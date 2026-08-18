@@ -48,23 +48,23 @@ fn same_file_neighbour_observation() -> std.reference_binding_observation.Refere
     source: nrdfc_same_file_neighbour_source(),
   ) {
     NrdfcParsedRefused =>
-      SameFileNeighbourProductionRefused {
+      std.reference_binding_observation.SameFileNeighbourProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "fn_a") {
         Absent =>
-          SameFileNeighbourProductionRefused {
+          std.reference_binding_observation.SameFileNeighbourProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           match declarations_named(transport: transport, name: "fn_a") |> first {
             Absent =>
-              SameFileNeighbourProductionRefused {
+              std.reference_binding_observation.SameFileNeighbourProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: neighbour } =>
-              SameFileNeighbourObservation {
+              std.reference_binding_observation.SameFileNeighbourObservation {
                 neighbour: neighbour.occurrence,
                 resolution: structural_binding_resolution_from_candidates(
                   transport: transport,
@@ -83,7 +83,7 @@ fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBi
     source: nrdfc_sibling_branch_source(),
   ) {
     NrdfcParsedRefused =>
-      SiblingBranchProductionRefused {
+      std.reference_binding_observation.SiblingBranchProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
@@ -91,19 +91,19 @@ fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBi
       let x_references = references_named(transport: transport, name: "x")
       match x_declarations |> first {
         Absent =>
-          SiblingBranchProductionRefused {
+          std.reference_binding_observation.SiblingBranchProductionRefused {
             gap: ReferenceBindingNamedDeclarationAbsent,
           }
         Present { value: then_branch_x } =>
           match x_declarations |> reverse |> first {
             Absent =>
-              SiblingBranchProductionRefused {
+              std.reference_binding_observation.SiblingBranchProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: else_branch_x } =>
               match x_references |> reverse |> first {
                 Absent =>
-                  SiblingBranchObservation {
+                  std.reference_binding_observation.SiblingBranchObservation {
                     own_branch_declaration: else_branch_x.occurrence,
                     sibling_branch_declaration: then_branch_x.occurrence,
                     resolution: std.reference_binding_observation.StructuralBindingProductionRefused {
@@ -111,7 +111,7 @@ fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBi
                     },
                   }
                 Present { value: else_branch_ref } =>
-                  SiblingBranchObservation {
+                  std.reference_binding_observation.SiblingBranchObservation {
                     own_branch_declaration: else_branch_x.occurrence,
                     sibling_branch_declaration: then_branch_x.occurrence,
                     resolution: structural_binding_resolution_from_candidates(
@@ -132,23 +132,23 @@ fn later_declaration_observation() -> std.reference_binding_observation.Referenc
     source: nrdfc_later_declaration_source(),
   ) {
     NrdfcParsedRefused =>
-      LaterDeclarationProductionRefused {
+      std.reference_binding_observation.LaterDeclarationProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "fn_later") {
         Absent =>
-          LaterDeclarationProductionRefused {
+          std.reference_binding_observation.LaterDeclarationProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           match declarations_named(transport: transport, name: "fn_later") |> first {
             Absent =>
-              LaterDeclarationProductionRefused {
+              std.reference_binding_observation.LaterDeclarationProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: later_declaration } =>
-              LaterDeclarationObservation {
+              std.reference_binding_observation.LaterDeclarationObservation {
                 later_declaration: later_declaration.occurrence,
                 resolution: structural_binding_resolution_from_candidates(
                   transport: transport,
@@ -167,30 +167,30 @@ fn distinct_homonym_observation() -> std.reference_binding_observation.Reference
     source: nrdfc_distinct_homonym_source(),
   ) {
     NrdfcParsedRefused =>
-      DistinctHomonymProductionRefused {
+      std.reference_binding_observation.DistinctHomonymProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "helper") {
         Absent =>
-          DistinctHomonymProductionRefused {
+          std.reference_binding_observation.DistinctHomonymProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           let helpers = declarations_named(transport: transport, name: "helper")
           match helpers |> first {
             Absent =>
-              DistinctHomonymProductionRefused {
+              std.reference_binding_observation.DistinctHomonymProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: first_helper } =>
               match helpers |> reverse |> first {
                 Absent =>
-                  DistinctHomonymProductionRefused {
+                  std.reference_binding_observation.DistinctHomonymProductionRefused {
                     gap: ReferenceBindingNamedDeclarationAbsent,
                   }
                 Present { value: second_helper } =>
-                  DistinctHomonymObservation {
+                  std.reference_binding_observation.DistinctHomonymObservation {
                     first_declaration: first_helper.occurrence,
                     second_declaration: second_helper.occurrence,
                     resolution: structural_binding_resolution_from_candidates(

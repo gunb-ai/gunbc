@@ -26,7 +26,7 @@ data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as t
 
 data namespace_wave_import_strip_specimens_note: String = "Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d): three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired with explicit imports — NOT held for namespace-derived closure; main needed exact imports today, namespace program owns making this class unwritable later. (1) v2.lens.complexity: direct imports from v2.lens.cost stripped (PolynomialDegree, PolyLogExponent, SizeVariable, SymbolicCost, asymptotic_class_*); module referenced cost symbols with zero import lines. (2) v2.lens.enforcement.receipts: direct imports stripped from v2.lens.cost and v2.lens.enforcement.vocab (SymbolicCost, EnrolledInFloorRoster, EnrollmentDiscoveryReceipt, LensModuleFunctionObserved, etc.). (3) v2.extdeps.languages.rust_test_fixtures: missing std.algebra { Cons, Empty } bindings (#7772 partial un-strip; see rust_test_fixtures_rust_import_unstrip_note). Dissolve-on: bare-reference closure binding is construction-backed repo-wide so stripped modules cannot compile only by pool-membership coincidence."
 
-data reference_derived_edge_source_disposition: std.disposition.Disposition = Scaffold {
+data reference_derived_edge_source_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.module_graph",

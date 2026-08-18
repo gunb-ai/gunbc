@@ -2330,17 +2330,17 @@ fn try_type_directed_dimension(body: v1.std.core.Node, func_name: String, param_
   match dim {
     TreeDescent =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: true, check_list: false, si: si) {
-        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [TreeSize { param: param_name }] } }
+        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: param_name }] } }
         _ => none
       }
     CollectionFold =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: true, si: si) {
-        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [ListLength { param: param_name }] } }
+        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: param_name }] } }
         _ => none
       }
     ArithmeticRepeat =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: false, si: si) {
-        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [ArithmeticValue { param: param_name }] } }
+        Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ArithmeticValue { param: param_name }] } }
         _ => none
       }
   }
@@ -2360,17 +2360,17 @@ fn construct_termination_proof(func_name: String, body: v1.std.core.Node, params
             let tree_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_evidence {
               Present { value: Strict } =>
-                Present { value: std.termination.TerminationProof { dimensions: [TreeSize { param: pname }] } }
+                Present { value: std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: pname }] } }
               _ =>
                 let list_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si)
                 match list_evidence {
                   Present { value: Strict } =>
-                    Present { value: std.termination.TerminationProof { dimensions: [ListLength { param: pname }] } }
+                    Present { value: std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: pname }] } }
                   _ =>
                     let arith_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: false, si: si)
                     match arith_evidence {
                       Present { value: Strict } =>
-                        Present { value: std.termination.TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
+                        Present { value: std.termination.TerminationProof { dimensions: [std.termination.ArithmeticValue { param: pname }] } }
                       _ => none
                     }
                 }
@@ -2394,7 +2394,7 @@ fn construct_termination_proof(func_name: String, body: v1.std.core.Node, params
             consumed_true_set: empty_map(),
           si: si)
           if (edges |> count) > 0 && (edges |> all(edge => edge.progress == Strict)) {
-            Present { value: std.termination.TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
+            Present { value: std.termination.TerminationProof { dimensions: [std.termination.TokenPosition { param: state_param.name }] } }
           } else { none }
         Absent => none
       }
@@ -2420,23 +2420,23 @@ fn construct_branching_termination_proof(func_name: String, body: v1.std.core.No
         match type_iteration_dimension(type_name: type_name) {
           Present { value: TreeDescent } =>
             match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si) {
-              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: pname }] } }
               _ => none
             }
           Present { value: CollectionFold } =>
             match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si) {
-              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [ListLength { param: pname }] } }
+              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: pname }] } }
               _ => none
             }
           Present { value: ArithmeticRepeat } => none
           Absent =>
             let tree_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si)
             match tree_ev {
-              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: pname }] } }
               _ =>
                 let list_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true, si: si)
                 match list_ev {
-                  Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [ListLength { param: pname }] } }
+                  Present { value: Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: pname }] } }
                   _ => none
                 }
             }
@@ -2448,11 +2448,11 @@ fn construct_branching_termination_proof(func_name: String, body: v1.std.core.No
 fn proof_to_call_pattern(proof: std.termination.TerminationProof) -> std.computation.CallPattern {
   match proof.dimensions |> first {
     Present { value: dim } => match dim {
-      TreeSize { param: p }        => ChildAccessorCall { accessor: p }
-      ListLength { param: p }      => CollectionShrinkCall { amount: OneStep, collection: p }
-      ArithmeticValue { param: p } => ArithmeticSubtractCall { steps: OneStep, ring_param: p }
-      TokenPosition { param: p }   => ParserAdvanceCall { witness: p }
-      SetCardinality { param: p }  => WorklistDrainCall { element: p }
+      std.termination.TreeSize { param: p }        => std.computation.ChildAccessorCall { accessor: p }
+      std.termination.ListLength { param: p }      => std.computation.CollectionShrinkCall { amount: OneStep, collection: p }
+      ArithmeticValue { param: p } => std.computation.ArithmeticSubtractCall { steps: OneStep, ring_param: p }
+      std.termination.TokenPosition { param: p }   => std.computation.ParserAdvanceCall { witness: p }
+      SetCardinality { param: p }  => std.computation.WorklistDrainCall { element: p }
     }
     Absent => SameArgumentCall
   }
@@ -3143,7 +3143,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
     }
   )
   let cx_l2_param = scc_descending_param(members: members, func_index: func_index, si: si)
-  let cx_l2_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
+  let cx_l2_proof = std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
   if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
     Present { value: cx_l2_proof }
   } else {
@@ -3154,7 +3154,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  let tree_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  let tree_proof = std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: "scc" }] }
   if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tree_proof, members: members, edges: tree_edges) == false {
     Present { value: tree_proof }
   } else {
@@ -3165,7 +3165,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         _ => true
       }
     )
-    let list_proof = std.termination.TerminationProof { dimensions: [ListLength { param: "scc" }] }
+    let list_proof = std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: "scc" }] }
     if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
       Present { value: list_proof }
     } else {
@@ -3177,7 +3177,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           _ => true
         }
       )
-      let parser_proof = std.termination.TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
+      let parser_proof = std.termination.TerminationProof { dimensions: [std.termination.TokenPosition { param: "scc" }] }
       if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: parser_proof, members: members, edges: parser_edges) == false {
         Present { value: parser_proof }
       } else {
@@ -3189,7 +3189,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
             Absent => false
           }
         )
-        let lex_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.ListLength { param: "scc" }] }
+        let lex_proof = std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: "scc" }, std.termination.ListLength { param: "scc" }] }
         if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
           Present { value: lex_proof }
         } else {
@@ -3201,7 +3201,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
               Absent => false
             }
           )
-          let tp_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.TokenPosition { param: "scc" }] }
+          let tp_proof = std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: "scc" }, std.termination.TokenPosition { param: "scc" }] }
           if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tp_proof, members: members, edges: tree_parser_edges) == false {
             Present { value: tp_proof }
           } else {

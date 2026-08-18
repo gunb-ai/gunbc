@@ -411,7 +411,7 @@ fn variant_owner_node(scope: InferScope, name: String) -> v1.std.core.Node? {
 
 fn infer_var_binding_kind(scope: InferScope, name: String) -> v1.std.core.VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
-    Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
+    Present { value: parent_enum } => v1.std.core.VariantValueBinding { parent_enum: parent_enum }
     Absent =>
       match map_get(scope.locals, name) {
         Present { value: _ } =>
@@ -2537,7 +2537,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: std.
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
         let msg = concat("invalid cast: ", source_name, " as ", target_name)
-        let diag = InternalError { message: msg, span: span }
+        let diag = v1.std.core.InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
     _ => none
@@ -2558,7 +2558,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_span: std.types.SourceSpan) -> InferredNode {
   match result {
     Present { value: inferred } => inferred
-    Absent => CompilerError { message: fallback_message, span: fallback_span }
+    Absent => v1.std.core.CompilerError { message: fallback_message, span: fallback_span }
   }
 }
 
@@ -2567,7 +2567,7 @@ fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: v1.compiler.inf
     PatternResolved { node: scrutinee_type } =>
       pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
     PatternDynamic { span: dynamic_span } =>
-      PatternDynamic { span: dynamic_span }
+      v1.compiler.infer_patterns.PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
       PatternLookupBlocked
   }
@@ -2606,13 +2606,13 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: v1.co
       )
       match inferred_parent {
         Present { value: parent_name } =>
-          VariantPattern {
+          v1.std.core.VariantPattern {
             name: annotated_variant_name,
             parent_enum: parent_name,
             field_bindings: annotated_bindings
           }
         Absent =>
-          VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
+          v1.std.core.VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
       }
     _ => pattern
   }
@@ -2794,7 +2794,7 @@ fn derive_element_provenance(coll_expr: v1.std.core.Node, elem_type: v1.std.core
         let ind_fields = inductive_fields_for(env: scope.type_env, type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: elem_type))
         let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
         match list_field {
-          Present { value: f } => IteratedSubValue { field: f }
+          Present { value: f } => std.induction.IteratedSubValue { field: f }
           Absent => SubValueUnknown
         }
       }
@@ -5168,7 +5168,7 @@ fn classify_collection_shrink(arg_expr: v1.std.core.Node, param_name: String, ct
                         match positive_descent_amount_from_positive_int(k: k) {
                           Present { value: steps } =>
                             let synth_field = std.induction.InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                            StrictSubValue { field: synth_field, factor: std.computation.ConstantShrink { steps: steps } }
+                            std.induction.StrictSubValue { field: synth_field, factor: std.computation.ConstantShrink { steps: steps } }
                           Absent => SubValueUnknown
                         }
                       } else { SubValueUnknown }
@@ -5182,7 +5182,7 @@ fn classify_collection_shrink(arg_expr: v1.std.core.Node, param_name: String, ct
                             match proportional_divisor_from_int_at_least_two(k: d) {
                               Present { value: div_w } =>
                                 let synth_field = std.induction.InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                                StrictSubValue { field: synth_field, factor: std.computation.ProportionalShrink { divisor: div_w } }
+                                std.induction.StrictSubValue { field: synth_field, factor: std.computation.ProportionalShrink { divisor: div_w } }
                               Absent => SubValueUnknown
                             }
                           } else { SubValueUnknown }
@@ -5698,7 +5698,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
           let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
           let matching = fields |> filter(f => f.field_name == field) |> first
           match matching {
-            Present { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+            Present { value: ind_field } => std.induction.StrictSubValue { field: ind_field, factor: UnitShrink }
             Absent => SubValueUnknown
           }
         _ => SubValueUnknown
@@ -5732,11 +5732,11 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
                     let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
                     let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
                     match cf {
-                      Present { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+                      Present { value: ind_field } => std.induction.StrictSubValue { field: ind_field, factor: UnitShrink }
                       Absent => PreservedValue
                     }
                   } else if is_property_contraction(func_name: callee) {
-                    ArithmeticDescent { param: param_name, factor: std.computation.ConstantShrink { steps: OneStep } }
+                    std.induction.ArithmeticDescent { param: param_name, factor: std.computation.ConstantShrink { steps: OneStep } }
                   } else { PreservedValue }
               }
             NonIncreasingValue => NonIncreasingValue
@@ -5763,7 +5763,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
               Present { value: k } =>
                 match positive_descent_amount_from_positive_int(k: k) {
                   Present { value: steps } =>
-                    ArithmeticDescent { param: param_name, factor: std.computation.ConstantShrink { steps: steps } }
+                    std.induction.ArithmeticDescent { param: param_name, factor: std.computation.ConstantShrink { steps: steps } }
                   Absent => SubValueUnknown
                 }
               Absent => SubValueUnknown
@@ -5788,7 +5788,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
               Present { value: k } =>
                 match proportional_divisor_from_int_at_least_two(k: k) {
                   Present { value: div_w } =>
-                    ArithmeticDescent { param: param_name, factor: std.computation.ProportionalShrink { divisor: div_w } }
+                    std.induction.ArithmeticDescent { param: param_name, factor: std.computation.ProportionalShrink { divisor: div_w } }
                   Absent => SubValueUnknown
                 }
               Absent => SubValueUnknown
@@ -5960,7 +5960,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                 sub_value_vars: if p1 != "" {
                   let source_fields = inductive_fields_for(env: ctx.type_env, type_name: source_type)
                   let cf = source_fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
-                  let rel = match cf { Present { value: f } => IteratedSubValue { field: f }  Absent => PreservedValue }
+                  let rel = match cf { Present { value: f } => std.induction.IteratedSubValue { field: f }  Absent => PreservedValue }
                   if p2 != "" { map_insert(map_insert(ctx.sub_value_vars, p1, rel), p2, rel) }
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
                 } else { ctx.sub_value_vars },
@@ -7047,7 +7047,7 @@ fn populate_output_provenance(typed_items: List<v1.std.core.Node>, func_env: v1.
               let list_field = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
               match list_field {
                 Present { value: ind_field } =>
-                  let relation = StrictSubValue { field: ind_field, factor: UnitShrink }
+                  let relation = std.induction.StrictSubValue { field: ind_field, factor: UnitShrink }
                   let provenance = [map_insert(empty_map(), pname, relation)]
                   match map_get(acc, fn_name) {
                     Present { value: sig } =>

@@ -619,7 +619,7 @@ data observation_dwell_threshold: DwellThreshold = DwellThreshold {
   basis: "one heartbeat period — the log's existing clock. Law 2 requires that no subject stay quiet past T without a line naming it, and the heartbeat is already the cadence at which the log speaks, so T is DERIVED from the emitter's own period rather than picked. Escalation at 2T and 4T rides the same clock, which is why depth is a division and not a table of tuned constants."
 }
 
-data observation_dwell_threshold_disposition: std.disposition.Disposition = Scaffold {
+data observation_dwell_threshold_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
@@ -749,19 +749,19 @@ data observation_laws: List<ObservationLaw> = [
   observation_law_every_response_true
 ]
 
-data observation_outcome_predicate_contract: std.disposition.Disposition = Terminal {
+data observation_outcome_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct readers over ObservationOutcome and ObservationEventClass (observation_outcome_is_anomaly, observation_outcome_class, observation_event_class, observation_class_density and the density projections) — closed by the declared outcome and class variants, not interim scaffolds. Terminal because the sums are closed by construction and the class roster is censused: a new variant cannot be added without the totality witness naming it. Discriminating corpus: dag/test/claim/observation_model_witness_test.dag, which reds when a class loses its presentation, when Refused and Failed collapse onto one glyph, and when the density authority disagrees with what the presentation projects."
 }
 
-data observation_subject_predicate_contract: std.disposition.Disposition = Terminal {
+data observation_subject_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_subject_entry_path, observation_subject_declaration, observation_subject_phase_name, observation_subject_module_path, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
 }
 
-data observation_selection_predicate_contract: std.disposition.Disposition = Terminal {
+data observation_selection_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct readers over SelectionNoOp (observation_no_op_is_actually_a_widen, observation_no_op_attention, observation_no_op_symbol, observation_no_op_explanation) — closed by the declared no-op variants. Terminal, and load-bearing rather than decorative: the widen reader is what keeps a departed path from being rendered as a no-op, which is the distinction the operator's closed-sum ruling exists to preserve."
 }
 
-data observation_renders_nothing_disposition: std.disposition.Disposition = Terminal {
+data observation_renders_nothing_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "P0 carries the model only. Renderers are P1 and later, and the CI renderer's wiring lands after the atomic CI PR because both touch the floor's emit sites and churning them twice is the migration class the operator ruled out. This module therefore holds no line formatting, no glyph text, and no ANSI: it holds the vocabulary those renderers project from."
 }
 
@@ -940,7 +940,7 @@ fn observation_rollup_accept(
   }
 }
 
-data observation_rollup_contract: std.disposition.Disposition = Terminal {
+data observation_rollup_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.effect_grant.path_is_prefix), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
 }
 

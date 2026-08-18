@@ -1,19 +1,19 @@
 module std.materialization_ladder
 
 
-data materialization_ladder_frame_path_predicate_contract: std.disposition.Disposition = Terminal {
+data materialization_ladder_frame_path_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
 }
 
-data materialization_ladder_provider_tier_predicate_contract: std.disposition.Disposition = Terminal {
+data materialization_ladder_provider_tier_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct readers over ProviderTier/CacheProvider (provider_is_*, provider_covers_identity, tier_axes, addressing_spans_isolation) — closed by declared tier/keying variants; not interim scaffolds."
 }
 
-data materialization_ladder_verdict_predicate_contract: std.disposition.Disposition = Terminal {
+data materialization_ladder_verdict_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct readers over LadderVerdict (ladder_verdict_is_*, verdict_is_*, materialization_ladder_holds, group_* helpers) — closed by declared verdict variants; witnesses cover every arm."
 }
 
-data materialization_ladder_value_binding_predicate_contract: std.disposition.Disposition = Terminal {
+data materialization_ladder_value_binding_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Structural coproduct readers over ValueMaterialization/AccessMode (value_verdict_is_*, value_materialization_*, access_is_*) — closed by the value-tier vocabulary; discriminating corpus: materialization_ladder_witness_test value_* cells."
 }
 
