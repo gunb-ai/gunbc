@@ -11,7 +11,7 @@ type FloatSpecial
 
 type FloatBody
   = Finite {
-      sign: v2.std.machine.Bit
+      sign: std.bit.Bit
       biased_exponent: v2.std.nat.Nat
       trailing_significand: v2.std.nat.Nat
     }

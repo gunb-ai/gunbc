@@ -310,7 +310,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
           explicit_witness_admission_executing_witness_roster()
         )
       ),
-    empty: v2.std.algebra.Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, w) {
       list_snoc_item(
         xs: acc,

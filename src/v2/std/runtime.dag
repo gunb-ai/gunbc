@@ -117,7 +117,7 @@ fn runtime_bits_list_node(bits: List<Bool>) -> Node {
   )
 }
 
-fn runtime_byte_node_projection(byte: v2.std.machine.Byte) -> Node {
+fn runtime_byte_node_projection(byte: std.bit.Byte) -> Node {
   runtime_value_conj_node(children: [
     runtime_value_named_edge(
       name: ^runtime_byte_bits_node_projection,
@@ -126,7 +126,7 @@ fn runtime_byte_node_projection(byte: v2.std.machine.Byte) -> Node {
   ])
 }
 
-fn runtime_bytes_list_node(bytes: List<v2.std.machine.Byte>) -> Node {
+fn runtime_bytes_list_node(bytes: List<std.bit.Byte>) -> Node {
   fold_list_node(
     xs: bytes,
     item_node: fn(byte) { runtime_byte_node_projection(byte: byte) }

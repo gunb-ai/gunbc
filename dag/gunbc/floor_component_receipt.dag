@@ -40,7 +40,7 @@ fn floor_component_subject(run_id: std.types.NonEmptyStr, index: std.nat.Nat, la
 fn floor_component_outcome_of_tag(
   tag: std.types.NonEmptyStr,
   detail: std.types.NonEmptyStr,
-  basis: std.observation.ClockBasis,
+  basis: std.measure.ClockBasis,
   budget: std.measure.Millisecond,
   elapsed: std.measure.Millisecond,
   shown_failures: std.nat.Nat
@@ -118,7 +118,7 @@ fn floor_component_row(
   witnesses: std.nat.Nat,
   outcome_tag: std.types.NonEmptyStr,
   detail: std.types.NonEmptyStr,
-  basis: std.observation.ClockBasis,
+  basis: std.measure.ClockBasis,
   budget: std.measure.Millisecond,
   elapsed: std.measure.Millisecond,
   shown_failures: std.nat.Nat,
