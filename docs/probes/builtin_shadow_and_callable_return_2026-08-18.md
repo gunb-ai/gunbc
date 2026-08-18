@@ -87,9 +87,20 @@ nothing scans the rendered string, and a target without the row is unaffected by
 
 ## 5. Result, three numbers as requested
 
+Measured twice, on two bases, because this branch merged `origin/main` mid-work and main's own
+#8410 (Rust realization keyed on declaration identity) moved the baseline:
+
+| base | before | after this branch |
+|---|---:|---:|
+| `11254b04fc` (main when this session opened) | 60 | 58 |
+| `2c65eeacf3` (`origin/main` at merge, includes #8410) | 53 | **51** |
+
+The branch's own delta is the same on both bases — 8 retired, 6 newly exposed, net −2 — which is
+the check that it is measuring the fix rather than the base.
+
 ```
-baseline                60
-after both roots        58
+baseline                53   (origin/main 2c65eeacf3)
+after both roots        51
   retired (gross)        8   E0061 x2, E0308 x5, E0282 x1
   newly exposed          6   E0599 "no method `clone` on type parameter A"
   net                   -2
@@ -98,9 +109,9 @@ after both roots        58
 The six new rows are **honest errors the two defects were hiding**: with the call now bound to
 the parameter and the closure now coerced, the missing `Clone` bound on the generic parameters is
 what rustc reaches next. They belong to mechanism 1 (Clone bounds), which is unowned and is the
-largest remaining cluster in this module — 16 E0277 plus 8 E0599 of the surviving 58.
+largest remaining cluster in this module — 16 E0277 plus 9 E0599 of the surviving 51.
 
-Surviving histogram: `E0308 23 · E0277 16 · E0599 8 · E0425 3 · E0422 2 · E0369 2 · unreachable_pattern 2 · E0560 1 · E0282 1`.
+Surviving histogram (on the merged base): `E0277 16 · E0308 15 · E0599 9 · E0425 3 · E0422 2 · E0369 2 · unreachable_pattern 2 · E0560 1 · E0282 1`.
 
 ## 6. Two findings this work surfaced and did NOT fix
 
