@@ -40663,29 +40663,34 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
 /// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
 /// one site, and every frame is derived from what it returned.
 ///
-/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
-/// already walked and read every admitted file; a later consumer that walks again to ask what
-/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
-/// the repository to learn something the preparation already knows. The naming-hygiene walk
-/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
-/// inventory instead.
+/// WHAT PREPARATION LEARNED IS RETAINED; THE BYTES IT LEARNED IT FROM ARE NOT. Preparation
+/// already walked and read every admitted file, so a later consumer that walks again to ask
+/// which files declare witnesses is re-acquiring the repository to learn something preparation
+/// already knows. The naming-hygiene walk cost ~6 minutes of every floor run for exactly that
+/// reason, and retaining the answer is what removed it.
+///
+/// It retained the QUESTION as well, and that was a 31.8 MB duplicate of the whole corpus.
+/// The predecessor held every admitted file's `content` in a `Vec<InventoryEntry>` beside the
+/// `Rc<SourceFile>` list the graph already owns — `sf.content.clone()`, a deep copy of every
+/// byte, measured at 31,819,415 bytes across 3,655 modules. Its justification named three
+/// questions a consumer might ask (what modules exist, which files declare witnesses, what a
+/// module's path is). Only the middle one ever had a consumer: `content` was read in exactly
+/// two places, both inside one fold, and that fold had one caller.
+///
+/// So the fold now runs during preparation and the bytes are dropped. This is the construction
+/// move rather than the tidier one: a retained corpus copy is an invitation to answer the next
+/// question by re-scanning it, which is the second representation of facts the graph is already
+/// the authority for. With the bytes gone that answer is unavailable, so the next consumer has
+/// to ask the graph — and the duplicate cannot come back by someone reaching for what was
+/// conveniently in hand.
 pub struct PreparedRepository {
     pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
-    pub inventory: Vec<InventoryEntry>,
-}
-
-/// One admitted source file, as preparation read it: its module path, its repository path,
-/// and the bytes. The module path is carried here rather than re-derived because the index
-/// that produced it is the same one preparation resolved from — re-deriving it later is the
-/// second representation of the path/module binding, and it is the representation that rots.
-pub struct InventoryEntry {
-    pub module_path: String,
-    pub path: String,
-    pub content: String,
+    /// The witness sites preparation found, already folded. NOT the corpus bytes.
+    pub witness_files: Vec<InventoryWitnessFile>,
 }
 
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
@@ -40697,7 +40702,7 @@ pub fn prepare_repository_once(
 ) -> Result<PreparedRepository, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
         let p = sf.path.replace('\\', "/");
@@ -40707,17 +40712,16 @@ pub fn prepare_repository_once(
         {
             continue;
         }
-        inventory.push(InventoryEntry {
-            module_path: module_path.clone(),
-            path: sf.path.clone(),
-            content: sf.content.clone(),
-        });
+        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
+            witness_files.push(site);
+        }
         sources.push(sf.clone());
     }
     if sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - sources.len();
+    witness_files.sort_by(|a, b| a.path.cmp(&b.path));
     let subject_digest = subject_digest_for_closure(&sources);
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
@@ -40740,7 +40744,7 @@ pub fn prepare_repository_once(
         subject_digest,
         modules_resolved,
         modules_excluded,
-        inventory,
+        witness_files,
     })
 }
 
@@ -40972,8 +40976,9 @@ pub fn claim_scope_for(
     //
     // That is the population the entry-major path bound against, computed by the compiler that
     // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
-    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
-    // already answered — and one that could differ from the first, in the direction that
+    // corpus copy preparation then retained, which was a SECOND answer to a question the
+    // prepared artifacts had already answered — and one that could differ from the first, in
+    // the direction that
     // silently narrows: the old closure also admitted modules reached by bare reference, which
     // no scan of import lines can see.
     let entry_module = prepared
@@ -41199,8 +41204,9 @@ pub struct RequiredFloorOutcome {
     pub failures: Vec<String>,
 }
 
-/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
-/// names it declares. Produced by folding over bytes preparation already read.
+/// A witness site as preparation found it — the file's path, its module, and the `test fn`
+/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
@@ -41213,49 +41219,52 @@ pub struct InventoryWitnessFile {
     pub reads_live_tree: bool,
 }
 
-/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
-/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
-/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
-/// second time, and additionally built a whole-corpus module graph to answer a question about
-/// one file at a time.
+/// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
+/// at that moment. Called inside the preparation loop, so no corpus copy is retained to be
+/// scanned later and NO FILESYSTEM ACCESS occurs: the walk this replaces cost ~6 minutes of
+/// every floor run, acquired the repository a second time, and additionally built a
+/// whole-corpus module graph to answer a question about one file at a time.
+///
+/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
+/// record.
 ///
 /// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
-pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
-    let mut out: Vec<InventoryWitnessFile> = Vec::new();
-    for entry in &prepared.inventory {
-        let mut functions: Vec<String> = Vec::new();
-        // Same scan, same column-zero rule as `test fn` below: a module-scope `data` whose
-        // value is `ReadsLiveTree`. Indented occurrences are inside bodies and are not
-        // declarations.
-        let reads_live_tree = entry.content.lines().any(|line| {
-            line.starts_with("data ")
-                && line.contains("LiveTreeDisposition")
-                && line.contains("ReadsLiveTree")
-        });
-        for line in entry.content.lines() {
-            let Some(rest) = line.strip_prefix("test fn ") else {
-                continue;
-            };
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                functions.push(name);
-            }
-        }
-        if !functions.is_empty() {
-            out.push(InventoryWitnessFile {
-                path: entry.path.replace('\\', "/"),
-                module_path: entry.module_path.clone(),
-                functions,
-                reads_live_tree,
-            });
+fn witness_file_from_source(
+    module_path: &str,
+    path: &str,
+    content: &str,
+) -> Option<InventoryWitnessFile> {
+    let mut functions: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let Some(rest) = line.strip_prefix("test fn ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            functions.push(name);
         }
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    out
+    if functions.is_empty() {
+        return None;
+    }
+    // Same scan, same column-zero rule as `test fn` above: a module-scope `data` whose value is
+    // `ReadsLiveTree`. Indented occurrences are inside bodies and are not declarations.
+    let reads_live_tree = content.lines().any(|line| {
+        line.starts_with("data ")
+            && line.contains("LiveTreeDisposition")
+            && line.contains("ReadsLiveTree")
+    });
+    Some(InventoryWitnessFile {
+        path: path.replace('\\', "/"),
+        module_path: module_path.to_string(),
+        functions,
+        reads_live_tree,
+    })
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41849,7 +41858,7 @@ pub fn run_required_floor(
     // seams below are what turn the gap into one located term.
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
-    let files = inventory_witness_files(&prepared);
+    let files = &prepared.witness_files;
     // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
     // the same inventory entry in the same iteration, so the site is complete at construction.
     //
@@ -41882,7 +41891,7 @@ pub fn run_required_floor(
     // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
     // counted by both.
     let mut site_facts: Vec<(String, String, bool)> = Vec::new();
-    for file in &files {
+    for file in files {
         for function in &file.functions {
             site_facts.push((
                 format!("{}.{}", file.module_path, function),
