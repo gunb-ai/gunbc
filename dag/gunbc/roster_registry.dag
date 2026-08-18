@@ -101,7 +101,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "resolution_divergence_census_roster_excluded_module_prefixes"),
     unit_kind: "module path prefix",
     membership: DeclaredFrontier {
-      reason: "v2.test.* intentional-ambiguity harness modules are excluded from the fn_parent_first_hit subset construction invariant (not from the genuine silent-pick join gate); receipts in falsifier_silent_pick_gate_note",
+      reason: "v2.test.* intentional-ambiguity harness modules excluded from fn_parent_first_hit subset checks; see resolution_divergence_silent_pick_gate_retirement_receipt in gunbc.ci_layer_roots",
       dissolution: unbound_dissolution(description: "unique-on-chain resolution ships as the resolver's actual behavior; then telemetry, the gate witness, and this roster delete together")
     }
   },

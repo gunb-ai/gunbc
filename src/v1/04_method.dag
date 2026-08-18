@@ -79,7 +79,6 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", unit_type)
   let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", unit_type)
   let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", unit_type)
-  let m = map_insert(m, "resolution_divergence_silent_pick_gate_in_process", bool_type)
   let m = map_insert(m, "to_string", string_type)
 
   let m = map_insert(m, "discriminant", string_type)

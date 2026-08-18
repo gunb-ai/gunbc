@@ -128,7 +128,6 @@ pub enum EvalBuiltinArm {
     FreeCallFallbackArmCensusReconciliationHolds,
     FreeCallComplexityLinearitySyntacticSiteFired,
     FreeCallCensusCorpusRootsFollowLayerAuthority,
-    FreeCallResolutionDivergenceSilentPickGateInProcess,
 }
 
 #[rustfmt::skip]
@@ -261,7 +260,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "fallback_arm_census_reconciliation_holds" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds),
         "complexity_linearity_syntactic_site_fired" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired),
         "census_corpus_roots_follow_layer_authority" => Some(EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority),
-        "resolution_divergence_silent_pick_gate_in_process" => Some(EvalBuiltinArm::FreeCallResolutionDivergenceSilentPickGateInProcess),
         _ => None,
     }
 }
@@ -392,7 +390,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.fallback_arm_census_reconciliation_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds };
     ("free_call.complexity_linearity_syntactic_site_fired") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired };
     ("free_call.census_corpus_roots_follow_layer_authority") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority };
-    ("free_call.resolution_divergence_silent_pick_gate_in_process") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallResolutionDivergenceSilentPickGateInProcess };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
