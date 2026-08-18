@@ -675,3 +675,39 @@ The floor prints `file:LINE:COL`; regen prints `(file:charStart-charEnd)`. The s
 qualifier consumes character offsets, so consuming the floor's stream requires a line/column
 to offset conversion. Not difficult, but it is a real difference between the two streams and
 a silent mis-read would place every edit at the wrong position.
+
+## Round 1 structural audit: clean (2026-08-18)
+
+Audited every changed line in `76a48451157` against its parent:
+
+    changed lines audited             1621
+    changes that are a pure prefix insertion   1621
+    block-size mismatches                0
+    files with altered string bytes      0
+    distinct inserted qualifiers        91
+    qualifiers naming no real module     0
+
+Every change is exactly the old line with a module prefix inserted; nothing else moved. All
+91 qualifiers name a module that exists in the tree. No string bytes changed in any of the
+162 files.
+
+**What this does NOT establish**, stated so the receipt is not read as more than it is. Four
+of the nine recommended checks cannot be made textually: reference role is `TypeReference`,
+the span is not a lexical or generic binder, the target's declaration kind is a type, and
+post-edit exact qualified lookup succeeds. Those require resolved structure -- the
+root-occurrence refusal stream. This audit establishes that Round 1 is STRUCTURALLY sound,
+not that every target was semantically correct.
+
+### Two checker defects found while auditing, both of which would have condemned clean work
+
+1. Pairing `--unified=0` diff lines 1:1 reported **289** anomalies. A hunk may carry several
+   removed lines followed by several added lines, so positional pairing is invalid. Proper
+   per-hunk alignment: 11.
+2. Stripping qualifiers from only the new side reported those **11**. Lines that already
+   carried a qualifier (`std.observation.OccurrenceId`) lost it from the new side while the
+   old side kept it. Stripping both sides: 0.
+
+Same shape as the byte-versus-character offset defect earlier: an instrument reporting its
+own bug as a property of the data, with a plausible story attached. Three times now on this
+branch a measurement has had to be audited before its result could be used, which is itself
+the finding -- an instrument's output is evidence about the instrument until proven otherwise.
