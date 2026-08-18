@@ -26,9 +26,12 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
     Accepted { value: facts, diagnostics: None } =>
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
         Accepted { value: encoding, diagnostics: None } =>
-          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
- occurrence_id: SyntheticOccurrence
-} {
+          let arbitrary_precision_int = v2.std.node.Node {
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_repr_int_arbitrary_precision } },
+            children: [],
+            occurrence_id: v2.std.node.SyntheticOccurrence
+          }
+          if encoding == arbitrary_precision_int {
             integer_unbounded_value_set_node()
           } else {
             coercion_widening_unknown_value_set_node()
