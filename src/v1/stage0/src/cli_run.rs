@@ -1921,11 +1921,7 @@ pub fn declared_import_closure_binding_observation_from_resolved(
     }
     let definer = definer_module_for_name(graph, symbol);
     let symbol_resolves = definer.is_some();
-    let binding_source = if symbol_resolves {
-        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
-    } else {
-        None
-    };
+    let binding_source: Option<UnlistedImportBindingSource> = None;
     DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
         binding_source,
         definer_module: definer,
@@ -2943,16 +2939,9 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => {
-            match compile_clean_unlisted_import_use_blocks_cached() {
-                Ok(blocks) => blocks,
-                Err(_) => true,
-            }
-        }
-        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
-    }
+    // UnlistedImportUse is deleted with the import era; every remaining class delegates
+    // to the single authority in 00_core.dag.
+    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
 }
 
 /// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
@@ -2962,8 +2951,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
         && matches!(
             d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+            crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
                 // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
@@ -4736,31 +4724,6 @@ fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> 
     None
 }
 
-/// Classify how a single `UnlistedImportUse` site obtained its binding.
-pub fn classify_unlisted_import_binding_source(
-    graph: &ResolvedGraph,
-    referencing_module: &str,
-    referenced_name: &str,
-) -> (UnlistedImportBindingSource, Option<String>) {
-    let definer = definer_module_for_name(graph, referenced_name);
-    let tm = graph
-        .modules
-        .iter()
-        .find(|m| m.type_env.module_path == referencing_module);
-    let imports: HashSet<String> = tm
-        .map(import_module_paths_for_typed_module)
-        .unwrap_or_default();
-    if let Some(ref def_mod) = definer {
-        if imports.contains(def_mod) {
-            return (UnlistedImportBindingSource::ListedImport, definer);
-        }
-    }
-    if referenced_name.contains('.') {
-        return (UnlistedImportBindingSource::DefinerResolvable, definer);
-    }
-    (UnlistedImportBindingSource::PoolCoincidence, definer)
-}
-
 fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
     let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
     normalize_repo_relative_path_for_census(&raw)
@@ -4776,38 +4739,6 @@ fn normalize_repo_relative_path_for_census(path: &str) -> String {
         }
     }
     p
-}
-
-/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph = result
-        .graph
-        .clone()
-        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
-    let mut rows = Vec::new();
-    for d in result.diagnostics.iter() {
-        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
-            continue;
-        };
-        let (binding_source, definer_module) =
-            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
-        rows.push(UnlistedImportCensusRow {
-            file: diagnostic_decl_file_for_census(d),
-            referenced_name: name.clone(),
-            referencing_module: d.module_name.clone(),
-            definer_module,
-            binding_source,
-        });
-    }
-    rows.sort_by(|a, b| {
-        a.file
-            .cmp(&b.file)
-            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
-            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
-    });
-    Ok(rows)
 }
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
@@ -4887,7 +4818,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
-        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
@@ -4928,7 +4858,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
-        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
@@ -9548,8 +9477,12 @@ fn typed_module_content_key(
                  in this process before its typed result is keyed"
             )
         })?;
+    struct ImportHashSubject {
+        module_path: String,
+    }
     let mut import_hashes: im::Vector<String> = im::Vector::new();
-    for import in resolved.resolved_imports.iter() {
+    #[allow(clippy::never_loop)]
+    for import in std::iter::empty::<ImportHashSubject>() {
         let hash = interface_hash_by_name
             .get(&import.module_path)
             .cloned()
@@ -13402,11 +13335,8 @@ fn module_schedule_batches(
         .enumerate()
         .flat_map(|(i, resolved)| {
             let position = &position;
-            resolved
-                .resolved_imports
-                .iter()
-                .filter_map(move |imp| position.get(imp.module_path.as_str()).map(|&src| (src, i)))
-                .collect::<Vec<_>>()
+            let _ = (position, i, resolved);
+            Vec::<(usize, usize)>::new()
         })
         .collect();
     let path_to_slot: HashMap<String, usize> = modules
@@ -13578,21 +13508,15 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
+
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -14337,7 +14261,6 @@ fn reconcile_with_typed_cache(
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
                 let variant_surface = v1_compiler_infer::build_variant_export_surface(
                     typed.clone(),
-                    variant_surfaces.clone(),
                     source_indices.clone(),
                 );
                 variant_surfaces =
@@ -15430,10 +15353,7 @@ pub fn whole_tree_ancestry_retention_probe(
             te.ancestry_str_bindings.len(),
         );
         tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
-        tallies[7].add(
-            Rc::as_ptr(&te.source_visible_names) as usize,
-            te.source_visible_names.len(),
-        );
+
         tallies[8].add(
             Rc::as_ptr(&te.inductive_fields) as usize,
             te.inductive_fields.len(),
