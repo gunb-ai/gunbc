@@ -13,7 +13,7 @@ test fn w_sql_dialect_mysql_not_postgres() -> Bool {
 }
 
 test fn w_sql_migration_step_carries_dialect_enum() -> Bool {
-  let step = SqlMigrationStep {
+  let step = extdeps.sql.migration.SqlMigrationStep {
     name: "init",
     operation: CreateTable,
     dialect: Sqlite,

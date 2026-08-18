@@ -29,7 +29,7 @@ func seed_runner_loudness_probe_passes() -> Bool {
 func seed_runner_loudness_probe_failure_receipt() -> String {
   scope_placement_failure_reason(
     exit: scope_placement_membership_verdict(
-      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
     )
   )
 }
