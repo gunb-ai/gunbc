@@ -2,10 +2,10 @@ module v2.lens.idempotency
 
 
 type IdempotencyFact {
-  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>>
 }
 
-fn idempotency_classify(view: v2.std.dependency.DependencyView) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict> {
+fn idempotency_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict> {
   classify_dependency_view(classifier: idempotency_classifier, view: view)
 }
 
@@ -84,8 +84,8 @@ fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVer
 }
 
 fn idempotency_classified_eq(
-  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>,
-  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>
+  a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>,
+  b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
 }

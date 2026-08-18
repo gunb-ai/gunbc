@@ -84,8 +84,8 @@ fn witness_row_cost_migration_verdict(observed: std.measure.Millisecond) -> Migr
 
 fn witness_row_cost_receipt_row_wall_eval_ms(row: WitnessCostReceiptRow) -> Optional<std.measure.Millisecond> {
   match observation_duration_of(durations: row.eval, basis: WallClock) {
-    MeasuredValue { value: v } => Present { value: nanosecond_to_millisecond_floor(n: v) }
-    MeasuredUnavailable { cause: _ } => Absent
+    std.observation.MeasuredValue { value: v } => Present { value: nanosecond_to_millisecond_floor(n: v) }
+    std.observation.MeasuredUnavailable { cause: _ } => Absent
   }
 }
 
@@ -156,10 +156,10 @@ fn witness_cost_subject_declaration(subject: std.observation.ObservationSubject)
   observation_subject_declaration(subject: subject)
 }
 
-fn witness_cost_measured_wall(wall: Measured<std.measure.Nanosecond>) -> Optional<std.measure.Nanosecond> {
+fn witness_cost_measured_wall(wall: std.observation.Measured<std.measure.Nanosecond>) -> Optional<std.measure.Nanosecond> {
   match wall {
-    MeasuredValue { value: v } => Present { value: v }
-    MeasuredUnavailable { cause: _ } => Absent
+    std.observation.MeasuredValue { value: v } => Present { value: v }
+    std.observation.MeasuredUnavailable { cause: _ } => Absent
   }
 }
 

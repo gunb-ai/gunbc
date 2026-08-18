@@ -2,7 +2,7 @@ module v2.lens.cost
 
 
 type SizeVariable {
-  source: Node
+  source: v2.std.node.Node
 }
 
 type PolynomialDegree {
@@ -48,7 +48,7 @@ type CostCompositionMode
 type SymbolicCostFoldState {
   mode: CostCompositionMode
   cost: SymbolicCost
-  parent: Node
+  parent: v2.std.node.Node
 }
 
 fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
@@ -75,11 +75,11 @@ fn polylog_exponent_two() -> PolyLogExponent {
   PolyLogExponent { predecessor_after_log: nonzero_one() }
 }
 
-fn size_of_node(n: Node) -> SizeVariable {
+fn size_of_node(n: v2.std.node.Node) -> SizeVariable {
   SizeVariable { source: n }
 }
 
-fn linear_in_node(n: Node) -> SymbolicCost {
+fn linear_in_node(n: v2.std.node.Node) -> SymbolicCost {
   LinearCost { variable: size_of_node(n: n) }
 }
 
@@ -93,7 +93,7 @@ fn unknown_cost(diagnostic: v2.std.diagnostic.Diagnostic) -> SymbolicCost {
   UnknownCost { diagnostic: diagnostic }
 }
 
-fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
+fn symbolic_cost_witness(c: SymbolicCost, n: v2.std.node.Node) -> Witness<SymbolicCost> {
   match c {
     UnknownCost { diagnostic: d } =>
       v2.std.witness.Violates { diagnostic: d }
@@ -102,7 +102,7 @@ fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   }
 }
 
-fn base_cost_for_connective(c: v2.std.node.Connective, n: Node) -> SymbolicCost {
+fn base_cost_for_connective(c: v2.std.node.Connective, n: v2.std.node.Node) -> SymbolicCost {
   match c {
     Atom { identity: _ } => zero_cost()
     Conj => zero_cost()
@@ -113,7 +113,7 @@ fn base_cost_for_connective(c: v2.std.node.Connective, n: Node) -> SymbolicCost 
   }
 }
 
-fn base_cost_for_loop(n: Node) -> SymbolicCost {
+fn base_cost_for_loop(n: v2.std.node.Node) -> SymbolicCost {
   match loop_bound_witness_for_node(n: n) {
     Holds { value: bound } =>
       linear_in_node(n: loop_bound_measure(bound: bound))
@@ -122,7 +122,7 @@ fn base_cost_for_loop(n: Node) -> SymbolicCost {
   }
 }
 
-fn base_cost_for_behavior(b: v2.std.node.Behavior, n: Node) -> SymbolicCost {
+fn base_cost_for_behavior(b: v2.std.node.Behavior, n: v2.std.node.Node) -> SymbolicCost {
   match b {
     Value => zero_cost()
     Transform => unit_cost()
@@ -155,7 +155,7 @@ fn cost_mode_for_behavior(b: v2.std.node.Behavior) -> CostCompositionMode {
   }
 }
 
-fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
+fn cost_fold_init(n: v2.std.node.Node) -> SymbolicCostFoldState {
   match n.kind {
     TypeNode { connective: c } =>
       SymbolicCostFoldState {
@@ -353,15 +353,15 @@ fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
   }
 }
 
-fn symbolic_cost_fold_state(n: Node) -> SymbolicCostFoldState {
+fn symbolic_cost_fold_state(n: v2.std.node.Node) -> SymbolicCostFoldState {
   fold_node(n: n, algebra: symbolic_cost_fold())
 }
 
-fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
+fn symbolic_cost_of_node(n: v2.std.node.Node) -> SymbolicCost {
   symbolic_cost_fold_state(n: n).cost
 }
 
-fn cost_lens(n: Node) -> Witness<SymbolicCost> {
+fn cost_lens(n: v2.std.node.Node) -> Witness<SymbolicCost> {
   symbolic_cost_witness(c: symbolic_cost_of_node(n: n), n: n)
 }
 

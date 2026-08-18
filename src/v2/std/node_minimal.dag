@@ -386,7 +386,7 @@ fn minimal_node_superset_field_unused_by_kind(
   )
 }
 
-fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {
+fn minimal_substrate_node_from_v2(node: v2.std.node.Node) -> MinimalResolvedNode {
   MrnSubstrateGraph {
     kind: node.kind,
     children: node.children,

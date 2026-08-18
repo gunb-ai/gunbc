@@ -49,7 +49,7 @@ type BmcFanPolicyDurabilityGate
       qualification: StateDurabilityQualification<HostIdentity, BmcFanConfigReadbackSubject>,
     }
   | BmcFanPolicyDurabilityVerdictRefused {
-      verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+      verdict: std.state_durability.StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
     }
 
 type BmcFanConfigPersistenceApplySuitability
@@ -355,11 +355,11 @@ fn bmc_fan_policy_apply_suitability(
 }
 
 fn bmc_fan_durability_refusal_reason(
-  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+  verdict: std.state_durability.StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
 ) -> String {
   match verdict {
-    StateDurabilityQualified { qualification: _ } => ""
-    StateDurabilityRefused { cause: cause } =>
+    std.state_durability.StateDurabilityQualified { qualification: _ } => ""
+    std.state_durability.StateDurabilityRefused { cause: cause } =>
       match cause {
         DurabilityDefinitionLinkageUnavailable {
           assertions: assertions,
@@ -508,7 +508,7 @@ fn bmc_fan_policy_durability_qualification(
   projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
   durability_generation: std.state_durability.StatePerturbationGeneration,
   durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
-) -> StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject> {
+) -> std.state_durability.StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject> {
   state_durability_verdict(
     intent: intent.fan_policy.durability,
     admission: bmc_fan_policy_projection_durability_admission(
@@ -584,9 +584,9 @@ fn bmc_fan_policy_durability_gate(
     durability_evidence: qualification_evidence,
   )
   match durability {
-    StateDurabilityRefused { cause: _ } =>
+    std.state_durability.StateDurabilityRefused { cause: _ } =>
       BmcFanPolicyDurabilityVerdictRefused { verdict: durability }
-    StateDurabilityQualified { qualification: qualification } =>
+    std.state_durability.StateDurabilityQualified { qualification: qualification } =>
       BmcFanPolicyDurabilityQualified { qualification: qualification }
   }
 }

@@ -45,7 +45,7 @@ fn rust_field_access_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.Inf
   }
 }
 
-fn rust_field_access_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn rust_field_access_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 
@@ -54,9 +54,9 @@ test fn rust_field_access_emit_get_accepts() -> Bool {
     root: rust_field_access_emit_root,
     target: rust_field_access_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_field_access_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -65,11 +65,11 @@ test fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
     root: rust_field_access_emit_wrong_field_root(),
     target: rust_field_access_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_field_access_wrong_field_source_text) &&
       (source.carried != rust_field_access_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

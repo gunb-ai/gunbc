@@ -13,21 +13,21 @@ fn swift_parse_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn swift_parse_accepted(out: Outcome<v2.std.grammar.ParseTree>) -> Bool {
+fn swift_parse_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn swift_tokenize_and_parse() -> Outcome<v2.std.grammar.ParseTree> {
+fn swift_tokenize_and_parse() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match tokenize(
     text: swift_extended_fn_source,
     file: ^swift_parse_file,
     rules: swift_lex()
   ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: swift_grammar())
   }
 }

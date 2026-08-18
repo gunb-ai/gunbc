@@ -31,11 +31,11 @@ fn rust_grammar_structure_satisfied(lm: v2.std.language_model.LanguageModel) -> 
     grammar_carries_symbol(grammar: lm.grammar, sym: ^rust_production_return_expr)
 }
 
-fn rust_grammar_structure_outcome_satisfied(lm: Outcome<v2.std.language_model.LanguageModel>) -> Bool {
+fn rust_grammar_structure_outcome_satisfied(lm: v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel>) -> Bool {
   match lm {
-    Accepted { value: model, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: model, diagnostics: _ } =>
       rust_grammar_structure_satisfied(lm: model)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

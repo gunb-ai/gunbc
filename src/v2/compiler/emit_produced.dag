@@ -1,7 +1,7 @@
 module v2.compiler.emit_produced
 
 
-fn emit_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
@@ -9,7 +9,7 @@ fn emit_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.s
   }
 }
 
-fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
+fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   match decl.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: decl.children, index: 0) {
@@ -40,9 +40,9 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 }
 
 fn emit_produced_decl_with_target(
-  decl: Node,
+  decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: emit_produced_decl_inner_arrow(decl: decl),
     f: fn(arrow) {
@@ -62,7 +62,7 @@ fn emit_produced_decl_with_target(
 // exists, or how the declaration closes -- all of that is the renderer's. A target
 // that registered no renderer refuses with a typed, located produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
-fn emit_produced_decl(decl: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn emit_produced_decl(decl: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match target.produced_decl_support {
     ProducedDeclUnwired =>
       outcome_rejected(
@@ -92,7 +92,7 @@ fn emit_produced_decl(decl: Node, target: v2.std.compilers.target_model.TargetMo
 
 fn emit_produced_module_append(
   partial: String,
-  decl: Node,
+  decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<String> {
   bind_outcome(
@@ -111,7 +111,7 @@ fn emit_produced_module_append(
 
 fn emit_produced_module_step(
   acc: Outcome<String>,
-  decl: Node,
+  decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<String> {
   bind_outcome(
@@ -122,7 +122,7 @@ fn emit_produced_module_step(
   )
 }
 
-fn emit_produced_module(decls: List<Node>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn emit_produced_module(decls: List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: fold_list(
       xs: decls,

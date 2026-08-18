@@ -7,7 +7,7 @@ fn infer_probe_evidence<F, C, A, FidelityBoundary>(
   inference_rule: std.claim_evidence.InferenceRuleId,
   authority: A,
   provenance: std.claim_evidence.EvidenceProvenance,
-  freshness: EvidenceFreshness<C>,
+  freshness: std.claim_evidence.EvidenceFreshness<C>,
   fidelity: EvidenceFidelity<FidelityBoundary>,
   probe: gunbc.readback_independence.ReadBackProbe,
 ) -> EvidenceInference<F, C, A, FidelityBoundary, ReadBackProbe> {

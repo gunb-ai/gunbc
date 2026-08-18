@@ -29,7 +29,7 @@ fn body_lowering_infix_atoms() -> List<Node> {
   [body_lowering_atom_x(), body_lowering_atom_plus(), body_lowering_atom_y()]
 }
 
-fn body_lowering_emitted() -> Outcome<Node> {
+fn body_lowering_emitted() -> v2.std.diagnostic.Outcome<Node> {
   lower_block_body_atoms(
     atoms: body_lowering_infix_atoms(),
     witness: body_lowering_atom_plus()
@@ -38,25 +38,25 @@ fn body_lowering_emitted() -> Outcome<Node> {
 
 fn body_lowering_emit_is_call() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } => node_is_call(node: body)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } => node_is_call(node: body)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn body_lowering_emit_callee_is_operator() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
       match call_callee_target(node: body) {
-        Accepted { value: callee, diagnostics: _ } => callee == body_lowering_atom_plus()
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: callee, diagnostics: _ } => callee == body_lowering_atom_plus()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn body_lowering_emit_args_are_operands() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
       let args = call_argument_targets(node: body)
       let arity_two = count(args) == 2
       let first_is_x = match list_at_optional(xs: args, index: 0) {
@@ -68,7 +68,7 @@ fn body_lowering_emit_args_are_operands() -> Bool {
         Absent => false
       }
       arity_two && first_is_x && second_is_y
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,8 +77,8 @@ fn body_lowering_rejects_non_binary() -> Bool {
     atoms: [body_lowering_atom_plus()],
     witness: body_lowering_atom_plus()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

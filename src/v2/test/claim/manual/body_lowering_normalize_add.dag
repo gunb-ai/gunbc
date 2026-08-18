@@ -3,7 +3,7 @@ module v2.test.manual.body_lowering_normalize_add
 
 data body_lowering_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
-fn body_lowering_bool_node(pass: Bool) -> Node {
+fn body_lowering_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
     node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_norm_pass } },
@@ -37,7 +37,7 @@ fn body_lowering_normalized_module() -> Optional<v2.compiler.normalized_tree.Nor
   }
 }
 
-fn body_lower_find_arrow_in_module(root: Node) -> Optional<Node> {
+fn body_lower_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
     _ =>
@@ -50,7 +50,7 @@ fn body_lower_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_find_fn_decl(root: Node) -> Optional<Node> {
+fn body_lower_find_fn_decl(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
       match emitted == ^dag_surface_fn_decl {
@@ -73,7 +73,7 @@ fn body_lower_find_fn_decl(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lowering_parsed_fn_decl() -> Optional<Node> {
+fn body_lowering_parsed_fn_decl() -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_add_module_source,
@@ -90,7 +90,7 @@ fn body_lowering_parsed_fn_decl() -> Optional<Node> {
   }
 }
 
-fn body_lower_has_arrow_token(root: Node) -> Bool {
+fn body_lower_has_arrow_token(root: v2.std.node.Node) -> Bool {
   match node_atom_identity_optional(node: root) {
     Present { value: id } => id == ^dag_token_arrow
     Absent =>
@@ -130,7 +130,7 @@ fn body_lowering_arrow_token_holds() -> Bool {
   }
 }
 
-fn body_lower_collect_atoms(root: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
+fn body_lower_collect_atoms(root: v2.std.node.Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
     Present { value: id } => std.algebra.Cons { head: id, tail: acc }
     Absent => acc
@@ -309,7 +309,7 @@ fn body_lowering_normalize_accepts() -> Bool {
   }
 }
 
-fn body_lowering_tree_contains_atom(root: Node, wanted: v2.std.node.Symbol) -> Bool {
+fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: v2.std.node.Symbol) -> Bool {
   match node_atom_identity_optional(node: root) {
     Present { value: id } =>
       if id == wanted {
@@ -340,7 +340,7 @@ fn body_lowering_fixture_resolves() -> Bool {
   }
 }
 
-fn body_lowering_transform_operand_identities(arrow: Node) -> List<v2.std.node.Symbol> {
+fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
@@ -396,7 +396,7 @@ fn body_lowering_normalized_operator_is_plus() -> Bool {
   }
 }
 
-fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<v2.std.node.Symbol> {
+fn body_lower_arrow_operand_identity(arrow: v2.std.node.Node, index: Int) -> Optional<v2.std.node.Symbol> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match list_at_optional(xs: body.children, index: index) {
@@ -407,7 +407,7 @@ fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<v2.std
   }
 }
 
-fn body_lowering_domain_named_count(arrow: Node) -> Int {
+fn body_lowering_domain_named_count(arrow: v2.std.node.Node) -> Int {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: e0 } =>
@@ -495,7 +495,7 @@ fn body_lowering_normalized_operands_swapped() -> Bool {
   }
 }
 
-fn body_lowering_transform_child_count(arrow: Node) -> Int {
+fn body_lowering_transform_child_count(arrow: v2.std.node.Node) -> Int {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } => count(body.children)
     Rejected { diagnostics: _ } => 0
@@ -545,7 +545,7 @@ fn body_lowering_domain_operand2_match() -> Bool {
   }
 }
 
-fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<v2.std.node.Symbol> {
+fn body_lower_arrow_domain_first_binding(arrow: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: e0 } =>
@@ -609,7 +609,7 @@ fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
   }
 }
 
-fn body_lowering_operand_equals(arrow: Node, index: Int, wanted: v2.std.node.Symbol) -> Bool {
+fn body_lowering_operand_equals(arrow: v2.std.node.Node, index: Int, wanted: v2.std.node.Symbol) -> Bool {
   match body_lower_arrow_operand_identity(arrow: arrow, index: index) {
     Present { value: id } => id == wanted
     Absent => false

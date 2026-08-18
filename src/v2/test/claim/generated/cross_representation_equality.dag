@@ -8,26 +8,26 @@ fn reference_cross_representation_equality_anchor() -> v2.std.verification.Gener
   )
 }
 
-fn generated_cross_representation_equality_claim() -> Outcome<v2.std.verification.TestClaim> {
+fn generated_cross_representation_equality_claim() -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
   testgen_emit_cross_representation_equality_claim(anchor: reference_cross_representation_equality_anchor())
 }
 
 fn witness_cross_representation_claim_is_equals() -> Bool {
   match generated_cross_representation_equality_claim() {
-    Accepted { value: EqualsClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } }, lhs: _, rhs: _, classification: _ }, diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: EqualsClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } }, lhs: _, rhs: _, classification: _ }, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn witness_cross_representation_uses_generated_anchor() -> Bool {
   match generated_cross_representation_equality_claim() {
-    Accepted { value: claim, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } } => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

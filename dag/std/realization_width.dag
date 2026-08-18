@@ -13,7 +13,7 @@ fn nano_time(count: std.nat.Nat) -> Measure<Time, Nano, std.nat.Nat> {
   time_measure(count: count)
 }
 
-fn nano_predicted_zero() -> CostAccount<std.measure.Nano> {
+fn nano_predicted_zero() -> std.realization_schedule.CostAccount<std.measure.Nano> {
   cost_account_predicted_zero()
 }
 
@@ -130,12 +130,12 @@ fn width_fold_objective_goals() -> List<std.pareto.AxisGoal> {
 }
 
 type WidthBoundedRealization<S> {
-  plan: RealizationPlan<S>
+  plan: std.realization_schedule.RealizationPlan<S>
   spawn_width: std.measure.HardwareThreadCount
 }
 
 fn width_bounded_realization<S>(
-  plan: RealizationPlan<S>,
+  plan: std.realization_schedule.RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: std.measure.HardwareThreadCount
 ) -> WidthBoundedRealization<S> {
@@ -146,7 +146,7 @@ fn width_bounded_realization<S>(
 }
 
 fn witness_width_fold_preserves_schedule_topology<S>(
-  plan: RealizationPlan<S>,
+  plan: std.realization_schedule.RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: std.measure.HardwareThreadCount
 ) -> Bool {
@@ -177,7 +177,7 @@ fn witness_budget_ignoring_fold_fails(
   ) != shard_count
 }
 
-fn shard_balance_slot_for_cost(cost: CostAccount<std.measure.Nano>, baseline: CostAccount<std.measure.Nano>) -> Int {
+fn shard_balance_slot_for_cost(cost: std.realization_schedule.CostAccount<std.measure.Nano>, baseline: std.realization_schedule.CostAccount<std.measure.Nano>) -> Int {
   match cost.basis {
     Measured => cost_account_time_count(account: cost)
     Predicted => cost_account_time_count(account: baseline)

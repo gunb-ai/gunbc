@@ -1,7 +1,7 @@
 module v2.std.node_query
 
 
-fn coproduct_arm_key_list_from_node(node: Node) -> List<v2.std.node.Symbol> {
+fn coproduct_arm_key_list_from_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   fold(
     xs: node_labeled_child_edges(node: node),
     init: std.algebra.Empty,
@@ -13,24 +13,24 @@ fn coproduct_arm_keys(type_name: v2.std.node.Symbol) -> List<v2.std.node.Symbol>
   coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
 }
 
-fn node_is_coproduct(node: Node) -> Bool {
+fn node_is_coproduct(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Disj } => true
     _ => false
   }
 }
 
-fn edge_field_type_name(target: Node) -> v2.std.node.Symbol {
+fn edge_field_type_name(target: v2.std.node.Node) -> v2.std.node.Symbol {
   match target.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
     _ => ^coproduct_unresolved_payload
   }
 }
 
-fn conj_payload_type_name_go(xs: FreeMonoid<v2.std.node.Edge>, acc: String) -> String {
+fn conj_payload_type_name_go(xs: std.algebra.FreeMonoid<v2.std.node.Edge>, acc: String) -> String {
   match xs {
-    Empty => acc
-    Cons { head: h, tail: t } =>
+    std.algebra.Empty => acc
+    std.algebra.Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
       let type_name = edge_field_type_name(target: h.target)
       let piece = concat(field_name, concat(": ", type_name))
@@ -41,11 +41,11 @@ fn conj_payload_type_name_go(xs: FreeMonoid<v2.std.node.Edge>, acc: String) -> S
   }
 }
 
-fn conj_authored_payload_type_name(n: Node) -> v2.std.node.Symbol {
+fn conj_authored_payload_type_name(n: v2.std.node.Node) -> v2.std.node.Symbol {
   concat(concat(conj_payload_type_name_go(xs: n.children, acc: "{"), " "), "}")
 }
 
-fn arm_payload_from_target(target: Node) -> v2.std.node.ArmPayload {
+fn arm_payload_from_target(target: v2.std.node.Node) -> v2.std.node.ArmPayload {
   match target.kind {
     TypeNode { connective: Conj } =>
       if count(target.children) == 0 {
@@ -73,7 +73,7 @@ fn coproduct_arm_from_edge(e: v2.std.node.Edge) -> v2.std.node.CoproductArm {
   }
 }
 
-fn coproduct_arm_list_from_node(node: Node) -> List<v2.std.node.CoproductArm> {
+fn coproduct_arm_list_from_node(node: v2.std.node.Node) -> List<v2.std.node.CoproductArm> {
   fold(
     xs: node_labeled_child_edges(node: node),
     init: std.algebra.Empty,
@@ -105,7 +105,7 @@ fn coproduct_arm_payload_pairs(type_name: v2.std.node.Symbol) -> List<v2.std.nod
 fn coproduct_nullary_inhabitants<T>(
   type_name: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol
-) -> Outcome<List<T>> {
+) -> v2.std.diagnostic.Outcome<List<T>> {
   coproduct_nullary_inhabitants(
     type_name: type_name,
     discriminant_of: discriminant_of
@@ -172,12 +172,12 @@ fn coproduct_nullary_inhabitant_by_discriminant<T>(
   type_name: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol,
   wanted: v2.std.node.Symbol
-) -> Outcome<T> {
+) -> v2.std.diagnostic.Outcome<T> {
   match coproduct_nullary_inhabitants(
     type_name: type_name,
     discriminant_of: discriminant_of
   ) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: inhabitants, diagnostics: _ } =>
       match coproduct_nullary_inhabitant_lookup_all(
         wanted: wanted,
         discriminant_of: discriminant_of,
@@ -197,11 +197,11 @@ fn coproduct_nullary_inhabitant_by_discriminant<T>(
             reason: ^coproduct_nullary_inhabitant_duplicate
           ))
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn node_positional_child_targets(node: Node) -> List<Node> {
+fn node_positional_child_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
@@ -210,7 +210,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn node_labeled_child_edges(node: Node) -> List<v2.std.node.Edge> {
+fn node_labeled_child_edges(node: v2.std.node.Node) -> List<v2.std.node.Edge> {
   fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => list_snoc_item(xs: acc, item: e)
@@ -219,7 +219,7 @@ fn node_labeled_child_edges(node: Node) -> List<v2.std.node.Edge> {
   })
 }
 
-fn node_is_callee_reference(node: Node) -> Bool {
+fn node_is_callee_reference(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
@@ -227,7 +227,7 @@ fn node_is_callee_reference(node: Node) -> Bool {
   }
 }
 
-fn node_is_call(node: Node) -> Bool {
+fn node_is_call(node: v2.std.node.Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
@@ -238,7 +238,7 @@ fn node_is_call(node: Node) -> Bool {
   }
 }
 
-fn call_callee_target(node: Node) -> Outcome<Node> {
+fn call_callee_target(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if node_is_call(node: node) {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: callee } => outcome_accepted(value: callee)
@@ -258,7 +258,7 @@ fn call_callee_target(node: Node) -> Outcome<Node> {
   }
 }
 
-fn call_argument_targets(node: Node) -> List<Node> {
+fn call_argument_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match list_tail(xs: node_positional_child_targets(node: node)) {
     TailFound { tail: args } => args
     TailAbsent => std.algebra.Empty
@@ -266,15 +266,15 @@ fn call_argument_targets(node: Node) -> List<Node> {
 }
 
 fn node_envelope_without_named_coordinate_go(
-  root: Node,
-  xs: FreeMonoid<v2.std.node.Edge>,
+  root: v2.std.node.Node,
+  xs: std.algebra.FreeMonoid<v2.std.node.Edge>,
   coordinate: v2.std.node.Symbol,
-  acc: FreeMonoid<v2.std.node.Edge>,
+  acc: std.algebra.FreeMonoid<v2.std.node.Edge>,
   saw_coordinate: Bool
-) -> Outcome<FreeMonoid<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Edge>> {
   match xs {
-    Empty => outcome_accepted(value: acc)
-    Cons { head: h, tail: t } =>
+    std.algebra.Empty => outcome_accepted(value: acc)
+    std.algebra.Cons { head: h, tail: t } =>
       match h.label {
         Named { name: n } =>
           if (n == coordinate) && saw_coordinate {
@@ -304,7 +304,7 @@ fn node_envelope_without_named_coordinate_go(
   }
 }
 
-fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
+fn find_named_child(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
       let count = name_occurrences(name: name, children: root.children)
@@ -318,8 +318,8 @@ fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
           }),
           f: fn(acc, e) {
             match acc {
-              Accepted { value: _, diagnostics: _ } => acc
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 match e.label {
                   Named { name: edge_name } =>
                     if edge_name == name { outcome_accepted(value: e.target) } else { acc }
@@ -350,7 +350,7 @@ fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
   }
 }
 
-fn find_arrow_body_child(root: Node) -> Outcome<Node> {
+fn find_arrow_body_child(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: root.children) {
@@ -377,7 +377,7 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
   }
 }
 
-fn node_query_domain_malformed_diagnostic(domain: Node) -> v2.std.diagnostic.Diagnostic {
+fn node_query_domain_malformed_diagnostic(domain: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^arrow_domain_named_param_bindings_malformed,
     at: node_locus(node: domain),
@@ -385,12 +385,12 @@ fn node_query_domain_malformed_diagnostic(domain: Node) -> v2.std.diagnostic.Dia
   }
 }
 
-fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn conj_ordered_named_param_binding_ids(domain: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match domain.kind {
     TypeNode { connective: Conj } =>
       match fold(domain.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, edge) {
         match acc {
-          Accepted { value: bindings, diagnostics: d } =>
+          v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
               Named { name: sym } =>
                 outcome_with_diagnostics(
@@ -402,10 +402,10 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.nod
                   d: node_query_domain_malformed_diagnostic(domain: domain)
                 )
             }
-          Rejected { diagnostics: _ } => acc
+          v2.std.diagnostic.Rejected { diagnostics: _ } => acc
         }
       }) {
-        Accepted { value: bindings, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
           if v2.std.algebra.is_empty(xs: bindings) {
             outcome_rejected(
               d: node_query_domain_malformed_diagnostic(domain: domain)
@@ -413,7 +413,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.nod
           } else {
             outcome_with_diagnostics(value: bindings, diagnostics: d)
           }
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     _ =>
       outcome_rejected(
@@ -422,7 +422,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.nod
   }
 }
 
-fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn arrow_domain_named_param_bindings(arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {

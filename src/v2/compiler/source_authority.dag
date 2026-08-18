@@ -17,7 +17,7 @@ type DagSemanticIr {
 }
 
 type DagSourceReadWitness {
-  source: Medium<String>
+  source: extdeps.communication.medium.Medium<String>
   artifact: v2.std.artifact.Artifact
 
   compilation_unit: v2.std.node.Symbol
@@ -156,7 +156,7 @@ This is a TYPE DECLARATION ONLY. The effect-boundary enforcement that makes bare
 
 data source_ref_no_fidelity_note: String = "SourceRef carries NO DecodeFidelity field, and that is a modeling decision rather than an omission. Fidelity is a property of a DECODE — how faithfully bytes became a value — and it already has a single authority in Medium<R> { carried, fidelity } (dag/extdeps/communication/medium.dag). A ref decodes nothing; it names a location. A fidelity ON the ref would therefore assert how faithfully something decodes BEFORE any read established it (§5 fabricated plausible output), and would stand a second fidelity authority beside Medium's (§3).
 
-The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return Medium<String>, never a bare String, or the Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
+The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: extdeps.communication.medium.Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return extdeps.communication.medium.Medium<String>, never a bare String, or the Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
 
 data source_ref_seed_homonym_note: String = "NAME COLLISION, deliberate and marked. src/v1/01_tokenize.dag:53 declares a DIFFERENT type also called SourceRef — a tokenizer input handle { file, text, source_chars } that CARRIES the source bytes. The two are inverted on the exact axis this type turns on: that one contains the source, this one exists precisely so rows do not.
 
@@ -525,7 +525,7 @@ fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
   }
 }
 
-fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<DagSourceReadWitness> {
+fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> v2.std.diagnostic.Outcome<DagSourceReadWitness> {
   match result {
     SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
       outcome_accepted(value: witness)
@@ -547,7 +547,7 @@ fn dag_source_content_hash_for_text(text: String) -> std.content_hash.ContentHas
   content_hash_of_value(value: text)
 }
 
-fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
+fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> v2.std.diagnostic.Outcome<DagSourceReadWitness> {
   source_ref_read_result_to_outcome(result: dag_source_read_result_from_ref(ref: ref))
 }
 
@@ -583,12 +583,12 @@ fn source_root_ingest_build_from_source_refs(
   }
 }
 
-fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceRootIngest> {
+fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnostic.Outcome<SourceRootIngest> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           outcome_rejected(
             d: source_ref_read_failed_diagnostic(
               ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
@@ -651,13 +651,13 @@ type NormalizedDagSourceParsePrintLaw {
 }
 
 type CanonicalDagSourceEmissionLaw {
-  canonical_source: Medium<String>
+  canonical_source: extdeps.communication.medium.Medium<String>
   serializer_law: DeterministicDagSourceSerializerLaw
   parse_print_law: NormalizedDagSourceParsePrintLaw
 }
 
 type SourceAuthorityRoundTripLaw {
-  canonical_source: Medium<String>
+  canonical_source: extdeps.communication.medium.Medium<String>
   source_law: SourceAstEqual
   semantic_law: SemanticIrEqual
   canonical_source_law: CanonicalDagSourceEmissionLaw
@@ -672,10 +672,10 @@ fn source_authority_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.
 }
 
 fn parse_dag_source_ast_with_model(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   compilation_unit: v2.std.node.Symbol,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<DagSourceAst> {
+) -> v2.std.diagnostic.Outcome<DagSourceAst> {
   bind_outcome(
     o: tokenize(text: source.carried, file: compilation_unit, rules: lm.lex),
     f: fn(token_stream) {
@@ -689,7 +689,7 @@ fn parse_dag_source_ast_with_model(
   )
 }
 
-fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
+fn parse_dag_source_ast(source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<DagSourceAst> {
   parse_dag_source_ast_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
@@ -697,7 +697,7 @@ fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
   )
 }
 
-fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst> {
+fn normalize_dag_source_ast(ast: DagSourceAst) -> v2.std.diagnostic.Outcome<NormalizedDagSourceAst> {
   bind_outcome(
     o: normalize(parse_tree: ast.tree),
     f: fn(normalized) {
@@ -706,7 +706,7 @@ fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst
   )
 }
 
-fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: v2.std.language_model.LanguageModel) -> Outcome<DagSemanticIr> {
+fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: v2.std.language_model.LanguageModel) -> v2.std.diagnostic.Outcome<DagSemanticIr> {
   bind_outcome(
     o: normalize(parse_tree: ast.tree),
     f: fn(normalized) {
@@ -721,10 +721,10 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: v2.std.language_model.
 }
 
 fn semantic_ir_from_source_with_model(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   compilation_unit: v2.std.node.Symbol,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<DagSemanticIr> {
+) -> v2.std.diagnostic.Outcome<DagSemanticIr> {
   bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
@@ -737,7 +737,7 @@ fn semantic_ir_from_source_with_model(
   )
 }
 
-fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
+fn semantic_ir_from_source(source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<DagSemanticIr> {
   semantic_ir_from_source_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
@@ -748,7 +748,7 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<SourceIrArtifactProvenance> {
+) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
     SourceFile =>
       bind_outcome(
@@ -779,7 +779,7 @@ fn source_ir_artifact_provenance_from_model(
 
 fn source_ir_artifact_provenance(
   source_read: DagSourceReadWitness
-) -> Outcome<SourceIrArtifactProvenance> {
+) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   source_ir_artifact_provenance_from_model(
     source_read: source_read,
     lm: dag_language_model()
@@ -789,9 +789,9 @@ fn source_ir_artifact_provenance(
 fn module_storage_binding_from_provenance(
   prov: SourceIrArtifactProvenance,
   source_root: v2.std.cross_tree.import_model.SourceRootRef
-) -> Outcome<ModuleStorageBinding> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match qualified_name_from_module_node(root: prov.node) {
-    Accepted { value: qn, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
       outcome_accepted(
         value: ModuleStorageBinding {
           module: qn,
@@ -802,7 +802,7 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -814,7 +814,7 @@ data module_storage_prepare_once_note: String = "prepare_grammar is hoisted ABOV
 fn module_storage_binding_from_parse_artifact(
   artifact: v2.compiler.parse.ParseArtifact,
   source_read: DagSourceReadWitness
-) -> Outcome<ModuleStorageBinding> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   module_storage_binding_from_provenance(
     prov: SourceIrArtifactProvenance {
       node: artifact.tree,
@@ -830,7 +830,7 @@ fn module_storage_binding_from_read_prepared(
   lm: v2.std.language_model.LanguageModel,
   prepared: v2.compiler.parse.PreparedGrammar,
   residue: v2.std.diagnostic.Diagnostics
-) -> Outcome<ModuleStorageBinding> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
     SourceFile =>
       bind_outcome(
@@ -865,10 +865,10 @@ fn module_storage_binding_from_read_prepared(
 fn module_storage_binding_from_read_with_model(
   source_read: DagSourceReadWitness,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<ModuleStorageBinding> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
         lm: lm,
@@ -909,7 +909,7 @@ fn module_storage_index_contains_module(
 fn module_storage_index_insert(
   index: ModuleStorageIndex,
   binding: ModuleStorageBinding
-) -> Outcome<ModuleStorageIndex> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   if module_storage_index_contains_module(index: index, module: binding.module) {
     outcome_rejected(
       d: source_authority_diagnostic(reason: ^source_authority_module_storage_binding_duplicate)
@@ -936,13 +936,13 @@ fn module_storage_fold_step(
         prepared: prepared,
         residue: residue
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
-        Accepted { value: binding, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: binding, diagnostics: _ } =>
           match module_storage_index_insert(index: acc, binding: binding) {
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               ModuleStorageFoldFailed { diagnostics: d }
-            Accepted { value: next, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: next, diagnostics: _ } =>
               ModuleStorageFoldOk { bindings: next }
           }
       }
@@ -954,7 +954,7 @@ fn module_storage_bindings_from_ingest_prepared(
   lm: v2.std.language_model.LanguageModel,
   prepared: v2.compiler.parse.PreparedGrammar,
   residue: v2.std.diagnostic.Diagnostics
-) -> Outcome<ModuleStorageIndex> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   match fold_list(
     xs: ingest,
     empty: ModuleStorageFoldOk { bindings: std.algebra.Empty },
@@ -976,13 +976,13 @@ fn module_storage_bindings_from_ingest_prepared(
 fn module_storage_bindings_from_ingest_with_model(
   ingest: SourceRootIngest,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<ModuleStorageIndex> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   match ingest {
     Empty => outcome_accepted(value: std.algebra.Empty)
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: prepared, diagnostics: residue } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
             lm: lm,
@@ -995,7 +995,7 @@ fn module_storage_bindings_from_ingest_with_model(
 
 fn module_storage_bindings_from_ingest(
   ingest: SourceRootIngest
-) -> Outcome<ModuleStorageIndex> {
+) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   module_storage_bindings_from_ingest_with_model(
     ingest: ingest,
     lm: dag_language_model()
@@ -1051,7 +1051,7 @@ It was previously written as an unconditional self-call — fn f(x) { f(x: x) } 
 
 No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
 
-fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
+fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> v2.std.diagnostic.Outcome<ModuleStorageIndex> {
   outcome_rejected(
     d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
   )
@@ -1171,22 +1171,22 @@ fn module_storage_path_for_module(
 fn source_ir_node_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<v2.std.artifact.NodeArtifactProvenance> {
+) -> v2.std.diagnostic.Outcome<v2.std.artifact.NodeArtifactProvenance> {
   match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
-    Accepted { value: prov, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: prov, diagnostics: _ } =>
       outcome_accepted(
         value: v2.std.artifact.NodeArtifactProvenance {
           node: prov.node,
           artifact: prov.artifact
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn source_ir_node_artifact_provenance(
   source_read: DagSourceReadWitness
-) -> Outcome<v2.std.artifact.NodeArtifactProvenance> {
+) -> v2.std.diagnostic.Outcome<v2.std.artifact.NodeArtifactProvenance> {
   source_ir_node_artifact_provenance_from_model(
     source_read: source_read,
     lm: dag_language_model()
@@ -1212,11 +1212,11 @@ fn node_artifact_provenance_fold_step(
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
       match source_ir_node_artifact_provenance(source_read: read) {
-        Accepted { value: row, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
             provenance: list_snoc_item(xs: acc, item: row)
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           NodeArtifactProvenanceFoldFailed { diagnostics: d }
       }
   }
@@ -1224,7 +1224,7 @@ fn node_artifact_provenance_fold_step(
 
 fn node_artifact_provenance_from_source_root(
   ingest: SourceRootIngest
-) -> Outcome<FreeMonoid<v2.std.artifact.NodeArtifactProvenance>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.artifact.NodeArtifactProvenance>> {
   match fold_list(
     xs: ingest,
     empty: NodeArtifactProvenanceFoldOk { provenance: std.algebra.Empty },
@@ -1316,8 +1316,8 @@ fn semantic_ir_equal_witness(
 }
 
 fn deterministic_dag_source_serializer_witness(
-  first: Medium<String>,
-  second: Medium<String>
+  first: extdeps.communication.medium.Medium<String>,
+  second: extdeps.communication.medium.Medium<String>
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
   if medium_section_equal(left: first, right: second) {
     v2.std.witness.Holds {
@@ -1335,10 +1335,10 @@ fn deterministic_dag_source_serializer_witness(
 
 fn canonical_dag_source_emission_law_from_parts(
   original_ast: DagSourceAst,
-  canonical_source_first: Medium<String>,
-  canonical_source_second: Medium<String>,
+  canonical_source_first: extdeps.communication.medium.Medium<String>,
+  canonical_source_second: extdeps.communication.medium.Medium<String>,
   reparsed_ast: DagSourceAst
-) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
     o: normalize_dag_source_ast(ast: original_ast),
     f: fn(original_normalized_ast) {
@@ -1382,12 +1382,12 @@ fn canonical_dag_source_emission_law_from_parts(
 
 fn source_authority_law_from_parts(
   original_ast: DagSourceAst,
-  canonical_source: Medium<String>,
+  canonical_source: extdeps.communication.medium.Medium<String>,
   reparsed_ast: DagSourceAst,
   original_ir: DagSemanticIr,
   reparsed_ir: DagSemanticIr,
   canonical_source_law: CanonicalDagSourceEmissionLaw
-) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
   let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
   match source_law {
@@ -1413,10 +1413,10 @@ fn source_authority_law_from_parts(
 }
 
 fn source_authority_round_trip_with_model(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
@@ -1487,9 +1487,9 @@ fn source_authority_round_trip_with_model(
 }
 
 fn canonical_dag_source_parse_print_law(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   bind_outcome(
     o: parse_dag_source_ast(source: source),
     f: fn(original_ast) {
@@ -1533,9 +1533,9 @@ fn canonical_dag_source_parse_print_law(
 }
 
 fn source_authority_round_trip(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   source_authority_round_trip_with_model(
     source: source,
     canonical_source_target: canonical_source_target,

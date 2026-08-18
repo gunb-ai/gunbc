@@ -3,18 +3,18 @@ module v2.test.claim.staging
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
-fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }
-fn s_is_pos(n: Int) -> Outcome<Bool> { outcome_accepted(value: n > 0) }
+fn s_double(n: Int) -> v2.std.diagnostic.Outcome<Int> { outcome_accepted(value: n * 2) }
+fn s_inc(n: Int) -> v2.std.diagnostic.Outcome<Int> { outcome_accepted(value: n + 1) }
+fn s_is_pos(n: Int) -> v2.std.diagnostic.Outcome<Bool> { outcome_accepted(value: n > 0) }
 
-fn s_bool_to_int(b: Bool) -> Outcome<Int> {
+fn s_bool_to_int(b: Bool) -> v2.std.diagnostic.Outcome<Int> {
   if b { outcome_accepted(value: 1) } else { outcome_accepted(value: 0) }
 }
 
-fn acc_int(o: Outcome<Int>, dflt: Int) -> Int {
+fn acc_int(o: v2.std.diagnostic.Outcome<Int>, dflt: Int) -> Int {
   match o {
-    Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => dflt
+    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } => v
+    v2.std.diagnostic.Rejected { diagnostics: _ } => dflt
   }
 }
 
@@ -29,7 +29,7 @@ test fn then_outcome_heterogeneous() -> Bool {
   acc_int(o: s2(3), dflt: 99) == 1
 }
 
-fn make_adder(k: Int) -> fn(Int) -> Outcome<Int> {
+fn make_adder(k: Int) -> fn(Int) -> v2.std.diagnostic.Outcome<Int> {
   fn(n) { outcome_accepted(value: n + k) }
 }
 test fn then_outcome_builder_capture() -> Bool {

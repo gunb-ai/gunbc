@@ -92,17 +92,17 @@ test fn determinism_axis_map_keys_is_nondeterministic() -> Bool {
   axis_is_nondeterministic(a: determinism_axis_for_node(n: map_keys_call_fixture()))
 }
 
-fn gate_rejects(o: Outcome<Witness<Node>>) -> Bool {
+fn gate_rejects(o: v2.std.diagnostic.Outcome<Witness<Node>>) -> Bool {
   match o {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
+fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<Node>>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

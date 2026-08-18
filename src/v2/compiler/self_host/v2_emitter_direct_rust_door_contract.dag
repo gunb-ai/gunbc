@@ -116,7 +116,7 @@ type DirectRustDoorArtifactLeafResult
 
 fn direct_rust_door_artifact_assessment(
   artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact,
-  holds: fn(ProvenancedRustArtifact) -> Bool,
+  holds: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> Bool,
   refusal_cause: v2.std.node.Symbol
 ) -> DirectRustDoorArtifactLeafResult {
   if holds(artifact) {
@@ -173,7 +173,7 @@ fn direct_rust_door_source_produced_assessment(
 
 fn direct_rust_door_artifact_leaf(
   emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation,
-  assess: fn(ProvenancedRustArtifact) -> DirectRustDoorArtifactLeafResult
+  assess: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> DirectRustDoorArtifactLeafResult
 ) -> DirectRustDoorLeafResult {
   match emission {
     ArtifactProduced { artifact: a } =>

@@ -35,16 +35,16 @@ fn exchange_is_publish_subscribe(e: v2.extdeps.coordination.ExchangePattern) -> 
   }
 }
 
-fn settlement_is_immediate(s: SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
+fn settlement_is_immediate(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
   match s {
-    ImmediateSettlement => true
+    v2.extdeps.coordination.ImmediateSettlement => true
     _ => false
   }
 }
 
-fn settlement_is_within(s: SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
+fn settlement_is_within(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
   match s {
-    SettlesWithin { bound: _ } => true
+    v2.extdeps.coordination.SettlesWithin { bound: _ } => true
     _ => false
   }
 }

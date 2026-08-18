@@ -76,7 +76,7 @@ data typescript_record_task_inferred_tree: v2.compiler.infer.InferredTree = v2.c
   facts: std.types.Map { lookup: typescript_record_task_facts_lookup }
 }
 
-fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {
+fn anchor_typescript_record_task_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   match typescript_record_task_target_model_for_emit() {
     Holds { value: target } => emit(tree: typescript_record_task_inferred_tree, target: target)
     Violates { diagnostic: d } =>
@@ -84,7 +84,7 @@ fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {
   }
 }
 
-fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
+fn anchor_typescript_record_task_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
   match typescript_record_task_target_model_for_emit() {
     Holds { value: target } =>
       compile_inferred(
@@ -101,14 +101,14 @@ data typescript_record_task_emit_receipt: Outcome<Medium<String>> = anchor_types
 data typescript_record_task_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
 test fn typescript_record_task_emit_receipt_decided() -> Bool {
   match typescript_record_task_emit_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 test fn typescript_record_task_compile_inferred_receipt_decided() -> Bool {
   match typescript_record_task_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

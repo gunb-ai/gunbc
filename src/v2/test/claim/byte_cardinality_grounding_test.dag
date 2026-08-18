@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 type Byte = Refined<List<Int>>
 
-fn byte_from_bits(bits: List<Int>, at: v2.std.diagnostic.Locus) -> Outcome<Byte> {
+fn byte_from_bits(bits: List<Int>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Byte> {
   refine(
     base: bits,
     by: v2.std.refinement.Validation {
@@ -21,16 +21,16 @@ fn byte_locus() -> v2.std.diagnostic.Locus { port_locus(port: ^byte_cardinality_
 fn eight_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1, 0] }
 fn seven_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1] }
 
-fn is_accepted(o: Outcome<Byte>) -> Bool {
+fn is_accepted(o: v2.std.diagnostic.Outcome<Byte>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
-fn is_rejected(o: Outcome<Byte>) -> Bool {
+fn is_rejected(o: v2.std.diagnostic.Outcome<Byte>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

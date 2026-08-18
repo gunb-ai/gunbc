@@ -121,7 +121,7 @@ fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
   Completed { report_authority: LensCiTestClaimRunner }
 }
 
-fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
+fn mechanical_reverification_execution_for_run(run: v2.compiler.eval.TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
   match run.verdict {
     Pass => completed_lens_ci_execution()
     SemanticMismatch { actual: _, falsification: _ } => Failed

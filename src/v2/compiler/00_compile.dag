@@ -10,8 +10,8 @@ type CompileMode
   | Eval { runtime: RuntimeTarget }
 
 type CompileOutput
-  = TranslateResult { source: Medium<String> }
-  | EvalResult { value: Medium<Node> }
+  = TranslateResult { source: extdeps.communication.medium.Medium<String> }
+  | EvalResult { value: extdeps.communication.medium.Medium<Node> }
 
 type CompileLensOutcome = Outcome<Witness<Node>>
 
@@ -84,46 +84,46 @@ fn always_required_root_lenses() -> List<CompileLens> {
   [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
 }
 
-fn accumulator_copy_root_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn accumulator_copy_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   accumulator_copy_compile_gate(node: tree.root)
 }
 
-fn determinism_root_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn determinism_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   determinism_compile_gate(node: tree.root)
 }
 
-fn machine_shape_root_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn machine_shape_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
-fn mandatory_tag_root_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn mandatory_tag_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   mandatory_tag_compile_gate(node: tree.root)
 }
 
-fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
 }
 
-fn unit_modeling_compile_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn unit_modeling_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   unit_modeling_gate(node: tree.root)
 }
 
-fn lifecycle_carrier_compile_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn lifecycle_carrier_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   lifecycle_carrier_gate(node: tree.root)
 }
 
-fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   lens.gate(inferred)
 }
 
 fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: v2.compiler.infer.InferredTree
-) -> Outcome<Witness<Node>> {
+) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   match run_compile_lens_gate(lens: lens, inferred: inferred) {
-    Accepted { value: w, diagnostics: od } =>
+    v2.std.diagnostic.Accepted { value: w, diagnostics: od } =>
       outcome_with_diagnostics(value: w, diagnostics: od)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
         value: v2.std.witness.Violates { diagnostic: d.head },
         diagnostics: v2.std.diagnostic.Some { diagnostics: d }
@@ -135,7 +135,7 @@ fn apply_compile_lens(
   lens: CompileLens,
   inferred: v2.compiler.infer.InferredTree,
   mode: CompileLensMode
-) -> Outcome<Witness<Node>> {
+) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   match mode {
     CompileLensEnforce => run_compile_lens_gate(lens: lens, inferred: inferred)
     CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
@@ -156,15 +156,15 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
 fn run_required_lens_gates(
   inferred: v2.compiler.infer.InferredTree,
   lenses: List<CompileLens>
-) -> Outcome<List<LensGateWitness>> {
+) -> v2.std.diagnostic.Outcome<List<LensGateWitness>> {
   bind_outcome(
     o: fold(
       lenses,
       init: outcome_accepted(value: empty_lens_gate_witnesses()),
       f: fn(acc_outcome, lens) {
         match acc_outcome {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: witnesses, diagnostics: od } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: witnesses, diagnostics: od } =>
             bind_outcome_accepted(
               od: od,
               inner: bind_outcome(
@@ -189,7 +189,7 @@ fn run_required_lens_gates(
 fn run_required_lens_gates_on_subtree(
   inferred: v2.compiler.infer.InferredTree,
   lenses: List<CompileLens>
-) -> Outcome<List<LensGateWitness>> {
+) -> v2.std.diagnostic.Outcome<List<LensGateWitness>> {
   bind_outcome(
     o: fold_node(
       n: inferred.root,
@@ -219,14 +219,14 @@ fn run_required_lens_gates_on_subtree(
 fn compile_inferred_translate(
   inferred: v2.compiler.infer.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(tree: inferred, target: target)
 }
 
 fn compile_inferred(
   inferred: v2.compiler.infer.InferredTree,
   mode: CompileMode
-) -> Outcome<CompileOutput> {
+) -> v2.std.diagnostic.Outcome<CompileOutput> {
   match mode {
     TranslateTo { target } =>
       bind_outcome(
@@ -258,7 +258,7 @@ fn compile_inferred(
 fn compile(
   source: CoreNode,
   mode: CompileMode
-) -> Outcome<CompileOutput> {
+) -> v2.std.diagnostic.Outcome<CompileOutput> {
   bind_outcome(
     o: infer(tree: source),
     f: fn(inferred) {
@@ -281,7 +281,7 @@ fn validate_then_compile(
   source: CoreNode,
   lenses: List<CompileLens>,
   mode: CompileMode
-) -> Outcome<Validated<CompileOutput>> {
+) -> v2.std.diagnostic.Outcome<Validated<CompileOutput>> {
   bind_outcome(
     o: infer(tree: source),
     f: fn(inferred) {
@@ -320,11 +320,11 @@ fn validate_then_compile(
 }
 
 fn compile_ingest_with_admission(
-  source: Medium<String>,
+  source: extdeps.communication.medium.Medium<String>,
   target: v2.std.compilers.target_model.TargetModel,
   peer_roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: v2.compiler.name_resolve.Admission
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
@@ -380,7 +380,7 @@ fn compile_source_root_ingest_with_admission(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   let lm = dag_language_model()
   bind_outcome(
     o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
@@ -408,7 +408,7 @@ fn compile_source_root_ingest_with_admission(
   )
 }
 
-fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(Medium<String>) -> Outcome<TokenStream> {
+fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<TokenStream> {
   fn(source) {
     tokenize(
       text: source.carried,
@@ -418,15 +418,15 @@ fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(Medium<String>)
   }
 }
 
-fn stage_parse(lm: v2.std.language_model.LanguageModel) -> fn(TokenStream) -> Outcome<ParseTree> {
+fn stage_parse(lm: v2.std.language_model.LanguageModel) -> fn(TokenStream) -> v2.std.diagnostic.Outcome<ParseTree> {
   fn(token_stream) { parse(tokens: token_stream, grammar: lm.grammar) }
 }
 
-fn stage_normalize() -> fn(ParseTree) -> Outcome<NormalizedTree> {
+fn stage_normalize() -> fn(ParseTree) -> v2.std.diagnostic.Outcome<NormalizedTree> {
   fn(parse_tree) { normalize(parse_tree: parse_tree) }
 }
 
-fn stage_resolve(lm: v2.std.language_model.LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTree> {
+fn stage_resolve(lm: v2.std.language_model.LanguageModel) -> fn(NormalizedTree) -> v2.std.diagnostic.Outcome<ResolvedTree> {
   fn(normalized) { v2.compiler.resolve.resolve(tree: normalized, lm: lm) }
 }
 
@@ -434,7 +434,7 @@ fn resolve_cache_miss(normalized: v2.compiler.normalized_tree.NormalizedTree) ->
   v2.std.staging.Miss
 }
 
-fn stage_translate(target: v2.std.compilers.target_model.TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {
+fn stage_translate(target: v2.std.compilers.target_model.TargetModel) -> fn(ResolvedTree) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   fn(resolved) {
     bind_outcome(
       o: validate_then_compile(
@@ -458,7 +458,7 @@ fn stage_translate(target: v2.std.compilers.target_model.TargetModel) -> fn(Reso
   }
 }
 
-fn compile_ingest_staging(source: Medium<String>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn compile_ingest_staging(source: extdeps.communication.medium.Medium<String>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   let lm = dag_language_model()
   let pipeline = then_outcome(
       f: stage_tokenize(lm: lm),

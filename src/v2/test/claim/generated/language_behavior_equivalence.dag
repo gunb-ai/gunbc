@@ -27,21 +27,21 @@ fn lbe_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn lbe_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn lbe_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
-fn lbe_call_primitive(_node: Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn lbe_call_primitive(_node: Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: _node))
   }
 }
 
-fn lbe_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
+fn lbe_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
-fn lbe_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn lbe_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
@@ -49,7 +49,7 @@ fn lbe_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
@@ -117,7 +117,7 @@ fn lbe_claim_from_testgen_emit(
   anchor: v2.std.verification.ManualAnchorKey,
   label: String,
   mock: v2.lens.testgen.LanguageBehaviorIoMock
-) -> Outcome<v2.std.verification.TestClaim> {
+) -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
   testgen_emit_language_behavior_equivalence_claim(anchor: anchor, label: label, mock: mock)
 }
 
@@ -165,11 +165,11 @@ fn lbe_run_test_claim_assert_from_emit(
   anchor: v2.std.verification.ManualAnchorKey,
   label: String,
   mock: v2.lens.testgen.LanguageBehaviorIoMock
-) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<Node>, Node> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
-    Accepted { value: claim, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: Absent }
   }
 }
@@ -180,17 +180,17 @@ fn lbe_test_claim_run_from_emit(
   mock: v2.lens.testgen.LanguageBehaviorIoMock
 ) -> TestClaimRun<Node, RuntimeValue> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
-    Accepted { value: claim, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: None } =>
       lbe_run_via_test_claim(claim: claim)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.compiler.eval.TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
-        verdict: v2.std.verdict.SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+        verdict: v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: Absent }
       }
   }
 }
 
-fn lbe_mock_actual(mock: v2.lens.testgen.LanguageBehaviorIoMock) -> Outcome<Node> {
+fn lbe_mock_actual(mock: v2.lens.testgen.LanguageBehaviorIoMock) -> v2.std.diagnostic.Outcome<Node> {
   v2.std.diagnostic.Accepted {
     value: mock.snapshot.expected_value,
     diagnostics: v2.std.diagnostic.None
@@ -200,7 +200,7 @@ fn lbe_mock_actual(mock: v2.lens.testgen.LanguageBehaviorIoMock) -> Outcome<Node
 fn lbe_run_test_claim_assert_from_mock(
   claim: v2.std.verification.TestClaim,
   mock: v2.lens.testgen.LanguageBehaviorIoMock
-) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+) -> v2.std.verdict.Verdict<TestClaimEvalSubject<Node>, Node> {
   run_test_claim_assert(
     claim: claim,
     actual: lbe_mock_actual(mock: mock),
@@ -213,11 +213,11 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   label: lbe_label_conj_dag_surface,
   mock: lbe_io_mock_conj_dag_surface()
 ) {
-  Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Pass => true
+  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
 }
 
 data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
@@ -225,11 +225,11 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   label: lbe_label_disj_dag_surface,
   mock: lbe_io_mock_disj_dag_surface()
 ) {
-  Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Pass => true
+  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
 }
 
 data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
@@ -237,11 +237,11 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   label: lbe_label_transform_dag_surface,
   mock: lbe_io_mock_transform_dag_surface()
 ) {
-  Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Pass => true
+  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
 }
 
 data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(

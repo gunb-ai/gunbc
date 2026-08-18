@@ -108,7 +108,7 @@ data match_bool_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infe
   }
 }
 
-fn match_bool_emit_accepts() -> Outcome<Medium<String>> {
+fn match_bool_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: match_bool_inferred_tree, target: match_bool_target_model)
 }
 
@@ -127,13 +127,13 @@ test fn match_bool_emit_matches_serialize_holds() -> Bool {
     target: match_bool_target_model,
     emitted: match_bool_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match match_bool_emit_receipt {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -142,8 +142,8 @@ test fn match_bool_grammar_inverse_holds() -> Bool {
     target: match_bool_target_model,
     emitted: match_bool_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -153,11 +153,11 @@ test fn match_bool_ingest_via_coerce_matches_canonical() -> Bool {
     tree: match_bool_inferred_tree,
     target: match_bool_target_model
   ) {
-    Accepted { value: result, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_match_fn)
         && match_bool_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

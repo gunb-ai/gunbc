@@ -41,7 +41,7 @@ fn wrap_decision_bundle_child_lookup_step(
 fn wrap_decision_bundle_optional_child(
   target: v2.std.compilers.target_model.TargetModel,
   edge_name: v2.std.node.Symbol
-) -> Outcome<Optional<Node>> {
+) -> v2.std.diagnostic.Outcome<Optional<Node>> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -90,14 +90,14 @@ fn wrap_decision_bundle_optional_child(
 fn wrap_decision_bundle_edge_present(
   target: v2.std.compilers.target_model.TargetModel,
   edge_name: v2.std.node.Symbol
-) -> Outcome<Bool> {
+) -> v2.std.diagnostic.Outcome<Bool> {
   match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
-    Accepted { value: optional_child, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: optional_child, diagnostics: _ } =>
       match optional_child {
         Absent => outcome_accepted(false)
         Present { value: _ } => outcome_accepted(true)
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -190,7 +190,7 @@ fn wrap_decision_flow_gate(
   source_carrier: Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
   bind_outcome(
     o: wrap_decision_gate(
       target: target,
@@ -226,7 +226,7 @@ fn wrap_decision_flow_gate(
 fn wrap_decision_sg_rc_bundle_apply_disposition(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node
-) -> Outcome<Bool> {
+) -> v2.std.diagnostic.Outcome<Bool> {
   bind_outcome(
     o: wrap_decision_bundle_edge_present(
       target: target,
@@ -262,14 +262,14 @@ fn wrap_decision_gate(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
   match wrap_decision_sg_rc_bundle_apply_disposition(
     target: target,
     source_carrier: source_carrier
   ) {
-    Accepted { value: false, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: false, diagnostics: _ } =>
       outcome_accepted(WrapGateInapplicable)
-    Accepted { value: true, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: true, diagnostics: _ } =>
       bind_outcome(
         o: wrap_decision_bundle_optional_child(
           target: target,
@@ -313,6 +313,6 @@ fn wrap_decision_gate(
           }
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

@@ -30,20 +30,20 @@ fn chain_eq(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
 
 fn expansion_equals(form: Node, expected: FreeMonoid<Node>) -> Bool {
   match expand_fold(fold_form: form) {
-    Accepted { value: steps, diagnostics: _ } => chain_eq(a: steps, b: expected)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: steps, diagnostics: _ } => chain_eq(a: steps, b: expected)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 fn expansion_rejected(form: Node) -> Bool {
   match expand_fold(fold_form: form) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 fn expansion_accepted_but_differs(form: Node, expected: FreeMonoid<Node>) -> Bool {
   match expand_fold(fold_form: form) {
-    Accepted { value: steps, diagnostics: _ } => !chain_eq(a: steps, b: expected)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: steps, diagnostics: _ } => !chain_eq(a: steps, b: expected)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -89,10 +89,10 @@ test fn fold_form_has_exactly_one_template_edge() -> Bool {
   name_occurrences(name: fold_template_edge, children: assemble_fold(g: anti_unify_chain(steps: gate_chain)).children) == 1
 }
 
-fn outcome_node_is(o: Outcome<Node>, expected: Node) -> Bool {
+fn outcome_node_is(o: v2.std.diagnostic.Outcome<Node>, expected: Node) -> Bool {
   match o {
-    Accepted { value: t, diagnostics: _ } => node_eq(a: t, b: expected)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => node_eq(a: t, b: expected)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 test fn fold_form_template_is_the_kernel_template() -> Bool {
@@ -110,8 +110,8 @@ fn per_element_eq(a: FreeMonoid<FreeMonoid<Node>>, b: FreeMonoid<FreeMonoid<Node
 }
 test fn fold_form_preserves_per_element_fills() -> Bool {
   match fold_per_element_of(fold_form: assemble_fold(g: anti_unify_chain(steps: gate_chain))) {
-    Accepted { value: pe, diagnostics: _ } => per_element_eq(a: pe, b: anti_unify_chain(steps: gate_chain).per_element)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: pe, diagnostics: _ } => per_element_eq(a: pe, b: anti_unify_chain(steps: gate_chain).per_element)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

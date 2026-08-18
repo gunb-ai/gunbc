@@ -72,7 +72,7 @@ fn first_located_file(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
   }
 }
 
-fn first_arrow_in(root: Node) -> Optional<Node> {
+fn first_arrow_in(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
     _ =>
@@ -85,7 +85,7 @@ fn first_arrow_in(root: Node) -> Optional<Node> {
   }
 }
 
-fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
+fn collect_arrows(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
       Named { name: decl_name } =>
@@ -213,7 +213,7 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<v2.std.node.Symbol> {
 
 data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
 
-fn decl_edges_named(root: Node, fn_name: v2.std.node.Symbol, acc: List<Node>) -> List<Node> {
+fn decl_edges_named(root: v2.std.node.Node, fn_name: v2.std.node.Symbol, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
       Named { name: n } =>
@@ -251,7 +251,7 @@ fn phase_for_reason(reason: v2.std.node.Symbol, fallback: RealizationPhase) -> R
   }
 }
 
-fn attempt_joined(program: Node, fn_name: v2.std.node.Symbol, entry: String) -> EntryRealizationAttempt {
+fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry: String) -> EntryRealizationAttempt {
   let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)

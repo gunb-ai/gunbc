@@ -5,8 +5,8 @@ test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
   let missing = fc_qn(seg: ^fc_missing_seg)
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match subject_module_root_for_name(roots: roots, name: missing) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       match d.head.at {
         Textual { file: module_file, extent: _ } =>
           (d.head.reason == ^resolve_module_not_found)
@@ -66,20 +66,20 @@ fn fc_qn(seg: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
 data fc_admitted_fixture_note: String = "These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real door rather than casting past it -- a fixture that reached the sealed carrier without admission would be the wrapper-payload conflation the receipt in docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the fabrication these witnesses exist to catch."
 
 fn fc_with_roots(
-  o: Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>>,
+  o: v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>>,
   f: fn(FreeMonoid<NormalizedTree>) -> Bool
 ) -> Bool {
   match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: roots, diagnostics: _ } => f(roots)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } => f(roots)
   }
 }
 
-fn fc_admitted(n: Node) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn fc_admitted(n: Node) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   admit_normalized_tree(root: n, diagnostics: None)
 }
 
-fn fc_duplicate_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn fc_duplicate_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(a) {
     bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(b) {
       outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Cons { head: b, tail: std.algebra.Empty } })
@@ -87,7 +87,7 @@ fn fc_duplicate_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Normal
   })
 }
 
-fn fc_single_found_root() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn fc_single_found_root() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(a) {
     outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
   })
@@ -118,7 +118,7 @@ fn fc_malformed_subject_root() -> Node {
 }
 }
 
-fn fc_malformed_subject_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn fc_malformed_subject_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_malformed_subject_root()), f: fn(a) {
     outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
   })
@@ -160,8 +160,8 @@ test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
       imports: Empty
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -178,8 +178,8 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
       imports: Empty
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -187,9 +187,9 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
 test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(a: d, b: v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }
@@ -197,8 +197,8 @@ test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool 
 test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -206,8 +206,8 @@ test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
 test fn validate_module_roots_malformed_root_is_rejected() -> Bool {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -224,8 +224,8 @@ test fn resolve_malformed_subject_root_is_rejected() -> Bool {
       imports: Empty
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -255,7 +255,7 @@ fn fc_dual_import_subject_root(seg: v2.std.node.Symbol, use_sym: v2.std.node.Sym
 }
 }
 
-fn fc_dual_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn fc_dual_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_dual_import_subject_root(
     seg: ^fc_subject_seg,
     use_sym: ^fc_import_use_sym,
@@ -290,8 +290,8 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
     active_roots: std.algebra.Empty,
     policy: ImportScoped
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }
@@ -299,7 +299,7 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
 test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
   fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
-    Accepted { value: _, diagnostics: validate_diag } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: validate_diag } =>
       match resolve_with_admission_policy(
         lm: dag_language_model_surface_empty_prelude(),
         roots: roots,
@@ -319,11 +319,11 @@ test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool 
         active_roots: std.algebra.Empty,
         policy: ImportScoped
       ) {
-        Accepted { value: _, diagnostics: resolve_diag } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: resolve_diag } =>
           diagnostics_eq(a: resolve_diag, b: validate_diag)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }

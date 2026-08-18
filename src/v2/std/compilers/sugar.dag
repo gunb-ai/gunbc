@@ -79,7 +79,7 @@ fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
   })
 }
 
-fn sugar_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn sugar_malformed_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^sugar_reason_malformed,
     at: node_locus(node: n),
@@ -87,7 +87,7 @@ fn sugar_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.node.Edge>, n: Node) -> Node {
+fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.node.Edge>, n: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: connective },
     children: children,
@@ -95,7 +95,7 @@ fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.nod
   }
 }
 
-fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> Node? {
+fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> v2.std.node.Node? {
   if count(children) == 1 {
     match children |> first {
       Present { value: e0 } =>
@@ -111,19 +111,19 @@ fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> Node? {
   }
 }
 
-fn sugar_named_child_optional(root: Node, name: v2.std.node.Symbol) -> Node? {
+fn sugar_named_child_optional(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   match find_named_child(root: root, name: name) {
-    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
-    Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
 type SugarSequencePair {
-  left: Node
-  right: Node
+  left: v2.std.node.Node
+  right: v2.std.node.Node
 }
 
-fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
+fn sugar_sequence_pair_optional(node: v2.std.node.Node) -> SugarSequencePair? {
   match sugar_named_child_optional(root: node, name: ^grammar_sequence_left_node_projection) {
     Present { value: left } =>
       match sugar_named_child_optional(root: node, name: ^grammar_sequence_right_node_projection) {
@@ -135,14 +135,14 @@ fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
   }
 }
 
-fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
+fn sugar_pipe_sequence_variant_optional(node: v2.std.node.Node) -> v2.std.node.Node? {
   match sugar_sequence_pair_optional(node: node) {
     Present { value: pair } => optional_present(value: pair.right)
     Absent => optional_present(value: node)
   }
 }
 
-fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
+fn sugar_collect_pipe_chain_variants(spine: v2.std.node.Node) -> FreeMonoid<v2.std.node.Node> {
   if is_empty_conj_root(n: spine) {
     std.algebra.Empty
   } else {
@@ -161,7 +161,7 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
   }
 }
 
-fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
+fn sugar_all_coproduct_variants(captured: v2.std.node.Node) -> FreeMonoid<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => std.algebra.Empty
     Present { value: pair } =>
@@ -172,14 +172,14 @@ fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
   }
 }
 
-fn sugar_unwrap_production_shell(node: Node) -> Node {
+fn sugar_unwrap_production_shell(node: v2.std.node.Node) -> v2.std.node.Node {
   match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
     Present { value: captured } => sugar_unwrap_production_shell(node: captured)
     Absent => node
   }
 }
 
-fn sugar_first_atom_identity_optional(node: Node) -> v2.std.node.Symbol? {
+fn sugar_first_atom_identity_optional(node: v2.std.node.Node) -> v2.std.node.Symbol? {
   let stripped = sugar_unwrap_production_shell(node: node)
   match node_atom_identity_optional(node: stripped) {
     Present { value: sym } => optional_present(value: sym)
@@ -197,7 +197,7 @@ fn sugar_first_atom_identity_optional(node: Node) -> v2.std.node.Symbol? {
   }
 }
 
-fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<v2.std.node.Edge> {
+fn sugar_variant_to_disj_edge(variant_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
   match sugar_first_atom_identity_optional(node: variant) {
     Present { value: name } =>
@@ -210,7 +210,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<v2.std.node.Edge> {
   }
 }
 
-fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<v2.std.node.Edge>> {
+fn sugar_variants_to_disj_edges(variants: FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Edge>> {
   fold_list(
     xs: variants,
     empty: outcome_accepted(std.algebra.Empty),
@@ -224,13 +224,13 @@ fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoi
   )
 }
 
-fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
+fn sugar_fold_coproduct_pipe_chain(captured: v2.std.node.Node, shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let variants = sugar_all_coproduct_variants(captured: captured)
   if length(xs: variants) < 2 {
     v2.std.diagnostic.Accepted { value: captured, diagnostics: v2.std.diagnostic.None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {
-      Accepted { value: edges, diagnostics: d } =>
+      v2.std.diagnostic.Accepted { value: edges, diagnostics: d } =>
         if edges_conform(children: edges, d: LabeledEdges) {
           v2.std.diagnostic.Accepted {
             value: sugar_type_node(connective: Disj, children: edges, n: shell),
@@ -239,12 +239,12 @@ fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node>
         } else {
           v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
         }
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   }
 }
 
-fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
+fn apply_sugar(rule: SugarRule, n: v2.std.node.Node, folded: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match rule.lowering {
     SugarRewriteConnective { connective: connective, edges: discipline } =>
       if edges_conform(children: folded.children, d: discipline) {
@@ -266,8 +266,8 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
         Present { value: captured } =>
           match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: result, diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
               match result.kind {
                 TypeNode { connective: Disj } =>
                   v2.std.diagnostic.Accepted { value: result, diagnostics: d }

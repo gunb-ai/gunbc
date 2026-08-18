@@ -49,7 +49,7 @@ fn import_conformance_closure() -> FreeMonoid<String> {
   import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
-fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
+fn reference_conformance_closure_outcome() -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   v2.lens.reference_deps.reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
@@ -60,9 +60,9 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
     exclude_substrings: module_graph_exclude_substrings
   )
   match v2.lens.reference_deps.reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match reference_conformance_closure_outcome() {
-        Accepted { value: reference_closure, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: reference_closure, diagnostics: _ } =>
           let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
           let declared_without_entry = fold_list(
             xs: expected_conformance_closure,
@@ -79,9 +79,9 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
             && set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
             && set_equal(xs: reference_closure, ys: expected_conformance_closure)
             && set_equal(xs: reference_closure, ys: with_bogus) == false
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 

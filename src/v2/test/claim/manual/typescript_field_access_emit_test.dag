@@ -30,7 +30,7 @@ fn ts_field_access_expr() -> v2.std.compilers.target_model.TargetValueExpression
   )
 }
 
-fn ts_field_access_emit_accepts() -> Outcome<Medium<String>> {
+fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_field_access_expr(),
@@ -48,8 +48,8 @@ fn ts_field_access_emit_accepts() -> Outcome<Medium<String>> {
 
 fn ts_field_access_emit_source() -> String {
   match ts_field_access_emit_accepts() {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
   }
 }
 
@@ -59,8 +59,8 @@ test fn ts_field_access_emit_source_holds() -> Bool {
 
 fn ts_add_emit_source() -> String {
   match anchor_typescript_add_emit_accepts() {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
   }
 }
 

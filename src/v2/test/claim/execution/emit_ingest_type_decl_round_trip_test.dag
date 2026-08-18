@@ -123,7 +123,7 @@ fn type_decl_foreign_emitted() -> Node {
   )
 }
 
-fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn type_decl_row_token_spine_classes(row: Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -144,11 +144,11 @@ fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.node.Symb
   )
 }
 
-fn type_decl_emit_source_text(emitted: Node) -> Outcome<String> {
+fn type_decl_emit_source_text(emitted: Node) -> v2.std.diagnostic.Outcome<String> {
   type_decl_emit_source_text_with_rules(emitted: emitted, rules: type_decl_rules())
 }
 
-fn type_decl_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<String> {
+fn type_decl_emit_source_text_with_rules(emitted: Node, rules: Node) -> v2.std.diagnostic.Outcome<String> {
   let target = type_decl_target()
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
@@ -194,7 +194,7 @@ fn type_decl_lexer_tokens_to_concrete_syntax(tokens: List<v2.std.compilers.lexin
   )
 }
 
-fn type_decl_tokenize_source_text(source: String) -> Outcome<List<v2.std.compilers.lexing.Token>> {
+fn type_decl_tokenize_source_text(source: String) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.lexing.Token>> {
   bind_outcome(
     o: tokenize(
       text: source,
@@ -207,7 +207,7 @@ fn type_decl_tokenize_source_text(source: String) -> Outcome<List<v2.std.compile
   )
 }
 
-fn type_decl_emit_row_tokens(emitted: Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn type_decl_emit_row_tokens(emitted: Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
     f: fn(row) {
@@ -223,24 +223,24 @@ fn type_decl_emit_row_tokens(emitted: Node) -> Outcome<List<v2.std.compilers.tar
 
 fn type_decl_emit_row_forward_identity_holds(emitted: Node) -> Bool {
   match type_decl_emit_row_tokens(emitted: emitted) {
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       match grammar_relation_row_forward_token_selection(
         tokens: tokens,
         rules: type_decl_rules(),
         start_lhs: ^dag_production_type_decl
       ) {
-        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn type_decl_reparse_emitted_from_source(source: String) -> Outcome<Node> {
+fn type_decl_reparse_emitted_from_source(source: String) -> v2.std.diagnostic.Outcome<Node> {
   type_decl_reparse_from_source_with_rules(source: source, rules: type_decl_rules())
 }
 
-fn type_decl_reparse_from_source_with_rules(source: String, rules: Node) -> Outcome<Node> {
+fn type_decl_reparse_from_source_with_rules(source: String, rules: Node) -> v2.std.diagnostic.Outcome<Node> {
   bind_outcome(
     o: type_decl_tokenize_source_text(source: source),
     f: fn(tokens) {
@@ -253,7 +253,7 @@ fn type_decl_reparse_from_source_with_rules(source: String, rules: Node) -> Outc
   )
 }
 
-fn type_decl_emit_frontier(emitted: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn type_decl_emit_frontier(emitted: Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted),
     f: fn(row) { type_decl_row_token_spine_classes(row: row) }
@@ -262,12 +262,12 @@ fn type_decl_emit_frontier(emitted: Node) -> Outcome<List<v2.std.node.Symbol>> {
 
 fn type_decl_parse_from_emitted_source_holds(emitted: Node) -> Bool {
   match type_decl_emit_source_text(emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match type_decl_reparse_emitted_from_source(source: source) {
-        Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } => recovered == emitted
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -280,35 +280,35 @@ fn type_decl_source_text_emit_round_trip_holds(source: String) -> Bool {
 
 fn type_decl_source_text_emit_round_trip_with_rules(rules: Node, source: String) -> Bool {
   match type_decl_reparse_from_source_with_rules(source: source, rules: rules) {
-    Accepted { value: node, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: node, diagnostics: _ } =>
       match type_decl_emit_source_text_with_rules(emitted: node, rules: rules) {
-        Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn type_decl_perturbed_rules_for_point_source() -> Outcome<Node> {
+fn type_decl_perturbed_rules_for_point_source() -> v2.std.diagnostic.Outcome<Node> {
   match grammar_relation_row_for_emitted(
     rules: type_decl_rules(),
     emitted: type_decl_pixel_emitted()
   ) {
-    Accepted { value: pixel_row, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: pixel_row, diagnostics: _ } =>
       outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
-    Rejected { diagnostics: _ } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
   }
 }
 
 fn type_decl_perturbed_row_breaks_source_roundtrip_holds() -> Bool {
   match type_decl_perturbed_rules_for_point_source() {
-    Accepted { value: perturbed_rules, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: perturbed_rules, diagnostics: _ } =>
       type_decl_source_text_emit_round_trip_holds(source: type_decl_point_source_text)
         && !type_decl_source_text_emit_round_trip_with_rules(
           rules: perturbed_rules,
           source: type_decl_point_source_text
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -321,27 +321,27 @@ test fn type_decl_real_source_round_trip_holds() -> Bool {
 
 fn type_decl_derived_row_preserves_emitted_holds(emitted: Node) -> Bool {
   match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
-    Accepted { value: row, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
       match find_named_child(root: row, name: ^grammar_relation_field_emitted) {
-        Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_emit_derive_idempotent_holds(emitted: Node) -> Bool {
   match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
-    Accepted { value: row1, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: row1, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
-        Accepted { value: row2, diagnostics: _ } => row1 == row2
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: row2, diagnostics: _ } => row1 == row2
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn type_decl_row_with_foreign_emitted_fixture(canonical_row: Node, foreign: Node) -> Outcome<Node> {
+fn type_decl_row_with_foreign_emitted_fixture(canonical_row: Node, foreign: Node) -> v2.std.diagnostic.Outcome<Node> {
   bind_outcome(
     o: find_named_child(root: canonical_row, name: ^grammar_relation_field_production),
     f: fn(production) {
@@ -395,51 +395,51 @@ fn type_decl_translation_rules_with_row(row: Node) -> Node {
 
 fn type_decl_emit_structural_not_fixture_lookup_holds() -> Bool {
   match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: type_decl_point_emitted()) {
-    Accepted { value: canonical_row, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: canonical_row, diagnostics: _ } =>
       match type_decl_row_with_foreign_emitted_fixture(
         canonical_row: canonical_row,
         foreign: type_decl_foreign_emitted()
       ) {
-        Accepted { value: perturbed_row, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: perturbed_row, diagnostics: _ } =>
           match grammar_relation_row_for_emitted(
             rules: type_decl_translation_rules_with_row(row: perturbed_row),
             emitted: type_decl_point_emitted()
           ) {
-            Accepted { value: selected, diagnostics: _ } => selected == perturbed_row
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Accepted { value: selected, diagnostics: _ } => selected == perturbed_row
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_forward_class_spine_ambiguous_rejects_holds() -> Bool {
   match type_decl_emit_frontier(emitted: type_decl_point_emitted()) {
-    Accepted { value: frontier, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(frontier: frontier, rules: type_decl_rules()) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_emit_source_text_matches_golden_holds(emitted: Node, golden: String) -> Bool {
   match type_decl_emit_source_text(emitted: emitted) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_point_pixel_emit_distinct_holds() -> Bool {
   match type_decl_emit_source_text(emitted: type_decl_point_emitted()) {
-    Accepted { value: point_text, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: point_text, diagnostics: _ } =>
       match type_decl_emit_source_text(emitted: type_decl_pixel_emitted()) {
-        Accepted { value: pixel_text, diagnostics: _ } => point_text != pixel_text
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: pixel_text, diagnostics: _ } => point_text != pixel_text
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

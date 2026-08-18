@@ -8,7 +8,7 @@ type V4EvaluatorRuntime {
   boundary: v2.std.runtime.ResourceEffectBoundary
 }
 
-fn v2_eval_unit_type_node() -> Node {
+fn v2_eval_unit_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
@@ -45,7 +45,7 @@ fn v2_eval_unit_runtime_value() -> v2.std.runtime.RuntimeValue {
   }
 }
 
-fn v2_eval_boundary_operation_node() -> Node {
+fn v2_eval_boundary_operation_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
@@ -53,7 +53,7 @@ fn v2_eval_boundary_operation_node() -> Node {
 }
 }
 
-fn v2_eval_effect_signature_node() -> Node {
+fn v2_eval_effect_signature_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
@@ -61,7 +61,7 @@ fn v2_eval_effect_signature_node() -> Node {
 }
 }
 
-fn v2_eval_runtime_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn v2_eval_runtime_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^v2_eval_semantics_deferred,
     at: node_locus(node: node),
@@ -98,7 +98,7 @@ fn v2_eval_empty_frame() -> v2.std.runtime.EvaluationFrame {
   }
 }
 
-fn v2_eval_int_type_node() -> Node {
+fn v2_eval_int_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
     children: [],
@@ -129,7 +129,7 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
 }
 
 // 🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom Atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Atom rows project dag_node_is_eval_literal_atom (dag.dag single authority); magnitudes are supplied by the interpretation algebra allocate_literal hook, not by this runtime. Non-Atom TypeNodes (Conj record/variant constructs) route to allocate_literal in eval_type_node_atom directly.
-fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
+fn v2_eval_is_literal_shaped_node(node: v2.std.node.Node) -> Bool {
   if node == v2_eval_bool_literal_pin {
     true
   } else if node == v2_eval_unit_literal_pin {
@@ -141,7 +141,7 @@ fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
   }
 }
 
-fn v2_eval_represent_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn v2_eval_represent_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if !v2_eval_is_literal_shaped_node(node: node) {
     outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   } else if node == v2_eval_bool_literal_pin {
@@ -174,7 +174,7 @@ fn v2_eval_represent_result(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.st
   v2.std.diagnostic.Accepted { value: value, diagnostics: v2.std.diagnostic.None }
 }
 
-fn v2_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn v2_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if node == v2_eval_bool_literal_pin {
     v2.std.diagnostic.Accepted { value: v2_eval_bool_true_primitive(), diagnostics: v2.std.diagnostic.None }
   } else if node == v2_eval_unit_literal_pin {
@@ -221,7 +221,7 @@ fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: Int) -> Outcome<v2.std.node.Node> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
@@ -233,7 +233,7 @@ fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   }
 }
 
-fn v2_eval_transform_is_int_add(node: Node) -> Bool {
+fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: op_node } =>
       match op_node.kind {
@@ -251,7 +251,7 @@ fn v2_eval_transform_is_int_add(node: Node) -> Bool {
 
 
 fn v2_eval_call_primitive(
-  node: Node,
+  node: v2.std.node.Node,
   args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
@@ -289,10 +289,10 @@ fn v2_eval_call_primitive(
 }
 
 fn v2_eval_choose_branch(
-  node: Node,
+  node: v2.std.node.Node,
   condition: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<v2.std.node.Node> {
   if count(node.children) == 3 {
     if v2_eval_runtime_bool_is_true(value: condition) {
       v2_eval_nth_child_target(node: node, wanted: 1)
@@ -306,7 +306,7 @@ fn v2_eval_choose_branch(
   }
 }
 
-fn v2_eval_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn v2_eval_step_loop(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
 }
 

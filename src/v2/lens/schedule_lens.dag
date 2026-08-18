@@ -96,7 +96,7 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> v2.std.dia
 }
 
 fn schedule_lens_verdict_for_ci_floor_ordinary(
-  plan: RealizationPlan<std.realization_schedule.Runnable>,
+  plan: std.realization_schedule.RealizationPlan<std.realization_schedule.Runnable>,
   compile_gate_fn: String,
   cheap_gate_labels: List<String>
 ) -> v2.std.lens_verdict.LensVerdict {
@@ -234,8 +234,8 @@ fn on_success_stages_eq(
 data walk_plan_schedule_lens_note: String = "The WalkPlan schedule lens owns the join the executor consumes: batches must be the ordinary RealizationPlan projection; on-success stage barriers remain ordered; siblings inside one stage compare as an unordered multiset because WalkPlan promises no sibling order; and every stage member must have the modeled std.realization_schedule on_success_runnable_disposition OnSuccessRunnableAdmitted. Duplicate runnable identity (entry + function + full profile) refuses until duplication has an explicit model. Finalization is deliberately outside this lens: gunbc.ci_materialization finalization witnesses and the strict runtime parser own it. Complete WalkPlan coverage composes this ordinary schedule check, success-stage structure and admissibility, the finalization witness, and executor-semantics controls."
 
 fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
-  plan: WalkPlan<F>,
-  ordinary_plan: RealizationPlan<std.realization_schedule.Runnable>,
+  plan: std.realization_schedule.WalkPlan<F>,
+  ordinary_plan: std.realization_schedule.RealizationPlan<std.realization_schedule.Runnable>,
   expected_on_success_stages: List<List<std.realization_schedule.Runnable>>,
   compile_gate_fn: String,
   cheap_gate_labels: List<String>

@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 
-fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
+fn dag_lex_stamp_parse_tree() -> v2.std.diagnostic.Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
@@ -40,7 +40,7 @@ fn dag_lex_stamp_find_import_node(tree: Node) -> Optional<Node> {
   }
 }
 
-fn dag_lex_stamp_block_idents() -> Outcome<List<v2.std.node.Symbol>> {
+fn dag_lex_stamp_block_idents() -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: dag_lex_stamp_parse_tree(),
     f: fn(tree) {
@@ -60,8 +60,8 @@ fn dag_lex_stamp_block_idents() -> Outcome<List<v2.std.node.Symbol>> {
 
 test fn dag_import_block_lexeme_stamp_holds() -> Bool {
   match dag_lex_stamp_block_idents() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: idents, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: idents, diagnostics: _ } =>
       (idents == [^Cons, ^Empty])
         && (idents != [^dag_token_ident, ^dag_token_ident])
   }

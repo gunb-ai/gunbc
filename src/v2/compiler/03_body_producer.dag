@@ -1,7 +1,7 @@
 module v2.compiler.body_producer
 
 
-fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
@@ -9,7 +9,7 @@ fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagn
   }
 }
 
-fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
+fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       outcome_accepted(
@@ -34,7 +34,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
+fn body_producer_validated_behavior(body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   if well_formed(n: body) {
     outcome_accepted(value: body)
   } else {
@@ -47,7 +47,7 @@ fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
+fn body_producer_dispatch_structured_body(body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   match body.kind {
     ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
     _ =>
@@ -60,7 +60,7 @@ fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn produce_arrow_with_structured_body(signature: Node, structured_body: Node) -> Outcome<Node> {
+fn produce_arrow_with_structured_body(signature: v2.std.node.Node, structured_body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   bind_outcome(
     o: body_producer_dispatch_structured_body(body: structured_body),
     f: fn(validated) {

@@ -1,7 +1,7 @@
 module test.claim.occurrence_binding_witness_test
 
 
-fn ob_root_path(terminal: v2.std.node.Symbol) -> ContainmentPath<v2.std.node.Symbol> {
+fn ob_root_path(terminal: v2.std.node.Symbol) -> std.occurrence_binding.ContainmentPath<v2.std.node.Symbol> {
   std.occurrence_binding.ContainmentPath {
     ancestors: Empty,
     terminal: terminal,
@@ -11,14 +11,14 @@ fn ob_root_path(terminal: v2.std.node.Symbol) -> ContainmentPath<v2.std.node.Sym
 fn ob_two_level_path(
   root: v2.std.node.Symbol,
   terminal: v2.std.node.Symbol
-) -> ContainmentPath<v2.std.node.Symbol> {
+) -> std.occurrence_binding.ContainmentPath<v2.std.node.Symbol> {
   std.occurrence_binding.ContainmentPath {
     ancestors: std.algebra.Cons { head: root, tail: std.algebra.Empty },
     terminal: terminal,
   }
 }
 
-fn ob_occurrence() -> BindingOccurrence<v2.std.node.Symbol> {
+fn ob_occurrence() -> std.occurrence_binding.BindingOccurrence<v2.std.node.Symbol> {
   std.occurrence_binding.BindingOccurrence {
     containment: ob_two_level_path(
       root: ^consumer,
@@ -27,14 +27,14 @@ fn ob_occurrence() -> BindingOccurrence<v2.std.node.Symbol> {
   }
 }
 
-fn ob_candidate(containment: ContainmentPath<v2.std.node.Symbol>) -> BindingCandidate<v2.std.node.Symbol> {
+fn ob_candidate(containment: std.occurrence_binding.ContainmentPath<v2.std.node.Symbol>) -> BindingCandidate<v2.std.node.Symbol> {
   std.occurrence_binding.BindingCandidate {
     containment: containment,
   }
 }
 
 fn ob_two_level_path_is(
-  path: ContainmentPath<v2.std.node.Symbol>,
+  path: std.occurrence_binding.ContainmentPath<v2.std.node.Symbol>,
   root: v2.std.node.Symbol,
   terminal: v2.std.node.Symbol
 ) -> Bool {

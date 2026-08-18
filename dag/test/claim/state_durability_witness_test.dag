@@ -75,7 +75,7 @@ fn fixture_admission(
   realization: std.state_durability.StateRealizationIdentity,
   capability_version: std.state_durability.StateDurabilityCapabilityVersion,
   desired: extdeps.crypto.hash.Digest,
-) -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateDurabilityAdmission {
     target: fixture_target,
     desired_state_digest: desired,
@@ -86,7 +86,7 @@ fn fixture_admission(
   }
 }
 
-fn current_admission() -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+fn current_admission() -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   fixture_admission(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
@@ -114,7 +114,7 @@ fn current_capability() -> std.state_durability.StateDurabilityCapability {
 }
 
 fn fixture_activation(
-  admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   receipt_id: std.types.NonEmptyStr,
 ) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.ActivationVerified {
@@ -159,13 +159,13 @@ fn fixture_after_readback(
 }
 
 fn fixture_evidence(
-  admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   boundary: std.state_durability.StateDurabilityBoundary,
   readback_receipt_id: std.types.NonEmptyStr,
   before: extdeps.crypto.hash.Digest,
   after: extdeps.crypto.hash.Digest,
   activation: StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
-) -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateDurabilityEvidence {
     admission: admission,
     perturbation: std.state_durability.StatePerturbationReceipt {
@@ -194,7 +194,7 @@ fn fixture_evidence(
   }
 }
 
-fn matching_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
   fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
@@ -209,8 +209,8 @@ fn matching_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadback
 }
 
 fn durable_verdict(
-  evidence: List<StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
-) -> StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
+  evidence: List<std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
+) -> std.state_durability.StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
   state_durability_verdict(
     intent: std.state_durability.DurableAcross {
       boundaries: state_durability_boundary_requirements(
@@ -248,7 +248,7 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
     capability: Present { value: current_capability() },
     evidence: [matching_evidence()],
   ) {
-    StateDurabilityRefused {
+    std.state_durability.StateDurabilityRefused {
       cause: DurabilityRequirementDuplicate {
         boundary: boundary,
         count: count,
@@ -309,7 +309,7 @@ test fn positive_measure_count_build_executes_positive_arm() -> Bool {
 
 test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
   match durable_verdict(evidence: [matching_evidence()]) {
-    StateDurabilityRefused {
+    std.state_durability.StateDurabilityRefused {
       cause: DurabilityDefinitionLinkageUnavailable {
         realization: realization,
         capability: capability,
@@ -342,7 +342,7 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    StateDurabilityRefused {
+    std.state_durability.StateDurabilityRefused {
       cause: DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,
@@ -371,7 +371,7 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    StateDurabilityRefused {
+    std.state_durability.StateDurabilityRefused {
       cause: DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,

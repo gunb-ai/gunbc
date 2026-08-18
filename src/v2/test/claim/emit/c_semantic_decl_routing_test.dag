@@ -43,17 +43,17 @@ fn cdr_variant_edge_payload(name: v2.std.node.Symbol, fields: List<v2.std.node.E
   }
 }
 
-fn cdr_emit_text(name: v2.std.node.Symbol, node: Node) -> Outcome<String> {
+fn cdr_emit_text(name: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Outcome<String> {
   match emit_semantic_type_decl(name: name, params: std.algebra.Empty, node: node, target: c_target_model()) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn cdr_matches(name: v2.std.node.Symbol, node: Node, golden: String) -> Bool {
   match cdr_emit_text(name: name, node: node) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -116,8 +116,8 @@ test fn c_semantic_non_int_field_refuses() -> Bool {
     node: cdr_bool_field_record(),
     target: c_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -140,8 +140,8 @@ test fn c_semantic_generic_struct_refuses() -> Bool {
     node: cdr_point_record(),
     target: c_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -152,15 +152,15 @@ test fn c_semantic_generic_tagged_union_refuses() -> Bool {
     node: cdr_answer_coproduct(),
     target: c_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 test fn c_semantic_unsupported_shape_refuses() -> Bool {
   match cdr_emit_text(name: ^Bogus, node: cdr_arrow_type()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

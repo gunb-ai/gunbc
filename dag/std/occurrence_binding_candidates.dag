@@ -151,11 +151,11 @@ type DeclarationExposureGrounding
   | CrossFileProviderExportedExposure
 
 fn occurrence_containment_parent_scope(
-  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>
+  ancestors: std.algebra.FreeMonoid<std.occurrence_identity.OccurrenceId>
 ) -> std.occurrence_identity.OccurrenceContainmentPath? {
   match reverse(ancestors) {
-    Empty => none
-    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+    std.algebra.Empty => none
+    std.algebra.Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
       Present {
         value: std.occurrence_identity.OccurrenceContainmentPath {
           ancestors: reverse(parent_ancestors_reversed),
@@ -174,9 +174,9 @@ fn declaration_exposure_module_local_member(
       ModuleExposure { module: module_path }
     Present { value: exposing_scope } =>
       match exposing_scope.ancestors {
-        Empty =>
+        std.algebra.Empty =>
           ModuleExposure { module: module_path }
-        Cons { head: _, tail: _ } =>
+        std.algebra.Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }
@@ -194,10 +194,10 @@ fn declaration_exposure_namespace_structural_root(
 
     Present { value: exposing_scope } =>
       match exposing_scope.ancestors {
-        Empty =>
+        std.algebra.Empty =>
           ModuleExposure { module: module_path }
 
-        Cons { head: _, tail: _ } =>
+        std.algebra.Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }
@@ -1620,7 +1620,7 @@ type OccurrenceContainmentRemapResult {
 }
 
 type OccurrenceAncestorRemapBuild {
-  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>
+  ancestors: std.algebra.FreeMonoid<std.occurrence_identity.OccurrenceId>
   state: OccurrenceIdRemapState
 }
 

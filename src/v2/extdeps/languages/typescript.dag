@@ -25,7 +25,7 @@ type TsEcma262NumericPrimitiveFactsUnion
 
 type TsGrammarRelationRow {
   production: v2.std.grammar.FormalProduction
-  emitted: Node
+  emitted: v2.std.node.Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
@@ -58,7 +58,7 @@ data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsBigInt { facts: ts_facts_bigint }
 ]
 
-fn ts_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn ts_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -66,7 +66,7 @@ fn ts_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn ts_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn ts_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
@@ -74,10 +74,10 @@ fn ts_primitive_algebra_witness_node(
   witness_field_name: v2.std.node.Symbol,
   witness_tag: v2.std.node.Symbol,
   middle_field_name: v2.std.node.Symbol,
-  middle_field_target: Node,
+  middle_field_target: v2.std.node.Node,
   std_projection_field_name: v2.std.node.Symbol,
   std_projection: v2.std.node.Symbol
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -98,23 +98,23 @@ fn ts_primitive_algebra_witness_node(
   }
 }
 
-fn ts_number_arithmetic_semantics_node() -> Node {
+fn ts_number_arithmetic_semantics_node() -> v2.std.node.Node {
   ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64)
 }
 
-fn ts_number_bitwise_semantics_node() -> Node {
+fn ts_number_bitwise_semantics_node() -> v2.std.node.Node {
   ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32)
 }
 
-fn ts_bigint_operation_semantics_node() -> Node {
+fn ts_bigint_operation_semantics_node() -> v2.std.node.Node {
   ts_inhabitant_atom(id: ^ts_tag_bigint_exact_unbounded)
 }
 
-fn ts_bool_operation_semantics_node(facts: TsBooleanPrimitiveFacts) -> Node {
+fn ts_bool_operation_semantics_node(facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
   ts_inhabitant_atom(id: facts.encoding)
 }
 
-fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
+fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -147,7 +147,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
 }
 }
 
-fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
+fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -172,7 +172,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
 }
 }
 
-fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
+fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -197,7 +197,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
 }
 }
 
-fn ts_number_inhabitant_node(id: v2.std.node.Symbol, facts: TsNumberPrimitiveFacts) -> Node {
+fn ts_number_inhabitant_node(id: v2.std.node.Symbol, facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -211,7 +211,7 @@ fn ts_number_inhabitant_node(id: v2.std.node.Symbol, facts: TsNumberPrimitiveFac
 }
 }
 
-fn ts_bigint_inhabitant_node(id: v2.std.node.Symbol, facts: TsBigIntPrimitiveFacts) -> Node {
+fn ts_bigint_inhabitant_node(id: v2.std.node.Symbol, facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -225,7 +225,7 @@ fn ts_bigint_inhabitant_node(id: v2.std.node.Symbol, facts: TsBigIntPrimitiveFac
 }
 }
 
-fn ts_bool_inhabitant_node(id: v2.std.node.Symbol, facts: TsBooleanPrimitiveFacts) -> Node {
+fn ts_bool_inhabitant_node(id: v2.std.node.Symbol, facts: TsBooleanPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -239,19 +239,19 @@ fn ts_bool_inhabitant_node(id: v2.std.node.Symbol, facts: TsBooleanPrimitiveFact
 }
 }
 
-fn ts_inhabitant_number_node() -> Node {
+fn ts_inhabitant_number_node() -> v2.std.node.Node {
   ts_number_inhabitant_node(id: ^ts_inhabitant_number, facts: ts_facts_number)
 }
 
-fn ts_inhabitant_bigint_node() -> Node {
+fn ts_inhabitant_bigint_node() -> v2.std.node.Node {
   ts_bigint_inhabitant_node(id: ^ts_inhabitant_bigint, facts: ts_facts_bigint)
 }
 
-fn ts_inhabitant_boolean_node() -> Node {
+fn ts_inhabitant_boolean_node() -> v2.std.node.Node {
   ts_bool_inhabitant_node(id: ^ts_inhabitant_boolean, facts: ts_facts_boolean)
 }
 
-fn ts_declared_inhabitants_root() -> Node {
+fn ts_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -311,7 +311,7 @@ fn ts_coercion_candidate_edges() -> List<v2.std.node.Edge> {
   )
 }
 
-fn ts_add_declared_inhabitants_root() -> Node {
+fn ts_add_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: ts_coercion_candidate_edges(),
@@ -319,11 +319,11 @@ fn ts_add_declared_inhabitants_root() -> Node {
 }
 }
 
-fn ts_selection_policy_node() -> Node {
+fn ts_selection_policy_node() -> v2.std.node.Node {
   ts_inhabitant_number_node()
 }
 
-fn ts_emitted_add_fn_node() -> Node {
+fn ts_emitted_add_fn_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -473,14 +473,14 @@ fn ts_value_expression_projection_full(
   }
 }
 
-fn ts_add_operator_realization_row() -> Node {
+fn ts_add_operator_realization_row() -> v2.std.node.Node {
   target_operator_realization_node(
     operation: canonical_operation_op_add(),
     shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_plus }
   )
 }
 
-fn ts_operator_realizations_catalog_node() -> Node {
+fn ts_operator_realizations_catalog_node() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
 }
 
@@ -548,7 +548,7 @@ fn ts_source_text_authority() -> String {
   ts_source_text
 }
 
-fn ts_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
+fn ts_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
 
   concrete_syntax_token_to_node(token: token)
 }
@@ -581,7 +581,7 @@ fn ts_serialize_source_children() -> List<v2.std.node.Edge> {
   )
 }
 
-fn ts_serialize_source_node() -> Node {
+fn ts_serialize_source_node() -> v2.std.node.Node {
   let _authority = ts_source_text_authority()
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
@@ -644,18 +644,18 @@ fn ts_canonical_add_fn_tokens() -> List<v2.std.compilers.target_model.ConcreteSy
   ts_compose_add_fn_tokens(body_tokens: ts_add_return_body_tokens())
 }
 
-fn ts_fn_add_bodied_relation_row_node() -> Node {
+fn ts_fn_add_bodied_relation_row_node() -> v2.std.node.Node {
   grammar_relation_row_attach_bodied_scaffold(
     row: ts_fn_add_scaffold_relation_row_node(),
     scaffold: ts_bodied_arrow_statement_scaffold()
   )
 }
 
-fn ts_field_type_string_emitted() -> Node {
+fn ts_field_type_string_emitted() -> v2.std.node.Node {
   ts_inhabitant_atom(id: ^ts_token_ty_string)
 }
 
-fn ts_type_annotation_name_emitted(binding: v2.std.node.Symbol) -> Node {
+fn ts_type_annotation_name_emitted(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -665,7 +665,7 @@ fn ts_type_annotation_name_emitted(binding: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn ts_record_field_emitted(field_binding: v2.std.node.Symbol, type_child: Node) -> Node {
+fn ts_record_field_emitted(field_binding: v2.std.node.Symbol, type_child: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -676,7 +676,7 @@ fn ts_record_field_emitted(field_binding: v2.std.node.Symbol, type_child: Node) 
 }
 }
 
-fn ts_record_fields_single_emitted(field: Node) -> Node {
+fn ts_record_fields_single_emitted(field: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -686,7 +686,7 @@ fn ts_record_fields_single_emitted(field: Node) -> Node {
 }
 }
 
-fn ts_record_fields_pair_emitted(left: Node, right: Node) -> Node {
+fn ts_record_fields_pair_emitted(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -697,7 +697,7 @@ fn ts_record_fields_pair_emitted(left: Node, right: Node) -> Node {
 }
 }
 
-fn ts_record_type_task_emitted() -> Node {
+fn ts_record_type_task_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -727,7 +727,7 @@ fn ts_record_type_task_emitted() -> Node {
 }
 }
 
-fn ts_type_annotation_task_record_emitted() -> Node {
+fn ts_type_annotation_task_record_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -737,7 +737,7 @@ fn ts_type_annotation_task_record_emitted() -> Node {
 }
 }
 
-fn ts_type_alias_decl_emitted(name_binding: v2.std.node.Symbol, type_child: Node) -> Node {
+fn ts_type_alias_decl_emitted(name_binding: v2.std.node.Symbol, type_child: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -748,7 +748,7 @@ fn ts_type_alias_decl_emitted(name_binding: v2.std.node.Symbol, type_child: Node
 }
 }
 
-fn ts_task_type_alias_emitted() -> Node {
+fn ts_task_type_alias_emitted() -> v2.std.node.Node {
   ts_type_alias_decl_emitted(
     name_binding: ^ts_binding_task,
     type_child: ts_type_annotation_task_record_emitted()
@@ -834,7 +834,7 @@ fn ts_task_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   ]
 }
 
-fn ts_task_type_alias_relation_row_witness() -> Witness<Node> {
+fn ts_task_type_alias_relation_row_witness() -> Witness<v2.std.node.Node> {
   ts_eager_grammar_relation_row_witness(lhs: ^ts_production_type_alias_decl)
 }
 
@@ -851,9 +851,9 @@ fn ts_task_serialize_source_children() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn ts_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<v2.std.node.Edge>> {
+fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> Witness<List<v2.std.node.Edge>> {
   match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    Accepted { value: tokens_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
         TypeNode { connective: Conj } => v2.std.witness.Holds { value: tokens_root.children }
         _ =>
@@ -865,11 +865,11 @@ fn ts_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<v2.std
             }
           }
       }
-    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
-fn ts_task_serialize_source_witness() -> Witness<Node> {
+fn ts_task_serialize_source_witness() -> Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
     Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
@@ -909,15 +909,15 @@ fn ts_pr3_identity_concrete_tokens() -> List<v2.std.compilers.target_model.Concr
   ]
 }
 
-fn ts_pr3_identity_type_number_emitted() -> Node {
+fn ts_pr3_identity_type_number_emitted() -> v2.std.node.Node {
   ts_inhabitant_atom(id: ^ts_token_ty_number)
 }
 
-fn ts_pr3_identity_type_annotation_emitted() -> Node {
+fn ts_pr3_identity_type_annotation_emitted() -> v2.std.node.Node {
   ts_pr3_identity_type_number_emitted()
 }
 
-fn ts_pr3_identity_typed_param_emitted() -> Node {
+fn ts_pr3_identity_typed_param_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -928,7 +928,7 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
 }
 }
 
-fn ts_pr3_identity_typed_params_emitted() -> Node {
+fn ts_pr3_identity_typed_params_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -938,7 +938,7 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
 }
 }
 
-fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
+fn ts_pr3_identity_typed_params_opt_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -948,7 +948,7 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
 }
 }
 
-fn ts_pr3_identity_typed_fn_emitted() -> Node {
+fn ts_pr3_identity_typed_fn_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1011,7 +1011,7 @@ fn ts_pr3_identity_formal_productions() -> List<v2.std.grammar.FormalProduction>
   ]
 }
 
-fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> Witness<Node> {
+fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
   if lhs == ^ts_production_type_alias_decl {
     v2.std.witness.Holds { value: ts_task_type_alias_emitted() }
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
@@ -1045,7 +1045,7 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: v2.std.node.Symbol) -> List<v2.
   }
 }
 
-fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> Witness<Node> {
+fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
   match ts_exemplar_emitted_for_lhs(lhs: lhs) {
     Holds { value: emitted } =>
       let productions = ts_exemplared_formal_productions_for_lhs(lhs: lhs)
@@ -1066,11 +1066,11 @@ fn ts_eager_grammar_relation_row_witness(lhs: v2.std.node.Symbol) -> Witness<Nod
   }
 }
 
-fn ts_fn_add_scaffold_relation_row_node() -> Node {
+fn ts_fn_add_scaffold_relation_row_node() -> v2.std.node.Node {
   ts_grammar_relation_row_node(row: ts_grammar_relation_row())
 }
 
-fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
+fn ts_pr3_identity_relation_row_witness() -> Witness<v2.std.node.Node> {
   ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl)
 }
 
@@ -1087,7 +1087,7 @@ fn ts_pr3_identity_serialize_source_children() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn ts_pr3_identity_serialize_source_witness() -> Witness<Node> {
+fn ts_pr3_identity_serialize_source_witness() -> Witness<v2.std.node.Node> {
   match ts_pr3_identity_relation_row_witness() {
     Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
@@ -1108,7 +1108,7 @@ fn ts_pr3_identity_serialize_source_witness() -> Witness<Node> {
   }
 }
 
-fn ts_pr3_translation_rules_witness() -> Witness<Node> {
+fn ts_pr3_translation_rules_witness() -> Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
     Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
@@ -1139,7 +1139,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
   }
 }
 
-fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
+fn ts_pr3_identity_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
   match ts_pr3_translation_rules_witness() {
     Holds { value: rules } =>
       match ts_pr3_identity_serialize_source_witness() {
@@ -1212,7 +1212,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<v2.std.compilers.target_mod
   }
 }
 
-fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
+fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> v2.std.node.Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
     tokens: grammar_relation_tokens_node(
@@ -1222,7 +1222,7 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
   )
 }
 
-fn ts_translation_rules_node() -> Node {
+fn ts_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1235,7 +1235,7 @@ fn ts_translation_rules_node() -> Node {
 }
 }
 
-fn ts_translation_rules_witness() -> Witness<Node> {
+fn ts_translation_rules_witness() -> Witness<v2.std.node.Node> {
   match ts_task_type_alias_relation_row_witness() {
     Holds { value: task_row } =>
       v2.std.witness.Holds {
@@ -1258,7 +1258,7 @@ fn ts_translation_rules_witness() -> Witness<Node> {
   }
 }
 
-fn ts_target_model_node() -> Node {
+fn ts_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1394,7 +1394,7 @@ fn ts_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescript
   }
 }
 
-fn ts_emit_host_runtime_primitive_type_node() -> Node {
+fn ts_emit_host_runtime_primitive_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_emit_host_runtime_primitive_symbol } },
     children: [],
@@ -1454,7 +1454,7 @@ fn ts_type_expression_projection() -> v2.std.compilers.target_model.TargetTypeEx
   }
 }
 
-fn ts_type_expression_projection_bundle_node() -> Node {
+fn ts_type_expression_projection_bundle_node() -> v2.std.node.Node {
   type_expr_projection_step_algebra(projection: ts_type_expression_projection())
 }
 
@@ -1471,7 +1471,7 @@ data ts_target_atom_realization_bool: v2.std.compilers.target_model.TargetAtomRe
   display_name: ^bool_node_symbol
 }
 
-fn ts_std_text_string_type_node() -> Node {
+fn ts_std_text_string_type_node() -> v2.std.node.Node {
   free_monoid_type_node(inhabitant: char_kernel_type_node())
 }
 
@@ -1518,7 +1518,7 @@ fn ts_sg2_type_expr_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: ts_sg2_type_expr_lex_rules() }
 }
 
-fn ts_sg2_type_expr_target_model_node() -> Node {
+fn ts_sg2_type_expr_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: list_snoc_item(
@@ -1532,7 +1532,7 @@ fn ts_sg2_type_expr_target_model_node() -> Node {
 }
 }
 
-fn ts_target_atom_realization_target_model_node() -> Node {
+fn ts_target_atom_realization_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: list_snoc_item(
@@ -1581,7 +1581,7 @@ fn ts_sg2_type_expr_target_model() -> v2.std.compilers.target_model.TargetModel 
   }
 }
 
-fn ts_sg2_foobar_xy_emitted() -> Node {
+fn ts_sg2_foobar_xy_emitted() -> v2.std.node.Node {
   target_type_expr_instantiation_emitted(
     form: ts_type_expression_projection().instantiation_form,
     head: target_type_expr_atom_emitted(
@@ -1601,7 +1601,7 @@ fn ts_sg2_foobar_xy_emitted() -> Node {
   )
 }
 
-fn ts_sg2_instantiation_source_type_node() -> Node {
+fn ts_sg2_instantiation_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
@@ -1634,7 +1634,7 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
 }
 }
 
-fn ts_sg2_atom_node(binding: v2.std.node.Symbol) -> Node {
+fn ts_sg2_atom_node(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
@@ -1642,7 +1642,7 @@ fn ts_sg2_atom_node(binding: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn ts_sg2_arrow_xy_emitted() -> Node {
+fn ts_sg2_arrow_xy_emitted() -> v2.std.node.Node {
   target_type_expr_arrow_emitted(
     form: ts_type_expression_projection().arrow_form,
     inputs: std.algebra.Cons {
@@ -1659,7 +1659,7 @@ fn ts_sg2_arrow_xy_emitted() -> Node {
   )
 }
 
-fn ts_sg2_arrow_labeled_xy_emitted() -> Node {
+fn ts_sg2_arrow_labeled_xy_emitted() -> v2.std.node.Node {
   target_type_expr_arrow_emitted_named(
     form: ts_type_expression_projection().arrow_form,
     params: [
@@ -1678,7 +1678,7 @@ fn ts_sg2_arrow_labeled_xy_emitted() -> Node {
   )
 }
 
-fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
+fn ts_sg2_arrow_mixed_wire_emitted() -> v2.std.node.Node {
   let golden = ts_sg2_arrow_xy_emitted()
   v2.std.node.Node {
     kind: golden.kind,
@@ -1696,7 +1696,7 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
 }
 }
 
-fn ts_sg2_arrow_source_type_node() -> Node {
+fn ts_sg2_arrow_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -1707,14 +1707,14 @@ fn ts_sg2_arrow_source_type_node() -> Node {
 }
 }
 
-fn ts_sg2_binary_fn_source_type_node() -> Node {
+fn ts_sg2_binary_fn_source_type_node() -> v2.std.node.Node {
   algebra_binary_fn_node(
     domain: ts_sg2_atom_node(binding: ^ts_binding_sg2_x),
     codomain: ts_sg2_atom_node(binding: ^ts_binding_sg2_y)
   )
 }
 
-fn ts_sg2_arrow_malformed_source_type_node() -> Node {
+fn ts_sg2_arrow_malformed_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -1724,7 +1724,7 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
 }
 }
 
-fn ts_sg2_conj_xy_emitted() -> Node {
+fn ts_sg2_conj_xy_emitted() -> v2.std.node.Node {
   target_type_expr_record_emitted(
     form: ts_type_expression_projection().conj_form,
     fields: [
@@ -1746,7 +1746,7 @@ fn ts_sg2_conj_xy_emitted() -> Node {
   )
 }
 
-fn ts_sg2_conj_source_type_node() -> Node {
+fn ts_sg2_conj_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1757,7 +1757,7 @@ fn ts_sg2_conj_source_type_node() -> Node {
 }
 }
 
-fn ts_sg2_sum_xy_emitted() -> Node {
+fn ts_sg2_sum_xy_emitted() -> v2.std.node.Node {
   target_type_expr_sum_emitted(
     form: ts_type_expression_projection().disj_form,
     variants: [
@@ -1779,7 +1779,7 @@ fn ts_sg2_sum_xy_emitted() -> Node {
   )
 }
 
-fn ts_sg2_disj_source_type_node() -> Node {
+fn ts_sg2_disj_source_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
@@ -1790,7 +1790,7 @@ fn ts_sg2_disj_source_type_node() -> Node {
 }
 }
 
-fn ts_task_target_model_bundle_witness() -> Witness<Node> {
+fn ts_task_target_model_bundle_witness() -> Witness<v2.std.node.Node> {
   match ts_translation_rules_witness() {
     Holds { value: rules } =>
       match ts_task_serialize_source_witness() {
@@ -1843,7 +1843,7 @@ fn ts_task_target_model_witness() -> Witness<v2.std.compilers.target_model.Targe
   }
 }
 
-fn ts_fn_add_target_model() -> Node {
+fn ts_fn_add_target_model() -> v2.std.node.Node {
   ts_target_atom_realization_target_model_node()
 }
 
@@ -1899,7 +1899,7 @@ fn ts_fn_add_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: ts_fn_add_lex_rules() }
 }
 
-fn ts_grammar_atom(id: v2.std.node.Symbol) -> Node {
+fn ts_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   ts_inhabitant_atom(id: id)
 }
 
@@ -1961,7 +1961,7 @@ fn ts_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   }
 }
 
-fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -1977,7 +1977,7 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<v2.std.node.Symbol
   }
 }
 
-fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -1991,7 +1991,7 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol
   }
 }
 
-fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
@@ -2051,7 +2051,7 @@ fn ts_number_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBun
   )
 }
 
-fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
+fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> v2.std.node.Node {
   ts_primitive_algebra_witness_node(
     witness_field_name: ^ts_witness_number_approximate_field,
     witness_tag: ^ts_witness_number_approximate_field,
@@ -2062,7 +2062,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
   )
 }
 
-fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
+fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> v2.std.node.Node {
   ts_primitive_algebra_witness_node(
     witness_field_name: ^ts_witness_bigint_ordered_ring,
     witness_tag: ^ts_witness_bigint_ordered_ring,
@@ -2073,7 +2073,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
   )
 }
 
-fn ts_bool_algebra_witness_node() -> Node {
+fn ts_bool_algebra_witness_node() -> v2.std.node.Node {
   ts_primitive_algebra_witness_node(
     witness_field_name: ^ts_witness_bool_boolean_algebra,
     witness_tag: ^ts_witness_bool_boolean_algebra,
@@ -2926,7 +2926,7 @@ data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
   code_unit_inhabitant: ^ts_inhabitant_utf16_code_unit
 }
 
-fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
+fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2947,7 +2947,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
 }
 }
 
-fn ts_string_inhabitant_node(id: v2.std.node.Symbol, facts: TsStringPrimitiveFacts) -> Node {
+fn ts_string_inhabitant_node(id: v2.std.node.Symbol, facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2962,7 +2962,7 @@ fn ts_string_inhabitant_node(id: v2.std.node.Symbol, facts: TsStringPrimitiveFac
 }
 }
 
-fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
+fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> v2.std.node.Node {
   ts_primitive_algebra_witness_node(
     witness_field_name: ^ts_witness_string_free_monoid,
     witness_tag: ^ts_witness_string_free_monoid,
@@ -2998,7 +2998,7 @@ fn ts_full_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl>
   )
 }
 
-fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   let m0 = empty_map()
   let m1 = map_insert(
     m: m0,
@@ -3033,11 +3033,11 @@ fn ts_g14_grounding_target_model() -> v2.std.compilers.target_model.TargetModel 
 
 fn ts_insert_per_language_primitive_axis(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry,
-  subject: Node,
+  subject: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
   axis: v2.std.model_core.ModelCorePrimitiveFactAxis,
-  value: Node
-) -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+  value: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   insert_per_language_fact_bundle_entry(
     registry: registry,
     key: v2.std.grounding.PerLanguageFactBundleKey {
@@ -3049,7 +3049,7 @@ fn ts_insert_per_language_primitive_axis(
   )
 }
 
-fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   let target = ts_g14_grounding_target_model()
   let number_subject = ts_number_facts_node(facts: ts_facts_number)
   let bigint_subject = ts_bigint_facts_node(facts: ts_facts_bigint)
@@ -3062,7 +3062,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
     axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
     value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
   ) {
-    Accepted { value: r0, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r0, diagnostics: _ } =>
       match ts_insert_per_language_primitive_axis(
         registry: r0,
         subject: number_subject,
@@ -3070,7 +3070,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
         axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         value: ts_inhabitant_atom(id: ^ts_tag_bits64)
       ) {
-        Accepted { value: r1, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: r1, diagnostics: _ } =>
           match ts_insert_per_language_primitive_axis(
             registry: r1,
             subject: number_subject,
@@ -3078,7 +3078,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
             value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
           ) {
-            Accepted { value: r2, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: r2, diagnostics: _ } =>
               match ts_insert_per_language_primitive_axis(
                 registry: r2,
                 subject: bigint_subject,
@@ -3086,7 +3086,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                 value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
               ) {
-                Accepted { value: r3, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: r3, diagnostics: _ } =>
                   match ts_insert_per_language_primitive_axis(
                     registry: r3,
                     subject: bigint_subject,
@@ -3094,7 +3094,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                     value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
                   ) {
-                    Accepted { value: r4, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: r4, diagnostics: _ } =>
                       match ts_insert_per_language_primitive_axis(
                         registry: r4,
                         subject: bool_subject,
@@ -3102,7 +3102,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                         axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                         value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
                       ) {
-                        Accepted { value: r5, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: r5, diagnostics: _ } =>
                           match ts_insert_per_language_primitive_axis(
                             registry: r5,
                             subject: bool_subject,
@@ -3110,7 +3110,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                             value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
                           ) {
-                            Accepted { value: r6, diagnostics: _ } =>
+                            v2.std.diagnostic.Accepted { value: r6, diagnostics: _ } =>
                               match ts_insert_per_language_primitive_axis(
                                 registry: r6,
                                 subject: string_subject,
@@ -3118,7 +3118,7 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                                 value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
                               ) {
-                                Accepted { value: r7, diagnostics: _ } =>
+                                v2.std.diagnostic.Accepted { value: r7, diagnostics: _ } =>
                                   ts_insert_per_language_primitive_axis(
                                     registry: r7,
                                     subject: string_subject,
@@ -3126,28 +3126,28 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                Rejected { diagnostics: d } =>
+                                v2.std.diagnostic.Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            Rejected { diagnostics: d } =>
+                            v2.std.diagnostic.Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        Rejected { diagnostics: d } =>
+                        v2.std.diagnostic.Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    Rejected { diagnostics: d } =>
+                    v2.std.diagnostic.Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -3169,7 +3169,7 @@ type TsModelCoreLawKey
   | TsLawStringConcatLeftIdentity
   | TsLawStringConcatRightIdentity
 
-fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) -> Node {
+fn ts_model_core_law_node(witness: v2.std.node.Node, algebra: v2.std.node.Node, key: TsModelCoreLawKey) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3184,7 +3184,7 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
 }
 }
 
-fn ts_model_core_law_obligation(witness: Node, law: Node) -> v2.std.model_core.AlgebraLawObligation {
+fn ts_model_core_law_obligation(witness: v2.std.node.Node, law: v2.std.node.Node) -> v2.std.model_core.AlgebraLawObligation {
   v2.std.model_core.AlgebraLawObligation {
     inhabitance_witness: witness,
     law: law

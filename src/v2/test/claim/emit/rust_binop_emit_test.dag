@@ -36,7 +36,7 @@ fn rust_binop_arrow_with_operator(operator_token: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn rust_binop_producer_emit(operator_token: v2.std.node.Symbol, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn rust_binop_producer_emit(operator_token: v2.std.node.Symbol, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(
     tree: rust_binop_inferred_tree_for(root: rust_binop_arrow_with_operator(operator_token: operator_token)),
     target: target
@@ -78,7 +78,7 @@ fn rust_binop_target_model(catalog: Node) -> v2.std.compilers.target_model.Targe
   )
 }
 
-fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> Outcome<String> {
+fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: rust_binop_binary_expr(operation: operation),
@@ -104,8 +104,8 @@ fn rust_binop_vep_emit_accepts(operation: v2.std.compilers.target_model.Canonica
     operation: operation,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -114,9 +114,9 @@ fn rust_binop_vep_emit_differs_from_add(operation: v2.std.compilers.target_model
     operation: operation,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    Accepted { value: s, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } =>
       (s != "x + y") && rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -125,9 +125,9 @@ fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected
     operator_token: operator_token,
     target: rust_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -159,8 +159,8 @@ test fn rust_binop_vep_emit_wrong_token_discriminates() -> Bool {
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_sub_mistoken_catalog()
   ) {
-    Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -169,8 +169,8 @@ test fn rust_binop_vep_emit_missing_catalog_rejects() -> Bool {
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_add_only_catalog()
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 

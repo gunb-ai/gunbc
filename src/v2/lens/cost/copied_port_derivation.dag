@@ -5,10 +5,10 @@ data copied_port_derivation_note: String = "Wave 1 Gate 1 C1: per-op copied-port
 
 type CombinerArrowCitation {
   combiner: v2.std.node.Symbol
-  arrow: Node
+  arrow: v2.std.node.Node
 }
 
-fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
+fn cost_linear_in_node(cost: SymbolicCost, n: v2.std.node.Node) -> Bool {
   match cost {
     ConstantCost { value: _ } => false
     LinearCost { variable: sv } => sv.source == n
@@ -25,7 +25,7 @@ fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
   }
 }
 
-fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
+fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> List<v2.std.node.Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       fold(arrow.children, init: std.algebra.Empty, f: fn(acc, e) {
@@ -48,7 +48,7 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
   }
 }
 
-fn param_list_reverse_to_forward(xs: List<Node>) -> List<Node> {
+fn param_list_reverse_to_forward(xs: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(xs, init: std.algebra.Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
 }
 
@@ -56,7 +56,7 @@ fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
   std.algebra.Cons { head: item, tail: xs }
 }
 
-fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: List<Int>) -> List<Int> {
+fn linear_param_indices(cost: SymbolicCost, params: List<v2.std.node.Node>, idx: Int, acc: List<Int>) -> List<Int> {
   match params {
     Empty => acc
     Cons { head: param, tail: rest } =>
@@ -73,7 +73,7 @@ fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: L
   }
 }
 
-fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
+fn derive_copied_port_index_from_arrow(arrow: v2.std.node.Node) -> Optional<Int> {
   match arrow_body_target_lookup(children: arrow.children) {
     Found { target: body } =>
       let params = param_list_reverse_to_forward(xs: arrow_domain_param_nodes(arrow: arrow))
@@ -89,7 +89,7 @@ fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
   }
 }
 
-fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: Node) -> Optional<v2.std.algebra.CopiedPortFact> {
+fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: v2.std.node.Node) -> Optional<v2.std.algebra.CopiedPortFact> {
   match derive_copied_port_index_from_arrow(arrow: arrow) {
     Absent => Absent
     Present { value: idx } =>

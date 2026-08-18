@@ -113,7 +113,7 @@ fn graph_reach_add_edge_repair(root: Node, edge_target: Node) -> Node {
   }
 }
 
-fn graph_reach_suggested_add_edge_repair(root: Node, edge_target: Node) -> Outcome<Node> {
+fn graph_reach_suggested_add_edge_repair(root: Node, edge_target: Node) -> v2.std.diagnostic.Outcome<Node> {
   outcome_accepted(value: graph_reach_add_edge_repair(root: root, edge_target: edge_target))
 }
 
@@ -131,13 +131,13 @@ fn graph_reach_unreachable_diagnostic(
     }
   } else {
     match graph_reach_suggested_add_edge_repair(root: root, edge_target: unreachable) {
-      Accepted { value: repaired, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: repaired, diagnostics: _ } =>
         v2.std.diagnostic.Diagnostic {
           reason: reason,
           at: node_locus(node: root),
           correction: v2.std.diagnostic.Suggested { node: repaired }
         }
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
         v2.std.diagnostic.Diagnostic {
           reason: reason,
           at: node_locus(node: root),
@@ -154,11 +154,11 @@ fn graph_reach_root_replacement_edit(repaired: Node) -> v2.std.node.Edit {
   }
 }
 
-fn graph_reach_apply_suggested_correction(root: Node, repaired: Node) -> Outcome<Node> {
+fn graph_reach_apply_suggested_correction(root: Node, repaired: Node) -> v2.std.diagnostic.Outcome<Node> {
   apply_edit(root: root, edit: graph_reach_root_replacement_edit(repaired: repaired))
 }
 
-fn graph_reach_apply_diagnostic_correction(root: Node, d: v2.std.diagnostic.Diagnostic) -> Outcome<Node> {
+fn graph_reach_apply_diagnostic_correction(root: Node, d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.Outcome<Node> {
   match d.correction {
     Suggested { node: repaired } => graph_reach_apply_suggested_correction(root: root, repaired: repaired)
     Unavailable { reason: _ } =>

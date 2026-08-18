@@ -72,25 +72,25 @@ fn derived_raw_modifier_unknown(name: String, method: std.types.HttpMethod, raw:
   }
 }
 
-fn is_read(shape: EffectShape<std.effects.KeySource>) -> Bool {
+fn is_read(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    ReadEffect => true
+    std.effects.ReadEffect => true
     _ => false
   }
 }
 
-fn is_create(shape: EffectShape<std.effects.KeySource>) -> Bool {
+fn is_create(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    CreateEffect { cause: cause } => true
+    std.effects.CreateEffect { cause: cause } => true
     _ => false
   }
 }
 
 data keyless_fallback_witness_note: String = "Discriminating control for the PostAlways state-space conflation (std.effects.keyless_fallback_cause_note). Pre-fix, derive_effect_shape answered CreateEffect{PostAlways} for a real POST AND for a keyless PUT/PATCH/DELETE, so this projection was inexpressible and the originating method was lost. These rows go RED if the two causes ever collapse back together, and the negative arms prove the method is genuinely carried rather than defaulted."
 
-fn derived_cause_is_keyless_with_method(shape: EffectShape<std.effects.KeySource>, expected: std.types.HttpMethod) -> Bool {
+fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effects.KeySource>, expected: std.types.HttpMethod) -> Bool {
   match shape {
-    CreateEffect { cause: cause } =>
+    std.effects.CreateEffect { cause: cause } =>
       match cause {
         KeylessFallback { method: m } =>
           match m {
@@ -107,9 +107,9 @@ fn derived_cause_is_keyless_with_method(shape: EffectShape<std.effects.KeySource
   }
 }
 
-fn derived_cause_is_post_always(shape: EffectShape<std.effects.KeySource>) -> Bool {
+fn derived_cause_is_post_always(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    CreateEffect { cause: cause } =>
+    std.effects.CreateEffect { cause: cause } =>
       match cause {
         PostAlways => true
         KeylessFallback { method: m } => false
@@ -141,16 +141,16 @@ fn derived_raw_cause_is_post_always(name: String, method: std.types.HttpMethod, 
   }
 }
 
-fn is_upsert(shape: EffectShape<std.effects.KeySource>) -> Bool {
+fn is_upsert(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    UpsertEffect { key_source: key_source } => true
+    std.effects.UpsertEffect { key_source: key_source } => true
     _ => false
   }
 }
 
-fn is_delete(shape: EffectShape<std.effects.KeySource>) -> Bool {
+fn is_delete(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    DeleteEffect { key_source: key_source } => true
+    std.effects.DeleteEffect { key_source: key_source } => true
     _ => false
   }
 }
@@ -158,8 +158,8 @@ fn is_delete(shape: EffectShape<std.effects.KeySource>) -> Bool {
 fn op_lattice_read(name: String) -> std.effects.OperationEffect {
   std.effects.OperationEffect {
     operation_name: name,
-    shape: ReadEffect,
-    evidence: std.effects.LatticeEffect { shape: ReadEffect }
+    shape: std.effects.ReadEffect,
+    evidence: std.effects.LatticeEffect { shape: std.effects.ReadEffect }
   }
 }
 

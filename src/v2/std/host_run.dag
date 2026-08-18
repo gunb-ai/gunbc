@@ -11,7 +11,7 @@ type ExitOk {
 }
 
 type HostExit {
-  outcome: Outcome<Witness<ExitOk>>
+  outcome: v2.std.diagnostic.Outcome<Witness<ExitOk>>
 }
 
 type HostRunStdout {
@@ -26,24 +26,24 @@ type EmitHostRunReceipt {
   target: v2.std.compilers.target_model.TargetModel
   source_text: String
   exit: HostExit
-  logical_run: Outcome<HostLogicalRun>
+  logical_run: v2.std.diagnostic.Outcome<HostLogicalRun>
   stderr_bytes: v2.std.host_transport.ByteString
   build_log: BuildLog
   compile_skipped: Bool
 }
 
-fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transport.ByteString) -> Outcome<HostLogicalRun> {
+fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transport.ByteString) -> v2.std.diagnostic.Outcome<HostLogicalRun> {
   match exit.outcome {
-    Accepted { value: Holds { value: _ }, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: Holds { value: _ }, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: HostLogicalRun {
           stdout: HostRunStdout { bytes: stdout_bytes }
         },
         diagnostics: v2.std.diagnostic.None
       }
-    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

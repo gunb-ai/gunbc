@@ -5,12 +5,12 @@ data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is 
 
 fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match map_get(binding_to_class, atom_identity) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: token_class } => token_class
         Absent => atom_identity
       }
-    Rejected { diagnostics: _ } => atom_identity
+    v2.std.diagnostic.Rejected { diagnostics: _ } => atom_identity
   }
 }
 
@@ -30,15 +30,15 @@ fn binding_class_map_merge_tokens(
   )
 }
 
-fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match row_token_spine_tokens(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       binding_class_map_merge_tokens(acc: acc, tokens: tokens)
   }
 }
 
-fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match rules.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -55,7 +55,7 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<v2.std.node.S
   }
 }
 
-fn row_token_spine_tokens(row: Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn row_token_spine_tokens(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -65,7 +65,7 @@ fn row_token_spine_tokens(row: Node) -> Outcome<List<v2.std.compilers.target_mod
 }
 
 fn operational_parse_tree_project_to_formal_captures(
-  captured: Node,
+  captured: v2.std.node.Node,
   binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>
 ) -> List<v2.std.node.Symbol> {
   match node_atom_identity_optional(node: captured) {
@@ -106,7 +106,7 @@ fn operational_parse_tree_project_to_formal_captures(
   }
 }
 
-fn grammar_relation_row_forward_selection(frontier: List<v2.std.node.Symbol>, rules: Node) -> Outcome<Node> {
+fn grammar_relation_row_forward_selection(frontier: List<v2.std.node.Symbol>, rules: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
 }
 
@@ -122,14 +122,14 @@ fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_mode
 
 fn grammar_relation_row_forward_token_selection(
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  rules: Node,
+  rules: v2.std.node.Node,
   start_lhs: v2.std.node.Symbol
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
   match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-    Accepted { value: emitted, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: emitted, diagnostics: d }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       bind_outcome(
         o: grammar_relation_rules_formal_productions(rules: rules),
         f: fn(productions) {
@@ -146,7 +146,7 @@ fn grammar_relation_row_forward_token_selection(
   }
 }
 
-fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> Outcome<Node> {
+fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -160,7 +160,7 @@ fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model
   )
 }
 
-fn parse_tree_to_target_model_bridge(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> Outcome<v2.compiler.compile.CoreNode> {
+fn parse_tree_to_target_model_bridge(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.compiler.compile.CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
@@ -181,7 +181,7 @@ fn cross_language_compile(
   parse_tree: v2.std.grammar.ParseTree,
   source_model: v2.std.compilers.target_model.TargetModel,
   target_model: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: parse_tree_to_target_model_bridge(parse_tree: parse_tree, source_model: source_model),
     f: fn(core) {

@@ -53,13 +53,13 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
     type_name: reflect_imported_derive_trait_type,
     discriminant_of: imported_derive_trait_discriminant
   ) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
         xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
         ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
         eq: symbol_eq
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -70,11 +70,11 @@ fn nullary_reflection_context_b_discriminant(
 }
 
 fn nullary_reflection_context_b_outcome_is_rejected(
-  result: Outcome<List<NullaryReflectionContextB>>
+  result: v2.std.diagnostic.Outcome<List<NullaryReflectionContextB>>
 ) -> Bool {
   match result {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -121,7 +121,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
     type_name: reflect_behavior_type,
     discriminant_of: behavior_discriminant
   ) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
         xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
@@ -131,7 +131,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
         inhabitants: inhabitants,
         arm_keys: keys
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -140,7 +140,7 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
     type_name: reflect_connective_type,
     discriminant_of: connective_discriminant
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

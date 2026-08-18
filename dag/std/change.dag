@@ -74,7 +74,7 @@ fn keyed_patch_append<K, V>(
   KeyedPatch { hunks: concat(left.hunks, right.hunks) }
 }
 
-fn keyed_patch_monoid<K, V>() -> Monoid<KeyedPatch<K, V>> {
+fn keyed_patch_monoid<K, V>() -> std.algebra.Monoid<KeyedPatch<K, V>> {
   std.algebra.Monoid {
     op: keyed_patch_append,
     identity: keyed_patch_empty(),
@@ -147,7 +147,7 @@ fn keyed_three_way_patch_insert_entry<K, V>(
 fn keyed_three_way_patch_monoid<K, V>(
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> Monoid<KeyedThreeWayPatch<K, V>> {
+) -> std.algebra.Monoid<KeyedThreeWayPatch<K, V>> {
   std.algebra.Monoid {
     op: fn(left, right) {
       keyed_three_way_patch_append(
@@ -230,10 +230,10 @@ fn keyed_leaf_verdict_join<V>(
 }
 
 fn keyed_merge_row_lists<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
-) -> List<KeyedRow<K, V>> {
+) -> List<std.keyed_row.KeyedRow<K, V>> {
   fold(right, init: left, f: fn(acc, row) {
     match keyed_row_find(rows: acc, wanted_key: row.row_key, key_eq: key_eq) {
       Present { value: _ } => acc
@@ -243,7 +243,7 @@ fn keyed_merge_row_lists<K, V>(
 }
 
 fn keyed_collect_keys<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<K> {
   reverse(rows |> fold(init: [], f: fn(acc, row) {
@@ -256,8 +256,8 @@ fn keyed_collect_keys<K, V>(
 }
 
 fn keyed_union_keys<K, V>(
-  a: List<KeyedRow<K, V>>,
-  b: List<KeyedRow<K, V>>,
+  a: List<std.keyed_row.KeyedRow<K, V>>,
+  b: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<K> {
   keyed_collect_keys(
@@ -267,9 +267,9 @@ fn keyed_union_keys<K, V>(
 }
 
 fn keyed_union_keys_three<K, V>(
-  a: List<KeyedRow<K, V>>,
-  b: List<KeyedRow<K, V>>,
-  c: List<KeyedRow<K, V>>,
+  a: List<std.keyed_row.KeyedRow<K, V>>,
+  b: List<std.keyed_row.KeyedRow<K, V>>,
+  c: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<K> {
   keyed_collect_keys(
@@ -284,8 +284,8 @@ fn keyed_union_keys_three<K, V>(
 
 fn keyed_two_way_row<K, V>(
   wanted_key: K,
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedDiffHunk<K, V>? {
@@ -328,8 +328,8 @@ fn keyed_two_way_row<K, V>(
 
 fn keyed_two_way_row_patch<K, V>(
   wanted_key: K,
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedPatch<K, V> {
@@ -346,8 +346,8 @@ fn keyed_two_way_row_patch<K, V>(
 }
 
 fn keyed_two_way_diff<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedPatch<K, V> {
@@ -369,9 +369,9 @@ fn keyed_two_way_diff<K, V>(
 
 fn keyed_three_way_row_verdict<K, V>(
   wanted_key: K,
-  base: List<KeyedRow<K, V>>,
-  observed: List<KeyedRow<K, V>>,
-  desired: List<KeyedRow<K, V>>,
+  base: List<std.keyed_row.KeyedRow<K, V>>,
+  observed: List<std.keyed_row.KeyedRow<K, V>>,
+  desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedLeafVerdict<V> {
@@ -421,9 +421,9 @@ fn keyed_three_way_row_verdict<K, V>(
 
 fn keyed_three_way_row_patch<K, V>(
   wanted_key: K,
-  base: List<KeyedRow<K, V>>,
-  observed: List<KeyedRow<K, V>>,
-  desired: List<KeyedRow<K, V>>,
+  base: List<std.keyed_row.KeyedRow<K, V>>,
+  observed: List<std.keyed_row.KeyedRow<K, V>>,
+  desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedThreeWayPatch<K, V> {
@@ -445,9 +445,9 @@ fn keyed_three_way_row_patch<K, V>(
 }
 
 fn keyed_three_way_fold<K, V>(
-  base: List<KeyedRow<K, V>>,
-  observed: List<KeyedRow<K, V>>,
-  desired: List<KeyedRow<K, V>>,
+  base: List<std.keyed_row.KeyedRow<K, V>>,
+  observed: List<std.keyed_row.KeyedRow<K, V>>,
+  desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedThreeWayPatch<K, V> {
@@ -469,9 +469,9 @@ fn keyed_three_way_fold<K, V>(
 }
 
 fn keyed_apply_row<K, V>(
-  row: KeyedRow<K, V>,
+  row: std.keyed_row.KeyedRow<K, V>,
   hunk: KeyedDiffHunk<K, V>,
-) -> KeyedRow<K, V> {
+) -> std.keyed_row.KeyedRow<K, V> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: _, to: v } =>
       std.keyed_row.KeyedRow { row_key: row.row_key, value: v }
@@ -482,10 +482,10 @@ fn keyed_apply_row<K, V>(
 }
 
 fn keyed_apply_patch<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   patch: KeyedPatch<K, V>,
   key_eq: fn(K, K) -> Bool,
-) -> List<KeyedRow<K, V>> {
+) -> List<std.keyed_row.KeyedRow<K, V>> {
   fold(patch.hunks, init: rows, f: fn(acc, hunk) {
     match hunk {
       KeyedDiffAddedHunk { hunk_key: k, to: v } =>
@@ -584,8 +584,8 @@ fn keyed_patches_equal<K, V>(
 }
 
 fn keyed_rows_snapshot_equal<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
@@ -605,11 +605,11 @@ fn keyed_rows_snapshot_equal<K, V>(
 }
 
 fn keyed_apply_two_way_diff<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> List<KeyedRow<K, V>> {
+) -> List<std.keyed_row.KeyedRow<K, V>> {
   keyed_apply_patch(
     rows: left,
     patch: keyed_two_way_diff(
@@ -623,11 +623,11 @@ fn keyed_apply_two_way_diff<K, V>(
 }
 
 fn keyed_retract_two_way_diff<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> List<KeyedRow<K, V>> {
+) -> List<std.keyed_row.KeyedRow<K, V>> {
   keyed_apply_patch(
     rows: right,
     patch: keyed_invert_patch(

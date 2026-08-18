@@ -18,21 +18,21 @@ fn fixture_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn fixture_row(path: String, audience: String) -> KeyedRow<String, FixtureGrant> {
+fn fixture_row(path: String, audience: String) -> std.keyed_row.KeyedRow<String, FixtureGrant> {
   std.keyed_row.KeyedRow {
     row_key: path,
     value: fixture_grant(path: path, audience: audience),
   }
 }
 
-fn fixture_rows_unique() -> List<KeyedRow<String, FixtureGrant>> {
+fn fixture_rows_unique() -> List<std.keyed_row.KeyedRow<String, FixtureGrant>> {
   [
     fixture_row(path: "dag/gunbc/a.dag", audience: "repo"),
     fixture_row(path: "dag/gunbc/b.dag", audience: "repo"),
   ]
 }
 
-fn fixture_rows_duplicate_path() -> List<KeyedRow<String, FixtureGrant>> {
+fn fixture_rows_duplicate_path() -> List<std.keyed_row.KeyedRow<String, FixtureGrant>> {
   [
     fixture_row(path: "dag/gunbc/publication_grant.dag", audience: "world"),
     fixture_row(path: "dag/gunbc/publication_grant.dag", audience: "repo"),
@@ -69,21 +69,21 @@ fn fixture_frontier_rows_duplicate_path() -> List<std.roster_frontier.FrontierRo
   ]
 }
 
-fn fixture_branch_a_rows() -> List<KeyedRow<String, FixtureGrant>> {
+fn fixture_branch_a_rows() -> List<std.keyed_row.KeyedRow<String, FixtureGrant>> {
   [
     fixture_row(path: "dag/gunbc/alpha.dag", audience: "world"),
     fixture_row(path: "dag/gunbc/beta.dag", audience: "world"),
   ]
 }
 
-fn fixture_branch_b_disjoint_rows() -> List<KeyedRow<String, FixtureGrant>> {
+fn fixture_branch_b_disjoint_rows() -> List<std.keyed_row.KeyedRow<String, FixtureGrant>> {
   [
     fixture_row(path: "dag/gunbc/gamma.dag", audience: "repo"),
     fixture_row(path: "dag/gunbc/delta.dag", audience: "repo"),
   ]
 }
 
-fn fixture_branch_b_overlap_rows() -> List<KeyedRow<String, FixtureGrant>> {
+fn fixture_branch_b_overlap_rows() -> List<std.keyed_row.KeyedRow<String, FixtureGrant>> {
   [
     fixture_row(path: "dag/gunbc/alpha.dag", audience: "repo"),
     fixture_row(path: "dag/gunbc/epsilon.dag", audience: "repo"),

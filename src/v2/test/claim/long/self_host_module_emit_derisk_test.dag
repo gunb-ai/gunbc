@@ -30,7 +30,7 @@ fn derisk_module_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-fn derisk_assemble_for(src: String) -> Outcome<Node> {
+fn derisk_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> {
   assemble_program_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
@@ -40,19 +40,19 @@ fn derisk_assemble_for(src: String) -> Outcome<Node> {
 
 fn derisk_assemble_accepts(src: String) -> Bool {
   match derisk_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn derisk_infer_outcome_for(src: String) -> Outcome<v2.compiler.infer.InferredTree> {
+fn derisk_infer_outcome_for(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
 }
 
 fn derisk_infer_accepts(src: String) -> Bool {
   match derisk_infer_outcome_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -62,8 +62,8 @@ fn derisk_emit_accepts(src: String) -> Bool {
     admission: derisk_module_admission(),
     target: rust_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -102,7 +102,7 @@ fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
   }
 }
 
-fn medium_section_and_fidelity_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+fn medium_section_and_fidelity_equal<R>(left: extdeps.communication.medium.Medium<R>, right: extdeps.communication.medium.Medium<R>) -> Bool {
   medium_section_equal(left: left, right: right) && left.fidelity == right.fidelity
 }
 

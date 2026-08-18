@@ -43,9 +43,9 @@ fn insert_per_language_fact_bundle_entry(
   registry: PerLanguageFactBundleRegistry,
   key: PerLanguageFactBundleKey,
   fact_value: Node
-) -> Outcome<PerLanguageFactBundleRegistry> {
+) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleRegistry> {
   match v2.std.collection.map_get(m: registry.by_key, key: key) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: _ } =>
         outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
       Absent =>
@@ -55,7 +55,7 @@ fn insert_per_language_fact_bundle_entry(
           }
         )
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -77,7 +77,7 @@ fn per_language_fact_bundle_insert_subject_axis(
   subject_carrier: Node,
   target: v2.std.compilers.target_model.TargetModel,
   fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
-) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   match v2.std.collection.map_get(
     m: registry.by_key,
     key: per_language_fact_bundle_subject_axis_key(
@@ -86,7 +86,7 @@ fn per_language_fact_bundle_insert_subject_axis(
       fact_axis: fact_axis
     )
   ) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: fact_value } =>
         outcome_accepted(
           value: PerLanguageFactBundleSpecFactsFoldState {
@@ -101,19 +101,19 @@ fn per_language_fact_bundle_insert_subject_axis(
       Absent =>
         outcome_accepted(value: state)
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
 fn per_language_fact_bundle_spec_facts_after_axis(
-  acc: Outcome<PerLanguageFactBundleSpecFactsFoldState>,
+  acc: v2.std.diagnostic.Outcome<PerLanguageFactBundleSpecFactsFoldState>,
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: v2.std.compilers.target_model.TargetModel,
   fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
-) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   match acc {
-    Accepted { value: state, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: state, diagnostics: _ } =>
       per_language_fact_bundle_insert_subject_axis(
         registry: registry,
         state: state,
@@ -121,7 +121,7 @@ fn per_language_fact_bundle_spec_facts_after_axis(
         target: target,
         fact_axis: fact_axis
       )
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -129,7 +129,7 @@ fn per_language_fact_bundle_spec_facts_state_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   let width = per_language_fact_bundle_insert_subject_axis(
     registry: registry,
     state: PerLanguageFactBundleSpecFactsFoldState {
@@ -181,19 +181,19 @@ fn per_language_fact_bundle_spec_facts_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Map<v2.std.node.Symbol, Node>> {
+) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, Node>> {
   match per_language_fact_bundle_spec_facts_state_for_subject(
     registry: registry,
     subject_carrier: subject_carrier,
     target: target
   ) {
-    Accepted { value: state, diagnostics: d } => match state.saw_fact {
+    v2.std.diagnostic.Accepted { value: state, diagnostics: d } => match state.saw_fact {
       true =>
-        Accepted { value: state.spec_facts, diagnostics: d }
+        v2.std.diagnostic.Accepted { value: state.spec_facts, diagnostics: d }
       false =>
         outcome_rejected(d: per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: subject_carrier))
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -201,21 +201,21 @@ fn primitive_fact_bundle_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<v2.std.model_core.PrimitiveFactBundle> {
+) -> v2.std.diagnostic.Outcome<v2.std.model_core.PrimitiveFactBundle> {
   match per_language_fact_bundle_spec_facts_for_subject(
     registry: registry,
     subject_carrier: subject_carrier,
     target: target
   ) {
-    Accepted { value: spec_facts, diagnostics: d } =>
-      Accepted {
+    v2.std.diagnostic.Accepted { value: spec_facts, diagnostics: d } =>
+      v2.std.diagnostic.Accepted {
         value: v2.std.model_core.PrimitiveFactBundle {
           substrate_carrier: subject_carrier,
           spec_facts: spec_facts
         },
         diagnostics: d
       }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

@@ -3,7 +3,7 @@ module v2.compiler.self_host.native_agreement_support
 
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,
-  run: TestClaimRun<Subj, RuntimeValue>
+  run: v2.compiler.eval.TestClaimRun<Subj, RuntimeValue>
 ) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   match run.verdict {
     Pass => Absent

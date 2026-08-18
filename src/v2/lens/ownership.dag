@@ -2,10 +2,10 @@ module v2.lens.ownership
 
 
 type OwnershipFact {
-  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>>
 }
 
-fn ownership_classify(view: v2.std.dependency.DependencyView) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode> {
+fn ownership_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode> {
   classify_dependency_view(classifier: ownership_classifier, view: view)
 }
 
@@ -76,8 +76,8 @@ fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v
 }
 
 fn ownership_classified_eq(
-  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>,
-  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>
+  a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>,
+  b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
 }

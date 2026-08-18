@@ -14,7 +14,7 @@ type PythonCost {
 
 type PythonGrammarRelationRow {
   production: v2.std.grammar.FormalProduction
-  emitted: Node
+  emitted: v2.std.node.Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
@@ -136,7 +136,7 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
 
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn python_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn python_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -144,7 +144,7 @@ fn python_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn python_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn python_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
@@ -153,7 +153,7 @@ fn python_primitive_facts_node(
   middle_field_name: v2.std.node.Symbol,
   middle_field_value: v2.std.node.Symbol,
   std_projection: v2.std.node.Symbol
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -180,7 +180,7 @@ fn python_primitive_algebra_witness_node(
   middle_field_name: v2.std.node.Symbol,
   middle_field_value: v2.std.node.Symbol,
   std_projection: v2.std.node.Symbol
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -229,7 +229,7 @@ fn python_per_language_fact_bundle_entries_from_catalog_rows<T>(
 }
 
 fn python_g1_2_pair_axis_fact_bundle_entries(
-  carrier: Node,
+  carrier: v2.std.node.Node,
   surface_spelling: v2.std.node.Symbol,
   encoding_value: v2.std.node.Symbol
 ) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
@@ -247,7 +247,7 @@ fn python_g1_2_pair_axis_fact_bundle_entries(
   ]
 }
 
-fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
+fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_encoding,
@@ -256,7 +256,7 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
   )
 }
 
-fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
+fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_machine_representation,
@@ -265,7 +265,7 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
   )
 }
 
-fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
+fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_component_machine_representation,
@@ -274,7 +274,7 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
   )
 }
 
-fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
+fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_encoding,
@@ -283,7 +283,7 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
   )
 }
 
-fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
+fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_singleton_kind,
@@ -292,7 +292,7 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
   )
 }
 
-fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis) -> v2.std.grounding.PerLanguageFactBundleKey {
+fn python_g1_2_fact_bundle_key(subject_carrier: v2.std.node.Node, fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis) -> v2.std.grounding.PerLanguageFactBundleKey {
   v2.std.grounding.PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
     target: python_target_model(),
@@ -301,9 +301,9 @@ fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: v2.std.model_co
 }
 
 fn python_g1_2_fact_bundle_entry(
-  subject_carrier: Node,
+  subject_carrier: v2.std.node.Node,
   fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis,
-  fact_value: Node
+  fact_value: v2.std.node.Node
 ) -> v2.std.grounding.PerLanguageFactBundleEntry {
   v2.std.grounding.PerLanguageFactBundleEntry {
     key: python_g1_2_fact_bundle_key(
@@ -428,7 +428,7 @@ fn python_g1_2_fact_bundle_entries() -> List<v2.std.grounding.PerLanguageFactBun
 fn python_g1_2_insert_fact_bundle_entry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry,
   entry: v2.std.grounding.PerLanguageFactBundleEntry
-) -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   insert_per_language_fact_bundle_entry(
     registry: registry,
     key: entry.key,
@@ -437,18 +437,18 @@ fn python_g1_2_insert_fact_bundle_entry(
 }
 
 fn python_g1_2_insert_entries(
-  registry: Outcome<v2.std.grounding.PerLanguageFactBundleRegistry>,
+  registry: v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry>,
   entry: v2.std.grounding.PerLanguageFactBundleEntry
-) -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   match registry {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       python_g1_2_insert_fact_bundle_entry(registry: r, entry: entry)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_g1_2_fact_bundle_registry() -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+fn python_g1_2_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   fold_list(
     xs: python_g1_2_fact_bundle_entries(),
     empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
@@ -459,32 +459,32 @@ fn python_g1_2_fact_bundle_registry() -> Outcome<v2.std.grounding.PerLanguageFac
 }
 
 fn python_g1_2_snoc_primitive_bundle(
-  acc: Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
+  acc: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
   registry: v2.std.grounding.PerLanguageFactBundleRegistry,
-  subject_carrier: Node
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  subject_carrier: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
-    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+    v2.std.diagnostic.Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: python_target_model()
     ) {
-      Accepted { value: bundle, diagnostics: d } =>
+      v2.std.diagnostic.Accepted { value: bundle, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn python_g1_2_integer_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: python_integer_facts_catalog,
     empty: outcome_accepted(value: std.algebra.Empty),
@@ -500,7 +500,7 @@ fn python_g1_2_integer_primitive_bundles_from_registry(
 
 fn python_g1_2_float_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: python_float_facts_catalog,
     empty: outcome_accepted(value: std.algebra.Empty),
@@ -516,7 +516,7 @@ fn python_g1_2_float_primitive_bundles_from_registry(
 
 fn python_g1_2_complex_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: python_complex_facts_catalog,
     empty: outcome_accepted(value: std.algebra.Empty),
@@ -532,7 +532,7 @@ fn python_g1_2_complex_primitive_bundles_from_registry(
 
 fn python_g1_2_bool_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: python_bool_facts_catalog,
     empty: outcome_accepted(value: std.algebra.Empty),
@@ -548,7 +548,7 @@ fn python_g1_2_bool_primitive_bundles_from_registry(
 
 fn python_g1_2_singleton_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: python_singleton_facts_catalog,
     empty: outcome_accepted(value: std.algebra.Empty),
@@ -563,24 +563,24 @@ fn python_g1_2_singleton_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_append_primitive_bundle_outcomes(
-  left: Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
-  right: Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  left: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
+  right: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
-    Accepted { value: l, diagnostics: _ } => match right {
-      Accepted { value: r, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: l, diagnostics: _ } => match right {
+      v2.std.diagnostic.Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: list_append(left: l, right: r), diagnostics: d }
-      Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn python_g1_2_primitive_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   python_g1_2_append_primitive_bundle_outcomes(
     left: python_g1_2_append_primitive_bundle_outcomes(
       left: python_g1_2_append_primitive_bundle_outcomes(
@@ -596,16 +596,16 @@ fn python_g1_2_primitive_bundles_from_registry(
   )
 }
 
-fn python_g1_2_primitive_fact_bundles() -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+fn python_g1_2_primitive_fact_bundles() -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match python_g1_2_fact_bundle_registry() {
-    Accepted { value: registry, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
       python_g1_2_primitive_bundles_from_registry(registry: registry)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> Node {
+fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_int_ordered_ring_arbitrary_precision,
     witness_tag: ^python_witness_int_ordered_ring_arbitrary_precision,
@@ -615,7 +615,7 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
   )
 }
 
-fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
+fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_float_approximate_field,
     witness_tag: ^python_witness_float_approximate_field,
@@ -625,7 +625,7 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
   )
 }
 
-fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
+fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_bool_boolean_algebra,
     witness_tag: ^python_witness_bool_boolean_algebra,
@@ -702,9 +702,9 @@ fn python_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabi
   )
 }
 
-fn python_model_core() -> Outcome<v2.std.model_core.ModelCore> {
+fn python_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
   match python_g1_2_primitive_fact_bundles() {
-    Accepted { value: primitives, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: primitives, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.model_core.ModelCore {
           primitives: primitives,
@@ -715,12 +715,12 @@ fn python_model_core() -> Outcome<v2.std.model_core.ModelCore> {
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
+fn python_inhabitant_node(id: v2.std.node.Symbol, facts: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -731,21 +731,21 @@ fn python_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
 }
 }
 
-fn python_int_inhabitant_node() -> Node {
+fn python_int_inhabitant_node() -> v2.std.node.Node {
   python_inhabitant_node(
     id: ^python_inhabitant_int,
     facts: python_integer_facts_node(facts: python_facts_int)
   )
 }
 
-fn python_float_inhabitant_node() -> Node {
+fn python_float_inhabitant_node() -> v2.std.node.Node {
   python_inhabitant_node(
     id: ^python_inhabitant_float,
     facts: python_float_facts_node(facts: python_facts_float)
   )
 }
 
-fn python_declared_inhabitants_root() -> Node {
+fn python_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -792,7 +792,7 @@ fn python_coercion_candidate_edges() -> List<v2.std.node.Edge> {
   )
 }
 
-fn python_add_declared_inhabitants_root() -> Node {
+fn python_add_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: python_coercion_candidate_edges(),
@@ -800,11 +800,11 @@ fn python_add_declared_inhabitants_root() -> Node {
 }
 }
 
-fn python_selection_policy_node() -> Node {
+fn python_selection_policy_node() -> v2.std.node.Node {
   python_int_inhabitant_node()
 }
 
-fn python_emitted_add_fn_node() -> Node {
+fn python_emitted_add_fn_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -816,7 +816,7 @@ fn python_emitted_add_fn_node() -> Node {
 }
 }
 
-fn python_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
+fn python_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
 
   concrete_syntax_token_to_node(token: token)
 }
@@ -839,7 +839,7 @@ fn python_serialize_source_children() -> List<v2.std.node.Edge> {
   )
 }
 
-fn python_serialize_source_node() -> Node {
+fn python_serialize_source_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: python_serialize_source_children(),
@@ -997,7 +997,7 @@ fn python_grammar_relation_row() -> PythonGrammarRelationRow {
   }
 }
 
-fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
+fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1015,7 +1015,7 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
 }
 }
 
-fn python_translation_rules_node() -> Node {
+fn python_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1028,7 +1028,7 @@ fn python_translation_rules_node() -> Node {
 }
 }
 
-fn python_emit_host_runtime_primitive_type_node() -> Node {
+fn python_emit_host_runtime_primitive_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
     children: [],
@@ -1063,7 +1063,7 @@ fn python_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   }
 }
 
-fn python_target_model_node() -> Node {
+fn python_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1191,7 +1191,7 @@ fn python_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: python_lex_rules() }
 }
 
-fn python_grammar_atom(id: v2.std.node.Symbol) -> Node {
+fn python_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   python_inhabitant_atom(id: id)
 }
 
@@ -1438,9 +1438,9 @@ fn python_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   }
 }
 
-fn python_language_model() -> Outcome<v2.std.language_model.LanguageModel> {
+fn python_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match python_model_core() {
-    Accepted { value: core, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: python_lex(),
@@ -1451,7 +1451,7 @@ fn python_language_model() -> Outcome<v2.std.language_model.LanguageModel> {
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

@@ -232,8 +232,8 @@ fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProject
 }
 
 type ValueRepresentationModel {
-  represent_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
-  represent_result: fn(RuntimeValue) -> Outcome<RuntimeValue>
+  represent_literal: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  represent_result: fn(RuntimeValue) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type EvaluationFrame {
@@ -253,17 +253,17 @@ type ControlTransfer
   | Suspend { continuation: EvaluationFrame }
 
 type AllocationSemantics {
-  allocate: fn(RuntimeValue) -> Outcome<RuntimeValue>
+  allocate: fn(RuntimeValue) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type CallSemantics {
-  call: fn(EvaluationCall, EvaluationFrame) -> Outcome<ControlTransfer>
-  return_value: fn(RuntimeValue, EvaluationFrame) -> Outcome<ControlTransfer>
+  call: fn(EvaluationCall, EvaluationFrame) -> v2.std.diagnostic.Outcome<ControlTransfer>
+  return_value: fn(RuntimeValue, EvaluationFrame) -> v2.std.diagnostic.Outcome<ControlTransfer>
 }
 
 type ControlSemantics {
-  transfer: fn(ControlTransfer, EvaluationFrame) -> Outcome<EvaluationFrame>
-  terminal_value: fn(ControlTransfer, EvaluationFrame) -> Outcome<RuntimeValue>
+  transfer: fn(ControlTransfer, EvaluationFrame) -> v2.std.diagnostic.Outcome<EvaluationFrame>
+  terminal_value: fn(ControlTransfer, EvaluationFrame) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type ExecutionSemantics {
@@ -273,27 +273,27 @@ type ExecutionSemantics {
 }
 
 type ValueInterpreter {
-  allocate_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  allocate_literal: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type TransformInterpreter {
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type BranchInterpreter {
-  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
 }
 
 type LoopInterpreter {
-  step_loop: fn(Node, EvaluationEnvironment) -> Outcome<ControlTransfer>
+  step_loop: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<ControlTransfer>
 }
 
 type BindInterpreter {
-  bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> Outcome<EvaluationEnvironment>
+  bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<EvaluationEnvironment>
 }
 
 type MatchInterpreter {
-  choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
+  choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
 }
 
 type InterpretationAlgebra {
@@ -342,7 +342,7 @@ fn runtime_reject_match_arm(
   node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<Node> {
   outcome_rejected(
     Diagnostic {
       reason: runtime_match_unimplemented,
@@ -378,7 +378,7 @@ type EffectRequest {
 }
 
 type EffectHandler {
-  handle: fn(EffectRequest) -> Outcome<RuntimeValue>
+  handle: fn(EffectRequest) -> v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type EffectHandlerBinding {
@@ -395,7 +395,7 @@ fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKin
 
 type EffectReceipt {
   request: EffectRequest
-  result: Outcome<RuntimeValue>
+  result: v2.std.diagnostic.Outcome<RuntimeValue>
 }
 
 type EffectReceiptLog {

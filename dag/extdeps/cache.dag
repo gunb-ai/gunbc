@@ -44,7 +44,7 @@ fn cache_interface_facts_from_catalog(row: extdeps.cache.types.CacheInterfaceCat
 }
 
 fn cache_key_projection_provider_key<T>(
-  artifact: ArtifactIdentity<T>,
+  artifact: std.cache_interface.ArtifactIdentity<T>,
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
 ) -> extdeps.cache.types.CatalogProviderKey {
   match backend.transport_encoding {
@@ -56,7 +56,7 @@ fn cache_key_projection_provider_key<T>(
 }
 
 fn cache_key_projection_transport<T>(
-  artifact: ArtifactIdentity<T>,
+  artifact: std.cache_interface.ArtifactIdentity<T>,
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
 ) -> extdeps.cache.types.CatalogBackendCacheKey {
   extdeps.cache.types.CatalogBackendCacheKey {
@@ -66,7 +66,7 @@ fn cache_key_projection_transport<T>(
 }
 
 fn cache_verified_hit_receipt<T>(
-  artifact: ArtifactIdentity<T>,
+  artifact: std.cache_interface.ArtifactIdentity<T>,
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
   producer: ProducerReceipt<T>,
   content_digest: std.content_hash.ContentHash,

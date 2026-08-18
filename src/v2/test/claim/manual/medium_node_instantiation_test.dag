@@ -2,7 +2,7 @@ module v2.test.manual.medium_node_instantiation
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn medium_node_lossless() -> Medium<Node> {
+fn medium_node_lossless() -> extdeps.communication.medium.Medium<Node> {
   extdeps.communication.medium.Medium { carried: v2_eval_bool_literal_pin, fidelity: Lossless }
 }
 

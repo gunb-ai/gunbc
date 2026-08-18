@@ -1549,22 +1549,22 @@ fn hand_authored_binds_to_keyed_rows(binds: List<HandAuthoredDocBind>) -> List<K
   map(binds, b => std.keyed_row.KeyedRow { row_key: hand_authored_bind_key(b: b), value: b })
 }
 
-fn hand_authored_doc_binds_keyed_build(incomings: List<HandAuthoredDocBind>) -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+fn hand_authored_doc_binds_keyed_build(incomings: List<HandAuthoredDocBind>) -> std.keyed_roster.KeyedRosterBuild<String, HandAuthoredDocBind> {
   keyed_roster_build(
     incomings: hand_authored_binds_to_keyed_rows(binds: incomings),
     key_eq: hand_authored_bind_key_eq,
   )
 }
 
-fn hand_authored_doc_binds_construct() -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+fn hand_authored_doc_binds_construct() -> std.keyed_roster.KeyedRosterBuild<String, HandAuthoredDocBind> {
   hand_authored_doc_binds_keyed_build(incomings: hand_authored_doc_bind_incomings)
 }
 
 fn hand_authored_doc_binds_population() -> HandAuthoredDocBindsPopulation {
   match hand_authored_doc_binds_construct() {
-    KeyedRosterBuilt { rows: rows } =>
+    std.keyed_roster.KeyedRosterBuilt { rows: rows } =>
       HandAuthoredDocBindsBuilt { binds: map(rows, row => row.value) }
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       HandAuthoredDocBindsDuplicateKey {
         key: k,
         first: f.value,

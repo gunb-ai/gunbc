@@ -56,8 +56,8 @@ data cr_pre_graft_root: Node = cr_pre_graft_module_root(
 )
 
 data cr_grafted_root: Node = match module_header_containment_graft(root: cr_pre_graft_root) {
-  Accepted { value: grafted, diagnostics: _ } => grafted
-  Rejected { diagnostics: _ } => cr_pre_graft_root
+  v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+  v2.std.diagnostic.Rejected { diagnostics: _ } => cr_pre_graft_root
 }
 
 data cr_bare_conj_root: Node = v2.std.node.Node {
@@ -66,27 +66,27 @@ data cr_bare_conj_root: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn cr_outcome_accepted_qn(out: Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
+fn cr_outcome_accepted_qn(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn cr_qn_eq(out: Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
+fn cr_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: actual, diagnostics: _ } => actual == expected
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
-fn cr_outcomes_agree(lhs: Outcome<v2.std.qualified_name.QualifiedName>, rhs: Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
+fn cr_outcomes_agree(lhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, rhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match lhs {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: lhs_qn, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: lhs_qn, diagnostics: _ } =>
       match rhs {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
       }
   }
 }

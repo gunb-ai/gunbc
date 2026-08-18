@@ -59,14 +59,14 @@ fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass)
   }
 }
 
-fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<std.types.Char> {
+fn lex_strip_prefix(prefix: String, source: String) -> v2.std.algebra.ListTailResult<std.types.Char> {
   fold_list(
     xs: prefix,
     empty: v2.std.algebra.TailFound { tail: source },
     cons: fn(acc, _) {
       match acc {
-        TailAbsent => TailAbsent
-        TailFound { tail: r } => list_tail(xs: r)
+        v2.std.algebra.TailAbsent => v2.std.algebra.TailAbsent
+        v2.std.algebra.TailFound { tail: r } => list_tail(xs: r)
       }
     }
   )
@@ -75,8 +75,8 @@ fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<std.types.
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
-      TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
-      TailAbsent => LexMatchRejected
+      v2.std.algebra.TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
+      v2.std.algebra.TailAbsent => LexMatchRejected
     }
   } else {
     LexMatchRejected
@@ -114,9 +114,9 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
           match pred(c) {
             true =>
               match string_tail(s: source) {
-                TailFound { tail: rest } =>
+                v2.std.algebra.TailFound { tail: rest } =>
                   LexMatchAccepted { remaining: rest, lexeme: std.algebra.Cons { head: c, tail: std.algebra.Empty } }
-                TailAbsent => LexMatchRejected
+                v2.std.algebra.TailAbsent => LexMatchRejected
               }
             false => LexMatchRejected
           }

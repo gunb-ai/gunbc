@@ -22,21 +22,21 @@ fn ts_parse_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn ts_parse_accepted(out: Outcome<v2.std.grammar.ParseTree>) -> Bool {
+fn ts_parse_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn ts_tokenize_and_parse_source(text: String) -> Outcome<v2.std.grammar.ParseTree> {
+fn ts_tokenize_and_parse_source(text: String) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match tokenize(
     text: text,
     file: ^ts_parse_file,
     rules: ts_lex()
   ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: ts_grammar())
   }
 }

@@ -42,7 +42,7 @@ fn ts_effect_read_call_expr() -> v2.std.compilers.target_model.TargetValueExpres
   )
 }
 
-fn emit_effect_call_source(expr: v2.std.compilers.target_model.TargetValueExpression) -> Outcome<Medium<String>> {
+fn emit_effect_call_source(expr: v2.std.compilers.target_model.TargetValueExpression) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: expr,
@@ -60,15 +60,15 @@ fn emit_effect_call_source(expr: v2.std.compilers.target_model.TargetValueExpres
 
 fn ts_effect_write_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_write_call_expr()) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }
 
 fn ts_effect_read_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_read_call_expr()) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }
 

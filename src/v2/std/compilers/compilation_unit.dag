@@ -16,25 +16,25 @@ type ModuleDagEdge {
 
 type ModuleTypeDefinitionRow {
   identity: v2.std.node.Symbol
-  definition: Node
+  definition: v2.std.node.Node
 }
 
 type ModuleDag {
   modules: List<ModuleId>
   edges: List<ModuleDagEdge>
-  exports: Map<ModuleId, List<Node>>
+  exports: Map<ModuleId, List<v2.std.node.Node>>
   type_definitions: Map<ModuleId, List<ModuleTypeDefinitionRow>>
 }
 
 type CompilationUnit {
   id: CompilationUnitId
   members: List<ModuleId>
-  interface: List<Node>
+  interface: List<v2.std.node.Node>
   deps: List<CompilationUnitId>
 }
 
 type PartitionInterfaceClosureResult
-  = PartitionInterfaceClosed { nodes: List<Node> }
+  = PartitionInterfaceClosed { nodes: List<v2.std.node.Node> }
   | PartitionInterfaceTruncated
 
 type PartitionR4ValidityCause
@@ -58,7 +58,7 @@ type PartitionFoldOutcome
   | PartitionFoldRefused { cause: PartitionFoldRefusalCause }
 
 type PartitionInterfaceClosureState {
-  seeds: List<Node>
+  seeds: List<v2.std.node.Node>
   stable: Bool
 }
 
@@ -111,10 +111,10 @@ fn partition_provenance_eq(left: PartitionProvenance, right: PartitionProvenance
 fn module_unit_id_outcome(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
-) -> Outcome<Optional<CompilationUnitId>> {
+) -> v2.std.diagnostic.Outcome<Optional<CompilationUnitId>> {
   match map_get(assignment, module) {
-    Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
@@ -123,8 +123,8 @@ fn module_unit_id(
   module: ModuleId
 ) -> Optional<CompilationUnitId> {
   match map_get(assignment, module) {
-    Accepted { value: opt, diagnostics: _ } => opt
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => opt
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -133,9 +133,9 @@ fn module_assigned_unit_fold(
   module: ModuleId
 ) -> Optional<PartitionFoldRefusalCause> {
   match module_unit_id_outcome(assignment: assignment, module: module) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       optional_present(value: ModuleAssignmentLookupRejected { module: module })
-    Accepted { value: _, diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => Absent
   }
 }
 
@@ -190,7 +190,7 @@ fn list_snoc_unique_symbol(items: List<v2.std.node.Symbol>, item: v2.std.node.Sy
   }
 }
 
-fn list_snoc_unique_node(items: List<Node>, item: Node) -> List<Node> {
+fn list_snoc_unique_node(items: List<v2.std.node.Node>, item: v2.std.node.Node) -> List<v2.std.node.Node> {
   let item_hash = content_hash(n: item)
   if any(xs: items, predicate: fn(n) { content_hash(n: n) == item_hash }) {
     items
@@ -205,11 +205,11 @@ fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUni
     |> sort_by(id => id)
 }
 
-fn node_sort_key(n: Node) -> std.content_hash.Fnv1a64Structural {
+fn node_sort_key(n: v2.std.node.Node) -> std.content_hash.Fnv1a64Structural {
   content_hash(n: n)
 }
 
-fn list_unique_sorted_nodes(items: List<Node>) -> List<Node> {
+fn list_unique_sorted_nodes(items: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   items
     |> fold(init: [], f: fn(acc, item) { list_snoc_unique_node(items: acc, item: item) })
     |> sort_by(node_sort_key)
@@ -218,42 +218,42 @@ fn list_unique_sorted_nodes(items: List<Node>) -> List<Node> {
 fn module_export_declarations_outcome(
   module_dag: ModuleDag,
   module: ModuleId
-) -> Outcome<List<Node>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match map_get(module_dag.exports, module) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: nodes } => nodes
         Absent => std.algebra.Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
 fn module_type_definition_rows_outcome(
   module_dag: ModuleDag,
   module: ModuleId
-) -> Outcome<List<ModuleTypeDefinitionRow>> {
+) -> v2.std.diagnostic.Outcome<List<ModuleTypeDefinitionRow>> {
   match map_get(module_dag.type_definitions, module) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: rows } => rows
         Absent => std.algebra.Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
-fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> List<Node> {
+fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> List<v2.std.node.Node> {
   match module_export_declarations_outcome(module_dag: module_dag, module: module) {
-    Accepted { value: nodes, diagnostics: _ } => nodes
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Accepted { value: nodes, diagnostics: _ } => nodes
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 
 fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> List<ModuleTypeDefinitionRow> {
   match module_type_definition_rows_outcome(module_dag: module_dag, module: module) {
-    Accepted { value: rows, diagnostics: _ } => rows
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Accepted { value: rows, diagnostics: _ } => rows
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 
@@ -261,7 +261,7 @@ fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> v2.std.node.Sym
   row.identity
 }
 
-fn type_atom_identity(node: Node) -> Optional<v2.std.node.Symbol> {
+fn type_atom_identity(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
     _ => Absent
@@ -409,8 +409,8 @@ fn partition_cross_boundary_exports_for_member(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   member: ModuleId,
-  acc: List<Node>
-) -> List<Node> {
+  acc: List<v2.std.node.Node>
+) -> List<v2.std.node.Node> {
   if module_referenced_from_outside_unit(
     module_dag: module_dag,
     assignment: assignment,
@@ -429,7 +429,7 @@ fn partition_cross_boundary_exports(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   members: List<ModuleId>
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   members
     |> fold(init: [], f: fn(acc, member) {
       partition_cross_boundary_exports_for_member(
@@ -442,7 +442,7 @@ fn partition_cross_boundary_exports(
     })
 }
 
-fn type_atoms_in_declaration(declaration: Node) -> List<v2.std.node.Symbol> {
+fn type_atoms_in_declaration(declaration: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   node_subtree_nodes(root: declaration)
     |> fold(init: [], f: fn(acc, node) {
       match type_atom_identity(node: node) {
@@ -457,7 +457,7 @@ fn type_definition_for_identity_in_module(
   module_dag: ModuleDag,
   member: ModuleId,
   identity: v2.std.node.Symbol
-) -> Optional<Node> {
+) -> Optional<v2.std.node.Node> {
   fold_list(
     xs: module_type_definition_rows(module_dag: module_dag, module: member),
     empty: Absent,
@@ -479,7 +479,7 @@ fn type_definition_for_identity_in_members(
   module_dag: ModuleDag,
   members: List<ModuleId>,
   identity: v2.std.node.Symbol
-) -> Optional<Node> {
+) -> Optional<v2.std.node.Node> {
   fold_list(
     xs: members,
     empty: Absent,
@@ -498,10 +498,10 @@ fn type_definition_for_identity_in_members(
 }
 
 fn partition_interface_closure_grow_once(
-  seeds: List<Node>,
+  seeds: List<v2.std.node.Node>,
   module_dag: ModuleDag,
   members: List<ModuleId>
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   seeds
     |> fold(init: seeds, f: fn(acc, declaration) {
       type_atoms_in_declaration(declaration: declaration)
@@ -571,7 +571,7 @@ fn partition_interface_closure_saturate_with_fuel(
 }
 
 fn partition_interface_closure_saturate_result_with_fuel(
-  seeds: List<Node>,
+  seeds: List<v2.std.node.Node>,
   module_dag: ModuleDag,
   members: List<ModuleId>,
   closure_fuel: Int
@@ -592,7 +592,7 @@ fn partition_interface_closure_saturate_result_with_fuel(
 }
 
 fn partition_interface_closure_saturate_result(
-  seeds: List<Node>,
+  seeds: List<v2.std.node.Node>,
   module_dag: ModuleDag,
   members: List<ModuleId>
 ) -> PartitionInterfaceClosureResult {
@@ -609,17 +609,17 @@ fn module_member_dag_lookup_cause_if_rejected(
   member: ModuleId
 ) -> Optional<PartitionFoldRefusalCause> {
   match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       optional_present(
         value: ModuleDagExportsLookupRejected { module: member }
       )
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       match module_type_definition_rows_outcome(module_dag: module_dag, module: member) {
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           optional_present(
             value: ModuleDagTypeDefinitionsLookupRejected { module: member }
           )
-        Accepted { value: _, diagnostics: _ } => Absent
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => Absent
       }
   }
 }
@@ -641,7 +641,7 @@ fn partition_members_dag_lookup_cause_if_rejected(
 }
 
 type PartitionInterfaceBuild
-  = InterfaceBuildOk { nodes: List<Node> }
+  = InterfaceBuildOk { nodes: List<v2.std.node.Node> }
   | InterfaceBuildRefused { cause: PartitionFoldRefusalCause }
 
 fn partition_cross_boundary_exports_fold(
@@ -670,14 +670,14 @@ fn partition_cross_boundary_exports_fold(
                 member: member
               ) {
                 match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-                  Accepted { value: exports, diagnostics: _ } =>
+                  v2.std.diagnostic.Accepted { value: exports, diagnostics: _ } =>
                     InterfaceBuildOk {
                       nodes: exports
                         |> fold(init: acc_nodes, f: fn(inner, decl) {
                           list_snoc_unique_node(items: inner, item: decl)
                         }),
                     }
-                  Rejected { diagnostics: _ } =>
+                  v2.std.diagnostic.Rejected { diagnostics: _ } =>
                     InterfaceBuildRefused {
                       cause: ModuleDagExportsLookupRejected { module: member },
                     }
@@ -744,7 +744,7 @@ fn partition_unit_interface(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   members: List<ModuleId>
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   match partition_unit_interface_fold_default(
     module_dag: module_dag,
     assignment: assignment,
@@ -957,7 +957,7 @@ fn partition_fold_deps_match_boundary_edges(
     })
 }
 
-fn partition_interface_contains_node(interface: List<Node>, needle: Node) -> Bool {
+fn partition_interface_contains_node(interface: List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool {
   let needle_hash = content_hash(n: needle)
   any(xs: interface, predicate: fn(n) { content_hash(n: n) == needle_hash })
 }

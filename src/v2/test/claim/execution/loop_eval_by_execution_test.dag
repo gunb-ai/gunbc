@@ -3,7 +3,7 @@ module v2.test.execution.loop_eval_by_execution
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn loop_atom(s: v2.std.node.Symbol) -> Node {
+fn loop_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
@@ -15,7 +15,7 @@ fn loop_byte() -> v2.std.machine.Byte {
   v2.std.machine.Byte { bits: [true] }
 }
 
-fn loop_i64_node() -> Node {
+fn loop_i64_node() -> v2.std.node.Node {
   loop_atom(s: ^loop_i64)
 }
 
@@ -36,15 +36,15 @@ fn loop_two_value() -> v2.std.runtime.RuntimeValue {
   loop_int_value(bytes: [loop_byte(), loop_byte()])
 }
 
-fn loop_literal_one_node() -> Node {
+fn loop_literal_one_node() -> v2.std.node.Node {
   dag_int_literal_fixture_one()
 }
 
-fn loop_literal_two_node() -> Node {
+fn loop_literal_two_node() -> v2.std.node.Node {
   dag_int_literal_fixture_two()
 }
 
-fn loop_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn loop_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^loop_runtime_rejected,
     at: node_locus(node: n),
@@ -60,10 +60,10 @@ fn loop_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn loop_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn loop_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: mag, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           outcome_accepted(value: loop_one_value())
         } else if mag == 2 {
@@ -71,7 +71,7 @@ fn loop_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment)
         } else {
           outcome_rejected(d: loop_runtime_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(d: loop_runtime_diagnostic(n: node))
@@ -79,22 +79,22 @@ fn loop_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment)
 }
 
 fn loop_call_primitive(
-  _node: Node,
+  _node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: loop_runtime_diagnostic(n: _node))
 }
 
 fn loop_choose_branch(
-  node: Node,
+  node: v2.std.node.Node,
   _condition: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   outcome_rejected(d: loop_runtime_diagnostic(n: node))
 }
 
-fn loop_step_loop(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn loop_step_loop(node: v2.std.node.Node, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: body } =>
       bind_outcome(
@@ -112,7 +112,7 @@ fn loop_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
@@ -158,7 +158,7 @@ fn loop_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn loop_pick_call(callee: Node) -> Node {
+fn loop_pick_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
@@ -168,7 +168,7 @@ fn loop_pick_call(callee: Node) -> Node {
   }
 }
 
-fn loop_tree_root(call: Node, expected: Node) -> Node {
+fn loop_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
@@ -179,7 +179,7 @@ fn loop_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn loop_node_is_loop(node: Node) -> Bool {
+fn loop_node_is_loop(node: v2.std.node.Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } => true
     _ => false
@@ -197,7 +197,7 @@ fn loop_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
   v2.std.witness.Holds { value: structural_node_size_termination_proof() }
 }
 
-fn loop_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn loop_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if loop_node_is_loop(node: key) {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
@@ -213,7 +213,7 @@ fn loop_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   }
 }
 
-fn loop_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
+fn loop_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
     facts: std.types.Map {
@@ -222,13 +222,13 @@ fn loop_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn loop_inferred_run_tree(callee: Node, expected: Node) -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_inferred_run_tree(callee: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   let call = loop_pick_call(callee: callee)
   let root = loop_tree_root(call: call, expected: expected)
   outcome_accepted(value: loop_admitted_tree(root: root))
 }
 
-fn loop_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
+fn loop_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: "manual/loop: source-bridged loop body executes through eval",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -240,9 +240,9 @@ fn loop_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
 
 fn loop_subject(
   tree: v2.compiler.infer.InferredTree,
-  input: Node,
-  expected: Node
-) -> TestClaimEvalSubject<Node> {
+  input: v2.std.node.Node,
+  expected: v2.std.node.Node
+) -> TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.TestClaimEvalSubject {
     claim: loop_claim(input: input, expected: expected),
     context: loop_context(),
@@ -255,9 +255,9 @@ fn loop_subject(
 }
 
 fn loop_run(
-  callee: Node,
-  expected: Node
-) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  callee: v2.std.node.Node,
+  expected: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>> {
   let input = loop_pick_call(callee: callee)
   bind_outcome(
     o: loop_inferred_run_tree(callee: callee, expected: expected),
@@ -271,137 +271,137 @@ fn loop_run(
   )
 }
 
-fn loop_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn loop_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
   match run {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_pipeline_admits_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_driven_executes_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_driven_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_direct_runtime_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } => {
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } => {
       let input = loop_pick_call(callee: arrow)
       match loop_inferred_run_tree(
         callee: arrow,
         expected: loop_literal_one_node()
       ) {
-        Accepted { value: tree, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
             interpretation: loop_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
-            Accepted { value: actual, diagnostics: None } =>
+            v2.std.diagnostic.Accepted { value: actual, diagnostics: None } =>
               loop_runtime_int_is_one(value: actual)
             _ => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_value_perturbation_red_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_two_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_fixture_producer_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_census_ingested_executes_holds() -> Bool {
   match ingested_loop_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_loop_arrow_with_body_wrong_value() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

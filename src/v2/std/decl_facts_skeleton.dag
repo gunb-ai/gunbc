@@ -45,7 +45,7 @@ fn resolve_decl_fact_by_qualified_name(
   }
 }
 
-fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexeme? {
+fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       Present { value: symbol_lexeme(sym: sym) }
@@ -64,13 +64,13 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
   }
 }
 
-fn node_skeleton_edge_targets(node: Node) -> List<Node> {
+fn node_skeleton_edge_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   list_reverse(xs: fold(node.children, init: v2.std.algebra.Empty, f: fn(acc, e) {
     std.algebra.Cons { head: e.target, tail: acc }
   }))
 }
 
-fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
+fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
     empty: v2.std.algebra.Empty,
@@ -89,14 +89,14 @@ fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLex
   }
 }
 
-fn skeleton_contains_marshal_atom_lexeme(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Bool {
+fn skeleton_contains_marshal_atom_lexeme(node: v2.std.node.Node, lexeme: SkeletonMarshalAtomLexeme) -> Bool {
   count_where(
     xs: node_skeleton_marshal_atom_lexemes(node: node),
     predicate: fn(lex) { lex == lexeme }
   ) > 0
 }
 
-fn skeleton_marshal_atom_lexeme_count(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Int {
+fn skeleton_marshal_atom_lexeme_count(node: v2.std.node.Node, lexeme: SkeletonMarshalAtomLexeme) -> Int {
   count_where(
     xs: node_skeleton_marshal_atom_lexemes(node: node),
     predicate: fn(lex) { lex == lexeme }
@@ -104,14 +104,14 @@ fn skeleton_marshal_atom_lexeme_count(node: Node, lexeme: SkeletonMarshalAtomLex
 }
 
 fn skeleton_contains_outer_record_constructor_lexeme(
-  node: Node,
+  node: v2.std.node.Node,
   lexeme: OuterRecordConstructorLexeme
 ) -> Bool {
   skeleton_contains_marshal_atom_lexeme(node: node, lexeme: lexeme)
 }
 
 fn skeleton_outer_record_constructor_lexeme_count(
-  node: Node,
+  node: v2.std.node.Node,
   lexeme: OuterRecordConstructorLexeme
 ) -> Int {
   skeleton_marshal_atom_lexeme_count(node: node, lexeme: lexeme)
@@ -119,7 +119,7 @@ fn skeleton_outer_record_constructor_lexeme_count(
 
 fn decl_fact_skeleton_for_resolution(
   resolution: DeclFactQualifiedNameResolution
-) -> Node? {
+) -> v2.std.node.Node? {
   match resolution {
     DeclFactResolvedUnique { fact } => Present { value: fact.node }
     DeclFactResolvedMissing { qualified_name: _ } => Absent

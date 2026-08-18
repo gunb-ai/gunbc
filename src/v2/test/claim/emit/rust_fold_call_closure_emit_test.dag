@@ -14,7 +14,7 @@ fn rust_fold_call_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.Inferr
   }
 }
 
-fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: v2.std.diagnostic.Accepted {
       value: rust_fold_call_emit_inferred_tree_for(root: root),
@@ -31,9 +31,9 @@ test fn rust_fold_call_emit_canonical_accepts() -> Bool {
     root: fold_fixture_param_canonical_arrow,
     target: rust_fold_call_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_fold_call_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -42,7 +42,7 @@ test fn rust_fold_call_emit_swap_discriminates() -> Bool {
     root: fold_fixture_param_canonical_arrow,
     target: rust_fold_call_target_model_staging()
   ) {
-    Accepted { value: canonical, diagnostics: dc } =>
+    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
       match rust_fold_call_emit_from_root(
         root: fold_fixture_param_arrow_with_closure(
           left_operand: ^dag_binding_mvp1_fold_h,
@@ -50,15 +50,15 @@ test fn rust_fold_call_emit_swap_discriminates() -> Bool {
         ),
         target: rust_fold_call_target_model_staging()
       ) {
-        Accepted { value: swapped, diagnostics: ds } =>
+        v2.std.diagnostic.Accepted { value: swapped, diagnostics: ds } =>
           (swapped.carried == rust_fold_call_swapped_source_text) &&
           (swapped.carried != canonical.carried) &&
           (canonical.carried == rust_fold_call_source_text) &&
           (dc == v2.std.diagnostic.None) &&
           (ds == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

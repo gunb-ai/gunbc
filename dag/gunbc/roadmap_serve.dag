@@ -476,12 +476,12 @@ fn http_method_label_join(methods: List<std.types.HttpMethod>) -> String {
 
 fn roadmap_serve_selection_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
-  sel: RouteSelection<RoadmapServeHandler>,
+  sel: extdeps.http.server.RouteSelection<RoadmapServeHandler>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   match sel {
-    SelectedDynamic { handler: h, params: ps } =>
+    extdeps.http.server.SelectedDynamic { handler: h, params: ps } =>
       roadmap_serve_invoke_for_instance(
         instance: instance,
         handler: h,
@@ -489,21 +489,21 @@ fn roadmap_serve_selection_response_for_instance(
         request: request,
         release_revision: release_revision,
       )
-    SelectedStatic { route: r } =>
+    extdeps.http.server.SelectedStatic { route: r } =>
       extdeps.http.server.ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
-    MethodNotAllowed { allowed: ms } =>
+    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
         content_type: text_plain_utf8,
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
-    NoRouteMatched =>
+    extdeps.http.server.NoRouteMatched =>
       serve_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
   }
 }
 
 fn roadmap_serve_selection_response(
-  sel: RouteSelection<RoadmapServeHandler>,
+  sel: extdeps.http.server.RouteSelection<RoadmapServeHandler>,
   request: extdeps.http.server.ServeHttpRequest,
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {

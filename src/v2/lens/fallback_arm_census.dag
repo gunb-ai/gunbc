@@ -69,21 +69,21 @@ fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
   }
 }
 
-fn pattern_node_is_planted_wildcard(pattern: Node) -> Bool {
+fn pattern_node_is_planted_wildcard(pattern: v2.std.node.Node) -> Bool {
   match node_atom_identity_optional(node: pattern) {
     Present { value: id } => id == fallback_planted_wildcard
     Absent => false
   }
 }
 
-fn body_node_marks_refuses(body: Node) -> Bool {
+fn body_node_marks_refuses(body: v2.std.node.Node) -> Bool {
   match node_atom_identity_optional(node: body) {
     Present { value: id } => id == fallback_body_refuses
     Absent => false
   }
 }
 
-fn body_node_marks_answers(body: Node) -> Bool {
+fn body_node_marks_answers(body: v2.std.node.Node) -> Bool {
   match node_atom_identity_optional(node: body) {
     Present { value: id } => id == fallback_body_answers
     Absent => false
@@ -91,7 +91,7 @@ fn body_node_marks_answers(body: Node) -> Bool {
 }
 
 fn classify_planted_arm(
-  arm: Node,
+  arm: v2.std.node.Node,
   scrutinee_closed_total: Bool,
   interim_declared: Bool
 ) -> FallbackArmClass {
@@ -116,15 +116,15 @@ fn classify_planted_arm(
   }
 }
 
-fn planted_wildcard_arm(body_lit: v2.std.node.Symbol) -> Node {
+fn planted_wildcard_arm(body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   dag_match_arm_node(pattern_lit: fallback_planted_wildcard, body_lit: body_lit)
 }
 
-fn planted_named_arm(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> Node {
+fn planted_named_arm(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   dag_match_arm_node(pattern_lit: pattern_lit, body_lit: body_lit)
 }
 
-fn planted_match_with_wildcard_answers() -> Node {
+fn planted_match_with_wildcard_answers() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
@@ -132,7 +132,7 @@ fn planted_match_with_wildcard_answers() -> Node {
   )
 }
 
-fn planted_match_with_wildcard_refuses() -> Node {
+fn planted_match_with_wildcard_refuses() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
@@ -140,7 +140,7 @@ fn planted_match_with_wildcard_refuses() -> Node {
   )
 }
 
-fn planted_match_with_wildcard_opaque() -> Node {
+fn planted_match_with_wildcard_opaque() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^scrutinee),
     true_arm: planted_named_arm(pattern_lit: ^VariantA, body_lit: fallback_body_answers),
@@ -148,7 +148,7 @@ fn planted_match_with_wildcard_opaque() -> Node {
   )
 }
 
-fn match_positional_arms(match_node: Node) -> List<Node> {
+fn match_positional_arms(match_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
       match list_tail(xs: node_positional_child_targets(node: match_node)) {
@@ -160,7 +160,7 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
   }
 }
 
-fn last_list_node(xs: List<Node>) -> Optional<Node> {
+fn last_list_node(xs: List<v2.std.node.Node>) -> Optional<v2.std.node.Node> {
   fold_list(
     xs: xs,
     empty: Absent,
@@ -169,7 +169,7 @@ fn last_list_node(xs: List<Node>) -> Optional<Node> {
 }
 
 fn classify_last_arm_of_planted_match(
-  match_node: Node,
+  match_node: v2.std.node.Node,
   scrutinee_closed_total: Bool,
   interim_declared: Bool
 ) -> FallbackArmClass {

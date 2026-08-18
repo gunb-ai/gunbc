@@ -164,7 +164,7 @@ fn path_literal_from_lexeme(
   }
 }
 
-fn positional_child_targets(node: Node) -> List<Node> {
+fn positional_child_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
@@ -173,7 +173,7 @@ fn positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn arg_symbols_from_nodes(nodes: List<Node>) -> List<v2.std.node.Symbol> {
+fn arg_symbols_from_nodes(nodes: List<v2.std.node.Node>) -> List<v2.std.node.Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
       Present { value: sym } => list_snoc_item(xs: acc, item: sym)
@@ -182,7 +182,7 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<v2.std.node.Symbol> {
   })
 }
 
-fn tail_nodes(xs: List<Node>) -> List<Node> {
+fn tail_nodes(xs: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   match list_tail(xs: xs) {
     TailFound { tail: t } => t
     TailAbsent => empty_node_list
@@ -221,7 +221,7 @@ fn flows_from_sink_call(
 }
 
 fn flows_from_call_node(
-  node: Node,
+  node: v2.std.node.Node,
   param_names: List<String>,
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> List<v2.std.effect_reach.EffectReachFlow> {
@@ -248,11 +248,11 @@ fn flows_from_call_node(
 }
 
 type AtomCollectState {
-  node: Node
+  node: v2.std.node.Node
   atoms: List<v2.std.node.Symbol>
 }
 
-fn atom_collect_init(n: Node) -> AtomCollectState {
+fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
@@ -273,7 +273,7 @@ fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
   v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<v2.std.node.Symbol> {
+fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -315,14 +315,14 @@ fn literal_path_flows_from_atoms(
 }
 
 type FlowScanState {
-  node: Node
+  node: v2.std.node.Node
   flows: List<v2.std.effect_reach.EffectReachFlow>
   param_names: List<String>
   data_inits: List<v2.std.data_index.DataInitDecl>
 }
 
 fn flow_scan_init(
-  n: Node,
+  n: v2.std.node.Node,
   param_names: List<String>,
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> FlowScanState {
@@ -372,7 +372,7 @@ fn param_names_of(decl: v2.std.fn_index.FnArrowDecl) -> List<String> {
 }
 
 fn flows_in_node(
-  node: Node,
+  node: v2.std.node.Node,
   param_names: List<String>,
   data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> List<v2.std.effect_reach.EffectReachFlow> {
@@ -396,7 +396,7 @@ fn flows_in_node(
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn callees_from_node(node: v2.std.node.Node) -> List<String> {
   fold_list(
     xs: atom_identities_in_node(node: node),
     empty: empty_string_list,

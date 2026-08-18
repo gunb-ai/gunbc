@@ -28,21 +28,21 @@ data a4_opacity_same_brand_source: Medium<String> = extdeps.communication.medium
   fidelity: Lossless
 }
 
-fn a4_opacity_compile(source: Medium<String>) -> Outcome<Medium<String>> {
+fn a4_opacity_compile(source: Medium<String>) -> v2.std.diagnostic.Outcome<Medium<String>> {
   compile_ingest_staging(source: source, target: a4_opacity_target_model)
 }
 
 fn a4_opacity_rejects(source: Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 fn a4_opacity_accepts(source: Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

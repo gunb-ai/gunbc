@@ -22,13 +22,13 @@ data dag_field_access_source_text: String = "fn get(r: Rec) -> Int { r.v }"
 
 type DagGrammarRelationRow {
   production: v2.std.grammar.FormalProduction
-  emitted: Node
+  emitted: v2.std.node.Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type DagBodiedFnFamilySpec {
   inhabitant_field: v2.std.node.Symbol
-  emitted_fn: Node
+  emitted_fn: v2.std.node.Node
   grammar_row: DagGrammarRelationRow
   source_literal: v2.std.node.Symbol
   production_binding: v2.std.node.Symbol
@@ -185,7 +185,7 @@ fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: v2.std.n
   }
 }
 
-fn dag_surface_operator_canonicalization_member(surface_token: v2.std.node.Symbol) -> Outcome<v2.std.compilers.target_model.CanonicalOperation> {
+fn dag_surface_operator_canonicalization_member(surface_token: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.CanonicalOperation> {
   if surface_token == ^dag_token_or_or {
     outcome_accepted(canonical_operation_op_or())
   } else if surface_token == ^dag_token_and_and {
@@ -220,7 +220,7 @@ fn dag_surface_operator_canonicalization_member(surface_token: v2.std.node.Symbo
 fn dag_surface_operator_canonicalization_lookup(
   lm: v2.std.language_model.LanguageModel,
   surface_token: v2.std.node.Symbol
-) -> Outcome<v2.std.compilers.target_model.CanonicalOperation> {
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.CanonicalOperation> {
   dag_surface_operator_canonicalization_member(surface_token: surface_token)
 }
 
@@ -382,7 +382,7 @@ fn dag_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: dag_lex_rules() }
 }
 
-fn dag_grammar_atom(id: v2.std.node.Symbol) -> Node {
+fn dag_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: id }
@@ -392,25 +392,25 @@ fn dag_grammar_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn dag_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn dag_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge {
     label: Named { name: name },
     target: target
   }
 }
 
-fn dag_positional_edge(target: Node) -> v2.std.node.Edge {
+fn dag_positional_edge(target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge {
     label: Positional,
     target: target
   }
 }
 
-fn emit_fixed_token(token_class: v2.std.node.Symbol) -> Node {
+fn emit_fixed_token(token_class: v2.std.node.Symbol) -> v2.std.node.Node {
   concrete_syntax_token_to_node(token: v2.std.compilers.target_model.FixedToken { token_class: token_class })
 }
 
-fn emit_bound_token(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> Node {
+fn emit_bound_token(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> v2.std.node.Node {
   concrete_syntax_token_to_node(
     token: v2.std.compilers.target_model.BoundToken { token_class: token_class, binding: binding }
   )
@@ -418,9 +418,9 @@ fn emit_bound_token(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol
 
 fn emit_grammar_relation_row(
   production: v2.std.grammar.GrammarProduction,
-  emitted: Node,
-  tokens: List<Node>
-) -> Node {
+  emitted: v2.std.node.Node,
+  tokens: List<v2.std.node.Node>
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2761,7 +2761,7 @@ fn dag_grammar_module_production() -> v2.std.grammar.GrammarProduction {
   )
 }
 
-fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
+fn emit_module_header_emitted_node(qualified_name: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2778,7 +2778,7 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
 }
 }
 
-fn emit_row_module_header(qualified_name: Node) -> Node {
+fn emit_row_module_header(qualified_name: v2.std.node.Node) -> v2.std.node.Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
       name: ^dag_production_module_header,
@@ -2794,9 +2794,9 @@ fn emit_row_module_header(qualified_name: Node) -> Node {
 }
 
 fn emit_import_decl_emitted_node(
-  qualified_name: Node,
-  import_block: Node?
-) -> Node {
+  qualified_name: v2.std.node.Node,
+  import_block: v2.std.node.Node?
+) -> v2.std.node.Node {
   let prefix = [
     dag_named_edge(
       name: ^dag_surface_import_decl,
@@ -2824,9 +2824,9 @@ fn emit_import_decl_emitted_node(
 }
 
 fn emit_row_import_decl(
-  qualified_name: Node,
-  import_block: Node?
-) -> Node {
+  qualified_name: v2.std.node.Node,
+  import_block: v2.std.node.Node?
+) -> v2.std.node.Node {
   let prefix = [
     emit_fixed_token(token_class: ^dag_token_kw_import),
     qualified_name
@@ -2848,7 +2848,7 @@ fn emit_row_import_decl(
   )
 }
 
-fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
+fn emit_alias_decl_emitted_node(binding: v2.std.node.Node, target: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2869,7 +2869,7 @@ fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
   }
 }
 
-fn emit_row_alias_decl(binding: Node, target: Node) -> Node {
+fn emit_row_alias_decl(binding: v2.std.node.Node, target: v2.std.node.Node) -> v2.std.node.Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
       name: ^dag_production_alias_decl,
@@ -2888,9 +2888,9 @@ fn emit_row_alias_decl(binding: Node, target: Node) -> Node {
 
 fn emit_data_decl_emitted_node(
   name_binding: v2.std.node.Symbol,
-  type_expr: Node,
-  expr: Node
-) -> Node {
+  type_expr: v2.std.node.Node,
+  expr: v2.std.node.Node
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2917,9 +2917,9 @@ fn emit_data_decl_emitted_node(
 
 fn emit_row_data_decl(
   name_binding: v2.std.node.Symbol,
-  type_expr: Node,
-  expr: Node
-) -> Node {
+  type_expr: v2.std.node.Node,
+  expr: v2.std.node.Node
+) -> v2.std.node.Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
       name: ^dag_production_data_decl,
@@ -3288,19 +3288,19 @@ type DagTriviaNormalization
   | DagLineCommentFailClosed
   | DagBlockCommentFailClosed
 
-fn dag_whitespace_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
+fn dag_whitespace_fidelity() -> v2.extdeps.languages.fidelity.FidelityDisposition<DagTriviaNormalization> {
   v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized }
 }
 
-fn dag_line_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
+fn dag_line_comment_fidelity() -> v2.extdeps.languages.fidelity.FidelityDisposition<DagTriviaNormalization> {
   v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed }
 }
 
-fn dag_block_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
+fn dag_block_comment_fidelity() -> v2.extdeps.languages.fidelity.FidelityDisposition<DagTriviaNormalization> {
   v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-fn dag_trivia_normalization_feature_node(feature: DagTriviaNormalization) -> Node {
+fn dag_trivia_normalization_feature_node(feature: DagTriviaNormalization) -> v2.std.node.Node {
   match feature {
     DagWhitespaceDeclaredNormalized =>
       dag_grammar_atom(id: ^dag_trivia_feature_whitespace)
@@ -3312,12 +3312,12 @@ fn dag_trivia_normalization_feature_node(feature: DagTriviaNormalization) -> Nod
 }
 
 fn dag_fidelity_disposition_node(
-  disposition: FidelityDisposition<DagTriviaNormalization>
-) -> Node {
+  disposition: v2.extdeps.languages.fidelity.FidelityDisposition<DagTriviaNormalization>
+) -> v2.std.node.Node {
   match disposition {
-    Modeled =>
+    v2.extdeps.languages.fidelity.Modeled =>
       dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
-    DeclaredNormalized { feature: feature } =>
+    v2.extdeps.languages.fidelity.DeclaredNormalized { feature: feature } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
@@ -3332,7 +3332,7 @@ fn dag_fidelity_disposition_node(
         ],
         occurrence_id: SyntheticOccurrence
       }
-    FailClosed { feature: feature } =>
+    v2.extdeps.languages.fidelity.FailClosed { feature: feature } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
@@ -3350,7 +3350,7 @@ fn dag_fidelity_disposition_node(
   }
 }
 
-fn dag_fidelity_quotient_node() -> Node {
+fn dag_fidelity_quotient_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3371,28 +3371,28 @@ fn dag_fidelity_quotient_node() -> Node {
   }
 }
 
-fn dag_fidelity_quotient_all_modeled_node() -> Node {
+fn dag_fidelity_quotient_all_modeled_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_fidelity_quotient_field_whitespace,
-        target: dag_fidelity_disposition_node(disposition: Modeled)
+        target: dag_fidelity_disposition_node(disposition: v2.extdeps.languages.fidelity.Modeled)
       ),
       dag_named_edge(
         name: ^dag_fidelity_quotient_field_line_comment,
-        target: dag_fidelity_disposition_node(disposition: Modeled)
+        target: dag_fidelity_disposition_node(disposition: v2.extdeps.languages.fidelity.Modeled)
       ),
       dag_named_edge(
         name: ^dag_fidelity_quotient_field_block_comment,
-        target: dag_fidelity_disposition_node(disposition: Modeled)
+        target: dag_fidelity_disposition_node(disposition: v2.extdeps.languages.fidelity.Modeled)
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
+fn dag_target_model_bundle_with_fidelity_quotient(quotient: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3421,7 +3421,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
   }
 }
 
-fn dag_target_model_with_fidelity_quotient(quotient: Node) -> v2.std.compilers.target_model.TargetModel {
+fn dag_target_model_with_fidelity_quotient(quotient: v2.std.node.Node) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
@@ -3444,7 +3444,7 @@ fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> Bool {
     || (name == ^dag_surface_module_header_qualified_name)
 }
 
-fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
+fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
@@ -3452,7 +3452,7 @@ fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
   }
 }
 
-fn dag_node_is_module_root_conj(n: Node) -> Bool {
+fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } => id == ^dag_surface_module
     Absent =>
@@ -3477,7 +3477,7 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
   }
 }
 
-fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -3485,7 +3485,7 @@ fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn dag_int_inhabitant_node() -> Node {
+fn dag_int_inhabitant_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3499,7 +3499,7 @@ fn dag_int_inhabitant_node() -> Node {
 }
 }
 
-fn dag_declared_inhabitants_core() -> Node {
+fn dag_declared_inhabitants_core() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3525,7 +3525,7 @@ fn dag_pick_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_declared_inhabitants_root() -> Node {
+fn dag_pick_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_pick_family_spec())
 }
 
@@ -3533,7 +3533,7 @@ fn dag_bind_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_bind_family_spec())
 }
 
-fn dag_bind_declared_inhabitants_root() -> Node {
+fn dag_bind_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_bind_family_spec())
 }
 
@@ -3541,7 +3541,7 @@ fn dag_loop_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_declared_inhabitants_root() -> Node {
+fn dag_loop_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_loop_family_spec())
 }
 
@@ -3551,7 +3551,7 @@ fn dag_match_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_match_family_spec())
 }
 
-fn dag_match_declared_inhabitants_root() -> Node {
+fn dag_match_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_match_family_spec())
 }
 
@@ -3561,7 +3561,7 @@ fn dag_rec_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_rec_family_spec())
 }
 
-fn dag_rec_declared_inhabitants_root() -> Node {
+fn dag_rec_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_rec_family_spec())
 }
 
@@ -3571,7 +3571,7 @@ fn dag_field_access_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_field_access_family_spec())
 }
 
-fn dag_field_access_declared_inhabitants_root() -> Node {
+fn dag_field_access_declared_inhabitants_root() -> v2.std.node.Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_field_access_family_spec())
 }
 
@@ -3592,7 +3592,7 @@ fn dag_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn dag_declared_inhabitants_root() -> Node {
+fn dag_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
@@ -3603,15 +3603,15 @@ fn dag_declared_inhabitants_root() -> Node {
 }
 }
 
-fn dag_selection_policy_node() -> Node {
+fn dag_selection_policy_node() -> v2.std.node.Node {
   dag_int_inhabitant_node()
 }
 
-fn dag_emitted_add_fn_node() -> Node {
+fn dag_emitted_add_fn_node() -> v2.std.node.Node {
   dag_fixture_emitted_add_fn
 }
 
-fn dag_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
+fn dag_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
   concrete_syntax_token_to_node(token: token)
 }
 
@@ -3643,7 +3643,7 @@ fn dag_serialize_source_children() -> List<v2.std.node.Edge> {
   )
 }
 
-fn dag_serialize_source_node() -> Node {
+fn dag_serialize_source_node() -> v2.std.node.Node {
   dag_family_serialize_source_node(
     source_literal: ^dag_source_literal,
     production_binding: ^dag_production_fn_add,
@@ -3763,7 +3763,7 @@ fn dag_type_decl_structural_formal_productions() -> List<v2.std.grammar.FormalPr
   ]
 }
 
-fn dag_type_decl_productions_only_translation_rules() -> Node {
+fn dag_type_decl_productions_only_translation_rules() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3820,7 +3820,7 @@ fn dag_type_decl_structural_target_model() -> v2.std.compilers.target_model.Targ
   }
 }
 
-fn dag_add_grammar_relation_row_node() -> Node {
+fn dag_add_grammar_relation_row_node() -> v2.std.node.Node {
   dag_grammar_relation_row_node(
     row: DagGrammarRelationRow {
       production: dag_formal_production_fn_add(),
@@ -3830,7 +3830,7 @@ fn dag_add_grammar_relation_row_node() -> Node {
   )
 }
 
-fn dag_translation_rules_node() -> Node {
+fn dag_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3843,7 +3843,7 @@ fn dag_translation_rules_node() -> Node {
 }
 }
 
-fn dag_target_model_bundle_core() -> Node {
+fn dag_target_model_bundle_core() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -3872,7 +3872,7 @@ fn dag_target_model_bundle_core() -> Node {
 }
 }
 
-fn dag_target_model_node() -> Node {
+fn dag_target_model_node() -> v2.std.node.Node {
   dag_target_model_bundle_core()
 }
 
@@ -3904,7 +3904,7 @@ fn dag_int_type_binding() -> v2.std.node.Symbol {
   ^dag_binding_type_int
 }
 
-fn dag_binding_branded_atom_identity(node: Node) -> Optional<v2.std.node.Symbol> {
+fn dag_binding_branded_atom_identity(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       match id == ^dag_token_ident {
@@ -3915,11 +3915,11 @@ fn dag_binding_branded_atom_identity(node: Node) -> Optional<v2.std.node.Symbol>
   }
 }
 
-fn dag_loop_measure_node() -> Node {
+fn dag_loop_measure_node() -> v2.std.node.Node {
   dag_type_atom_node(identity: ^dag_loop_measure_sym)
 }
 
-fn dag_loop_body_from_literal(lit: Node) -> Node {
+fn dag_loop_body_from_literal(lit: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
@@ -3936,15 +3936,15 @@ fn dag_loop_body_from_literal(lit: Node) -> Node {
   }
 }
 
-fn dag_loop_body_node() -> Node {
+fn dag_loop_body_node() -> v2.std.node.Node {
   dag_loop_body_from_literal(lit: dag_int_literal_fixture_one())
 }
 
-fn dag_loop_body_wrong_value_node() -> Node {
+fn dag_loop_body_wrong_value_node() -> v2.std.node.Node {
   dag_loop_body_from_literal(lit: dag_int_literal_fixture_two())
 }
 
-fn dag_loop_arrow_with_body_node() -> Node {
+fn dag_loop_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -3952,7 +3952,7 @@ fn dag_loop_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_loop_arrow_with_body_wrong_value_node() -> Node {
+fn dag_loop_arrow_with_body_wrong_value_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -3965,21 +3965,21 @@ data dag_loop_arrow_with_body_fixture: Node = dag_loop_arrow_with_body_node()
 data dag_loop_arrow_with_body_wrong_value_fixture: Node = dag_loop_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_loop_fn: Node = dag_loop_arrow_with_body_fixture
 
-fn dag_node_is_kw_true_atom(node: Node) -> Bool {
+fn dag_node_is_kw_true_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
     _ => false
   }
 }
 
-fn dag_node_is_kw_false_atom(node: Node) -> Bool {
+fn dag_node_is_kw_false_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
     _ => false
   }
 }
 
-fn dag_node_is_int_literal_atom(node: Node) -> Bool {
+fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
     _ => false
@@ -4011,7 +4011,7 @@ fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> Bool {
     || dag_symbol_is_fixture_record_literal_atom(id: id)
 }
 
-fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
+fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
@@ -4022,7 +4022,7 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> Node {
+fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4035,7 +4035,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitud
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrence_identity.OccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
@@ -4055,7 +4055,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrenc
   }
 }
 
-fn dag_int_literal_magnitude_edge_target_optional(edge: v2.std.node.Edge) -> Optional<Node> {
+fn dag_int_literal_magnitude_edge_target_optional(edge: v2.std.node.Edge) -> Optional<v2.std.node.Node> {
   match edge {
     Edge { label: Named { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
@@ -4067,7 +4067,7 @@ fn dag_int_literal_magnitude_edge_target_optional(edge: v2.std.node.Edge) -> Opt
   }
 }
 
-fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+fn dag_int_literal_magnitude_node_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   if dag_node_is_int_literal_atom(node: node) {
     fold(node.children, init: optional_absent(), f: fn(acc, edge) {
       match acc {
@@ -4080,7 +4080,7 @@ fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
+fn dag_int_literal_magnitude_int_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_node_optional(node: node) {
       Present { value: magnitude_node } =>
@@ -4109,7 +4109,7 @@ type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
 
-fn dag_canonical_literal_shape_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn dag_canonical_literal_shape_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
@@ -4119,19 +4119,19 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> v2.std.diagnostic.Diagn
 
 data dag_canonical_literal_query_note: String = "dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape. It preserves the Bool-vs-Int distinction and the decoded integer magnitude in a coproduct instead of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the childless true/false atoms. Int literals admit exactly one named, decodable magnitude child. Every other shape is a typed refusal."
 
-fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
+fn dag_canonical_literal_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<DagCanonicalLiteral> {
   if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
     outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
   } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
     outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
   } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: magnitude, diagnostics: d } =>
+      v2.std.diagnostic.Accepted { value: magnitude, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: DagCanonicalIntLiteral { magnitude: magnitude },
           diagnostics: d
         }
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
     }
   } else {
@@ -4139,7 +4139,7 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
   }
 }
 
-fn dag_type_atom_node(identity: v2.std.node.Symbol) -> Node {
+fn dag_type_atom_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -4148,10 +4148,10 @@ fn dag_type_atom_node(identity: v2.std.node.Symbol) -> Node {
 }
 
 fn dag_arrow_with_body_node(
-  domain: Node,
+  domain: v2.std.node.Node,
   return_type_binding: v2.std.node.Symbol,
-  body: Node
-) -> Node {
+  body: v2.std.node.Node
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -4170,11 +4170,11 @@ fn dag_arrow_with_body_node(
   }
 }
 
-fn dag_add_operator_node() -> Node {
+fn dag_add_operator_node() -> v2.std.node.Node {
   dag_type_atom_node(identity: ^dag_token_plus)
 }
 
-fn dag_arrow_domain_conj_node() -> Node {
+fn dag_arrow_domain_conj_node() -> v2.std.node.Node {
   let children = fold_list(
     xs: dag_add_param_binding_ids(),
     empty: std.algebra.Empty,
@@ -4195,7 +4195,7 @@ fn dag_arrow_domain_conj_node() -> Node {
   }
 }
 
-fn dag_binary_body_node(operator: Node, left_binding: v2.std.node.Symbol, right_binding: v2.std.node.Symbol) -> Node {
+fn dag_binary_body_node(operator: v2.std.node.Node, left_binding: v2.std.node.Symbol, right_binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
@@ -4213,7 +4213,7 @@ fn dag_binary_body_node(operator: Node, left_binding: v2.std.node.Symbol, right_
   }
 }
 
-fn dag_add_arrow_signature_node() -> Node {
+fn dag_add_arrow_signature_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -4234,7 +4234,7 @@ fn dag_add_arrow_signature_node() -> Node {
   }
 }
 
-fn dag_add_binary_body_node() -> Node {
+fn dag_add_binary_body_node() -> v2.std.node.Node {
   dag_binary_body_node(
     operator: dag_add_operator_node(),
     left_binding: ^dag_binding_param_x,
@@ -4242,7 +4242,7 @@ fn dag_add_binary_body_node() -> Node {
   )
 }
 
-fn dag_add_binary_body_swapped_operands_node() -> Node {
+fn dag_add_binary_body_swapped_operands_node() -> v2.std.node.Node {
   dag_binary_body_node(
     operator: dag_add_operator_node(),
     left_binding: ^dag_binding_param_y,
@@ -4250,7 +4250,7 @@ fn dag_add_binary_body_swapped_operands_node() -> Node {
   )
 }
 
-fn dag_add_arrow_with_body_node() -> Node {
+fn dag_add_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4258,7 +4258,7 @@ fn dag_add_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_add_arrow_with_body_swapped_operands_node() -> Node {
+fn dag_add_arrow_with_body_swapped_operands_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4272,7 +4272,7 @@ data dag_add_binary_body_swapped_operands_fixture: Node = dag_add_binary_body_sw
 data dag_add_arrow_with_body_fixture: Node = dag_add_arrow_with_body_node()
 data dag_add_arrow_with_body_swapped_operands_fixture: Node = dag_add_arrow_with_body_swapped_operands_node()
 
-fn dag_pick_arrow_domain_conj_node() -> Node {
+fn dag_pick_arrow_domain_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
@@ -4281,10 +4281,10 @@ fn dag_pick_arrow_domain_conj_node() -> Node {
 }
 
 fn dag_pick_if_body_from_arms(
-  condition: Node,
-  then_arm: Node,
-  else_arm: Node
-) -> Node {
+  condition: v2.std.node.Node,
+  then_arm: v2.std.node.Node,
+  else_arm: v2.std.node.Node
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Branch },
     children: [
@@ -4296,7 +4296,7 @@ fn dag_pick_if_body_from_arms(
   }
 }
 
-fn dag_int_literal_fixture_one() -> Node {
+fn dag_int_literal_fixture_one() -> v2.std.node.Node {
   dag_int_literal_node_from_magnitude(
     magnitude: v2.std.integer.DecimalNonZero {
       magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
@@ -4305,7 +4305,7 @@ fn dag_int_literal_fixture_one() -> Node {
   )
 }
 
-fn dag_int_literal_fixture_two() -> Node {
+fn dag_int_literal_fixture_two() -> v2.std.node.Node {
   dag_int_literal_node_from_magnitude(
     magnitude: v2.std.integer.DecimalNonZero {
       magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
@@ -4314,11 +4314,11 @@ fn dag_int_literal_fixture_two() -> Node {
   )
 }
 
-fn dag_int_literal_fixture_node(lexeme: String) -> Outcome<Node> {
+fn dag_int_literal_fixture_node(lexeme: String) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence)
 }
 
-fn dag_pick_if_body_node() -> Node {
+fn dag_pick_if_body_node() -> v2.std.node.Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_int_literal_fixture_one(),
@@ -4326,7 +4326,7 @@ fn dag_pick_if_body_node() -> Node {
   )
 }
 
-fn dag_pick_if_body_swapped_arms_node() -> Node {
+fn dag_pick_if_body_swapped_arms_node() -> v2.std.node.Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_int_literal_fixture_two(),
@@ -4334,7 +4334,7 @@ fn dag_pick_if_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_pick_if_body_false_condition_node() -> Node {
+fn dag_pick_if_body_false_condition_node() -> v2.std.node.Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_false),
     then_arm: dag_int_literal_fixture_one(),
@@ -4342,7 +4342,7 @@ fn dag_pick_if_body_false_condition_node() -> Node {
   )
 }
 
-fn dag_pick_arrow_with_body_false_condition_node() -> Node {
+fn dag_pick_arrow_with_body_false_condition_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4350,7 +4350,7 @@ fn dag_pick_arrow_with_body_false_condition_node() -> Node {
   )
 }
 
-fn dag_pick_arrow_with_body_node() -> Node {
+fn dag_pick_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4358,7 +4358,7 @@ fn dag_pick_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_pick_arrow_with_body_swapped_arms_node() -> Node {
+fn dag_pick_arrow_with_body_swapped_arms_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4374,7 +4374,7 @@ data dag_pick_arrow_with_body_swapped_arms_fixture: Node = dag_pick_arrow_with_b
 
 data dag_fixture_emitted_pick_fn: Node = dag_pick_arrow_with_body_fixture
 
-fn dag_match_arm_node(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> Node {
+fn dag_match_arm_node(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4392,10 +4392,10 @@ fn dag_match_arm_node(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Sym
 }
 
 fn dag_match_body_from_arms(
-  scrutinee: Node,
-  true_arm: Node,
-  false_arm: Node
-) -> Node {
+  scrutinee: v2.std.node.Node,
+  true_arm: v2.std.node.Node,
+  false_arm: v2.std.node.Node
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
@@ -4407,7 +4407,7 @@ fn dag_match_body_from_arms(
   }
 }
 
-fn dag_match_body_node() -> Node {
+fn dag_match_body_node() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
     true_arm: dag_match_arm_node(
@@ -4421,7 +4421,7 @@ fn dag_match_body_node() -> Node {
   )
 }
 
-fn dag_match_body_swapped_arms_node() -> Node {
+fn dag_match_body_swapped_arms_node() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
     true_arm: dag_match_arm_node(
@@ -4435,7 +4435,7 @@ fn dag_match_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_match_arrow_with_body_node() -> Node {
+fn dag_match_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4443,7 +4443,7 @@ fn dag_match_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_match_arrow_with_body_swapped_arms_node() -> Node {
+fn dag_match_arrow_with_body_swapped_arms_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4457,7 +4457,7 @@ data dag_match_arrow_with_body_fixture: Node = dag_match_arrow_with_body_node()
 data dag_match_arrow_with_body_swapped_arms_fixture: Node = dag_match_arrow_with_body_swapped_arms_node()
 data dag_fixture_emitted_match_fn: Node = dag_match_arrow_with_body_fixture
 
-fn dag_rec_construct_body_node() -> Node {
+fn dag_rec_construct_body_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4474,7 +4474,7 @@ fn dag_rec_construct_body_node() -> Node {
   }
 }
 
-fn dag_rec_arrow_with_body_node() -> Node {
+fn dag_rec_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_rec,
@@ -4486,7 +4486,7 @@ data dag_rec_construct_body_fixture: Node = dag_rec_construct_body_node()
 data dag_rec_arrow_with_body_fixture: Node = dag_rec_arrow_with_body_node()
 data dag_fixture_emitted_rec_fn: Node = dag_rec_arrow_with_body_fixture
 
-fn dag_variant_holds_construct_node(value_lit: v2.std.node.Symbol) -> Node {
+fn dag_variant_holds_construct_node(value_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4503,11 +4503,11 @@ fn dag_variant_holds_construct_node(value_lit: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn dag_variant_holds_pattern_node() -> Node {
+fn dag_variant_holds_pattern_node() -> v2.std.node.Node {
   dag_variant_holds_construct_node(value_lit: ^dag_binding_rec_v)
 }
 
-fn dag_variant_match_arm_node(pattern_target: Node, body_lit: v2.std.node.Symbol) -> Node {
+fn dag_variant_match_arm_node(pattern_target: v2.std.node.Node, body_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4521,7 +4521,7 @@ fn dag_variant_match_arm_node(pattern_target: Node, body_lit: v2.std.node.Symbol
   }
 }
 
-fn dag_variant_construct_body_from_value(value_lit: v2.std.node.Symbol) -> Node {
+fn dag_variant_construct_body_from_value(value_lit: v2.std.node.Symbol) -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_variant_holds_construct_node(value_lit: value_lit),
     true_arm: dag_variant_match_arm_node(
@@ -4535,15 +4535,15 @@ fn dag_variant_construct_body_from_value(value_lit: v2.std.node.Symbol) -> Node 
   )
 }
 
-fn dag_variant_construct_body_node() -> Node {
+fn dag_variant_construct_body_node() -> v2.std.node.Node {
   dag_variant_construct_body_from_value(value_lit: ^dag_rec_lit_nine)
 }
 
-fn dag_variant_construct_body_wrong_value_node() -> Node {
+fn dag_variant_construct_body_wrong_value_node() -> v2.std.node.Node {
   dag_variant_construct_body_from_value(value_lit: ^dag_pick_lit_one)
 }
 
-fn dag_variant_construct_arrow_with_body_node() -> Node {
+fn dag_variant_construct_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4551,7 +4551,7 @@ fn dag_variant_construct_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_variant_construct_arrow_with_body_wrong_value_node() -> Node {
+fn dag_variant_construct_arrow_with_body_wrong_value_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4566,10 +4566,10 @@ data dag_variant_construct_arrow_with_body_wrong_value_fixture: Node = dag_varia
 data dag_fixture_emitted_variant_construct_fn: Node = dag_variant_construct_arrow_with_body_fixture
 
 fn dag_complement_match_body(
-  scrutinee: Node,
+  scrutinee: v2.std.node.Node,
   true_body_lit: v2.std.node.Symbol,
   false_body_lit: v2.std.node.Symbol
-) -> Node {
+) -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: scrutinee,
     true_arm: dag_match_arm_node(
@@ -4583,11 +4583,11 @@ fn dag_complement_match_body(
   )
 }
 
-fn dag_complement_param_scrutinee_node() -> Node {
+fn dag_complement_param_scrutinee_node() -> v2.std.node.Node {
   dag_type_atom_node(identity: ^dag_binding_param_a)
 }
 
-fn dag_complement_arrow_domain_node() -> Node {
+fn dag_complement_arrow_domain_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4600,7 +4600,7 @@ fn dag_complement_arrow_domain_node() -> Node {
   }
 }
 
-fn dag_complement_body_node() -> Node {
+fn dag_complement_body_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_complement_lit_false,
@@ -4608,7 +4608,7 @@ fn dag_complement_body_node() -> Node {
   )
 }
 
-fn dag_complement_body_swapped_arms_node() -> Node {
+fn dag_complement_body_swapped_arms_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_complement_lit_true,
@@ -4616,7 +4616,7 @@ fn dag_complement_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_complement_arrow_with_body_node() -> Node {
+fn dag_complement_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_complement_arrow_domain_node(),
     return_type_binding: ^dag_binding_type_bool,
@@ -4624,7 +4624,7 @@ fn dag_complement_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
+fn dag_complement_arrow_with_body_swapped_arms_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_complement_arrow_domain_node(),
     return_type_binding: ^dag_binding_type_bool,
@@ -4632,7 +4632,7 @@ fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_complement_eval_subgraph_node() -> Node {
+fn dag_complement_eval_subgraph_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
     true_body_lit: ^dag_complement_lit_false,
@@ -4645,7 +4645,7 @@ data dag_complement_arrow_with_body_fixture: Node = dag_complement_arrow_with_bo
 data dag_complement_arrow_with_body_swapped_arms_fixture: Node = dag_complement_arrow_with_body_swapped_arms_node()
 data dag_complement_eval_subgraph_fixture: Node = dag_complement_eval_subgraph_node()
 
-fn dag_bool_binop_arrow_domain_node() -> Node {
+fn dag_bool_binop_arrow_domain_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4662,7 +4662,7 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
   }
 }
 
-fn dag_bool_binop_arrow_with_body_node(body: Node) -> Node {
+fn dag_bool_binop_arrow_with_body_node(body: v2.std.node.Node) -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_bool_binop_arrow_domain_node(),
     return_type_binding: ^dag_binding_type_bool,
@@ -4670,7 +4670,7 @@ fn dag_bool_binop_arrow_with_body_node(body: Node) -> Node {
   )
 }
 
-fn dag_meet_body_node() -> Node {
+fn dag_meet_body_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
@@ -4678,7 +4678,7 @@ fn dag_meet_body_node() -> Node {
   )
 }
 
-fn dag_meet_body_swapped_arms_node() -> Node {
+fn dag_meet_body_swapped_arms_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_complement_lit_false,
@@ -4686,7 +4686,7 @@ fn dag_meet_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_join_body_node() -> Node {
+fn dag_join_body_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_complement_lit_true,
@@ -4694,7 +4694,7 @@ fn dag_join_body_node() -> Node {
   )
 }
 
-fn dag_join_body_swapped_arms_node() -> Node {
+fn dag_join_body_swapped_arms_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
@@ -4702,7 +4702,7 @@ fn dag_join_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_meet_eval_subgraph_node() -> Node {
+fn dag_meet_eval_subgraph_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
     true_body_lit: ^dag_complement_lit_true,
@@ -4710,7 +4710,7 @@ fn dag_meet_eval_subgraph_node() -> Node {
   )
 }
 
-fn dag_join_eval_subgraph_node() -> Node {
+fn dag_join_eval_subgraph_node() -> v2.std.node.Node {
   dag_complement_match_body(
     scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
     true_body_lit: ^dag_complement_lit_true,
@@ -4725,7 +4725,7 @@ data dag_join_arrow_with_body_fixture: Node = dag_bool_binop_arrow_with_body_nod
 data dag_join_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_join_body_swapped_arms_node())
 data dag_join_eval_subgraph_fixture: Node = dag_join_eval_subgraph_node()
 
-fn dag_field_access_body_node() -> Node {
+fn dag_field_access_body_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
@@ -4746,7 +4746,7 @@ fn dag_field_access_body_node() -> Node {
   }
 }
 
-fn dag_field_access_arrow_domain_conj_node() -> Node {
+fn dag_field_access_arrow_domain_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -4759,7 +4759,7 @@ fn dag_field_access_arrow_domain_conj_node() -> Node {
   }
 }
 
-fn dag_field_access_arrow_with_body_node() -> Node {
+fn dag_field_access_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_field_access_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4773,9 +4773,9 @@ data dag_fixture_emitted_field_access_fn: Node = dag_field_access_arrow_with_bod
 
 fn dag_bind_let_body_from_parts(
   key_binding: v2.std.node.Symbol,
-  value: Node,
+  value: v2.std.node.Node,
   body_binding: v2.std.node.Symbol
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Bind },
     children: [
@@ -4796,7 +4796,7 @@ fn dag_bind_let_body_from_parts(
   }
 }
 
-fn dag_bind_let_body_node() -> Node {
+fn dag_bind_let_body_node() -> v2.std.node.Node {
   dag_bind_let_body_from_parts(
     key_binding: ^dag_binding_bind_x,
     value: dag_int_literal_fixture_one(),
@@ -4804,7 +4804,7 @@ fn dag_bind_let_body_node() -> Node {
   )
 }
 
-fn dag_bind_let_body_wrong_value_node() -> Node {
+fn dag_bind_let_body_wrong_value_node() -> v2.std.node.Node {
   dag_bind_let_body_from_parts(
     key_binding: ^dag_binding_bind_x,
     value: dag_int_literal_fixture_two(),
@@ -4812,7 +4812,7 @@ fn dag_bind_let_body_wrong_value_node() -> Node {
   )
 }
 
-fn dag_bind_arrow_with_body_node() -> Node {
+fn dag_bind_arrow_with_body_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4820,7 +4820,7 @@ fn dag_bind_arrow_with_body_node() -> Node {
   )
 }
 
-fn dag_bind_arrow_with_body_wrong_value_node() -> Node {
+fn dag_bind_arrow_with_body_wrong_value_node() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4919,11 +4919,11 @@ fn dag_block_evaluation_mode() -> v2.std.compilers.target_model.BlockEvaluationM
   ValueProducing
 }
 
-fn dag_operator_realizations_catalog_node() -> Node {
+fn dag_operator_realizations_catalog_node() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(rows: [])
 }
 
-fn dag_grammar_relation_row_node(row: DagGrammarRelationRow) -> Node {
+fn dag_grammar_relation_row_node(row: DagGrammarRelationRow) -> v2.std.node.Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
     tokens: grammar_relation_tokens_node(
@@ -4938,7 +4938,7 @@ fn dag_family_serialize_source_node(
   production_binding: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   authority_source_text: String
-) -> Node {
+) -> v2.std.node.Node {
   let _authority = authority_source_text
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
@@ -4976,7 +4976,7 @@ fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<v2.
   ]
 }
 
-fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> Node {
+fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
@@ -4990,11 +4990,11 @@ fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> Node 
   }
 }
 
-fn dag_bodied_fn_grammar_relation_row_node(spec: DagBodiedFnFamilySpec) -> Node {
+fn dag_bodied_fn_grammar_relation_row_node(spec: DagBodiedFnFamilySpec) -> v2.std.node.Node {
   dag_grammar_relation_row_node(row: spec.grammar_row)
 }
 
-fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
+fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -5010,7 +5010,7 @@ fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
   }
 }
 
-fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> Node {
+fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> v2.std.node.Node {
   dag_family_serialize_source_node(
     source_literal: spec.source_literal,
     production_binding: spec.production_binding,
@@ -5019,7 +5019,7 @@ fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> Node {
   )
 }
 
-fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
+fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -5137,19 +5137,19 @@ fn dag_pick_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_pick_grammar_relation_row_node() -> Node {
+fn dag_pick_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_serialize_source_node() -> Node {
+fn dag_pick_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_translation_rules_node() -> Node {
+fn dag_pick_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_target_model_bundle_node() -> Node {
+fn dag_pick_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_pick_family_spec())
 }
 
@@ -5192,19 +5192,19 @@ fn dag_bind_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_bind_grammar_relation_row_node() -> Node {
+fn dag_bind_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_bind_family_spec())
 }
 
-fn dag_bind_serialize_source_node() -> Node {
+fn dag_bind_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_bind_family_spec())
 }
 
-fn dag_bind_translation_rules_node() -> Node {
+fn dag_bind_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_bind_family_spec())
 }
 
-fn dag_bind_target_model_bundle_node() -> Node {
+fn dag_bind_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_bind_family_spec())
 }
 
@@ -5247,19 +5247,19 @@ fn dag_loop_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_loop_grammar_relation_row_node() -> Node {
+fn dag_loop_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_serialize_source_node() -> Node {
+fn dag_loop_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_translation_rules_node() -> Node {
+fn dag_loop_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_target_model_bundle_node() -> Node {
+fn dag_loop_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_loop_family_spec())
 }
 
@@ -5287,19 +5287,19 @@ fn dag_match_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_match_grammar_relation_row_node() -> Node {
+fn dag_match_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_match_family_spec())
 }
 
-fn dag_match_serialize_source_node() -> Node {
+fn dag_match_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_match_family_spec())
 }
 
-fn dag_match_translation_rules_node() -> Node {
+fn dag_match_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_match_family_spec())
 }
 
-fn dag_match_target_model_bundle_node() -> Node {
+fn dag_match_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_match_family_spec())
 }
 
@@ -5342,19 +5342,19 @@ fn dag_rec_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_rec_grammar_relation_row_node() -> Node {
+fn dag_rec_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_rec_family_spec())
 }
 
-fn dag_rec_serialize_source_node() -> Node {
+fn dag_rec_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_rec_family_spec())
 }
 
-fn dag_rec_translation_rules_node() -> Node {
+fn dag_rec_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_rec_family_spec())
 }
 
-fn dag_rec_target_model_bundle_node() -> Node {
+fn dag_rec_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_rec_family_spec())
 }
 
@@ -5405,19 +5405,19 @@ fn dag_field_access_family_spec() -> DagBodiedFnFamilySpec {
   }
 }
 
-fn dag_field_access_grammar_relation_row_node() -> Node {
+fn dag_field_access_grammar_relation_row_node() -> v2.std.node.Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_field_access_family_spec())
 }
 
-fn dag_field_access_serialize_source_node() -> Node {
+fn dag_field_access_serialize_source_node() -> v2.std.node.Node {
   dag_bodied_fn_serialize_source_node(spec: dag_field_access_family_spec())
 }
 
-fn dag_field_access_translation_rules_node() -> Node {
+fn dag_field_access_translation_rules_node() -> v2.std.node.Node {
   dag_bodied_fn_translation_rules_node(spec: dag_field_access_family_spec())
 }
 
-fn dag_field_access_target_model_bundle_node() -> Node {
+fn dag_field_access_target_model_bundle_node() -> v2.std.node.Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_field_access_family_spec())
 }
 
@@ -5440,17 +5440,17 @@ fn dag_target_model() -> v2.std.compilers.target_model.TargetModel {
   }
 }
 
-fn dag_round_trip_atom(s: v2.std.node.Symbol) -> Node {
+fn dag_round_trip_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn dag_round_trip_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn dag_round_trip_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn dag_round_trip_bool_node(pass: Bool) -> Node {
+fn dag_round_trip_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
     dag_round_trip_atom(s: ^dag_round_trip_axis_ready)
   } else {
@@ -5497,33 +5497,33 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_trivia_fidelity_resolved()
 }
 
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<v2.std.node.Symbol> {
+fn parse_production_emitted_identity_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
-    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn dag_node_is_fn_decl(node: Node) -> Bool {
+fn dag_node_is_fn_decl(node: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } => id == ^dag_surface_fn_decl
     Absent => false
   }
 }
 
-fn parse_production_captured_child_optional(node: Node) -> Optional<Node> {
+fn parse_production_captured_child_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
-    Accepted { value: captured, diagnostics: _ } => Present { value: captured }
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: captured, diagnostics: _ } => Present { value: captured }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
 type ParseSubtreeFind
   = ParseSubtreeAbsent
-  | ParseSubtreeFound { captured: Node }
+  | ParseSubtreeFound { captured: v2.std.node.Node }
 
 fn parse_subtree_find_production_captured_under_children(
-  root: Node,
+  root: v2.std.node.Node,
   emitted: v2.std.node.Symbol
 ) -> ParseSubtreeFind {
   fold(
@@ -5539,7 +5539,7 @@ fn parse_subtree_find_production_captured_under_children(
   )
 }
 
-fn parse_subtree_find_production_captured(root: Node, emitted: v2.std.node.Symbol) -> ParseSubtreeFind {
+fn parse_subtree_find_production_captured(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> ParseSubtreeFind {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {
@@ -5556,7 +5556,7 @@ fn parse_subtree_find_production_captured(root: Node, emitted: v2.std.node.Symbo
   }
 }
 
-fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<v2.std.node.Symbol> {
+fn parse_qn_lexeme_segment(sym_node: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match node_atom_identity_optional(node: sym_node) {
     Present { value: id } =>
       if id == ^dag_token_ident {
@@ -5583,18 +5583,18 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<v2.std.node.Sy
   }
 }
 
-fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<v2.std.node.Symbol> {
+fn parse_qn_repeat_suffix_ident(sequence_capture: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match find_named_child(
     root: sequence_capture,
     name: ^grammar_sequence_right_node_projection
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: ident_node, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: ident_node, diagnostics: _ } =>
       parse_qn_lexeme_segment(sym_node: ident_node, root: root)
   }
 }
 
-fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn parse_qn_repeat_suffixes(repeat_capture: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
 
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: std.algebra.Empty)
@@ -5603,20 +5603,20 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2
       root: repeat_capture,
       name: ^grammar_sequence_left_node_projection
     ) {
-      Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-      Accepted { value: head_sequence, diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+      v2.std.diagnostic.Accepted { value: head_sequence, diagnostics: _ } =>
         match parse_qn_repeat_suffix_ident(sequence_capture: head_sequence, root: root) {
-          Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-          Accepted { value: sym, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+          v2.std.diagnostic.Accepted { value: sym, diagnostics: _ } =>
             match find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
-              Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-              Accepted { value: tail, diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+              v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
                 match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
-                  Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-                  Accepted { value: suffixes, diagnostics: tail_diag } =>
+                  v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                  v2.std.diagnostic.Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: list_append(
                         left: std.algebra.Cons { head: sym, tail: std.algebra.Empty },
@@ -5631,22 +5631,22 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2
   }
 }
 
-fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn parse_qualified_name_segments_from_capture(qn_capture: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: head_node, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: head_node, diagnostics: _ } =>
       match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: head_sym, diagnostics: head_diag } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: head_sym, diagnostics: head_diag } =>
           match find_named_child(
             root: qn_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-            Accepted { value: repeat_node, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Accepted { value: repeat_node, diagnostics: _ } =>
               match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
-                Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-                Accepted { value: suffixes, diagnostics: tail_diag } =>
+                v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                v2.std.diagnostic.Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: list_append(
                       left: std.algebra.Cons { head: head_sym, tail: std.algebra.Empty },
@@ -5661,30 +5661,30 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
 }
 
 fn parse_comma_ident_list_items(
-  comma_list_capture: Node,
-  root: Node
-) -> Outcome<List<v2.std.node.Symbol>> {
+  comma_list_capture: v2.std.node.Node,
+  root: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match find_named_child(root: comma_list_capture, name: ^grammar_sequence_left_node_projection) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: head_node, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: head_node, diagnostics: _ } =>
       match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: head_sym, diagnostics: head_diag } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: head_sym, diagnostics: head_diag } =>
           match find_named_child(
             root: comma_list_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-            Accepted { value: outer_right, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Accepted { value: outer_right, diagnostics: _ } =>
               match find_named_child(
                 root: outer_right,
                 name: ^grammar_sequence_left_node_projection
               ) {
-                Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-                Accepted { value: repeat_node, diagnostics: _ } =>
+                v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                v2.std.diagnostic.Accepted { value: repeat_node, diagnostics: _ } =>
                   match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
-                    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-                    Accepted { value: suffixes, diagnostics: tail_diag } =>
+                    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                    v2.std.diagnostic.Accepted { value: suffixes, diagnostics: tail_diag } =>
                       outcome_with_diagnostics(
                         value: list_append(
                           left: std.algebra.Cons { head: head_sym, tail: std.algebra.Empty },
@@ -5700,9 +5700,9 @@ fn parse_comma_ident_list_items(
 }
 
 fn parse_import_block_idents(
-  import_decl_node: Node,
-  root: Node
-) -> Outcome<List<v2.std.node.Symbol>> {
+  import_decl_node: v2.std.node.Node,
+  root: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match parse_subtree_find_production_captured(
     root: import_decl_node,
     emitted: ^dag_surface_import_block
@@ -5713,14 +5713,14 @@ fn parse_import_block_idents(
         root: block_capture,
         name: ^grammar_sequence_right_node_projection
       ) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: inner_seq, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: inner_seq, diagnostics: _ } =>
           match find_named_child(
             root: inner_seq,
             name: ^grammar_sequence_left_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-            Accepted { value: comma_list_capture, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Accepted { value: comma_list_capture, diagnostics: _ } =>
               parse_comma_ident_list_items(
                 comma_list_capture: comma_list_capture,
                 root: root
@@ -5732,48 +5732,48 @@ fn parse_import_block_idents(
 
 data alias_binding_row_not_alias_decl: v2.std.node.Symbol = ^alias_binding_row_not_alias_decl
 
-fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome<v2.std.node.Symbol> {
+fn alias_binding_row_binding_from_decl(decl: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match parse_production_captured_child_optional(node: decl) {
     Present { value: captured } =>
       match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: after_kw, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: after_kw, diagnostics: _ } =>
           match find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
-            Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-            Accepted { value: ident_node, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+            v2.std.diagnostic.Accepted { value: ident_node, diagnostics: _ } =>
               parse_qn_lexeme_segment(sym_node: ident_node, root: module_root)
           }
       }
     Absent =>
       match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: binding_node, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: binding_node, diagnostics: _ } =>
           parse_qn_lexeme_segment(sym_node: binding_node, root: module_root)
       }
   }
 }
 
-fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn alias_binding_row_target_from_decl(decl: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(
     root: decl,
     emitted: ^dag_surface_qualified_name
   ) {
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: segments, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
           qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
     ParseSubtreeAbsent =>
       match find_named_child(root: decl, name: ^dag_surface_alias_decl_target) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: qn_node, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: qn_node, diagnostics: _ } =>
           qualified_name_from_node(root: qn_node)
       }
   }
 }
 
-fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2.std.namespace_alias.AliasBindingRow> {
+fn alias_binding_row_from_decl_node(decl: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.namespace_alias.AliasBindingRow> {
   match parse_production_emitted_identity_optional(node: decl) {
     Present { value: id } =>
       if id != ^dag_surface_alias_decl {
@@ -5784,11 +5784,11 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
         })
       } else {
         match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
-          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-          Accepted { value: binding, diagnostics: bd } =>
+          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          v2.std.diagnostic.Accepted { value: binding, diagnostics: bd } =>
             match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
-              Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-              Accepted { value: target, diagnostics: td } =>
+              v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+              v2.std.diagnostic.Accepted { value: target, diagnostics: td } =>
                 v2.std.diagnostic.Accepted {
                   value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
                   diagnostics: diagnostics_merge(outer: bd, inner: td)
@@ -5798,20 +5798,20 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
       }
     Absent =>
       match find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
-            Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-            Accepted { value: binding, diagnostics: bd } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+            v2.std.diagnostic.Accepted { value: binding, diagnostics: bd } =>
               match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
-                Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-                Accepted { value: target, diagnostics: td } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+                v2.std.diagnostic.Accepted { value: target, diagnostics: td } =>
                   v2.std.diagnostic.Accepted {
                     value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
                     diagnostics: diagnostics_merge(outer: bd, inner: td)
                   }
               }
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^alias_binding_row_not_alias_decl,
             at: node_locus(node: decl),
@@ -5829,7 +5829,7 @@ fn qualified_name_append_segment(qn: v2.std.qualified_name.QualifiedName, sym: v
   }
 }
 
-fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   let qn = fold_list(
     xs: segments,
     empty: std.algebra.Empty,
@@ -5857,16 +5857,16 @@ fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root:
   }
 }
 
-fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn qualified_name_from_emit_shaped_module_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match find_named_child(root: root, name: ^dag_surface_module_header) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       match find_named_child(root: root, name: ^dag_surface_module_header_qualified_name) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: qn_node, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: qn_node, diagnostics: _ } =>
           match qualified_name_from_node(root: qn_node) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-            Accepted { value: qn, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
               match qn {
                 Empty =>
                   outcome_rejected(v2.std.diagnostic.Diagnostic {
@@ -5890,7 +5890,7 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<v2.std.qua
   }
 }
 
-fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn qualified_name_from_parsed_module_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
     ParseSubtreeAbsent =>
       outcome_rejected(v2.std.diagnostic.Diagnostic {
@@ -5900,14 +5900,14 @@ fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<v2.std.qualifie
       })
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: segments, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
           qualified_name_from_symbol_segments(segments: segments, root: root)
       }
   }
 }
 
-fn namespace_graft_unwrap_module_working_root(root: Node) -> Node {
+fn namespace_graft_unwrap_module_working_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_module {
@@ -5922,21 +5922,21 @@ fn namespace_graft_unwrap_module_working_root(root: Node) -> Node {
   }
 }
 
-fn namespace_graft_has_module_header(root: Node) -> Bool {
+fn namespace_graft_has_module_header(root: v2.std.node.Node) -> Bool {
   match find_named_child(root: root, name: ^dag_surface_module_header) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn namespace_graft_node_is_conj(node: Node) -> Bool {
+fn namespace_graft_node_is_conj(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } => true
     _ => false
   }
 }
 
-fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<v2.std.node.Edge> {
+fn namespace_graft_spine_segment_edge_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Edge> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if count(node.children) != 1 {
@@ -5960,7 +5960,7 @@ fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<v2.std.no
   }
 }
 
-fn namespace_graft_graft_captured_spine(root: Node) -> Optional<Node> {
+fn namespace_graft_graft_captured_spine(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let captured = namespace_graft_unwrap_module_working_root(root: root)
   if namespace_graft_has_module_header(root: captured) {
     optional_absent()
@@ -5969,7 +5969,7 @@ fn namespace_graft_graft_captured_spine(root: Node) -> Optional<Node> {
   }
 }
 
-fn qualified_name_from_graft_spine(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn qualified_name_from_graft_spine(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_graft_captured_spine(root: root) {
     Absent =>
       outcome_rejected(v2.std.diagnostic.Diagnostic {
@@ -5982,7 +5982,7 @@ fn qualified_name_from_graft_spine(root: Node) -> Outcome<v2.std.qualified_name.
   }
 }
 
-fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: v2.std.qualified_name.QualifiedName) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn namespace_graft_qualified_name_from_spine_node(node: v2.std.node.Node, acc: v2.std.qualified_name.QualifiedName) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_spine_segment_edge_optional(node: node) {
     Present { value: edge } =>
       match edge.label {
@@ -6011,21 +6011,21 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: v2.std.qualif
   }
 }
 
-fn namespace_graft_already_grafted(root: Node) -> Bool {
+fn namespace_graft_already_grafted(root: v2.std.node.Node) -> Bool {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   if namespace_graft_has_module_header(root: working) {
     false
   } else {
     match qualified_name_from_graft_spine(root: root) {
-      Accepted { value: qn, diagnostics: _ } => !v2.std.algebra.is_empty(xs: qn)
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } => !v2.std.algebra.is_empty(xs: qn)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 data qualified_name_from_module_node_collapsed_note: String = "SINGLE-AUTHORITY QN reader (dissolves the interim compiler-layer dual-arm wrapper qualified_name_from_module_node_graft_aware, namespace-resolution-design.md section 10 dissolve 1). Grafted roots: QN from containment nesting position (qualified_name_from_graft_spine — the section 10/13 single naming authority; the spine cluster homes here so the reader needs no compiler-layer import). Pre-graft ingress: header-path read (parsed capture or emit-shaped Named edges — parse emits header metadata until the normalize graft fires; no header shim re-stamped onto grafted trees). Wet-ingest RED controls: program_assembly_real_ingest_module_roots_parse_holds + validate_module_roots_red_on_parsed_roots."
 
-fn qualified_name_from_module_node(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn qualified_name_from_module_node(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   if namespace_graft_already_grafted(root: root) {
     qualified_name_from_graft_spine(root: root)
   } else {

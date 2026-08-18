@@ -92,13 +92,13 @@ data c_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.Inf
   facts: std.types.Map { lookup: c_add_facts_lookup }
 }
 
-fn c_add_emit_accepts() -> Outcome<Medium<String>> {
+fn c_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: c_add_inferred_tree, target: c_add_target_model)
 }
 
 data c_add_emit_receipt: Outcome<Medium<String>> = c_add_emit_accepts()
 
-fn c_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+fn c_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: c_add_missing_translation_rules_target,
     emitted: c_add_emitted_root
@@ -109,9 +109,9 @@ data c_add_serialize_reject_receipt: Outcome<Medium<String>> = c_add_serialize_r
 
 test fn c_add_emit_add_fn_accepts_holds() -> Bool {
   match c_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -120,16 +120,16 @@ test fn c_add_serialize_source_matches_authority_holds() -> Bool {
     target: c_add_target_model,
     emitted: c_add_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: d } =>
       (authority.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
   match c_add_serialize_reject_receipt {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -139,9 +139,9 @@ test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
     facts: std.types.Map { lookup: c_add_facts_lookup }
   }
   match emit(tree: wrong_tree, target: c_add_target_model) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried != c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

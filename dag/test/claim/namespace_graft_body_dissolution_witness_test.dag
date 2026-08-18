@@ -62,7 +62,7 @@ fn normalize_accepts(source: String) -> Bool {
   }
 }
 
-fn normalized_tree_optional(source: String) -> Node? {
+fn normalized_tree_optional(source: String) -> v2.std.node.Node? {
   match lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
@@ -77,11 +77,11 @@ fn normalized_tree_optional(source: String) -> Node? {
   }
 }
 
-fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> Node {
+fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> v2.std.node.Node {
   t.root
 }
 
-fn tree_contains_atom(n: Node, sym: v2.std.node.Symbol) -> Bool {
+fn tree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
   match node_atom_identity_optional(node: n) {
     Present { value: id } =>
       match id == sym {
@@ -92,11 +92,11 @@ fn tree_contains_atom(n: Node, sym: v2.std.node.Symbol) -> Bool {
   }
 }
 
-fn edge_target_node(e: v2.std.node.Edge) -> Node {
+fn edge_target_node(e: v2.std.node.Edge) -> v2.std.node.Node {
   e.target
 }
 
-fn children_contain_atom(n: Node, sym: v2.std.node.Symbol) -> Bool {
+fn children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
   fold_list(xs: n.children, empty: false, cons: fn(acc, e) {
     acc || tree_contains_atom(n: edge_target_node(e: e), sym: sym)
   })

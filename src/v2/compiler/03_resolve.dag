@@ -24,10 +24,10 @@ type ResolveContext {
 }
 
 type EdgeResolveAcc
-  = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<v2.std.node.Edge>> }
+  = EdgeResolveAccMk { have_seen_first: Bool, acc: v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> }
 
 type BindEdgeAcc
-  = BindEdgeAccMk { idx: Int, acc: Outcome<List<v2.std.node.Edge>> }
+  = BindEdgeAccMk { idx: Int, acc: v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> }
 
 type DeclaredBinding {
   name: v2.std.node.Symbol
@@ -76,7 +76,7 @@ fn direct_atom_binding_fold(base: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -
   }
 }
 
-fn harvest_conj_named_bindings(root: Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn harvest_conj_named_bindings(root: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
@@ -89,7 +89,7 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<v2.std.node.Symbol, v2.std.n
   }
 }
 
-fn harvest_direct_atom_binding(root: Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn harvest_direct_atom_binding(root: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   fold_node(
     n: root,
     algebra: direct_atom_binding_fold(base: acc)
@@ -106,7 +106,7 @@ data resolve_variant_visibility_disposition: std.disposition.Disposition = Scaff
 }
 
 fn namespace_bindings_augment_from_module_atoms(
-  root: Node,
+  root: v2.std.node.Node,
   bindings: Map<v2.std.node.Symbol, v2.std.node.Symbol>
 ) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   harvest_direct_atom_binding(
@@ -115,11 +115,11 @@ fn namespace_bindings_augment_from_module_atoms(
   )
 }
 
-fn add_module_named_exports(root: Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn add_module_named_exports(root: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   harvest_conj_named_bindings(root: root, acc: acc)
 }
 
-fn add_arrow_domain_named_params(n: Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn add_arrow_domain_named_params(n: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match n.kind {
     TypeNode { connective: Arrow } =>
       if count(n.children) >= 1 {
@@ -138,7 +138,7 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<v2.std.node.Symbol, v2.std.no
   }
 }
 
-fn add_bind_atom_binder(n: Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn add_bind_atom_binder(n: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if count(n.children) == 3 {
@@ -225,40 +225,40 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
   }
 }
 
-fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> Outcome<v2.std.node.Symbol?> {
+fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
       match v2.std.collection.map_get(m, name) {
-        Accepted { value: opt, diagnostics: d_here } => match opt {
+        v2.std.diagnostic.Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             v2.std.diagnostic.Accepted { value: optional_present(value: v), diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
-              Accepted { value: found, diagnostics: d_outer } =>
+              v2.std.diagnostic.Accepted { value: found, diagnostics: d_outer } =>
                 v2.std.diagnostic.Accepted {
                   value: found,
                   diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
                 }
-              Rejected { diagnostics: ds } =>
-                Rejected {
+              v2.std.diagnostic.Rejected { diagnostics: ds } =>
+                v2.std.diagnostic.Rejected {
                   diagnostics: rejected_with_pending(pending: d_here, rejected: ds)
                 }
             }
         }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+        v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
       match v2.std.collection.map_get(mod.bindings, name) {
-        Accepted { value: opt, diagnostics: d } => match opt {
+        v2.std.diagnostic.Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => v2.std.diagnostic.Accepted { value: optional_present(value: v), diagnostics: d }
           Absent => v2.std.diagnostic.Accepted { value: optional_absent(), diagnostics: d }
         }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+        v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
       }
   }
 }
 
-fn malformed_tree_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn malformed_tree_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_malformed_tree,
     at: node_locus(node: n),
@@ -266,7 +266,7 @@ fn malformed_tree_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn unbound_symbol_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn unbound_symbol_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_unbound_symbol,
     at: node_locus(node: n),
@@ -274,7 +274,7 @@ fn unbound_symbol_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn ambiguous_symbol_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn ambiguous_symbol_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_ambiguous_symbol,
     at: node_locus(node: n),
@@ -286,7 +286,7 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: v2.std.node.Symbol
   namespace.canonical_symbols.member(name)
 }
 
-fn canonical_atom(identity: v2.std.node.Symbol, occurrence_id: v2.std.node.NodeOccurrenceId) -> Node {
+fn canonical_atom(identity: v2.std.node.Symbol, occurrence_id: v2.std.node.NodeOccurrenceId) -> v2.std.node.Node {
   node_with_occurrence_id(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -301,7 +301,7 @@ fn symbol_index_lookup_position(ctx: ResolveContext) -> v2.std.qualified_name.Qu
   }
 }
 
-fn symbol_index_node_identity(node: Node, fallback: v2.std.node.Symbol) -> v2.std.node.Symbol {
+fn symbol_index_node_identity(node: v2.std.node.Node, fallback: v2.std.node.Symbol) -> v2.std.node.Symbol {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
     _ => fallback
@@ -347,10 +347,10 @@ fn lookup_symbol_index_atom_identity(
 }
 
 // feature:indexed-variant-path-projectable acceptance condition at the producer seam, required for conformance with docs/plans/namespace-resolution-design.md section 13 unique-on-chain: resolve the reference's FIRST segment to the unique binder on its ancestor chain, then project every remaining segment downward through the containment tree. try_resolve_qualified_name_node must therefore accept an authored Type.Variant path by projecting it from the referencing position onto the type-to-variant containment path that symbol_index_fill_containment_node already indexes. The feature is UNFIRED while this function sends the authored path directly to symbol_index_lookup as though every dotted path were corpus-root absolute: UpdateVersionPersistence.Persistent therefore refuses even though the full module.UpdateVersionPersistence.Persistent path is indexed. It fires only when an executing positive control resolves the type-relative path to that exact indexed variant; zero binders produces a located unresolved refusal; two or more binders produces a located Ambiguous refusal carrying the full candidate list rather than picking; and shadowing refuses rather than silently rebinding. This belongs to the namespace-only-resolution lane's producer-side changeover, not to a consumer workaround or a new syntax preference.
-fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Outcome<Node>> {
+fn try_resolve_qualified_name_node(ctx: ResolveContext, n: v2.std.node.Node) -> Optional<v2.std.diagnostic.Outcome<v2.std.node.Node>> {
   match qualified_name_from_node(root: n) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: path, diagnostics: pending } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Accepted { value: path, diagnostics: pending } =>
       if length(xs: path) > 1 {
         match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
           Present { value: resolved_node } =>
@@ -382,12 +382,12 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
   }
 }
 
-fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> Outcome<Node> {
+fn resolve_atom(ctx: ResolveContext, n: v2.std.node.Node, identity: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if dag_node_is_int_literal_atom(node: n) {
     v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
-      Accepted { value: found, diagnostics: pending } => match found {
+      v2.std.diagnostic.Accepted { value: found, diagnostics: pending } => match found {
         Present { value: canonical } =>
           v2.std.diagnostic.Accepted {
             value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
@@ -401,7 +401,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> O
                 diagnostics: pending
               }
             SymbolIndexAtomAmbiguous =>
-              Rejected {
+              v2.std.diagnostic.Rejected {
                 diagnostics: rejected_with_pending(
                   pending: pending,
                   rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
@@ -417,7 +417,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> O
                   diagnostics: pending
                 }
               } else {
-                Rejected {
+                v2.std.diagnostic.Rejected {
                   diagnostics: rejected_with_pending(
                     pending: pending,
                     rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
@@ -426,18 +426,18 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> O
               }
           }
       }
-      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     }
   }
 }
 
 fn resolve_surface_operator_atom(
   ctx: ResolveContext,
-  n: Node,
+  n: v2.std.node.Node,
   identity: v2.std.node.Symbol
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match dag_surface_operator_canonicalization_lookup(lm: ctx.lm, surface_token: identity) {
-    Accepted { value: canonical_op, diagnostics: pending } => {
+    v2.std.diagnostic.Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
       v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(
@@ -448,15 +448,15 @@ fn resolve_surface_operator_atom(
         diagnostics: pending
       }
     }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       resolve_atom(ctx: ctx, n: n, identity: identity)
   }
 }
 
 fn resolve_transform_operator_child(
   ctx: ResolveContext,
-  n: Node
-) -> Outcome<Node> {
+  n: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_surface_operator_atom(ctx: ctx, n: n, identity: id)
@@ -466,13 +466,13 @@ fn resolve_transform_operator_child(
 
 fn resolve_transform_children(
   ctx: ResolveContext,
-  n: Node
-) -> Outcome<Node> {
+  n: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
+      v2.std.diagnostic.Accepted { value: done, diagnostics: ad } =>
         match e.label {
           Positional =>
 
@@ -481,11 +481,11 @@ fn resolve_transform_children(
                 ctx: ctx,
                 n: e.target
               ) {
-                Rejected { diagnostics: r } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } =>
                   v2.std.diagnostic.Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
                   }
-                Accepted { value: resolved_target, diagnostics: ed } =>
+                v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: ed } =>
                   v2.std.diagnostic.Accepted {
                     value: list_snoc_item(xs: done, item: v2.std.node.Edge {
                       label: e.label,
@@ -496,11 +496,11 @@ fn resolve_transform_children(
               }
             } else {
               match resolve_node(ctx: ctx, n: e.target) {
-                Rejected { diagnostics: r } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } =>
                   v2.std.diagnostic.Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
                   }
-                Accepted { value: resolved_target, diagnostics: ed } =>
+                v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: ed } =>
                   v2.std.diagnostic.Accepted {
                     value: list_snoc_item(xs: done, item: v2.std.node.Edge {
                       label: e.label,
@@ -512,11 +512,11 @@ fn resolve_transform_children(
             }
           _ =>
             match resolve_node(ctx: ctx, n: e.target) {
-              Rejected { diagnostics: r } =>
+              v2.std.diagnostic.Rejected { diagnostics: r } =>
                 v2.std.diagnostic.Rejected {
                   diagnostics: rejected_with_pending(pending: ad, rejected: r)
                 }
-              Accepted { value: resolved_target, diagnostics: ed } =>
+              v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: ed } =>
                 v2.std.diagnostic.Accepted {
                   value: list_snoc_item(xs: done, item: v2.std.node.Edge {
                     label: e.label,
@@ -528,8 +528,8 @@ fn resolve_transform_children(
         }
     }
   }) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: resolved_children, diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: resolved_children, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
         diagnostics: d
@@ -539,8 +539,8 @@ fn resolve_transform_children(
 
 fn resolve_node(
   ctx: ResolveContext,
-  n: Node
-) -> Outcome<Node> {
+  n: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_atom(ctx: ctx, n: n, identity: id)
@@ -554,8 +554,8 @@ fn resolve_node(
           outer: ctx.scope
         }
       ) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: resolved_children, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: resolved_children, diagnostics: d } =>
           v2.std.diagnostic.Accepted {
             value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
             diagnostics: d
@@ -577,7 +577,7 @@ fn resolve_node(
   }
 }
 
-fn resolve_preserve_module_root_named_edge(name: v2.std.node.Symbol, target: Node) -> Bool {
+fn resolve_preserve_module_root_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> Bool {
   if dag_surface_module_header_metadata_edge(name: name) {
     true
   } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
@@ -592,7 +592,7 @@ fn resolve_preserve_module_root_named_edge(name: v2.std.node.Symbol, target: Nod
 fn resolve_child_edge(
   ctx: ResolveContext,
   e: v2.std.node.Edge
-) -> Outcome<v2.std.node.Edge> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Edge> {
   match e.label {
     Named { name: sym } =>
       if ctx.under_module_root
@@ -606,8 +606,8 @@ fn resolve_child_edge(
           ctx
         }
         match resolve_node(ctx: child_ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: d } =>
             v2.std.diagnostic.Accepted {
               value: v2.std.node.Edge { label: e.label, target: resolved_target },
               diagnostics: d
@@ -620,8 +620,8 @@ fn resolve_child_edge(
         v2.std.diagnostic.Accepted { value: e, diagnostics: v2.std.diagnostic.None }
       } else {
         match resolve_node(ctx: ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: d } =>
             v2.std.diagnostic.Accepted {
               value: v2.std.node.Edge { label: e.label, target: resolved_target },
               diagnostics: d
@@ -633,7 +633,7 @@ fn resolve_child_edge(
 
 data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
 
-fn domain_root_has_named_bindings(root: Node) -> Bool {
+fn domain_root_has_named_bindings(root: v2.std.node.Node) -> Bool {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: false, f: fn(acc, e) {
@@ -651,7 +651,7 @@ fn domain_root_has_named_bindings(root: Node) -> Bool {
   }
 }
 
-fn arrow_domain_has_named_bindings(n: Node) -> Bool {
+fn arrow_domain_has_named_bindings(n: v2.std.node.Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } =>
       if count(n.children) >= 1 {
@@ -668,8 +668,8 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
 
 fn resolve_children_homogeneous_scope(
   ctx: ResolveContext,
-  n: Node
-) -> Outcome<Node> {
+  n: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true =>
@@ -685,15 +685,15 @@ fn resolve_children_homogeneous_scope(
   )
   match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
+      v2.std.diagnostic.Accepted { value: done, diagnostics: ad } =>
         match resolve_child_edge(ctx: child_ctx, e: e) {
-          Rejected { diagnostics: r } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } =>
             v2.std.diagnostic.Rejected {
               diagnostics: rejected_with_pending(pending: ad, rejected: r)
             }
-          Accepted { value: resolved_edge, diagnostics: ed } =>
+          v2.std.diagnostic.Accepted { value: resolved_edge, diagnostics: ed } =>
             v2.std.diagnostic.Accepted {
               value: list_snoc_item(xs: done, item: resolved_edge),
               diagnostics: diagnostics_merge(outer: ad, inner: ed)
@@ -701,8 +701,8 @@ fn resolve_children_homogeneous_scope(
         }
     }
   }) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: resolved_children, diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: resolved_children, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
         diagnostics: d
@@ -715,7 +715,7 @@ fn resolve_edges_first_outer_then_inner(
   edges: List<v2.std.node.Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> Outcome<List<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   match fold(
     edges,
     init: EdgeResolveAccMk {
@@ -726,25 +726,25 @@ fn resolve_edges_first_outer_then_inner(
       match state {
         EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
           match acc_state {
-            Rejected { diagnostics: r } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } =>
               EdgeResolveAccMk {
                 have_seen_first: true,
                 acc: v2.std.diagnostic.Rejected { diagnostics: r }
               }
-            Accepted { value: done, diagnostics: ad } =>
+            v2.std.diagnostic.Accepted { value: done, diagnostics: ad } =>
               if seen {
                 match resolve_node(
                   ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
                   n: e.target
                 ) {
-                  Rejected { diagnostics: r } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: v2.std.diagnostic.Rejected {
                         diagnostics: rejected_with_pending(pending: ad, rejected: r)
                       }
                     }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
+                  v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: v2.std.diagnostic.Accepted {
@@ -761,14 +761,14 @@ fn resolve_edges_first_outer_then_inner(
                   ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
                   n: e.target
                 ) {
-                  Rejected { diagnostics: r } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: v2.std.diagnostic.Rejected {
                         diagnostics: rejected_with_pending(pending: ad, rejected: r)
                       }
                     }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
+                  v2.std.diagnostic.Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: v2.std.diagnostic.Accepted {
@@ -789,12 +789,12 @@ fn resolve_edges_first_outer_then_inner(
   }
 }
 
-fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
+fn resolve_bind_binder_target(t: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
       v2.std.diagnostic.Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: v2.std.diagnostic.None }
     _ =>
-      Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
 }
 
@@ -803,7 +803,7 @@ fn resolve_bind_edges(
   edges: List<v2.std.node.Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> Outcome<List<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   match fold(
     edges,
     init: BindEdgeAccMk {
@@ -814,22 +814,22 @@ fn resolve_bind_edges(
       match state {
         BindEdgeAccMk { idx: i, acc: acc_state } =>
           match acc_state {
-            Rejected { diagnostics: r } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } =>
               BindEdgeAccMk {
                 idx: i + 1,
                 acc: v2.std.diagnostic.Rejected { diagnostics: r }
               }
-            Accepted { value: done, diagnostics: ad } =>
+            v2.std.diagnostic.Accepted { value: done, diagnostics: ad } =>
               if i == 0 {
                 match resolve_bind_binder_target(t: e.target) {
-                  Rejected { diagnostics: r } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } =>
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: v2.std.diagnostic.Rejected {
                         diagnostics: rejected_with_pending(pending: ad, rejected: r)
                       }
                     }
-                  Accepted { value: rt, diagnostics: ed } =>
+                  v2.std.diagnostic.Accepted { value: rt, diagnostics: ed } =>
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: v2.std.diagnostic.Accepted {
@@ -847,14 +847,14 @@ fn resolve_bind_edges(
                     ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
                     n: e.target
                   ) {
-                    Rejected { diagnostics: r } =>
+                    v2.std.diagnostic.Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: v2.std.diagnostic.Rejected {
                           diagnostics: rejected_with_pending(pending: ad, rejected: r)
                         }
                       }
-                    Accepted { value: rt, diagnostics: ed } =>
+                    v2.std.diagnostic.Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: v2.std.diagnostic.Accepted {
@@ -871,14 +871,14 @@ fn resolve_bind_edges(
                     ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
                     n: e.target
                   ) {
-                    Rejected { diagnostics: r } =>
+                    v2.std.diagnostic.Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: v2.std.diagnostic.Rejected {
                           diagnostics: rejected_with_pending(pending: ad, rejected: r)
                         }
                       }
-                    Accepted { value: rt, diagnostics: ed } =>
+                    v2.std.diagnostic.Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: v2.std.diagnostic.Accepted {
@@ -902,8 +902,8 @@ fn resolve_bind_edges(
 
 fn resolve_bind_node(
   ctx: ResolveContext,
-  n: Node
-) -> Outcome<Node> {
+  n: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if count(n.children) == 3 {
     match resolve_bind_edges(
       ctx: ctx,
@@ -914,19 +914,19 @@ fn resolve_bind_node(
         outer: ctx.scope
       }
     ) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: resolved_children, diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: resolved_children, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
           diagnostics: d
         }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }
   }
 }
 
-fn resolve(tree: v2.compiler.normalized_tree.NormalizedTree, lm: v2.std.language_model.LanguageModel) -> Outcome<ResolvedTree> {
+fn resolve(tree: v2.compiler.normalized_tree.NormalizedTree, lm: v2.std.language_model.LanguageModel) -> v2.std.diagnostic.Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
     namespace: build_program_namespace(tree: tree, lm: lm),
@@ -938,7 +938,7 @@ fn resolve_with_namespace(
   tree: v2.compiler.normalized_tree.NormalizedTree,
   namespace: Namespace,
   lm: v2.std.language_model.LanguageModel
-) -> Outcome<ResolvedTree> {
+) -> v2.std.diagnostic.Outcome<ResolvedTree> {
   resolve_with_namespace_policy(
     tree: tree,
     namespace: namespace,
@@ -952,13 +952,13 @@ fn resolve_with_namespace_policy(
   namespace: Namespace,
   lm: v2.std.language_model.LanguageModel,
   policy: v2.std.resolution_policy.NameResolutionPolicy
-) -> Outcome<ResolvedTree> {
+) -> v2.std.diagnostic.Outcome<ResolvedTree> {
   if well_formed(n: tree.root) {
     resolve_node(
       ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
       n: tree.root
     )
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)) }
   }
 }

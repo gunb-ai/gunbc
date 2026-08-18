@@ -29,7 +29,7 @@ fn parser_frontier_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-fn parser_frontier_assemble_for(src: String) -> Outcome<Node> {
+fn parser_frontier_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> {
   assemble_program_from_ingest(
     ingest: parser_frontier_ingest_for(src: src),
     admission: parser_frontier_admission(),
@@ -39,8 +39,8 @@ fn parser_frontier_assemble_for(src: String) -> Outcome<Node> {
 
 fn parser_frontier_assemble_accepts(src: String) -> Bool {
   match parser_frontier_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -49,8 +49,8 @@ fn parser_frontier_infer_accepts(src: String) -> Bool {
     o: parser_frontier_assemble_for(src: src),
     f: fn(resolved) { infer(tree: resolved) }
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

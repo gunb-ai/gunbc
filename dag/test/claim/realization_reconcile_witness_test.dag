@@ -28,11 +28,11 @@ fn step_post_always() -> std.realization.RealizedStep {
   }
 }
 
-fn has_exactly_one_share<S>(steps: List<RealizedStep<S>>) -> Bool {
+fn has_exactly_one_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 1
 }
 
-fn has_no_share<S>(steps: List<RealizedStep<S>>) -> Bool {
+fn has_no_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 0
 }
 

@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn ct_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
@@ -112,7 +112,7 @@ fn ct_both_trees() -> v2.std.cross_tree.import_model.SourceRootSet {
   std.algebra.Cons { head: V2Tree, tail: std.algebra.Cons { head: DagTree, tail: std.algebra.Empty } }
 }
 
-fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn ct_dag_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
@@ -150,7 +150,7 @@ fn ct_dag_same_tree_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn ct_v2_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
@@ -192,7 +192,7 @@ fn ct_v2_same_tree_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-fn ct_cross_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn ct_cross_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
@@ -246,7 +246,7 @@ fn ct_v2_to_dag_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
   )
 }
 
-fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn ct_dag_to_v2_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
@@ -302,8 +302,8 @@ fn ct_dag_to_v2_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
 
 test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   match ct_dag_same_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -312,16 +312,16 @@ test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   match ct_v2_same_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -330,16 +330,16 @@ test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   match ct_cross_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -348,16 +348,16 @@ test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
       active_roots: ct_both_trees(),
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
   match ct_dag_to_v2_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -366,8 +366,8 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
       active_roots: ct_both_trees(),
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: r } =>
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: r } =>
         (r.head.reason == ^resolve_cross_tree_import_denied)
           && locus_eq(
             a: r.head.at,

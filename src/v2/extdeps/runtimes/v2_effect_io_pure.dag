@@ -156,10 +156,10 @@ fn effect_io_pure_backends_match(
 fn effect_io_pure_store_lookup(
   store: EffectIoFixtureStore,
   locator: EffectIoResourceLocator
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match map_get(m: store.entries, key: locator.identity) {
-      Accepted { value: opt, diagnostics: None } =>
+      v2.std.diagnostic.Accepted { value: opt, diagnostics: None } =>
         match opt {
           Present { value: payload } =>
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
@@ -188,7 +188,7 @@ fn effect_io_pure_store_lookup(
 fn effect_io_pure_handle_read(
   store: EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
     Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -198,7 +198,7 @@ fn effect_io_pure_handle_read(
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
@@ -223,7 +223,7 @@ fn effect_io_pure_handle_write(
 fn effect_io_pure_invoke_handler(
   handler: v2.std.runtime.EffectHandler,
   request: v2.std.runtime.EffectRequest
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match handler {
     EffectHandler { handle: h } => h(request)
   }
@@ -284,7 +284,7 @@ fn effect_io_pure_write_request(args: List<v2.std.runtime.RuntimeValue>) -> v2.s
 fn effect_io_pure_append_receipt(
   log: v2.std.runtime.EffectReceiptLog,
   request: v2.std.runtime.EffectRequest,
-  result: Outcome<v2.std.runtime.RuntimeValue>
+  result: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 ) -> v2.std.runtime.EffectReceiptLog {
   v2.std.runtime.EffectReceiptLog {
     entries: std.algebra.Cons {
@@ -357,7 +357,7 @@ fn effect_io_pure_roundtrip_through_store(
   let write_request = effect_io_pure_write_request(args: write_args)
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
-    Accepted { value: written, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: written, diagnostics: None } =>
       if written == payload {
         let store1 = effect_io_pure_apply_write(
           store: store0,
@@ -369,7 +369,7 @@ fn effect_io_pure_roundtrip_through_store(
         let read_request = effect_io_pure_read_request(args: read_args)
         let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
         match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
-          Accepted { value: read_back, diagnostics: None } => read_back == written
+          v2.std.diagnostic.Accepted { value: read_back, diagnostics: None } => read_back == written
           _ => false
         }
       } else {

@@ -9,14 +9,14 @@ data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-p
 
 data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
-fn verb_of_effect_shape(shape: EffectShape<std.effects.KeySource>) -> Verb {
+fn verb_of_effect_shape(shape: std.effects.EffectShape<std.effects.KeySource>) -> Verb {
   match shape {
-    ReadEffect => Read
-    UpsertEffect { key_source: key_source } => Write
-    DeleteEffect { key_source: key_source } => Write
-    CreateEffect { cause: cause } => Write
-    AppendEffect => Write
-    ExecuteEffect => Execute
+    std.effects.ReadEffect => Read
+    std.effects.UpsertEffect { key_source: key_source } => Write
+    std.effects.DeleteEffect { key_source: key_source } => Write
+    std.effects.CreateEffect { cause: cause } => Write
+    std.effects.AppendEffect => Write
+    std.effects.ExecuteEffect => Execute
   }
 }
 
@@ -172,7 +172,7 @@ fn effect_target_label(target: NamespacePosition) -> String {
 }
 
 fn effect_grant_decide(
-  request: AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
+  request: std.access.AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
 ) -> std.access.AccessDecision {
   match covering_grant(
     env: request.evidence.value,

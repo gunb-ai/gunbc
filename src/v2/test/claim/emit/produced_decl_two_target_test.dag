@@ -9,29 +9,29 @@ data two_target_rust_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data two_target_c_golden: String = "int add(int x, int y) { return x + y; }"
 
-fn tt_emit(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol) -> Outcome<String> {
+fn tt_emit(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<String> {
   match table_fixture_add_decl_node(fn_name: fn_name) {
-    Accepted { value: decl, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: target) {
-        Accepted { value: medium, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn tt_emits(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol, golden: String) -> Bool {
   match tt_emit(target: target, fn_name: fn_name) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn tt_refuses(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol) -> Bool {
   match tt_emit(target: target, fn_name: fn_name) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -65,19 +65,19 @@ test fn produced_decl_unwired_target_still_refuses() -> Bool {
 // the implementation that produces it.
 data two_target_rust_module_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 
-fn tt_module_text(target: v2.std.compilers.target_model.TargetModel, first: v2.std.node.Symbol, second: v2.std.node.Symbol) -> Outcome<String> {
+fn tt_module_text(target: v2.std.compilers.target_model.TargetModel, first: v2.std.node.Symbol, second: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<String> {
   match table_fixture_add_decl_node(fn_name: first) {
-    Accepted { value: d1, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: d1, diagnostics: _ } =>
       match table_fixture_add_decl_node(fn_name: second) {
-        Accepted { value: d2, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: d2, diagnostics: _ } =>
           match emit_produced_module(decls: [d1, d2], target: target) {
-            Accepted { value: medium, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } =>
               v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -88,8 +88,8 @@ fn tt_module_matches(
   golden: String
 ) -> Bool {
   match tt_module_text(target: target, first: first, second: second) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

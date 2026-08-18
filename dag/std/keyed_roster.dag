@@ -4,7 +4,7 @@ module std.keyed_roster
 data keyed_roster_note: String = "Keyed roster set/map CONSTRUCTION semantics (generated-file conflict policy lane 4, operator ruling 2026-08-01). Path-keyed grant and roster carriers are row 3 in the four-case policy: never line-merge, never take-ours — one value per key by construction, and duplicate-key input REFUSES rather than silently unioning. std.change.keyed_merge_row_lists is deliberately different: it keeps the left row on collision (reconcile/diff grain, first-wins). This module is the writable-authority grain: keyed_roster_insert and keyed_roster_build refuse a repeated key before a second value can exist, so a git clean-merge that appended two branches' list literals into duplicate paths is caught at per-PR admission instead of stalling main. keyed_roster_insert also refuses when the input roster already carries duplicate keys (KeyedRosterInvalidRoster), so insert cannot widen an invalid roster. keyed_roster_build folds via keyed_roster_insert_into_unique on a proven-duplicate-free accumulator (O(n²) via keyed_row_find per fold step; keyed_roster_locate_duplicate, used by keyed_roster_insert's invalid-roster pre-check, is also O(n²) worst-case — each of the n fold steps does one O(n) occurrence count plus at most two O(n) locates). Consumers inspect the canonical typed verdict (KeyedRosterBuild / KeyedRosterInsert) directly — no parallel *_holds or *_duplicate_free Bool predicates that collapse the coproduct. Dup detection for list literals: keyed_roster_locate_duplicate returns KeyedRosterDuplicateEvidence?; path_occurrence_count is a low-level count helper for totality carriers only (not a verdict surface). Live carriers wired end-to-end: gunbc.non_fold_residue frontier roster and tools.dag_compile_clean_shard_roster (path-keyed module-decl facts) both construct through keyed_roster_build; consumers accept only KeyedRosterBuilt. Rung today: mechanically preventive — typed located refusals + enrolled witnesses on commit_gate_roster. Ceiling: structural impossibility — branded KeyedRoster carrier whose success arm is reachable only through keyed_roster_build/insert. dissolve-on: feature:keyed-roster-construction-wall (corpus-wide std carrier; tracked on generated-file conflict policy charter lane 4, parent session crisp-bat-830). Until that wall lands, KeyedRosterInserted/KeyedRosterBuilt remain writable raw-list literals (wall-after-grounding: decidable class, single authority named, dissolution trigger fixed). Publication-grant carrier deferred: public_file_publish_grants deleted from main (#7591); incident row-sets held as keyed_roster_witness fixtures until re-land."
 
 fn keyed_occurrence_count<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
 ) -> Int {
@@ -16,8 +16,8 @@ fn keyed_occurrence_count<K, V>(
 type KeyedRosterDuplicateEvidence<K, V> {
   key: K
   value: V
-  first: KeyedRow<K, V>
-  duplicate: KeyedRow<K, V>
+  first: std.keyed_row.KeyedRow<K, V>
+  duplicate: std.keyed_row.KeyedRow<K, V>
 }
 
 fn path_occurrence_count(paths: List<String>, target: String) -> Int {
@@ -27,13 +27,13 @@ fn path_occurrence_count(paths: List<String>, target: String) -> Int {
 type KeyedRosterSecondRowScan<K, V>
   = KeyedRosterSecondRowScanAbsent
   | KeyedRosterSecondRowScanAwaitingSecond
-  | KeyedRosterSecondRowScanFound { row: KeyedRow<K, V> }
+  | KeyedRosterSecondRowScanFound { row: std.keyed_row.KeyedRow<K, V> }
 
 fn keyed_roster_locate_second_row<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
-) -> KeyedRow<K, V>? {
+) -> std.keyed_row.KeyedRow<K, V>? {
   match fold(rows, init: KeyedRosterSecondRowScanAbsent, f: fn(acc, row) {
     match acc {
       KeyedRosterSecondRowScanFound { row: _ } => acc
@@ -58,10 +58,10 @@ fn keyed_roster_locate_second_row<K, V>(
 }
 
 fn keyed_roster_locate_first_row<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
-) -> KeyedRow<K, V>? {
+) -> std.keyed_row.KeyedRow<K, V>? {
   fold(rows, init: none, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
@@ -76,7 +76,7 @@ fn keyed_roster_locate_first_row<K, V>(
 }
 
 fn keyed_roster_locate_duplicate<K, V>(
-  rows: List<KeyedRow<K, V>>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterDuplicateEvidence<K, V>? {
   fold(rows, init: none, f: fn(acc, row) {
@@ -116,21 +116,21 @@ fn keyed_roster_locate_duplicate<K, V>(
 }
 
 type KeyedRosterInsert<K, V>
-  = KeyedRosterInserted { rows: List<KeyedRow<K, V>> }
+  = KeyedRosterInserted { rows: List<std.keyed_row.KeyedRow<K, V>> }
   | KeyedRosterDuplicateKey {
       key: K
-      existing: KeyedRow<K, V>
-      incoming: KeyedRow<K, V>
+      existing: std.keyed_row.KeyedRow<K, V>
+      incoming: std.keyed_row.KeyedRow<K, V>
     }
   | KeyedRosterInvalidRoster {
       key: K
-      first: KeyedRow<K, V>
-      duplicate: KeyedRow<K, V>
+      first: std.keyed_row.KeyedRow<K, V>
+      duplicate: std.keyed_row.KeyedRow<K, V>
     }
 
 fn keyed_roster_insert<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  incoming: KeyedRow<K, V>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
+  incoming: std.keyed_row.KeyedRow<K, V>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterInsert<K, V> {
   match keyed_roster_locate_duplicate(rows: rows, key_eq: key_eq) {
@@ -155,8 +155,8 @@ fn keyed_roster_insert<K, V>(
 }
 
 fn keyed_roster_insert_into_unique<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  incoming: KeyedRow<K, V>,
+  rows: List<std.keyed_row.KeyedRow<K, V>>,
+  incoming: std.keyed_row.KeyedRow<K, V>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterInsert<K, V> {
   match keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
@@ -172,15 +172,15 @@ fn keyed_roster_insert_into_unique<K, V>(
 }
 
 type KeyedRosterBuild<K, V>
-  = KeyedRosterBuilt { rows: List<KeyedRow<K, V>> }
+  = KeyedRosterBuilt { rows: List<std.keyed_row.KeyedRow<K, V>> }
   | KeyedRosterBuildDuplicateKey {
       key: K
-      first: KeyedRow<K, V>
-      duplicate: KeyedRow<K, V>
+      first: std.keyed_row.KeyedRow<K, V>
+      duplicate: std.keyed_row.KeyedRow<K, V>
     }
 
 fn keyed_roster_build<K, V>(
-  incomings: List<KeyedRow<K, V>>,
+  incomings: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterBuild<K, V> {
   fold(incomings, init: KeyedRosterBuilt { rows: [] }, f: fn(acc, row) {
@@ -200,8 +200,8 @@ fn keyed_roster_build<K, V>(
 }
 
 fn keyed_roster_union<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
+  left: List<std.keyed_row.KeyedRow<K, V>>,
+  right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterBuild<K, V> {
   keyed_roster_build(incomings: concat(left, right), key_eq: key_eq)

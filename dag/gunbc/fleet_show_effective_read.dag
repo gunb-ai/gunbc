@@ -53,9 +53,9 @@ type FleetHostEffectiveReadReceipt {
 type FleetHostEffectiveReadGroundedReceipt {
   host: product.placement_supply.HostIdentity
   effective: FleetHostEffectiveReadReceipt
-  runner_slice_cap_read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>
-  runner_units_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead>
-  runner_width_read: ShowEffectiveRead<RunnerWidthLiveRead>
+  runner_slice_cap_read: std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>
+  runner_units_read: std.realization_reconcile.ShowEffectiveRead<FleetRunnerUnitsLiveRead>
+  runner_width_read: std.realization_reconcile.ShowEffectiveRead<RunnerWidthLiveRead>
   probed_at: std.types.NonEmptyStr
 }
 
@@ -157,7 +157,7 @@ fn runner_unit_memory_live_read_from_stdout(
 fn show_effective_read_from_unit_row(
   host: product.placement_supply.HostIdentity,
   row: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow,
-) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+) -> std.realization_reconcile.ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   show_effective_read_from_runner_units(host: host, rows: [row])
 }
 
@@ -283,7 +283,7 @@ fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> gunbc.ci_f
   memory_limit_to_cap_effectiveness(lim: read.memory_max)
 }
 
-fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
+fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
   let read = runner_slice_cap_live_read_typed(row: row)
   match read.memory_max {
     MemoryLimitAbsent =>
@@ -297,7 +297,7 @@ fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> Sho
   }
 }
 
-fn show_effective_read_from_runner_units(host: product.placement_supply.HostIdentity, rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+fn show_effective_read_from_runner_units(host: product.placement_supply.HostIdentity, rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>) -> std.realization_reconcile.ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   if rows.length() == 0 {
     std.realization_reconcile.ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
   } else {
@@ -310,7 +310,7 @@ fn show_effective_read_from_runner_units(host: product.placement_supply.HostIden
   }
 }
 
-fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> ShowEffectiveRead<RunnerWidthLiveRead> {
+fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> std.realization_reconcile.ShowEffectiveRead<RunnerWidthLiveRead> {
   match runner_width_live_read_typed(row: row) {
     Present { value: width } => std.realization_reconcile.ReadObserved { value: width }
     Absent => std.realization_reconcile.ReadAbsent { reason: "runner width list-units count parse failed (empty or non-numeric); fail-closed" }
@@ -370,11 +370,11 @@ fn runner_width_converge_verdict(observed: Int, desired: Int) -> gunbc.host_conv
   if observed == desired { VerdictConverged } else { Drifted }
 }
 
-fn show_effective_read_cannot_converge(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
+fn show_effective_read_cannot_converge(read: std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
   match read {
-    ReadAbsent { reason: _ } => true
-    ReadObserved { value: CapUnbounded } => true
-    ReadObserved { value: CapEffective { bytes: _ } } => false
+    std.realization_reconcile.ReadAbsent { reason: _ } => true
+    std.realization_reconcile.ReadObserved { value: CapUnbounded } => true
+    std.realization_reconcile.ReadObserved { value: CapEffective { bytes: _ } } => false
   }
 }
 
@@ -471,15 +471,15 @@ fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: std.ty
 
 fn grounded_receipt_has_observed_v0_knobs(r: FleetHostEffectiveReadGroundedReceipt) -> Bool {
   match r.runner_slice_cap_read {
-    ReadObserved { value: _ } => true
-    ReadAbsent { reason: _ } => false
+    std.realization_reconcile.ReadObserved { value: _ } => true
+    std.realization_reconcile.ReadAbsent { reason: _ } => false
   }
     && match r.runner_units_read {
-      ReadObserved { value: units } => units.units.length() > 0
-      ReadAbsent { reason: _ } => false
+      std.realization_reconcile.ReadObserved { value: units } => units.units.length() > 0
+      std.realization_reconcile.ReadAbsent { reason: _ } => false
     }
     && match r.runner_width_read {
-      ReadObserved { value: _ } => true
-      ReadAbsent { reason: _ } => false
+      std.realization_reconcile.ReadObserved { value: _ } => true
+      std.realization_reconcile.ReadAbsent { reason: _ } => false
     }
 }

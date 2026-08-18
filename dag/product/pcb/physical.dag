@@ -102,7 +102,7 @@ fn physical_refusal_count(s: PhysicalRefusalSet) -> std.nat.Nat {
 // The rectangle a placement occupies. It is a construction rather than a record because a footprint
 // with a zero extent has no rectangle at all, and the geometry layer already refuses that — this
 // module does not get to decide the degenerate case differently from every other consumer.
-fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
+fn placement_extent(p: ComponentPlacement) -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: p.origin,
     max: point2(
@@ -157,11 +157,11 @@ fn placement_refusals(
       []
     } else {
       match placement_extent(p: p) {
-        OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
-        OrthogonalReady { value: rect } =>
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
+        std.orthogonal_geometry.OrthogonalReady { value: rect } =>
           match rectangle2_contains_rectangle(outer: article.outline, inner: rect) {
-            OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
-            OrthogonalReady { value: inside } =>
+            std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
+            std.orthogonal_geometry.OrthogonalReady { value: inside } =>
               if inside { [] } else { [PlacementNotWithinOutline { placement: p.identity }] }
           }
       }
@@ -199,14 +199,14 @@ fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
     let inner = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(bacc, b) {
       let hits = if bacc.index > acc.index {
         match placement_extent(p: a) {
-          OrthogonalRefused { cause: _ } => []
-          OrthogonalReady { value: ra } =>
+          std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+          std.orthogonal_geometry.OrthogonalReady { value: ra } =>
             match placement_extent(p: b) {
-              OrthogonalRefused { cause: _ } => []
-              OrthogonalReady { value: rb } =>
+              std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+              std.orthogonal_geometry.OrthogonalReady { value: rb } =>
                 match rectangle2_overlaps(a: ra, b: rb) {
-                  OrthogonalRefused { cause: _ } => []
-                  OrthogonalReady { value: hit } =>
+                  std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+                  std.orthogonal_geometry.OrthogonalReady { value: hit } =>
                     if hit { [PlacementsOverlap { first: a.identity, second: b.identity }] } else { [] }
                 }
             }

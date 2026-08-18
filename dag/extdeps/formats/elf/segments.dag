@@ -19,7 +19,7 @@ type Elf64Phdr {
   align: Int
 }
 
-fn decode_elf_segment_type(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfSegmentType> {
+fn decode_elf_segment_type(raw: Int) -> extdeps.formats.elf.types.ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfSegmentType> {
   if raw == pt_load { extdeps.formats.elf.types.ElfDecoded { value: PtLoad } }
   else if raw == pt_null { extdeps.formats.elf.types.ElfDecoded { value: PtNull } }
   else { extdeps.formats.elf.types.ElfRejected { reason: extdeps.formats.elf.types.UnsupportedElfSegmentType { raw: raw } } }
@@ -33,7 +33,7 @@ fn decode_segment_permissions(flags: Int) -> std.exec_format.SegmentPermission {
   }
 }
 
-fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> ElfDecodeOutcome<Elf64Phdr> {
+fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> extdeps.formats.elf.types.ElfDecodeOutcome<Elf64Phdr> {
   if count(bytes) < offset + elf64_phdr_size {
     extdeps.formats.elf.types.ElfRejected {
       reason: extdeps.formats.elf.types.Truncated {
@@ -43,7 +43,7 @@ fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> ElfDecodeOutcome<Elf64Phd
     }
   } else {
     match decode_elf_segment_type(read_u32_le_in_bounds(bytes, offset)) {
-      ElfDecoded { value: segment_type } => extdeps.formats.elf.types.ElfDecoded {
+      extdeps.formats.elf.types.ElfDecoded { value: segment_type } => extdeps.formats.elf.types.ElfDecoded {
         value: Elf64Phdr {
           segment_type: segment_type,
           flags: read_u32_le_in_bounds(bytes, offset + 4),
@@ -55,7 +55,7 @@ fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> ElfDecodeOutcome<Elf64Phd
           align: read_u64_le_in_bounds(bytes, offset + 48),
         },
       }
-      ElfRejected { reason: r } => extdeps.formats.elf.types.ElfRejected { reason: r }
+      extdeps.formats.elf.types.ElfRejected { reason: r } => extdeps.formats.elf.types.ElfRejected { reason: r }
     }
   }
 }

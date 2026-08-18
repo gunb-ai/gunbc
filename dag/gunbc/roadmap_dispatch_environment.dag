@@ -7,7 +7,7 @@ type CapabilityEnsureReceipt {
   capability: gunbc.roadmap_execution_contract.ExecutionCapability
   capability_label: String
   executable: String
-  decision: UpsertDecision<String>
+  decision: std.upsert_decision.UpsertDecision<String>
   grounded: Bool
   evidence: String
   reason: String
@@ -32,9 +32,9 @@ fn no_capability_plan(reason: String) -> EnsurePlan<String> {
 
 fn capability_ensure_decision(
   realization: gunbc.roadmap_execution_contract.CapabilityRealization,
-  observation: EnsureObservation<String>,
+  observation: gunbc.ensure.EnsureObservation<String>,
   identity_matches: Bool,
-) -> UpsertDecision<String> {
+) -> std.upsert_decision.UpsertDecision<String> {
   ensure_decide(
     policy: realization.ensure_policy,
     observation: observation,
@@ -54,17 +54,17 @@ fn capability_ensure_decision(
   )
 }
 
-fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String {
+fn ensure_observation_evidence(observation: gunbc.ensure.EnsureObservation<String>) -> String {
   match observation {
-    EnsureObserved { evidence } => evidence
-    EnsureAbsent { reason } => reason
-    EnsureInaccessible { reason } => reason
+    gunbc.ensure.EnsureObserved { evidence } => evidence
+    gunbc.ensure.EnsureAbsent { reason } => reason
+    gunbc.ensure.EnsureInaccessible { reason } => reason
   }
 }
 
 fn capability_ensure_receipt(
   realization: gunbc.roadmap_execution_contract.CapabilityRealization,
-  observation: EnsureObservation<String>,
+  observation: gunbc.ensure.EnsureObservation<String>,
   identity_matches: Bool,
 ) -> CapabilityEnsureReceipt {
   let decision = capability_ensure_decision(
@@ -82,7 +82,7 @@ fn capability_ensure_receipt(
     ], ""),
   )
   match decision {
-    Noop =>
+    std.upsert_decision.Noop =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
@@ -96,7 +96,7 @@ fn capability_ensure_receipt(
           "independent Ensure readback did not ground the capability"
         },
       }
-    Apply { plan: _ } =>
+    std.upsert_decision.Apply { plan: _ } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
@@ -106,7 +106,7 @@ fn capability_ensure_receipt(
         evidence: ensure_observation_evidence(observation: observation),
         reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
       }
-    Refuse { reason } =>
+    std.upsert_decision.Refuse { reason } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),

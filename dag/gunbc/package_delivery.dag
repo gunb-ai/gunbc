@@ -232,7 +232,7 @@ fn acquire_and_admit_registry_artifact(
 
 fn admit_codex_package_lock_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>(
   raw_graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
-) -> PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
+) -> extdeps.package.PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
   package_lock_admit_graph(graph: raw_graph)
 }
 
@@ -280,7 +280,7 @@ fn admit_codex_package_lock_text(text: String) -> CodexPackageLockAdmission {
         CodexPackageLockUnsupportedNodes { unsupported: unsupported }
       } else {
         match admit_codex_package_lock_graph(raw_graph: graph) {
-          PackageLockGraphAdmitted { graph: admitted } =>
+          extdeps.package.PackageLockGraphAdmitted { graph: admitted } =>
             CodexPackageLockAdmitted {
               graph: admitted,
               nodes: nodes,

@@ -65,7 +65,7 @@ data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transpar
 fn symbol_index_fill_containment_node(
   index: v2.std.symbol_index.SymbolIndex,
   path: v2.std.qualified_name.QualifiedName,
-  node: Node
+  node: v2.std.node.Node
 ) -> v2.std.symbol_index.SymbolIndex {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -126,7 +126,7 @@ fn disj_variant_count_of(counts: Map<v2.std.node.Symbol, Int>, sym: v2.std.node.
   }
 }
 
-fn disj_variant_counts_in_module(root: Node) -> Map<v2.std.node.Symbol, Int> {
+fn disj_variant_counts_in_module(root: v2.std.node.Node) -> Map<v2.std.node.Symbol, Int> {
   fold(
     node_subtree_nodes(root: root),
     init: empty_map(),
@@ -153,8 +153,8 @@ fn disj_variant_counts_in_module(root: Node) -> Map<v2.std.node.Symbol, Int> {
 fn symbol_index_fill_alias_binding(
   index: v2.std.symbol_index.SymbolIndex,
   module_qn: v2.std.qualified_name.QualifiedName,
-  root: Node,
-  decl: Node
+  root: v2.std.node.Node,
+  decl: v2.std.node.Node
 ) -> v2.std.symbol_index.SymbolIndex {
   match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
     Rejected { diagnostics: _ } => index
@@ -174,7 +174,7 @@ fn symbol_index_fill_alias_binding(
 fn symbol_index_fill_alias_bindings(
   index: v2.std.symbol_index.SymbolIndex,
   module_qn: v2.std.qualified_name.QualifiedName,
-  root: Node
+  root: v2.std.node.Node
 ) -> v2.std.symbol_index.SymbolIndex {
   fold(
     node_subtree_nodes(root: root),
@@ -193,7 +193,7 @@ fn symbol_index_fill_alias_bindings(
 fn symbol_index_fill_unique_variant_aliases(
   index: v2.std.symbol_index.SymbolIndex,
   module_qn: v2.std.qualified_name.QualifiedName,
-  root: Node
+  root: v2.std.node.Node
 ) -> v2.std.symbol_index.SymbolIndex {
   let counts = disj_variant_counts_in_module(root: root)
   fold(
@@ -223,7 +223,7 @@ fn symbol_index_fill_unique_variant_aliases(
   )
 }
 
-fn symbol_index_fill_module_root(index: v2.std.symbol_index.SymbolIndex, root: Node) -> v2.std.symbol_index.SymbolIndex {
+fn symbol_index_fill_module_root(index: v2.std.symbol_index.SymbolIndex, root: v2.std.node.Node) -> v2.std.symbol_index.SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
       symbol_index_fill_alias_bindings(
@@ -245,7 +245,7 @@ fn symbol_index_fill_module_root(index: v2.std.symbol_index.SymbolIndex, root: N
 
 fn symbol_index_fill_module_roots(
   index: v2.std.symbol_index.SymbolIndex,
-  roots: FreeMonoid<Node>
+  roots: FreeMonoid<v2.std.node.Node>
 ) -> v2.std.symbol_index.SymbolIndex {
   fold_list(
     xs: roots,

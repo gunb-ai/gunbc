@@ -107,22 +107,22 @@ fn blp_emit(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: Node
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match target_value_expression_to_concrete_tokens(
     expr: blp_bool_literal_expr(),
     projection: projection,
     catalog: catalog
   ) {
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(
         target: target,
         tokens: tokens
       ) {
-        Accepted { value: text, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -132,8 +132,8 @@ fn blp_emits(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape, go
     projection: blp_projection_with(bool_form: bool_form),
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -150,9 +150,9 @@ fn blp_production_emits(
   catalog: Node
 ) -> Bool {
   match blp_emit(target: target, projection: projection, catalog: catalog) {
-    Accepted { value: text, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: text, diagnostics: d } =>
       (text == bool_literal_true_lower_golden) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -227,7 +227,7 @@ test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    Accepted { value: expr, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: expr, diagnostics: _ } =>
       target_value_expr_is_bool_literal_expression(
         expr: expr,
         source_bool_form: blp_dag_source_bool_form()
@@ -236,6 +236,6 @@ test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
           TargetValueExprBoolLiteral => true
           _ => false
         }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

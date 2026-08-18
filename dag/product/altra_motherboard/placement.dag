@@ -436,7 +436,7 @@ fn outstanding_obligation_count(plan: BoardPlacementPlan) -> Int {
 // requirement checks — a half-millimetre package pitch is not expressible in whole millimetres.
 fn altra_board_frame() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 21) }
 
-fn altra_board_outline() -> OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
+fn altra_board_outline() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: point2(frame: altra_board_frame(), x: 0, y: 0),
     max: point2(frame: altra_board_frame(), x: 305000, y: 267000)
@@ -560,7 +560,7 @@ fn memory_slot_obligations(d: product.altra_motherboard.minimal_design.AltraMini
 // return type could stay simple, which is the absorbing fallback in its purest form: every
 // component would then have been reported as outside the outline, and the real cause — that the
 // outline never constructed — replaced by a dozen plausible ones.
-fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
+fn altra_reference_plan() -> std.orthogonal_geometry.OrthogonalConstruction<BoardPlacementPlan> {
   let fixed = [
     PlannedComponent {
       identity: "board_control_cpld",
@@ -605,8 +605,8 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
   match altra_board_outline() {
-    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
-    OrthogonalReady { value: o } =>
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+    std.orthogonal_geometry.OrthogonalReady { value: o } =>
       std.orthogonal_geometry.OrthogonalReady {
         value: BoardPlacementPlan {
           frame: altra_board_frame(),

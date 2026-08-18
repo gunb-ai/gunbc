@@ -70,7 +70,7 @@ test fn every_subject_carrier_is_enrolled_in_the_scope_roster() -> Bool {
 
 data disposition_coverage_note: String = "Every arm of TargetDisposition is inhabited by a real registered target, so no arm is dead code: Active (the P0/P1 targets under way), GovernedByContract (Rust, whose status this registry REFERENCES from the self-host frontier rather than recomputing), DecisionPending (ECMAScript and C++, the two targets DESIGN lists as open operator decisions), MaintenanceOnly (the structured media), and Parked (everything with a stated reason and no work in progress). An unexercised coproduct arm is untested code."
 
-fn disposition_arm_present(pick: fn(LanguageTargetRegistration) -> Bool) -> Bool {
+fn disposition_arm_present(pick: fn(std.language_target_identity.LanguageTargetRegistration) -> Bool) -> Bool {
   fold(registered_language_targets, init: false, f: fn(acc, r) { acc || pick(r) })
 }
 

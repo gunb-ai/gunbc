@@ -20,7 +20,7 @@ type FixtureBehaviorReceipt {
 }
 
 type SyntheticEmittedArtifact {
-  source: Medium<String>
+  source: extdeps.communication.medium.Medium<String>
   emitted: Node
   fixture_receipt: FixtureBehaviorReceipt
 }
@@ -39,7 +39,7 @@ data fixture_cargo_green_qualifications: List<FixtureEmissionQualification> = [
   FixtureCargoGreen
 ]
 
-fn fixture_emitted_source_identity_for_medium(source: Medium<String>) -> v2.std.node.Hash {
+fn fixture_emitted_source_identity_for_medium(source: extdeps.communication.medium.Medium<String>) -> v2.std.node.Hash {
   content_hash_atom(value: source.carried)
 }
 
@@ -83,7 +83,7 @@ fn fixture_emission_qualifications_list_contains(
 
 fn mint_fixture_behavior_receipt(
   module_path: String,
-  emitted_source: Medium<String>,
+  emitted_source: extdeps.communication.medium.Medium<String>,
   fixture_lane_tag: String
 ) -> FixtureBehaviorReceipt {
   FixtureBehaviorReceipt {

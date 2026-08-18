@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn pbf_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
@@ -73,7 +73,7 @@ fn pbf_subject_with_import_use() -> Node {
   }
 }
 
-fn pbf_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
@@ -94,8 +94,8 @@ fn pbf_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norm
 
 fn pbf_cross_file_import_resolves() -> Bool {
   match pbf_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted_roots,
@@ -115,8 +115,8 @@ fn pbf_cross_file_import_resolves() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
@@ -140,14 +140,14 @@ fn pbf_unbound_atom_tree() -> Node {
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
   match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: None) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_tree, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_tree, diagnostics: _ } =>
   match v2.compiler.resolve.resolve(
     tree: admitted_tree,
     lm: dag_language_model_surface_empty_prelude()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   }
 }
@@ -177,7 +177,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
   }
 }
 
-fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
@@ -207,8 +207,8 @@ fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tre
 
 fn pbf_ambiguous_export_rejects() -> Bool {
   match pbf_ambiguous_import_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -234,8 +234,8 @@ fn pbf_ambiguous_export_rejects() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }

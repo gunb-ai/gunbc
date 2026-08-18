@@ -19,10 +19,10 @@ type DependencyKind
   | BootstrapDependsOn
 
 type DependencyView {
-  source: Node
-  dependent: Node
+  source: v2.std.node.Node
+  dependent: v2.std.node.Node
   kind: DependencyKind
-  usage_site: Node
+  usage_site: v2.std.node.Node
 }
 
 type ClassifiedDependencyView<C> {
@@ -78,15 +78,15 @@ fn classify_dependency_view<C>(
   }
 }
 
-fn classified_source<C>(view: ClassifiedDependencyView<C>) -> Node {
+fn classified_source<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
   view.dependency.source
 }
 
-fn classified_dependent<C>(view: ClassifiedDependencyView<C>) -> Node {
+fn classified_dependent<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
   view.dependency.dependent
 }
 
-fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> Node {
+fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
   view.dependency.usage_site
 }
 
@@ -99,11 +99,11 @@ fn classified_dependency_view_eq<C>(
 }
 
 type DependencyFoldState {
-  current: Node
+  current: v2.std.node.Node
   dependencies: List<DependencyView>
 }
 
-fn classify_named_edge_usage(parent: Node, sym: v2.std.node.Symbol) -> DependencyKind {
+fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
       ComputationNode { behavior: Bind } => Contains
@@ -118,14 +118,14 @@ fn classify_named_edge_usage(parent: Node, sym: v2.std.node.Symbol) -> Dependenc
   }
 }
 
-fn classify_node_edge_usage(parent: Node, edge: v2.std.node.Edge) -> DependencyKind {
+fn classify_node_edge_usage(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
     Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
     Positional => Contains
   }
 }
 
-fn dependency_view_for_edge(parent: Node, edge: v2.std.node.Edge) -> DependencyView {
+fn dependency_view_for_edge(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
   DependencyView {
     source: parent,
@@ -139,7 +139,7 @@ fn append_dependency_views(left: List<DependencyView>, right: List<DependencyVie
   list_append(left: left, right: right)
 }
 
-fn dependency_fold_init(n: Node) -> DependencyFoldState {
+fn dependency_fold_init(n: v2.std.node.Node) -> DependencyFoldState {
   DependencyFoldState {
     current: n,
     dependencies: []
@@ -167,7 +167,7 @@ fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyVi
   state.dependencies
 }
 
-fn dependency_lens(root: Node) -> List<DependencyView> {
+fn dependency_lens(root: v2.std.node.Node) -> List<DependencyView> {
   dependency_fold_dependencies(
     state: fold_node(
       n: root,
@@ -177,16 +177,16 @@ fn dependency_lens(root: Node) -> List<DependencyView> {
 }
 
 type ReadinessLayer {
-  ready: List<Node>
+  ready: List<v2.std.node.Node>
 }
 
 type ReadinessFoldState {
-  current: Node
-  ready: List<Node>
+  current: v2.std.node.Node
+  ready: List<v2.std.node.Node>
   layers: List<ReadinessLayer>
 }
 
-fn readiness_fold_init(n: Node) -> ReadinessFoldState {
+fn readiness_fold_init(n: v2.std.node.Node) -> ReadinessFoldState {
   ReadinessFoldState {
     current: n,
     ready: [n],
@@ -209,11 +209,11 @@ fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
   }
 }
 
-fn readiness_fold_ready(state: ReadinessFoldState) -> List<Node> {
+fn readiness_fold_ready(state: ReadinessFoldState) -> List<v2.std.node.Node> {
   state.ready
 }
 
-fn ready_set(graph_node: Node) -> List<Node> {
+fn ready_set(graph_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   readiness_fold_ready(
     state: fold_node(
       n: graph_node,
@@ -222,11 +222,11 @@ fn ready_set(graph_node: Node) -> List<Node> {
   )
 }
 
-fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+fn append_nodes(left: List<v2.std.node.Node>, right: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   list_append(left: left, right: right)
 }
 
-fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
+fn topological_layers_fold_init(n: v2.std.node.Node) -> ReadinessFoldState {
   ReadinessFoldState {
     current: n,
     ready: [n],
@@ -257,7 +257,7 @@ fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
   state.layers
 }
 
-fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
+fn topological_layers(graph_node: v2.std.node.Node) -> List<ReadinessLayer> {
   readiness_fold_layers(
     state: fold_node(
       n: graph_node,

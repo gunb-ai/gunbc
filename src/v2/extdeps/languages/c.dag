@@ -27,7 +27,7 @@ type CTranslationUnitSpelling {
   include_directives: List<String>
   include_closure: List<v2.std.compilers.compilation_unit.CompilationUnitId>
   object_path: String
-  interface_nodes: List<Node>
+  interface_nodes: List<v2.std.node.Node>
 }
 
 data c_translation_unit_basename_note: String = "C-realization spelling authority for an agnostic CompilationUnitId (review 2026-08-01). CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling law, so `../peer`, `a/b`, `a\\b`, an embedded CR/LF/NUL, and `\"` all inhabit it (the same class path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were concatenated between #include \" and \", so a quote terminated the include string and a newline split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename, so two units can never contend for one .o. Encoding rather than refusing keeps the realization TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target spelling, not the logical id."
@@ -262,7 +262,7 @@ fn c_list_snoc_type_owner(items: List<CTypeOwner>, item: CTypeOwner) -> List<CTy
   items |> list_push(item)
 }
 
-fn c_type_atoms_by_value_in_node(node: Node) -> List<v2.std.node.Symbol> {
+fn c_type_atoms_by_value_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => [sym]
     TypeNode { connective: Arrow } => []
@@ -282,7 +282,7 @@ fn c_type_atoms_by_value_in_node(node: Node) -> List<v2.std.node.Symbol> {
   }
 }
 
-fn c_type_definition_body(row: v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow) -> Node {
+fn c_type_definition_body(row: v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow) -> v2.std.node.Node {
   row.definition
 }
 
@@ -362,7 +362,7 @@ fn c_type_owner_for_symbol(
 fn c_type_definition_for_owner(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   owner: CTypeOwner
-) -> Optional<Node> {
+) -> Optional<v2.std.node.Node> {
   fold_list(
     xs: module_type_definition_rows(module_dag: module_dag, module: owner.module),
     empty: Absent,
@@ -682,7 +682,7 @@ data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, 
 
 data c_emit_host_main_suffix_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
 
-fn c_atom(id: v2.std.node.Symbol) -> Node {
+fn c_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -690,7 +690,7 @@ fn c_atom(id: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn c_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn c_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
@@ -715,7 +715,7 @@ fn c_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken
   ]
 }
 
-fn c_int_inhabitant_node() -> Node {
+fn c_int_inhabitant_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -725,7 +725,7 @@ fn c_int_inhabitant_node() -> Node {
   }
 }
 
-fn c_emitted_add_fn_node() -> Node {
+fn c_emitted_add_fn_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -737,7 +737,7 @@ fn c_emitted_add_fn_node() -> Node {
   }
 }
 
-fn c_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
+fn c_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
   concrete_syntax_token_to_node(token: token)
 }
 
@@ -759,7 +759,7 @@ fn c_serialize_source_children() -> List<v2.std.node.Edge> {
   )
 }
 
-fn c_serialize_source_node() -> Node {
+fn c_serialize_source_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: c_serialize_source_children(),
@@ -811,7 +811,7 @@ fn c_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
 
 type CGrammarRelationRow {
   production: v2.std.grammar.GrammarProduction
-  emitted: Node
+  emitted: v2.std.node.Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
@@ -823,7 +823,7 @@ fn c_grammar_relation_row() -> CGrammarRelationRow {
   }
 }
 
-fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
+fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -841,7 +841,7 @@ fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
   }
 }
 
-fn c_translation_rules_node() -> Node {
+fn c_translation_rules_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -851,11 +851,11 @@ fn c_translation_rules_node() -> Node {
   }
 }
 
-fn c_selection_policy_node() -> Node {
+fn c_selection_policy_node() -> v2.std.node.Node {
   c_int_inhabitant_node()
 }
 
-fn c_add_declared_inhabitants_root() -> Node {
+fn c_add_declared_inhabitants_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -949,7 +949,7 @@ fn c_value_expression_projection() -> v2.std.compilers.target_model.TargetValueE
   }
 }
 
-fn c_operator_realizations_catalog_node() -> Node {
+fn c_operator_realizations_catalog_node() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_add(),
@@ -958,7 +958,7 @@ fn c_operator_realizations_catalog_node() -> Node {
   ])
 }
 
-fn c_target_model_node() -> Node {
+fn c_target_model_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1038,7 +1038,7 @@ fn c_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: c_lex_rules() } }
 }
 
-fn c_emit_host_runtime_primitive_type_node() -> Node {
+fn c_emit_host_runtime_primitive_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
     children: [],
@@ -1152,7 +1152,7 @@ fn c_type_decl_target_model() -> v2.std.compilers.target_model.TargetModel {
 // return arrow. C is statement-sequenced, so the scaffold carries a return token
 // before the body and a terminator after it. The compiler is not edited to support
 // any of this -- C supplies its own renderer and its own spellings.
-fn c_produced_type_tokens(type_node: Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_type_tokens(type_node: v2.std.node.Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       outcome_accepted(value: [v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: id }])
@@ -1163,7 +1163,7 @@ fn c_produced_type_tokens(type_node: Node) -> Outcome<List<v2.std.compilers.targ
   }
 }
 
-fn c_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+fn c_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
@@ -1235,7 +1235,7 @@ fn c_produced_params_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.s
 
 fn c_produced_signature_from_name_and_arrow(
   fn_name: v2.std.node.Symbol,
-  arrow: Node
+  arrow: v2.std.node.Node
 ) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
     Present { value: domain } =>
@@ -1281,7 +1281,7 @@ fn c_produced_signature_from_name_and_arrow(
   }
 }
 
-fn c_produced_decl_render(decl: Node) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
+fn c_produced_decl_render(decl: v2.std.node.Node) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   match decl.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: decl.children, index: 0) {

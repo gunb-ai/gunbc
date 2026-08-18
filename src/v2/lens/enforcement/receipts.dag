@@ -5,7 +5,7 @@ type SubjectJudgment
   = BodyJudged { verdict: Witness<v2.lens.cost.SymbolicCost> }
   | BodyUnavailable
 
-fn node_contains_computation(n: Node) -> Bool {
+fn node_contains_computation(n: v2.std.node.Node) -> Bool {
   match n.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: _ } =>
@@ -15,7 +15,7 @@ fn node_contains_computation(n: Node) -> Bool {
   }
 }
 
-fn judge_subject_node(n: Node) -> SubjectJudgment {
+fn judge_subject_node(n: v2.std.node.Node) -> SubjectJudgment {
   if node_contains_computation(n: n) {
     BodyJudged { verdict: cost_lens(n: n) }
   } else {
@@ -183,7 +183,7 @@ data cost_well_formed_probe: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn red_control_status_for(probe: Node) -> v2.lens.enforcement.vocab.RedControlStatus {
+fn red_control_status_for(probe: v2.std.node.Node) -> v2.lens.enforcement.vocab.RedControlStatus {
   match cost_lens(n: probe) {
     Violates { diagnostic: _ } => RedControlPassed
     Holds { value: _ } => RedControlFailedToFlip

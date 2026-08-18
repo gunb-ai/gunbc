@@ -31,35 +31,35 @@ fn host_effect_plan_unsupported_step_refusal(
 }
 
 fn host_effect_plan_apply_step(
-  step: EffectPlanStep<gunbc.host_effect.HostEffect>,
+  step: v2.std.effect_plan.EffectPlanStep<gunbc.host_effect.HostEffect>,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match step {
-    Do { effect: e } =>
+    v2.std.effect_plan.Do { effect: e } =>
       host_effect_apply(
         target: ctx.target,
         effect: e,
         evidence: ctx.evidence,
         transport: ctx.transport,
       )
-    If { cond: _, then_: _, else_: _ } =>
+    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    For { binder: _, over: _, body: _ } =>
+    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    While { cond: _, body: _ } =>
+    v2.std.effect_plan.While { cond: _, body: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    Retry { body: _, escalations: _, on_exhausted: _ } =>
+    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    Let { name: _, value: _ } =>
+    v2.std.effect_plan.Let { name: _, value: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    Call { callee: _, args: _ } =>
+    v2.std.effect_plan.Call { callee: _, args: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
   }
 }
 
 fn host_effect_plan_apply_rest(
   head_result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  rest: FreeMonoid<EffectPlanStep<gunbc.host_effect.HostEffect>>,
+  rest: FreeMonoid<v2.std.effect_plan.EffectPlanStep<gunbc.host_effect.HostEffect>>,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   if !reconciliation_converged(r: head_result) {

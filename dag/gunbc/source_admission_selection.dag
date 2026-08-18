@@ -444,12 +444,12 @@ fn refused_selection(
 }
 
 fn hunk_admission_rows(
-  hunk: KeyedDiffHunk<String, ActiveSourceIdentity>
+  hunk: std.change.KeyedDiffHunk<String, ActiveSourceIdentity>
 ) -> List<ActiveSourceIdentity> {
   match hunk {
-    KeyedDiffAddedHunk { hunk_key: _, to: row } => [row]
-    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: row } => [row]
-    KeyedDiffRemovedHunk { hunk_key: _, from: _ } => []
+    std.change.KeyedDiffAddedHunk { hunk_key: _, to: row } => [row]
+    std.change.KeyedDiffModifiedHunk { hunk_key: _, from: _, to: row } => [row]
+    std.change.KeyedDiffRemovedHunk { hunk_key: _, from: _ } => []
   }
 }
 

@@ -17,17 +17,17 @@ fn qn_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn qn_outcome_accepted(out: Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
+fn qn_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn qn_value_eq(out: Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
+fn qn_value_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: actual, diagnostics: _ } => actual == expected
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 

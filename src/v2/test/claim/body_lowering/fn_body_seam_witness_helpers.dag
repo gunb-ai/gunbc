@@ -3,7 +3,7 @@ module v2.test.claim.body_lowering.fn_body_seam_witness_helpers
 
 data fn_body_seam_witness_helpers_note: String = "Shared helpers for fn_body seam witnesses (decoupled from #6775 integer closure). Execution proofs exceed per-PR 5s fast-lane budget — enrolled in long/wave1_gate1_a1_fn_body_seam_witness_test.dag. Fast RED (invalid shell wrapper-retained) lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag."
 
-fn fn_body_seam_parsed_add_module() -> Optional<Node> {
+fn fn_body_seam_parsed_add_module() -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(
     text: ingested_add_module_source,
@@ -19,7 +19,7 @@ fn fn_body_seam_parsed_add_module() -> Optional<Node> {
   }
 }
 
-fn fn_body_seam_find_production_under_children(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
+fn fn_body_seam_find_production_under_children(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   fold(root.children, init: Absent, f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -28,7 +28,7 @@ fn fn_body_seam_find_production_under_children(root: Node, emitted: v2.std.node.
   })
 }
 
-fn fn_body_seam_find_production(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
+fn fn_body_seam_find_production(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {
@@ -41,7 +41,7 @@ fn fn_body_seam_find_production(root: Node, emitted: v2.std.node.Symbol) -> Opti
   }
 }
 
-fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
+fn fn_body_seam_add_fn_body_shell() -> Optional<v2.std.node.Node> {
   match fn_body_seam_parsed_add_module() {
     Absent => Absent
     Present { value: tree } =>
@@ -49,7 +49,7 @@ fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
   }
 }
 
-fn fn_body_seam_tree_has_transform(root: Node) -> Bool {
+fn fn_body_seam_tree_has_transform(root: v2.std.node.Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
     _ =>

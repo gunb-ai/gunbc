@@ -165,15 +165,15 @@ fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) 
   }
 }
 
-fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
+fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> std.realization_reconcile.Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
+    std.realization_reconcile.ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
@@ -182,10 +182,10 @@ fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGrounding
   }
 }
 
-fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
+fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match r {
-    Converged { evidence: e, applied: _ } => e
-    NotConverged { reason: _, applied: _ } => OomdUnverified
+    std.realization_reconcile.Converged { evidence: e, applied: _ } => e
+    std.realization_reconcile.NotConverged { reason: _, applied: _ } => OomdUnverified
   }
 }
 
@@ -195,8 +195,8 @@ data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = std.
 
 fn gunbc_oomd_install_evidence() -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match gunbc_oomd_show_effective_read {
-    ReadAbsent { reason: _ } => OomdUnverified
-    ReadObserved { value: _ } => OomdUnverified
+    std.realization_reconcile.ReadAbsent { reason: _ } => OomdUnverified
+    std.realization_reconcile.ReadObserved { value: _ } => OomdUnverified
   }
 }
 

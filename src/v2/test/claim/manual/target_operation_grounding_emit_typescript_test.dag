@@ -79,7 +79,7 @@ fn op_grounding_binary_expr(operation: v2.std.compilers.target_model.CanonicalOp
   )
 }
 
-fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> Outcome<String> {
+fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: op_grounding_binary_expr(operation: operation),
@@ -102,36 +102,36 @@ fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation
 
 test fn op_grounding_emits_subtraction() -> Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog()) {
-    Accepted { value: s, diagnostics: _ } => s == "x - y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => s == "x - y"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_emits_less_than() -> Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog()) {
-    Accepted { value: s, diagnostics: _ } => s == "x < y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => s == "x < y"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_emits_equality() -> Bool {
   match op_grounding_emit(operation: canonical_operation_op_eq(), catalog: op_grounding_catalog()) {
-    Accepted { value: s, diagnostics: _ } => s == "x == y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => s == "x == y"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_wrong_token_discriminates() -> Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog_sub_mistoken()) {
-    Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_catalog_miss_rejects() -> Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog_sub_only()) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 

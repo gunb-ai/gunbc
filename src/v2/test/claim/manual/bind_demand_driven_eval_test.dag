@@ -3,7 +3,7 @@ module v2.test.manual.bind_demand_driven_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bind_eval_atom(s: v2.std.node.Symbol) -> Node {
+fn bind_eval_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
@@ -15,7 +15,7 @@ fn bind_eval_byte() -> v2.std.machine.Byte {
   v2.std.machine.Byte { bits: [true] }
 }
 
-fn bind_eval_i64() -> Node {
+fn bind_eval_i64() -> v2.std.node.Node {
   bind_eval_atom(s: ^bind_eval_i64_sym)
 }
 
@@ -28,10 +28,10 @@ fn bind_eval_one_value() -> v2.std.runtime.RuntimeValue {
   }
 }
 
-fn bind_eval_lit_one() -> Node {
+fn bind_eval_lit_one() -> v2.std.node.Node {
   match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
-    Accepted { value: n, diagnostics: _ } => n
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => n
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
@@ -46,11 +46,11 @@ data bind_eval_counted_value_node: Node = v2.std.node.Node {
   children: []
 }
 
-fn bind_eval_counted() -> Node {
+fn bind_eval_counted() -> v2.std.node.Node {
   bind_eval_counted_value_node
 }
 
-fn bind_eval_divergent() -> Node {
+fn bind_eval_divergent() -> v2.std.node.Node {
   bind_eval_atom(s: ^bind_eval_divergent_sym)
 }
 
@@ -75,16 +75,16 @@ fn bind_eval_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
 
 fn bind_eval_touch_from_env(env: v2.std.runtime.EvaluationEnvironment, key: v2.std.runtime.EnvironmentBindingKey) -> Int {
   match v2.std.collection.map_get(m: env.bindings, key: key) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => bind_eval_int_from_runtime(value: v)
         Absent => 0
       }
-    Rejected { diagnostics: _ } => 0
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
   }
 }
 
-fn bind_eval_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn bind_eval_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^bind_eval_runtime_rejected,
     at: node_locus(node: n),
@@ -92,16 +92,16 @@ fn bind_eval_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn bind_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn bind_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: mag, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           outcome_accepted(value: bind_eval_one_value())
         } else {
           outcome_rejected(d: bind_eval_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
@@ -121,22 +121,22 @@ fn bind_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironm
 }
 
 fn bind_eval_call_primitive(
-  _node: Node,
+  _node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
 fn bind_eval_choose_branch(
-  _node: Node,
+  _node: v2.std.node.Node,
   _condition: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
-fn bind_eval_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn bind_eval_step_loop(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: bind_eval_diagnostic(n: node))
 }
 
@@ -144,7 +144,7 @@ fn bind_eval_bind_value(
   key: v2.std.runtime.EnvironmentBindingKey,
   value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   let bound = v2.std.runtime.EvaluationEnvironment {
     bindings: map_insert(m: env.bindings, key: key, value: value)
   }
@@ -198,7 +198,7 @@ fn bind_eval_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn bind_eval_bind_node(value: Node, body: Node) -> Node {
+fn bind_eval_bind_node(value: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
@@ -210,7 +210,7 @@ fn bind_eval_bind_node(value: Node, body: Node) -> Node {
   }
 }
 
-fn bind_eval_pick_call(callee: Node) -> Node {
+fn bind_eval_pick_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
@@ -218,7 +218,7 @@ fn bind_eval_pick_call(callee: Node) -> Node {
   }
 }
 
-fn bind_eval_arrow_with_body(body: Node) -> Node {
+fn bind_eval_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
@@ -238,7 +238,7 @@ fn bind_eval_arrow_with_body(body: Node) -> Node {
   }
 }
 
-fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
+fn bind_eval_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
@@ -249,7 +249,7 @@ fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn bind_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bind_eval_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_eval_i64(),
@@ -257,14 +257,14 @@ fn bind_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts
     ))
 }
 
-fn bind_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
+fn bind_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
     facts: std.types.Map { lookup: bind_eval_facts_lookup }
   }
 }
 
-fn bind_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+fn bind_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>> {
   let arrow = bind_eval_arrow_with_body(body: body)
   let call = bind_eval_pick_call(callee: arrow)
   let root = bind_eval_tree_root(call: call, expected: expected)
@@ -290,14 +290,14 @@ fn bind_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, Runti
   )
 }
 
-fn bind_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn bind_eval_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
   match run {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -321,16 +321,16 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
     ),
     expected: bind_eval_lit_one()
   ) {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => false
         _ => true
       }
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> Node {
+fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: v2.std.node.MintedOccurrence {
@@ -340,7 +340,7 @@ fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> Node {
   }
 }
 
-fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Node {
+fn bind_eval_bind_node_with_binder(binder: v2.std.node.Node, value: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
@@ -401,9 +401,9 @@ test fn bind_eval_unbound_reference_refuses_holds() -> Bool {
     context: bind_eval_context(),
     inputs: inputs_root_only(root: ref_node)
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -423,8 +423,8 @@ test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
     context: bind_eval_default_context(),
     inputs: inputs_root_only(root: ref_node)
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

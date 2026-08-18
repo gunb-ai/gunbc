@@ -9,11 +9,11 @@ fn project_to_core_axis_is_surface(name: v2.std.node.Symbol) -> Bool {
   model_core_primitive_fact_axis_is_surface(axis: name)
 }
 
-fn project_to_core_init(n: Node) -> Node {
+fn project_to_core_init(n: v2.std.node.Node) -> v2.std.node.Node {
   node_rebuild(n: n, children: [])
 }
 
-fn project_to_core_step(acc: Node, edge: v2.std.node.Edge, child: Node) -> Node {
+fn project_to_core_step(acc: v2.std.node.Node, edge: v2.std.node.Edge, child: v2.std.node.Node) -> v2.std.node.Node {
   let projected_target = if count(edge.target.children) == 0 { edge.target } else { child }
   match edge.label {
     Named { name: edge_name } =>
@@ -39,18 +39,18 @@ fn project_to_core_step(acc: Node, edge: v2.std.node.Edge, child: Node) -> Node 
   }
 }
 
-fn project_to_core_algebra() -> NodeFold<Node> {
+fn project_to_core_algebra() -> NodeFold<v2.std.node.Node> {
   v2.std.node.NodeFold {
     init: project_to_core_init,
     step: project_to_core_step
   }
 }
 
-fn project_to_core_node(n: Node) -> Node {
+fn project_to_core_node(n: v2.std.node.Node) -> v2.std.node.Node {
   fold_node(n: n, algebra: project_to_core_algebra())
 }
 
-fn project_to_core_has_core_fact_init(_: Node) -> Bool {
+fn project_to_core_has_core_fact_init(_: v2.std.node.Node) -> Bool {
   false
 }
 
@@ -73,14 +73,14 @@ fn project_to_core_has_core_fact_algebra() -> NodeFold<Bool> {
   }
 }
 
-fn project_to_core_has_core_fact(n: Node) -> Bool {
+fn project_to_core_has_core_fact(n: v2.std.node.Node) -> Bool {
   fold_node(n: n, algebra: project_to_core_has_core_fact_algebra())
 }
 
 fn project_to_core_preservation_holds(
-  source_facts: Node,
-  candidate: Node,
-  algebra: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
+  algebra: v2.std.node.Node,
 ) -> Bool {
   well_formed(n: source_facts)
     && well_formed(n: candidate)

@@ -82,7 +82,7 @@ fn type_alias_target() -> v2.std.compilers.target_model.TargetModel {
   rust_type_alias_decl_structural_target_model()
 }
 
-fn type_alias_emit_source_text(emitted: Node) -> Outcome<String> {
+fn type_alias_emit_source_text(emitted: Node) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(
       rules: rust_type_alias_decl_productions_only_translation_rules(),
@@ -109,15 +109,15 @@ fn type_alias_emit_source_text(emitted: Node) -> Outcome<String> {
 
 fn type_alias_emit_matches_golden(emitted: Node, golden: String) -> Bool {
   match type_alias_emit_source_text(emitted: emitted) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_alias_construct_refused(emitted: Node) -> Bool {
   match type_alias_emit_source_text(emitted: emitted) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

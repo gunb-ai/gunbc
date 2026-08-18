@@ -10,7 +10,7 @@ fn sql_fold_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts>
 fn sql_fold_fold_serialize(
   op: v2.extdeps.formats.sql.SqlSchemaOperation,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
       let tree = v2.compiler.infer.InferredTree {
@@ -18,18 +18,18 @@ fn sql_fold_fold_serialize(
         facts: std.types.Map { lookup: sql_fold_facts_lookup }
       }
       match emit(tree: tree, target: target) {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           match d {
             None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
             Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
-fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Outcome<String> {
+fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> v2.std.diagnostic.Outcome<String> {
   match sql_fold_target_model_for_operation_witness(op: op) {
     Holds { value: target } =>
       sql_fold_fold_serialize(op: op, target: target)
@@ -40,13 +40,13 @@ fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperati
 
 fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Bool {
   match sql_fold_fold_serialize_operation(op: op) {
-    Accepted { value: folded, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } =>
       match sql_serialize_schema_operation(op: op) {
-        Accepted { value: oracle, diagnostics: od } =>
+        v2.std.diagnostic.Accepted { value: oracle, diagnostics: od } =>
           (folded == oracle) && (od == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -96,13 +96,13 @@ fn sql_fold_direct_serialize_matches_oracle(
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
       match target_serialize_source_from_model(target: target, emitted: emitted) {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           match sql_serialize_schema_operation(op: op) {
-            Accepted { value: oracle, diagnostics: od } =>
+            v2.std.diagnostic.Accepted { value: oracle, diagnostics: od } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None) && (od == v2.std.diagnostic.None)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }
@@ -147,8 +147,8 @@ test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
   match sql_serialize_schema_operation(
     op: v2.extdeps.formats.sql.SqlDropTable { table_name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "t" } }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -159,8 +159,8 @@ test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
       scale: Zero
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

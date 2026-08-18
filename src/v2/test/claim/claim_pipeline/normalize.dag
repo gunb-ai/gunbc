@@ -7,7 +7,7 @@ data spine_normalize_module_subject: Node = v2.std.node.Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-fn spine_normalize_service_parse_tree() -> Node {
+fn spine_normalize_service_parse_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
@@ -33,7 +33,7 @@ fn spine_normalize_accepts_well_formed_sugar() -> Bool {
   }
 }
 
-fn spine_normalize_nested_service_parse_tree() -> Node {
+fn spine_normalize_nested_service_parse_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -46,7 +46,7 @@ fn spine_normalize_nested_service_parse_tree() -> Node {
   }
 }
 
-fn spine_normalize_child_is_service_sugar_atom(n: Node) -> Bool {
+fn spine_normalize_child_is_service_sugar_atom(n: v2.std.node.Node) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       id == ^dag_c3_surface_sugar_service
@@ -65,7 +65,7 @@ fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
   }
 }
 
-fn spine_normalize_bool_atom(b: Bool) -> Node {
+fn spine_normalize_bool_atom(b: Bool) -> v2.std.node.Node {
   match b {
     true =>
       v2.std.node.Node {

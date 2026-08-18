@@ -4,28 +4,28 @@ module product.budget_tree
 type BudgetPriority = Guaranteed | Burstable | BestEffort
 
 type BudgetClaim {
-  item: LineItem<Memory, One>
+  item: extdeps.accounting.budget.LineItem<Memory, One>
   priority: BudgetPriority
 }
 
 type BudgetNode {
   name: String
-  appropriation: Appropriation<std.measure.Memory, std.measure.One>
+  appropriation: extdeps.accounting.budget.Appropriation<std.measure.Memory, std.measure.One>
   claims: List<BudgetClaim>
   children: List<BudgetNode>
 }
 
 data budget_tree_method: extdeps.accounting.budget.BudgetingMethod = ZeroBased
 
-fn claim_items(claims: List<BudgetClaim>) -> List<LineItem<Memory, One>> {
+fn claim_items(claims: List<BudgetClaim>) -> List<extdeps.accounting.budget.LineItem<Memory, One>> {
   map(claims, c => c.item)
 }
 
-fn child_as_line_item(child: BudgetNode) -> LineItem<Memory, One> {
+fn child_as_line_item(child: BudgetNode) -> extdeps.accounting.budget.LineItem<Memory, One> {
   extdeps.accounting.budget.LineItem { purpose: child.name, amount: child.appropriation.ceiling }
 }
 
-fn node_commitments(node: BudgetNode) -> List<LineItem<Memory, One>> {
+fn node_commitments(node: BudgetNode) -> List<extdeps.accounting.budget.LineItem<Memory, One>> {
   concat(claim_items(claims: node.claims), map(node.children, child_as_line_item))
 }
 

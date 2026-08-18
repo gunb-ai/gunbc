@@ -12,10 +12,10 @@ fn validation_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn validation_outcome_accepted(out: Outcome<v2.std.grammar.ParseTree>) -> Bool {
+fn validation_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -135,12 +135,12 @@ data validation_disjoint_choice_root: v2.std.grammar.GrammarRoot = v2.std.gramma
 fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
         None => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -163,28 +163,28 @@ data validation_nullable_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.
 fn validation_nullable_ambiguity_validate_rejects() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 fn validation_disjoint_choice_residue_is_none() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
         None => true
         Some { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn validation_disjoint_choice_validate_accepts() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -212,11 +212,11 @@ data validation_two_token_list: List<v2.std.compilers.lexing.Token> = std.algebr
   tail: std.algebra.Cons { head: validation_token(class: ^validation_tok_class, start: 1, end: 2), tail: std.algebra.Empty }
 }
 
-fn validation_right_recursive_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
+fn validation_right_recursive_parse_fixture() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: validated, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
         tokens: validation_two_token_list,
         validated: validated,

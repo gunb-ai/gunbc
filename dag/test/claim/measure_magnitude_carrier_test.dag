@@ -9,11 +9,11 @@ test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
     && millicore_count(millicore(100)) == 100
 }
 
-fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {
+fn signed_microvolts(n: Int) -> std.measure.Measure<ElectricPotential, Micro, Int> {
   std.measure.Measure { count: n }
 }
 
-fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {
+fn signed_microvolts_count(v: std.measure.Measure<ElectricPotential, Micro, Int>) -> Int {
   v.count
 }
 

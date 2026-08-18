@@ -238,16 +238,16 @@ fn cost_coverage_file_receipt_from_module(
 fn cost_coverage_ingest_source_text(
   source_text: String,
   file: v2.std.node.Symbol
-) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
-    Accepted { value: ts, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } =>
-          Rejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
   }
@@ -274,13 +274,13 @@ fn cost_coverage_rejected_file_receipt(
 fn cost_coverage_file_receipt(rel_path: String) -> CostCoverageFileReceipt {
   let source_text = filesystem_read(path: rel_path).content
   match cost_coverage_ingest_source_text(source_text: source_text, file: cost_coverage_file_anchor) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       cost_coverage_rejected_file_receipt(
         rel_path: rel_path,
         stage: "ingest",
         reason: d.head.reason
       )
-    Accepted { value: module_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root.root)
   }
 }

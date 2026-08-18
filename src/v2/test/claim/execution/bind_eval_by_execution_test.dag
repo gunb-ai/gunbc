@@ -60,10 +60,10 @@ fn bind_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn bind_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn bind_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: mag, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           outcome_accepted(value: bind_one_value())
         } else if mag == 2 {
@@ -71,7 +71,7 @@ fn bind_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment)
         } else {
           outcome_rejected(d: bind_runtime_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(d: bind_runtime_diagnostic(n: node))
@@ -82,7 +82,7 @@ fn bind_call_primitive(
   _node: Node,
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: bind_runtime_diagnostic(n: _node))
 }
 
@@ -90,11 +90,11 @@ fn bind_choose_branch(
   node: Node,
   _condition: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<Node> {
   outcome_rejected(d: bind_runtime_diagnostic(n: node))
 }
 
-fn bind_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn bind_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: bind_runtime_diagnostic(n: node))
 }
 
@@ -102,7 +102,7 @@ fn bind_bind_value(
   key: v2.std.runtime.EnvironmentBindingKey,
   value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted {
     value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(m: env.bindings, key: key, value: value)
@@ -191,7 +191,7 @@ fn bind_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn bind_inferred_run_tree(callee: Node, expected: Node) -> Outcome<v2.compiler.infer.InferredTree> {
+fn bind_inferred_run_tree(callee: Node, expected: Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   let call = bind_pick_call(callee: callee)
   let root = bind_tree_root(call: call, expected: expected)
   outcome_accepted(value: bind_admitted_tree(root: root))
@@ -226,7 +226,7 @@ fn bind_subject(
 fn bind_run(
   callee: Node,
   expected: Node
-) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+) -> v2.std.diagnostic.Outcome<TestClaimRun<Node, RuntimeValue>> {
   let input = bind_pick_call(callee: callee)
   bind_outcome(
     o: bind_inferred_run_tree(callee: callee, expected: expected),
@@ -240,124 +240,124 @@ fn bind_run(
   )
 }
 
-fn bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn bind_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match run {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_source_pipeline_admits_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_source_driven_executes_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_direct_runtime_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } => {
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } => {
       let input = bind_pick_call(callee: arrow)
       match bind_inferred_run_tree(
         callee: arrow,
         expected: bind_literal_one_node()
       ) {
-        Accepted { value: tree, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
             interpretation: bind_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
-            Accepted { value: actual, diagnostics: None } =>
+            v2.std.diagnostic.Accepted { value: actual, diagnostics: None } =>
               bind_runtime_int_is_one(value: actual)
             _ => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_value_perturbation_red_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_two_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_fixture_producer_holds() -> Bool {
   match table_fixture_bind_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_bind_wrong_value_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_one_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_census_ingested_executes_holds() -> Bool {
   match ingested_bind_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_bind_arrow_with_body_wrong_value() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       bind_run_passes(
         run: bind_run(
           callee: arrow,
           expected: bind_literal_one_node()
         )
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

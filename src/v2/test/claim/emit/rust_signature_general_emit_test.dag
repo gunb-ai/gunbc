@@ -7,11 +7,11 @@ data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
 
 data rust_signature_add_wrong_golden: String = "fn add(y: i32, x: i32) -> i32 { "
 
-fn rust_signature_add_decl() -> Outcome<Node> {
+fn rust_signature_add_decl() -> v2.std.diagnostic.Outcome<Node> {
   table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add)
 }
 
-fn rust_signature_add_text() -> Outcome<String> {
+fn rust_signature_add_text() -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: rust_signature_add_decl(),
     f: fn(decl) {
@@ -35,8 +35,8 @@ fn rust_signature_add_text() -> Outcome<String> {
 
 fn rust_signature_add_matches(golden: String) -> Bool {
   match rust_signature_add_text() {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

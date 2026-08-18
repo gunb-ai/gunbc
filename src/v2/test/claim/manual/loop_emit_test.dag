@@ -14,29 +14,29 @@ fn loop_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn loop_emit_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_emit_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: loop_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn loop_emit_wrong_value_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_emit_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: loop_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn loop_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn loop_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: loop_emit_producer_tree(),
     f: fn(tree) {
@@ -45,7 +45,7 @@ fn loop_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) ->
   )
 }
 
-fn loop_emit_wrong_value_from_producer(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn loop_emit_wrong_value_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: loop_emit_wrong_value_producer_tree(),
     f: fn(tree) {
@@ -59,25 +59,25 @@ test fn loop_emit_holds() -> Bool {
     target: dag_loop_target_model(),
     emitted: dag_fixture_emitted_loop_fn
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match loop_emit_from_producer(target: dag_loop_target_model()) {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_emit_wrong_value_discriminates() -> Bool {
   match loop_emit_from_producer(target: dag_loop_target_model()) {
-    Accepted { value: canonical, diagnostics: dc } =>
+    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
       match loop_emit_wrong_value_from_producer(target: dag_loop_target_model()) {
-        Accepted { value: wrong, diagnostics: dw } =>
+        v2.std.diagnostic.Accepted { value: wrong, diagnostics: dw } =>
           (wrong != canonical) && (dc == v2.std.diagnostic.None) && (dw == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

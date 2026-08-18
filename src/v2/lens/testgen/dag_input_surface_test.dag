@@ -3,7 +3,7 @@ module v2.test.lens_testgen.dag_input_surface
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn language_behavior_generator_uses_conj_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_conj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_conj_dag_surface() &&
@@ -17,7 +17,7 @@ fn language_behavior_generator_uses_conj_dag_input(g: Generator<v2.lens.testgen.
   }
 }
 
-fn language_behavior_generator_uses_disj_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_disj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_disj_dag_surface() &&
@@ -31,7 +31,7 @@ fn language_behavior_generator_uses_disj_dag_input(g: Generator<v2.lens.testgen.
   }
 }
 
-fn language_behavior_generator_uses_transform_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_transform_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_transform_dag_surface() &&
@@ -45,7 +45,7 @@ fn language_behavior_generator_uses_transform_dag_input(g: Generator<v2.lens.tes
   }
 }
 
-fn language_behavior_generator_uses_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   language_behavior_generator_uses_conj_dag_input(g: g) ||
     language_behavior_generator_uses_disj_dag_input(g: g) ||
     language_behavior_generator_uses_transform_dag_input(g: g)

@@ -1,7 +1,7 @@
 module v2.test.claim.namespace_graft.graft_shape_test
 
 
-fn ng_sym_node(sym: v2.std.node.Symbol) -> Node {
+fn ng_sym_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
@@ -9,7 +9,7 @@ fn ng_sym_node(sym: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn ng_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
+fn ng_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) { ng_sym_node(sym: sym) }
@@ -19,7 +19,7 @@ fn ng_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
 fn ng_pre_graft_module_root(
   qn: v2.std.qualified_name.QualifiedName,
   body_edges: List<v2.std.node.Edge>
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
@@ -56,23 +56,23 @@ data ng_pre_graft_root: Node = ng_pre_graft_module_root(
   ]
 )
 
-fn ng_outcome_accepted(out: Outcome<Node>) -> Bool {
+fn ng_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn ng_qn_eq(out: Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
+fn ng_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: actual, diagnostics: _ } => actual == expected
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
 data ng_grafted_root: Node = match module_header_containment_graft(root: ng_pre_graft_root) {
-  Accepted { value: grafted, diagnostics: _ } => grafted
-  Rejected { diagnostics: _ } => ng_pre_graft_root
+  v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+  v2.std.diagnostic.Rejected { diagnostics: _ } => ng_pre_graft_root
 }
 
 test fn namespace_graft_shape_accepts_well_formed_module_holds() -> Bool {
@@ -96,31 +96,31 @@ test fn namespace_graft_output_has_zero_metadata_edges_holds() -> Bool {
 
 test fn namespace_graft_body_edges_survive_holds() -> Bool {
   match module_header_containment_graft(root: ng_pre_graft_root) {
-    Accepted { value: grafted, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } =>
       match find_named_child(root: grafted, name: ^grammar_production_captured_node_projection) {
-        Accepted { value: captured, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: captured, diagnostics: _ } =>
           match qualified_name_from_graft_spine(root: grafted) {
-            Accepted { value: module_qn, diagnostics: _ } => {
+            v2.std.diagnostic.Accepted { value: module_qn, diagnostics: _ } => {
               let innermost = namespace_graft_walk_spine_to_body(captured: captured)
               match find_named_child(root: innermost, name: ^NgPilotType) {
-                Accepted { value: _, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                   match find_named_child(root: innermost, name: ^NgPilotFn) {
-                    Accepted { value: _, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                       qualified_name_to_dotted_string(qn: module_qn) == "v2.test.namespace_graft.alpha"
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
             }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn namespace_graft_walk_spine_to_body(captured: Node) -> Node {
+fn namespace_graft_walk_spine_to_body(captured: v2.std.node.Node) -> v2.std.node.Node {
   match captured.kind {
     TypeNode { connective: Conj } =>
       if count(captured.children) == 1 {
@@ -139,7 +139,7 @@ fn namespace_graft_walk_spine_to_body(captured: Node) -> Node {
   }
 }
 
-fn namespace_graft_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
+fn namespace_graft_grafted_tree_has_no_metadata_edges(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       fold(

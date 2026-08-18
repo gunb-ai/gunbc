@@ -18,7 +18,7 @@ data projection_test_root: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn projection_test_read(root: Node) -> Outcome<v2.std.node.Symbol> {
+fn projection_test_read(root: v2.std.node.Node) -> Outcome<v2.std.node.Symbol> {
   match root.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
     TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
@@ -63,7 +63,7 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
   }
 }
 
-fn apply_lens_enforce_projection_claim_rhs() -> Node {
+fn apply_lens_enforce_projection_claim_rhs() -> v2.std.node.Node {
   if apply_lens_enforce_projection_claim_holds() {
     projection_test_root
   } else {

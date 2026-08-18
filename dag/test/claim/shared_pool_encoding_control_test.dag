@@ -48,7 +48,7 @@ fn lanes(n: std.nat.Nat) -> std.machine_shape.ExecutionShape {
   std.machine_shape.ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
 }
 
-fn domain(id: std.machine_shape.DomainId, n: std.nat.Nat, mem: List<std.machine_shape.MemoryLevel>) -> std.machine_shape.ExecutionDomain {
+fn domain(id: std.machine_shape.DomainId, n: std.nat.Nat, mem: std.types.List<std.machine_shape.MemoryLevel>) -> std.machine_shape.ExecutionDomain {
   std.machine_shape.ExecutionDomain { id: id, execution: lanes(n: n), memory: mem }
 }
 

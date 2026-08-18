@@ -9,11 +9,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // forbids, at the seam furthest from the model. The arms are typed now, and this witness executes
 // all three of them, because an arm nothing calls is a claim rather than a behaviour.
 
-fn is_emitted(e: BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal>) -> Bool {
+fn is_emitted(e: product.compute_board.emission_entry.BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal>) -> Bool {
   match e {
-    BoardEmitted { source: s } => s != ""
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -21,9 +21,9 @@ test fn w_the_production_article_emits_through_every_entry() -> Bool {
   is_emitted(e: emit_spice())
     && is_emitted(e: emit_ngspice_run())
     && match product.compute_board.emission_entry.emit_verilog() {
-      BoardEmitted { source: s } => s != ""
-      BoardArticleNotAdmitted { causes: _ } => false
-      BoardTargetRefused { cause: _ } => false
+      product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+      product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+      product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
     }
 }
 
@@ -50,19 +50,19 @@ data incoherent_article: product.compute_board.article.BoardPowerInterfaceArticl
 
 test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool {
   match emit_spice_for(article: incoherent_article) {
-    BoardArticleNotAdmitted { causes: _ } =>
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } =>
       match emit_ngspice_run_for(article: incoherent_article) {
-        BoardArticleNotAdmitted { causes: _ } =>
+        product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } =>
           match emit_verilog_for(article: incoherent_article) {
-            BoardArticleNotAdmitted { causes: _ } => true
-            BoardEmitted { source: _ } => false
-            BoardTargetRefused { cause: _ } => false
+            product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => true
+            product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+            product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
           }
-        BoardEmitted { source: _ } => false
-        BoardTargetRefused { cause: _ } => false
+        product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+        product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
       }
-    BoardEmitted { source: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -71,9 +71,9 @@ test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool
 // through the admission module's own accessor, so this asserts the set, not a re-derivation.
 test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
   match emit_spice_for(article: incoherent_article) {
-    BoardArticleNotAdmitted { causes: cs } => refusal_set_count(s: cs) == 2
-    BoardEmitted { source: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: cs } => refusal_set_count(s: cs) == 2
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -142,14 +142,14 @@ test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
 
 test fn w_a_target_that_cannot_render_reaches_the_target_arm() -> Bool {
   match emit_spice_for(article: floating_article) {
-    BoardTargetRefused { cause: _ } =>
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } =>
       match emit_ngspice_run_for(article: floating_article) {
-        BoardTargetRefused { cause: _ } => true
-        BoardEmitted { source: _ } => false
-        BoardArticleNotAdmitted { causes: _ } => false
+        product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => true
+        product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+        product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
       }
-    BoardEmitted { source: _ } => false
-    BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
   }
 }
 
@@ -157,9 +157,9 @@ test fn w_a_target_that_cannot_render_reaches_the_target_arm() -> Bool {
 // statement about the target rather than about the board.
 test fn w_the_same_board_still_emits_for_a_target_that_can_render_it() -> Bool {
   match emit_verilog_for(article: floating_article) {
-    BoardEmitted { source: s } => s != ""
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -179,8 +179,8 @@ test fn w_every_target_cause_crosses_the_boundary() -> Bool {
       product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
     ]
   ) {
-    BoardEmitted { source: _ } => false
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: cs } => pin_refusal_set_count(s: cs) == 2
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: cs } => pin_refusal_set_count(s: cs) == 2
   }
 }

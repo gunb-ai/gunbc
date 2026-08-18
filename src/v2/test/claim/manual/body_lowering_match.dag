@@ -5,7 +5,7 @@ data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) 
 
 data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
 
-fn body_lowering_match_bool_node(pass: Bool) -> Node {
+fn body_lowering_match_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
     node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_match_pass } },
@@ -19,7 +19,7 @@ fn body_lowering_match_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn body_lowering_find_match_expr(root: Node) -> Optional<Node> {
+fn body_lowering_find_match_expr(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
       match emitted == ^dag_surface_match_expr {
@@ -42,7 +42,7 @@ fn body_lowering_find_match_expr(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lowering_tree_has_match_behavior(root: Node) -> Bool {
+fn body_lowering_tree_has_match_behavior(root: v2.std.node.Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Match } => true
     _ =>
@@ -56,7 +56,7 @@ fn body_lowering_tree_has_match_behavior(root: Node) -> Bool {
   }
 }
 
-fn body_lowering_parsed_tree(source: String) -> Optional<Node> {
+fn body_lowering_parsed_tree(source: String) -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(text: source, file: ^body_lowering_match_file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent

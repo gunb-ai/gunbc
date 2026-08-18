@@ -6,7 +6,7 @@ data normalize_graft_witness_helpers_note: String = "§10 normalize-as-ingest ex
 
 data ng_norm_module_source: String = ingested_add_module_source
 
-fn ng_norm_parsed_root() -> Optional<Node> {
+fn ng_norm_parsed_root() -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(
     text: ng_norm_module_source,
@@ -22,7 +22,7 @@ fn ng_norm_parsed_root() -> Optional<Node> {
   }
 }
 
-fn ng_norm_normalized_root() -> Optional<Node> {
+fn ng_norm_normalized_root() -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(
     text: ng_norm_module_source,
@@ -42,7 +42,7 @@ fn ng_norm_normalized_root() -> Optional<Node> {
   }
 }
 
-fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
+fn ng_norm_grafted_tree_has_no_metadata_edges(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       fold(node.children, init: true, f: fn(ok, edge) {

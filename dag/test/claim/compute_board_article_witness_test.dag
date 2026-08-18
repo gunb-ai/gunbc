@@ -247,7 +247,7 @@ test fn w_every_precondition_names_what_establishes_it() -> Bool {
 // admission join is what makes that a checked fact rather than a coincidence between two lists.
 // This asserts the pairing itself, so a contract that named the other output would still be
 // admitted and would fail here.
-fn precondition_signal_for(kind_matches: fn(HostFirmwareStartPrecondition) -> Bool) -> String {
+fn precondition_signal_for(kind_matches: fn(product.compute_board.article.HostFirmwareStartPrecondition) -> Bool) -> String {
   fold(power_interlock_article.platform_firmware.start_preconditions, init: "", f: fn(acc, p) {
     if kind_matches(p) {
       match p.establishment {

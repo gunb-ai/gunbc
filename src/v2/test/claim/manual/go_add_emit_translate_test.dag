@@ -46,7 +46,7 @@ data go_add_missing_translation_rules_target: v2.std.compilers.target_model.Targ
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_go_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+fn anchor_go_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: go_add_missing_translation_rules_target,
     emitted: go_add_emitted_root
@@ -57,8 +57,8 @@ data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_se
 
 test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -211,11 +211,11 @@ data go_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.In
   }
 }
 
-fn anchor_go_add_emit_accepts() -> Outcome<Medium<String>> {
+fn anchor_go_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: go_add_inferred_tree, target: go_add_target_model)
 }
 
-fn anchor_go_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
+fn anchor_go_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: go_add_inferred_tree,
     mode: v2.compiler.compile.TranslateTo { target: go_add_poisoned_authority_target_model }
@@ -226,9 +226,9 @@ data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == go_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -236,8 +236,8 @@ data go_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput>
 
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

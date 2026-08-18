@@ -67,7 +67,7 @@ fn p0_proposal() -> gunbc.source_integration_landing_spine.LandingProposalContra
 }
 
 fn p0_fact_claim(
-  fact: RecordedFact<gunbc.source_integration_landing_spine.LandingEvidenceFact>,
+  fact: std.claim_evidence.RecordedFact<gunbc.source_integration_landing_spine.LandingEvidenceFact>,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   fact.value.claim == claim
@@ -99,14 +99,14 @@ fn p0_provenance_claim(
 }
 
 fn p0_freshness_claim(
-  freshness: EvidenceFreshness<gunbc.source_integration_landing_spine.LandingRequiredClaim>,
+  freshness: std.claim_evidence.EvidenceFreshness<gunbc.source_integration_landing_spine.LandingRequiredClaim>,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   freshness.maximum_conclusion == claim
 }
 
 fn p0_fidelity_claim(
-  fidelity: EvidenceFidelity<gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle>,
+  fidelity: std.claim_evidence.EvidenceFidelity<gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle>,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   fidelity.boundary == "p0-lossless-guarantee"

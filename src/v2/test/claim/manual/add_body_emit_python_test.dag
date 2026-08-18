@@ -29,7 +29,7 @@ fn python_add_emit_perturbed_target_model() -> v2.std.compilers.target_model.Tar
   }
 }
 
-fn python_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn python_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: python_add_inferred_tree, target: target)
 }
 
@@ -38,30 +38,30 @@ test fn python_add_emit_holds() -> Bool {
     target: python_target_model(),
     emitted: python_emitted_add_fn_node()
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match python_add_emit_from_tree(target: python_target_model()) {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
   match python_add_emit_from_tree(target: python_target_model()) {
-    Accepted { value: canonical, diagnostics: dc } =>
+    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
       match python_add_emit_from_tree(
         target: python_add_emit_perturbed_target_model()
       ) {
-        Accepted { value: perturbed, diagnostics: dp } =>
+        v2.std.diagnostic.Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
             && (perturbed.carried == python_add_emit_perturbed_source_text)
             && (dc == v2.std.diagnostic.None)
             && (dp == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

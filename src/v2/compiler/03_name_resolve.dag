@@ -79,7 +79,7 @@ fn resolve_module_not_found_diagnostic(name: v2.std.qualified_name.QualifiedName
   resolve_module_not_found_diagnostic_from_missing(requested: name)
 }
 
-fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
+fn collect_import_decl_nodes(n: v2.std.node.Node, acc: FreeMonoid<v2.std.node.Node>) -> FreeMonoid<v2.std.node.Node> {
   let here = match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl {
@@ -98,7 +98,7 @@ type ImportRowsState
   = ImportRowsFailed { reason: v2.std.node.Symbol }
   | ImportRowsOk { rows: List<Import> }
 
-fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
+fn import_rows_from_parsed_module(root: v2.std.node.Node) -> ImportRowsState {
   let gathered = fold_list(
     xs: list_reverse(xs: collect_import_decl_nodes(n: root, acc: std.algebra.Empty)),
     empty: ImportRowsOk { rows: std.algebra.Empty },
@@ -107,8 +107,8 @@ fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
         ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
         ImportRowsOk { rows: prior } =>
           match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
-            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
-            Accepted { value: target_qn, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
+            v2.std.diagnostic.Accepted { value: target_qn, diagnostics: _ } =>
               ImportRowsOk {
                 rows: std.algebra.Cons {
                   head: Import { target: target_qn, visibility: ImportVisible },
@@ -125,10 +125,10 @@ fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
   }
 }
 
-fn admission_from_module_root(root: Node) -> Outcome<Admission> {
+fn admission_from_module_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Admission> {
   match qualified_name_from_module_node(root: root) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: subject_qn, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: subject_qn, diagnostics: _ } =>
       match import_rows_from_parsed_module(root: root) {
         ImportRowsFailed { reason: r } =>
           v2.std.diagnostic.Rejected { diagnostics: resolve_diagnostics(reason: r) }
@@ -162,7 +162,7 @@ fn admit_export_symbol(
     AdmissionAccepted { bindings: b, origins: os } =>
 
       match v2.std.collection.map_get(os, sym) {
-        Accepted { value: opt, diagnostics: _ } => match opt {
+        v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
               diagnostics: resolve_diagnostics(reason: ^resolve_ambiguous_export)
@@ -173,7 +173,7 @@ fn admit_export_symbol(
               origins: map_insert(m: os, key: sym, value: origin)
             }
         }
-        Rejected { diagnostics: d } => AdmissionRejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => AdmissionRejected { diagnostics: d }
       }
   }
 }
@@ -200,7 +200,7 @@ fn module_root_name_find_fold(
   )
 }
 
-fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>) -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   match fold_list(
     xs: roots,
     empty: ModuleRootsValid { seen: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
@@ -213,11 +213,11 @@ fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.Normalize
         ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
           if well_formed(n: root.root) {
             match qualified_name_from_module_node(root: root.root) {
-              Rejected { diagnostics: d } =>
+              v2.std.diagnostic.Rejected { diagnostics: d } =>
                 ModuleRootsProjectionRejected {
                   diagnostics: rejected_with_pending(pending: acc_diag, rejected: d)
                 }
-              Accepted { value: name, diagnostics: proj_diag } =>
+              v2.std.diagnostic.Accepted { value: name, diagnostics: proj_diag } =>
                 let merged_diag = diagnostics_merge(outer: acc_diag, inner: proj_diag)
                 match module_root_name_find_fold(
                   names: prior,
@@ -271,16 +271,16 @@ fn module_root_lookup(
     empty: v2.std.diagnostic.Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: fold_state, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: fold_state, diagnostics: _ } =>
           match fold_state {
             ManyPassingCandidates =>
               v2.std.diagnostic.Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
             _ =>
               match qualified_name_from_module_node(root: root.root) {
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
-                Accepted { value: candidate, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: candidate, diagnostics: _ } =>
                   v2.std.diagnostic.Accepted {
                     value: match candidate == name {
                       true =>
@@ -298,9 +298,9 @@ fn module_root_lookup(
       }
     }
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       ModuleRootLookupRejected { diagnostics: d }
-    Accepted { value: fold_state, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {
         NoPassingCandidate =>
           ModuleRootMissing { requested: name }
@@ -315,7 +315,7 @@ fn module_root_lookup(
 fn module_root_find(
   roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   name: v2.std.qualified_name.QualifiedName
-) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match module_root_lookup(roots: roots, name: name) {
     ModuleRootFound { root: root } =>
       v2.std.diagnostic.Accepted { value: root, diagnostics: v2.std.diagnostic.None }
@@ -393,7 +393,7 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
-fn admit_named_exports_body_root(root: Node) -> Node {
+fn admit_named_exports_body_root(root: v2.std.node.Node) -> v2.std.node.Node {
   if namespace_graft_already_grafted(root: root) {
     admit_named_exports_descend_spine(
       node: namespace_graft_strip_provenance_marker(root: root)
@@ -403,7 +403,7 @@ fn admit_named_exports_body_root(root: Node) -> Node {
   }
 }
 
-fn admit_named_exports_descend_spine(node: Node) -> Node {
+fn admit_named_exports_descend_spine(node: v2.std.node.Node) -> v2.std.node.Node {
   match namespace_graft_spine_segment_edge_optional(node: node) {
     Present { value: edge } =>
       admit_named_exports_descend_spine(node: edge.target)
@@ -412,7 +412,7 @@ fn admit_named_exports_descend_spine(node: Node) -> Node {
 }
 
 fn admit_named_exports(
-  root: Node,
+  root: v2.std.node.Node,
   origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
@@ -436,14 +436,14 @@ fn admit_named_exports(
 }
 
 fn admit_import_root_find(
-  found: Outcome<v2.compiler.normalized_tree.NormalizedTree>,
+  found: v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree>,
   origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
   match found {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
-    Accepted { value: imported_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: imported_root, diagnostics: _ } =>
       if well_formed(n: imported_root.root) {
         admit_named_exports(
           root: imported_root.root,
@@ -550,7 +550,7 @@ fn admission_namespace_base(lm: v2.std.language_model.LanguageModel) -> v2.compi
 fn subject_module_root_for_name(
   roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   name: v2.std.qualified_name.QualifiedName
-) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   module_root_find(roots: roots, name: name)
 }
 
@@ -604,19 +604,19 @@ fn namespace_for_subject(
   index: v2.std.cross_tree.resolution.SourceRootIndex,
   active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>,
   policy: v2.std.resolution_policy.NameResolutionPolicy
-) -> Outcome<AdmittedSubject> {
+) -> v2.std.diagnostic.Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: validated_roots, diagnostics: validate_diag } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: validated_roots, diagnostics: validate_diag } =>
       match subject_module_root_for_name(
         roots: validated_roots,
         name: admission.subject.name
       ) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: validate_diag, rejected: r)
           }
-        Accepted { value: subject_module_root, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root.root) {
             let base = admission_namespace_base(lm: lm)
             let initial = namespace_admission_initial_state(
@@ -689,7 +689,7 @@ fn resolve_with_admission_policy(
   index: v2.std.cross_tree.resolution.SourceRootIndex,
   active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>,
   policy: v2.std.resolution_policy.NameResolutionPolicy
-) -> Outcome<v2.compiler.resolve.ResolvedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
@@ -698,24 +698,24 @@ fn resolve_with_admission_policy(
     active_roots: active_roots,
     policy: policy
   ) {
-    Accepted { value: admitted, diagnostics: namespace_diag } =>
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: namespace_diag } =>
       match resolve_with_namespace_policy(
         tree: admitted.subject_root,
         namespace: admitted.namespace,
         lm: lm,
         policy: policy
       ) {
-        Accepted { value: resolved, diagnostics: resolve_diag } =>
+        v2.std.diagnostic.Accepted { value: resolved, diagnostics: resolve_diag } =>
           v2.std.diagnostic.Accepted {
             value: resolved,
             diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
           }
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
           }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -723,7 +723,7 @@ fn resolve_with_admission(
   lm: v2.std.language_model.LanguageModel,
   roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: Admission
-) -> Outcome<v2.compiler.resolve.ResolvedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   resolve_with_admission_policy(
     lm: lm,
     roots: roots,
@@ -740,7 +740,7 @@ fn resolve_with_admission_grounded(
   admission: Admission,
   index: v2.std.cross_tree.resolution.SourceRootIndex,
   active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>
-) -> Outcome<v2.compiler.resolve.ResolvedTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   resolve_with_admission_policy(
     lm: lm,
     roots: roots,

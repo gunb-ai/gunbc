@@ -30,7 +30,7 @@ fn healthz_body_at_revision_and_surface(
   )
 }
 
-fn ground_body_against(body: String, expected_revision: std.types.CommitSha) -> Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
+fn ground_body_against(body: String, expected_revision: std.types.CommitSha) -> std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
   ground_body_against_surface(
     body: body,
     expected_revision: expected_revision,
@@ -42,7 +42,7 @@ fn ground_body_against_surface(
   body: String,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
+) -> std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
     read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: body, probe_error: "" },
     bundle: witness_bundle(),
@@ -51,17 +51,17 @@ fn ground_body_against_surface(
   )
 }
 
-fn grounding_refuses(g: Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
+fn grounding_refuses(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
   match g {
-    DoesNotGround { reason: _ } => true
-    Grounds { evidence: _ } => false
+    std.realization_reconcile.DoesNotGround { reason: _ } => true
+    std.realization_reconcile.Grounds { evidence: _ } => false
   }
 }
 
-fn grounding_refusal_mentions(g: Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
+fn grounding_refusal_mentions(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
   match g {
-    DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
-    Grounds { evidence: _ } => false
+    std.realization_reconcile.DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
+    std.realization_reconcile.Grounds { evidence: _ } => false
   }
 }
 
@@ -72,8 +72,8 @@ test fn witness_matching_release_and_surface_grounds() -> Bool {
     body: healthz_body_at_revision(revision: deploy_witness_release_revision),
     expected_revision: deploy_witness_release_revision,
   ) {
-    Grounds { evidence: _ } => true
-    DoesNotGround { reason: _ } => false
+    std.realization_reconcile.Grounds { evidence: _ } => true
+    std.realization_reconcile.DoesNotGround { reason: _ } => false
   }
 }
 

@@ -7,7 +7,7 @@ type TraitDeriveCompletenessGate
   = TraitDeriveCompletenessSatisfied
   | TraitDeriveCompletenessIncomplete
 
-fn trait_derive_int_kernel_type_node() -> Node {
+fn trait_derive_int_kernel_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^int_kernel_type_atom } },
     children: [],
@@ -15,7 +15,7 @@ fn trait_derive_int_kernel_type_node() -> Node {
   }
 }
 
-fn trait_derive_unit_kernel_type_node() -> Node {
+fn trait_derive_unit_kernel_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^unit_kernel_type_atom } },
     children: [],
@@ -23,7 +23,7 @@ fn trait_derive_unit_kernel_type_node() -> Node {
   }
 }
 
-fn repr_grounding_derive_elem_shape(elem: Node) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
+fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   match elem.kind {
     TypeNode { connective: Disj } =>
       if coproduct_all_variants_nullary(edges: elem.children) {
@@ -55,7 +55,7 @@ fn repr_grounding_derive_elem_shape(elem: Node) -> std.trait_derive_shape.ReprGr
 
 fn repr_grounding_derive_trait_satisfied(
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
-  elem: Node
+  elem: v2.std.node.Node
 ) -> Bool {
   repr_grounding_derive_shape_has_trait(
     shape: repr_grounding_derive_elem_shape(elem: elem),
@@ -65,7 +65,7 @@ fn repr_grounding_derive_trait_satisfied(
 
 fn repr_grounding_derive_completeness_predicate_for_elem(
   required: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
-  elem: Node
+  elem: v2.std.node.Node
 ) -> Bool {
   repr_grounding_derive_completeness_predicate(
     required: required,
@@ -112,7 +112,7 @@ fn repr_grounding_derive_traits_for_collection_witness(
 
 fn trait_derive_completeness_gate(
   required: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
-  elem: Node
+  elem: v2.std.node.Node
 ) -> TraitDeriveCompletenessGate {
   if repr_grounding_derive_completeness_predicate_for_elem(required: required, elem: elem) {
     TraitDeriveCompletenessSatisfied
@@ -123,7 +123,7 @@ fn trait_derive_completeness_gate(
 
 fn trait_derive_completeness_gate_for_collection_witness(
   witness: v2.std.compilers.target_model.RequiredTraitWitness,
-  elem: Node
+  elem: v2.std.node.Node
 ) -> TraitDeriveCompletenessGate {
   trait_derive_completeness_gate(
     required: repr_grounding_derive_traits_for_collection_witness(witness: witness),

@@ -131,13 +131,13 @@ type LeanOverflowRaiseEffect
   | LeanOverflowTraps
 
 type LeanAdmittedOverflowSemantics sole_constructor {
-  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 }
 
 type LeanOverflowSemanticsAdmission
   = LeanOverflowAccepted { semantics: LeanAdmittedOverflowSemantics }
   | LeanOverflowRefused {
-      observed: IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
+      observed: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
       reason: v2.std.node.Symbol
     }
 
@@ -146,24 +146,24 @@ data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser c
 data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = std.integer.OverflowReturns { value_rule: lean_upstream_fixed_width_overflow_returns_rule }
 
 fn lean_admit_fixed_width_overflow_semantics(
-  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> LeanOverflowSemanticsAdmission {
   match semantics {
-    OverflowReturns { value_rule: ReturnWrapping } =>
+    std.integer.OverflowReturns { value_rule: ReturnWrapping } =>
       LeanOverflowAccepted {
         semantics: LeanAdmittedOverflowSemantics { semantics: semantics }
       }
-    OverflowReturns { value_rule: ReturnSaturating } =>
+    std.integer.OverflowReturns { value_rule: ReturnSaturating } =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_saturating_not_fixed_width_catalog
       }
-    OverflowRaises { effect: _ } =>
+    std.integer.OverflowRaises { effect: _ } =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_raises_not_fixed_width_catalog
       }
-    OverflowUndefined =>
+    std.integer.OverflowUndefined =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_undefined_not_fixed_width_catalog
@@ -172,12 +172,12 @@ fn lean_admit_fixed_width_overflow_semantics(
 }
 
 fn lean_overflow_semantics_arm_tag(
-  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> v2.std.node.Symbol {
   match semantics {
-    OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
-    OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
-    OverflowUndefined => ^lean_overflow_arm_undefined
+    std.integer.OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
+    std.integer.OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
+    std.integer.OverflowUndefined => ^lean_overflow_arm_undefined
   }
 }
 
@@ -207,7 +207,7 @@ type LeanScalar
       overflow: LeanAdmittedOverflowSemantics
     }
   | LeanWidthAdmissionRefused { width: std.measure.BitWidth }
-  | LeanOverflowAdmissionRefused { semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
+  | LeanOverflowAdmissionRefused { semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
   | BoolScalar
 
 type LeanPrimitiveFacts {
@@ -430,10 +430,10 @@ fn lean_overflow_raise_effect_node(effect: LeanOverflowRaiseEffect) -> Node {
 }
 
 fn lean_overflow_semantics_node(
-  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> Node {
   match semantics {
-    OverflowReturns { value_rule: rule } => v2.std.node.Node {
+    std.integer.OverflowReturns { value_rule: rule } => v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         lean_named_edge(
@@ -447,7 +447,7 @@ fn lean_overflow_semantics_node(
       ],
       occurrence_id: SyntheticOccurrence
 }
-    OverflowRaises { effect: effect } => v2.std.node.Node {
+    std.integer.OverflowRaises { effect: effect } => v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         lean_named_edge(
@@ -461,7 +461,7 @@ fn lean_overflow_semantics_node(
       ],
       occurrence_id: SyntheticOccurrence
 }
-    OverflowUndefined =>
+    std.integer.OverflowUndefined =>
       lean_inhabitant_atom(id: ^lean_tag_overflow_undefined)
   }
 }
@@ -718,7 +718,7 @@ fn lean_def_dec_parse_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn lean_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
+fn lean_lex_rule(token_class: v2.std.node.Symbol, text: v2.std.text.String) -> v2.std.compilers.lexing.LexRule {
   v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
     pattern: v2.std.compilers.lexing.LiteralPattern { text: text }

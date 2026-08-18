@@ -56,7 +56,7 @@ fn frontier_probe_discovered_closure_subject_from_host_manifest(
   coverage: v2.compiler.source_authority.SourceRootCoverage,
   ingest_read_count: Int,
   host_discovered_digest: v2.compiler.source_authority.DiscoveredSourceRefsDigest
-) -> Outcome<FrontierProbeIngestSubject> {
+) -> v2.std.diagnostic.Outcome<FrontierProbeIngestSubject> {
   let closure = frontier_probe_discovered_closure_seal(refs: refs, entry: entry)
   if discovered_source_refs_digest_eq(
     left: closure.population_digest,
@@ -198,8 +198,8 @@ fn frontier_probe_missing_module_from_assemble_context(
       ProgramAssemblyFoldFailed { diagnostics: _ } => optional_absent()
       ProgramAssemblyFoldOk { roots: roots, index: _ } =>
         match validate_module_roots(roots: roots) {
-          Rejected { diagnostics: _ } => optional_absent()
-          Accepted { value: validated_roots, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+          v2.std.diagnostic.Accepted { value: validated_roots, diagnostics: _ } =>
             frontier_probe_first_missing_import_lookup(
               roots: validated_roots,
               imports: admission.imports
@@ -314,15 +314,15 @@ fn frontier_probe_entry_read_witness(
 fn frontier_probe_admission_from_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   module_path: String
-) -> Outcome<v2.compiler.name_resolve.Admission> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.name_resolve.Admission> {
   match frontier_probe_entry_read_witness(ingest: ingest, module_path: module_path) {
     Present { value: read } =>
       match reference_deps_ingest_source_text(
         source_text: read.source.carried,
         file: symbol_intern_lexeme(lexeme: module_path)
       ) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: parse_root, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: parse_root, diagnostics: _ } =>
           admission_from_module_root(root: parse_root)
       }
     Absent =>
@@ -429,7 +429,7 @@ fn frontier_probe_receipt_from_discovered_closure(
                         ingest: ingest,
                         module_path: module_path
                       ) {
-                        Rejected { diagnostics: d } => {
+                        v2.std.diagnostic.Rejected { diagnostics: d } => {
                           let reason = d.head.reason
                           let blocker = frontier_classify_rejection_reason(reason: reason)
                           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
@@ -441,7 +441,7 @@ fn frontier_probe_receipt_from_discovered_closure(
                             assemble_detail: NoFrontierProbeDetail
                           }
                         }
-                        Accepted { value: admission, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: admission, diagnostics: _ } =>
                           frontier_probe_emit_from_ingest(
                             module_path: module_path,
                             ingest: ingest,
@@ -504,16 +504,16 @@ fn frontier_probe_receipt_for_subject(
 }
 
 fn frontier_probe_receipt_for_subject_outcome(
-  subject_outcome: Outcome<FrontierProbeIngestSubject>,
+  subject_outcome: v2.std.diagnostic.Outcome<FrontierProbeIngestSubject>,
   fixture_module_path: String
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   match subject_outcome {
-    Accepted { value: subject, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: subject, diagnostics: _ } =>
       frontier_probe_receipt_for_subject(
         subject: subject,
         fixture_module_path: fixture_module_path
       )
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       frontier_probe_receipt_from_reason_only(
         module_path: fixture_module_path,
         reason: frontier_probe_subject_digest_mismatch_reason,
@@ -571,7 +571,7 @@ fn frontier_probe_emit_from_populated_ingest(
     admission: admission,
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
         diagnostics: d,
@@ -585,13 +585,13 @@ fn frontier_probe_emit_from_populated_ingest(
           grammar: dag_language_model().grammar
         )
       )
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
         ingest: ingest,
         admission: admission,
         target: rust_target_model()
       ) {
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
             module_path: module_path,
             blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause {
@@ -602,7 +602,7 @@ fn frontier_probe_emit_from_populated_ingest(
             detail: FrontierProbeDetailAbsent,
             assemble_detail: NoFrontierProbeDetail
           }
-        Rejected { diagnostics: d } => {
+        v2.std.diagnostic.Rejected { diagnostics: d } => {
           let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
             module_path: module_path,

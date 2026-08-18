@@ -5,20 +5,20 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data produced_module_two_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 
-fn produced_add_module_source() -> Outcome<Medium<String>> {
+fn produced_add_module_source() -> v2.std.diagnostic.Outcome<Medium<String>> {
   match ingested_add_decl_node(fn_name: ^rust_binding_fn_add) {
-    Accepted { value: d1, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: d1, diagnostics: _ } =>
       match ingested_add_decl_node(fn_name: ^rust_binding_fn_add2) {
-        Accepted { value: d2, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: d2, diagnostics: _ } =>
           emit_produced_module(decls: [d1, d2], target: rust_target_model_staging())
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn produced_module_run(
-  cp: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
+  cp: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: cp),
@@ -29,8 +29,8 @@ fn produced_module_run(
 
 fn produced_module_source_matches(golden: String) -> Bool {
   match produced_add_module_source() {
-    Accepted { value: medium, diagnostics: _ } => medium.carried == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => medium.carried == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

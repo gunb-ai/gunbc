@@ -2,13 +2,13 @@ module v2.lens.effect
 
 
 type EffectFact {
-  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>>
 }
 
 fn effect_classify(
   tree: v2.compiler.infer.InferredTree,
   view: v2.std.dependency.DependencyView
-) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification> {
+) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification> {
   classify_dependency_view(classifier: effect_classifier, view: view)
 }
 
@@ -71,8 +71,8 @@ fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassi
 }
 
 fn effect_classified_eq(
-  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>,
-  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>
+  a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>,
+  b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
 }

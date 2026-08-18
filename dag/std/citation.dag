@@ -20,7 +20,7 @@ type CitedRepresentationIdentity {
 }
 
 type CitationTarget<Selector> {
-  expected_pin: Pin<CitedRepresentationIdentity>
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>
   selector: Selector?
 }
 
@@ -154,7 +154,7 @@ fn citation_exact_pin(
   byte_domain: RepresentationByteDomain,
   version: extdeps.version.VersionIdentity,
   expected_identity: std.content_hash.Sha256Digest,
-) -> Pin<CitedRepresentationIdentity> {
+) -> extdeps.pin.Pin<CitedRepresentationIdentity> {
   extdeps.pin.Pin {
     subject: cited_representation_identity(
       source: source,
@@ -167,7 +167,7 @@ fn citation_exact_pin(
   }
 }
 
-fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> std.content_hash.Sha256Digest? {
+fn citation_pin_expected_sha256(pin: extdeps.pin.Pin<CitedRepresentationIdentity>) -> std.content_hash.Sha256Digest? {
   match pin.expected_identity {
     Sha256Hash(digest) => Present { value: digest }
     _ => none
@@ -187,7 +187,7 @@ fn observed_cited_representation(
 }
 
 fn reconcile_citation_representation(
-  expected_pin: Pin<CitedRepresentationIdentity>,
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>,
   observed: ObservedCitedRepresentation?,
 ) -> CitationRepresentationReconciliation {
   match observed {
@@ -253,7 +253,7 @@ fn text_position_selector(start: std.integer.NonNegativeInt, end: std.integer.No
 }
 
 fn citation_target<Selector>(
-  expected_pin: Pin<CitedRepresentationIdentity>,
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>,
   selector: Selector?,
 ) -> CitationTarget<Selector> {
   CitationTarget {

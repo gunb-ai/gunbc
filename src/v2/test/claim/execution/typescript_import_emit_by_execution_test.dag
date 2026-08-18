@@ -111,7 +111,7 @@ fn ts_import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> 
   }
 }
 
-fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn ts_import_name_symbols_from_block(block: Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   fold(
     node_positional_child_targets(node: block),
     init: outcome_accepted(value: std.algebra.Empty),
@@ -133,7 +133,7 @@ fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<v2.std.node.Sy
   )
 }
 
-fn ts_import_value_from_carrier(carrier: Node) -> Outcome<v2.std.compilers.target_model.TargetImport> {
+fn ts_import_value_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetImport> {
   bind_outcome(
     o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
     f: fn(qn_node) {
@@ -162,7 +162,7 @@ fn ts_import_value_from_carrier(carrier: Node) -> Outcome<v2.std.compilers.targe
   )
 }
 
-fn ts_emit_import_from_carrier(carrier: Node) -> Outcome<Medium<String>> {
+fn ts_emit_import_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: ts_import_value_from_carrier(carrier: carrier),
     f: fn(import_value) {
@@ -184,8 +184,8 @@ fn ts_emit_import_from_carrier(carrier: Node) -> Outcome<Medium<String>> {
 
 fn ts_import_emit_text(carrier: Node) -> String {
   match ts_emit_import_from_carrier(carrier: carrier) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
   }
 }
 
@@ -236,14 +236,14 @@ test fn ts_import_emit_other_path_discriminates_holds() -> Bool {
 
 test fn ts_import_emit_missing_qn_fails_closed_holds() -> Bool {
   match ts_emit_import_from_carrier(carrier: ts_import_missing_qn_carrier()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 test fn ts_import_emit_empty_names_fails_closed_holds() -> Bool {
   match ts_emit_import_from_carrier(carrier: ts_import_empty_names_carrier()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

@@ -1,34 +1,34 @@
 module v2.std.exact_structural_equality_zip_fold_predicate
 
 
-fn exact_structural_zip_fold_init(n: Node) -> Node {
+fn exact_structural_zip_fold_init(n: v2.std.node.Node) -> v2.std.node.Node {
   node_for_structural_equality(n: node_rebuild(n: n, children: []))
 }
-fn exact_structural_zip_fold_step(acc: Node, edge: v2.std.node.Edge, child: Node) -> Node {
+fn exact_structural_zip_fold_step(acc: v2.std.node.Node, edge: v2.std.node.Edge, child: v2.std.node.Node) -> v2.std.node.Node {
   node_rebuild(
     n: acc,
     children: list_snoc_item(xs: acc.children, item: v2.std.node.Edge { label: edge.label, target: child })
   )
 }
-fn exact_structural_zip_fold_algebra() -> NodeFold<Node> {
+fn exact_structural_zip_fold_algebra() -> NodeFold<v2.std.node.Node> {
   v2.std.node.NodeFold {
     init: exact_structural_zip_fold_init,
     step: exact_structural_zip_fold_step
   }
 }
-fn exact_structural_zip_fold_canonical(n: Node) -> Node {
+fn exact_structural_zip_fold_canonical(n: v2.std.node.Node) -> v2.std.node.Node {
   fold_node(
     n: n,
     algebra: exact_structural_zip_fold_algebra()
   )
 }
-fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
+fn exact_structural_equality_zip_fold(source_facts: v2.std.node.Node, candidate: v2.std.node.Node) -> Bool {
   exact_structural_zip_fold_canonical(n: source_facts) == exact_structural_zip_fold_canonical(n: candidate)
 }
 fn exact_structural_equality_zip_fold_preservation_holds(
-  source_facts: Node,
-  candidate: Node,
-  algebra: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
+  algebra: v2.std.node.Node,
 ) -> Bool {
   well_formed(n: source_facts)
     && well_formed(n: algebra)

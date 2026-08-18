@@ -133,7 +133,7 @@ fn host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
 fn host_effect_nbd_proxy_serve_apply_classification(
   binding: NbdProxyServeSessionBinding,
   obs: gunbc.session_lease.ProcessPortObservation,
-) -> UpsertClassification<gunbc.session_lease.ProcessLeasePlan> {
+) -> std.upsert_decision.UpsertClassification<gunbc.session_lease.ProcessLeasePlan> {
   classify_process_port_upsert(scope: binding.scope, obs: obs)
 }
 
@@ -142,7 +142,7 @@ fn host_effect_nbd_proxy_serve_apply_refuses_foreign_port(
   obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
-    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+    std.upsert_decision.UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
     _ => false
   }
 }
@@ -152,7 +152,7 @@ fn host_effect_nbd_proxy_serve_apply_drains_stale_matching(
   obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
-    UpsertClassification {
+    std.upsert_decision.UpsertClassification {
       verdict: Drifted,
       decision: Apply { plan: DrainMatchingStaleThenStart },
     } => true

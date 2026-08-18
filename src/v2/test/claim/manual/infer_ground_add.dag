@@ -49,7 +49,7 @@ fn infer_receipt_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn infer_receipt_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn infer_receipt_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
@@ -57,15 +57,15 @@ fn infer_receipt_call_primitive(
   node: Node,
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-fn infer_receipt_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
+fn infer_receipt_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-fn infer_receipt_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
+fn infer_receipt_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
@@ -73,7 +73,7 @@ fn infer_receipt_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
@@ -168,7 +168,7 @@ fn infer_receipt_empty_tree(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
+fn infer_receipt_subject(case: InferReceiptCase) -> v2.compiler.eval.TestClaimEvalSubject<Node> {
   let input = infer_receipt_case_input(case: case)
   v2.compiler.eval.TestClaimEvalSubject {
     claim: infer_receipt_claim(case: case),
@@ -188,24 +188,24 @@ fn infer_receipt_case_pin(case: InferReceiptCase) -> v2.std.node.Symbol {
   }
 }
 
-fn infer_outcome_node_projection(actual: Outcome<v2.compiler.infer.InferredTree>) -> Outcome<Node> {
+fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree>) -> v2.std.diagnostic.Outcome<Node> {
   match actual {
-    Accepted { value: tree, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn infer_add_receipt_run(
-  subject: TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add()
   v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
-      Accepted { value: expected, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: expected, diagnostics: _ } =>
         match actual {
-          Accepted { value: tree, diagnostics: ad } =>
+          v2.std.diagnostic.Accepted { value: tree, diagnostics: ad } =>
             if outcome_node_eq(
               a: v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad },
               b: expected
@@ -214,7 +214,7 @@ fn infer_add_receipt_run(
             } else {
               verdict_fail(actual: actual)
             }
-          Rejected { diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: _ } =>
             if outcome_node_eq(
               a: infer_outcome_node_projection(actual: actual),
               b: expected
@@ -224,25 +224,25 @@ fn infer_add_receipt_run(
               verdict_fail(actual: actual)
             }
         }
-      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }
 
 fn infer_descent_witness_receipt_run(
-  subject: TestClaimEvalSubject<Node>,
+  subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, Node> {
   let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
   v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
-      Accepted { value: expected, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: expected, diagnostics: _ } =>
         if outcome_node_eq(a: actual, b: expected) {
           Pass
         } else {
           verdict_fail(actual: actual)
         }
-      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }
@@ -280,11 +280,11 @@ fn fixture_add_resolved_tree() -> v2.compiler.resolve.ResolvedTree {
 }
 }
 
-fn anchor_infer_add() -> Outcome<v2.compiler.infer.InferredTree> {
+fn anchor_infer_add() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   infer(tree: fixture_add_resolved_tree())
 }
 
-fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
+fn infer_descent_witness_contract_node(n: Node) -> v2.std.diagnostic.Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
     Holds { value: _ } => v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
     Violates { diagnostic: d } =>

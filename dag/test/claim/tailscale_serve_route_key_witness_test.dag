@@ -57,7 +57,7 @@ data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArg
 )
 
 fn plan_has_change_between_backends(
-  plan: MembershipPlan<TailscaleServeRouteSubject, TailscaleServeRouteMemberAt>,
+  plan: gunbc.membership_reconcile.MembershipPlan<TailscaleServeRouteSubject, TailscaleServeRouteMemberAt>,
   from_backend: String,
   to_backend: String,
 ) -> std.types.Bool {
@@ -70,7 +70,7 @@ fn plan_has_change_between_backends(
   )
 }
 
-fn plan_has_remove_add_not_change(plan: MembershipPlan<TailscaleServeRouteSubject, TailscaleEnableArgvMemberAt>) -> Bool {
+fn plan_has_remove_add_not_change(plan: gunbc.membership_reconcile.MembershipPlan<TailscaleServeRouteSubject, TailscaleEnableArgvMemberAt>) -> Bool {
   let has_remove = any(plan.actions, a => match a { MemberRemoved { at: _, from: _ } => true  _ => false })
   let has_add = any(plan.actions, a => match a { MemberAdded { at: _, to: _ } => true  _ => false })
   let has_change = any(plan.actions, a => match a { MemberChanged { at: _, from: _, to: _ } => true  _ => false })

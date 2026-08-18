@@ -64,7 +64,7 @@ fn ts_import_pipeline_find_import_node(tree: Node) -> Optional<Node> {
   }
 }
 
-fn ts_import_pipeline_parse_import_node(source: String) -> Outcome<Node> {
+fn ts_import_pipeline_parse_import_node(source: String) -> v2.std.diagnostic.Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
@@ -96,7 +96,7 @@ fn ts_import_pipeline_emit(
   source: String,
   third_seg: v2.std.node.Symbol,
   third_spell: String
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: ts_import_pipeline_parse_import_node(source: source),
     f: fn(import_node) {
@@ -127,8 +127,8 @@ test fn ts_import_pipeline_exact_holds() -> Bool {
     third_seg: ^algebra,
     third_spell: "algebra"
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: text, diagnostics: _ } => text == ts_import_pipeline_canonical_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == ts_import_pipeline_canonical_text
   }
 }
 
@@ -138,15 +138,15 @@ test fn ts_import_pipeline_discriminating_red_holds() -> Bool {
     third_seg: ^algebra,
     third_spell: "algebra"
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: canonical, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: canonical, diagnostics: _ } =>
       match ts_import_pipeline_emit(
         source: ts_import_pipeline_other_source,
         third_seg: ^collection,
         third_spell: "collection"
       ) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: other, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: other, diagnostics: _ } =>
           (canonical == ts_import_pipeline_canonical_text)
             && (other == ts_import_pipeline_other_text)
             && (canonical != other)

@@ -53,7 +53,7 @@ fn ts_record_construct_expr() -> v2.std.compilers.target_model.TargetValueExpres
 
 fn ts_record_construct_emit_accepts(
   record_literal_names_type: v2.std.compilers.target_model.RecordLiteralTypeNaming
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_record_construct_expr(),
@@ -75,8 +75,8 @@ fn ts_record_construct_emit_with_naming(
   record_literal_names_type: v2.std.compilers.target_model.RecordLiteralTypeNaming
 ) -> String {
   match ts_record_construct_emit_accepts(record_literal_names_type: record_literal_names_type) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
   }
 }
 

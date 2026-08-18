@@ -79,15 +79,15 @@ type TerminationProof {
 }
 
 type LoopBound {
-  measure: Node
+  measure: v2.std.node.Node
   termination: Witness<TerminationProof>
 }
 
-fn loop_bound_measure(bound: LoopBound) -> Node {
+fn loop_bound_measure(bound: LoopBound) -> v2.std.node.Node {
   bound.measure
 }
 
-fn loop_bound_undeclared_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn loop_bound_undeclared_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_undeclared,
     at: node_locus(node: n),
@@ -95,7 +95,7 @@ fn loop_bound_undeclared_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn loop_bound_ambiguous_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn loop_bound_ambiguous_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_ambiguous,
     at: node_locus(node: n),
@@ -103,7 +103,7 @@ fn loop_bound_ambiguous_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn loop_bound_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn loop_bound_malformed_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_malformed,
     at: node_locus(node: n),
@@ -111,7 +111,7 @@ fn loop_bound_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn loop_bound_not_loop_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn loop_bound_not_loop_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_not_loop,
     at: node_locus(node: n),
@@ -119,7 +119,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn loop_measure_node(n: Node) -> Witness<Node> {
+fn loop_measure_node(n: v2.std.node.Node) -> Witness<v2.std.node.Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
       let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
@@ -157,7 +157,7 @@ fn structural_node_size_termination_proof() -> TerminationProof {
   }
 }
 
-fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<TerminationProof> {
+fn multiplicity_termination_witness(n: v2.std.node.Node, m: Multiplicity) -> Witness<TerminationProof> {
   match m {
     Bounded => v2.std.witness.Holds { value: structural_node_size_termination_proof() }
     RequiresTerminationProof =>
@@ -259,7 +259,7 @@ fn measure_dimension_unknown_rows() -> List<MeasureDimensionEvidence> {
   ]
 }
 
-fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> List<MeasureDimensionEvidence> {
+fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: v2.std.node.Node) -> List<MeasureDimensionEvidence> {
   match measure.kind {
     TypeNode { connective: c } =>
       match c {
@@ -357,7 +357,7 @@ fn loop_multiplicity_from_rows(rows: List<MeasureDimensionEvidence>) -> Multipli
   }
 }
 
-fn loop_multiplicity_with(registry: List<MeasureDescentFact>, n: Node) -> Multiplicity {
+fn loop_multiplicity_with(registry: List<MeasureDescentFact>, n: v2.std.node.Node) -> Multiplicity {
   match loop_measure_node(n: n) {
     Violates { diagnostic: _ } => RequiresTerminationProof
     Holds { value: measure } =>
@@ -365,12 +365,12 @@ fn loop_multiplicity_with(registry: List<MeasureDescentFact>, n: Node) -> Multip
   }
 }
 
-fn loop_multiplicity(n: Node) -> Multiplicity {
+fn loop_multiplicity(n: v2.std.node.Node) -> Multiplicity {
   loop_multiplicity_with(registry: measure_descent_fact_registry, n: n)
 }
 
 // FLAG B (body-lowering design, operator-signed): Loop multiplicity is decided node-aware here while the other behaviors stay tag-only in behavior_multiplicity — a real distinction, not inconsistency: only Loop's termination depends on a node-level edge (the ^loop_bound_edge measure), which the Behavior tag structurally cannot carry. behavior_multiplicity(Loop) stays RequiresTerminationProof as the honest measure-less projection.
-fn node_multiplicity(n: Node) -> Multiplicity {
+fn node_multiplicity(n: v2.std.node.Node) -> Multiplicity {
   match n.kind {
     TypeNode { connective: c } => connective_multiplicity(c: c)
     ComputationNode { behavior: b } =>
@@ -385,7 +385,7 @@ fn node_multiplicity(n: Node) -> Multiplicity {
   }
 }
 
-fn cardinality_descent_not_proven_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn cardinality_descent_not_proven_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_descent_not_proven,
     at: node_locus(node: n),
@@ -393,7 +393,7 @@ fn cardinality_descent_not_proven_diagnostic(n: Node) -> v2.std.diagnostic.Diagn
   }
 }
 
-fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
+fn local_termination_proof_witness(n: v2.std.node.Node) -> Witness<TerminationProof> {
   multiplicity_termination_witness(n: n, m: node_multiplicity(n: n))
 }
 
@@ -412,7 +412,7 @@ fn termination_proof_fold_step(
   }
 }
 
-fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
+fn termination_proof_witness_for_node(n: v2.std.node.Node) -> Witness<TerminationProof> {
   fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -426,7 +426,7 @@ fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
   )
 }
 
-fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
+fn loop_bound_witness_for_node(n: v2.std.node.Node) -> Witness<LoopBound> {
   match loop_measure_node(n: n) {
     Holds { value: measure } =>
       v2.std.witness.Holds {

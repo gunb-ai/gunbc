@@ -250,7 +250,7 @@ fn show_healthz_read_for_deploy(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
+) -> std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
     Deny { refusal: _ } =>
@@ -275,7 +275,7 @@ data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL hea
 fn show_healthz_read_fixture_healthy(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
-) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
+) -> std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   std.realization_reconcile.ReadObserved {
     value: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
       body: healthz_body_with_release_identity(
@@ -296,7 +296,7 @@ data healthz_healthy_fixture_carries_identity_note: String = "THE HEALTHY FIXTUR
 
 fn show_healthz_read_fixture_healthy_live(
   release_revision: std.types.CommitSha,
-) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
+) -> std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   show_healthz_read_fixture_healthy(
     bundle: materialize_live_roadmap_site_surface_bundle(),
     release_revision: release_revision,
@@ -304,20 +304,20 @@ fn show_healthz_read_fixture_healthy_live(
 }
 
 fn reconcile_service_ready_read_for_bundle(
-  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
+  read: std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   effect: ServiceReadyApplyEffect,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
+    std.realization_reconcile.ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -332,10 +332,10 @@ fn reconcile_service_ready_read_for_bundle(
 }
 
 fn reconcile_service_ready_read(
-  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
+  read: std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
     read: read,
     bundle: materialize_live_roadmap_site_surface_bundle(),
@@ -346,19 +346,19 @@ fn reconcile_service_ready_read(
 }
 
 fn reconcile_service_ready_read_for_effect(
-  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
+  read: std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
   effect: ServiceReadyApplyEffect,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
+    std.realization_reconcile.ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -377,7 +377,7 @@ fn live_deploy_service_ready_once_for_deploy(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_effect(
     read: show_healthz_read_for_deploy(
       spec: spec,
@@ -393,7 +393,7 @@ fn live_deploy_service_ready_once_for_deploy(
 fn live_deploy_service_ready_once_for_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
     read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
     bundle: bundle,
@@ -405,7 +405,7 @@ fn live_deploy_service_ready_once_for_bundle(
 
 fn live_deploy_service_ready_once(
   release_revision: std.types.CommitSha,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_service_ready_once_for_bundle(
     bundle: materialize_live_roadmap_site_surface_bundle(),
     release_revision: release_revision,
@@ -432,7 +432,7 @@ fn capture_unit_diagnosis(
 }
 
 type ServiceReadyPollOutcome =
-    PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
+    PollSettled { result: std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
   | PollRefusedAtBound { refusal: gunbc.live_deploy.service_ready.ServiceNotReady }
 
 fn poll_bound_refusal(spec: gunbc.live_deploy.spec.DeploymentSpec, last_probe: String) -> gunbc.live_deploy.service_ready.ServiceNotReady {
@@ -445,7 +445,7 @@ fn poll_bound_refusal(spec: gunbc.live_deploy.spec.DeploymentSpec, last_probe: S
   }
 }
 
-fn refusal_to_reconciliation(refusal: gunbc.live_deploy.service_ready.ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+fn refusal_to_reconciliation(refusal: gunbc.live_deploy.service_ready.ServiceNotReady) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   std.realization_reconcile.NotConverged {
     reason: service_not_ready_reason(refusal: refusal),
     applied: ServiceReadyApplyEffect { unit: refusal.unit, endpoint: refusal.endpoint },
@@ -499,7 +499,7 @@ fn live_deploy_poll_service_ready_after_attempts(
   access: gunbc.ci_deploy_access.DeployAccess,
   attempt: Int,
   last_probe: String,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
     candidate: candidate,
@@ -514,11 +514,11 @@ fn live_deploy_poll_service_ready_after_attempts(
 }
 
 fn last_probe_from_attempt(
-  attempt: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
+  attempt: std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
 ) -> String {
   match attempt {
-    NotConverged { reason: why, applied: _ } => why
-    Converged { evidence: _, applied: _ } => "converged"
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } => why
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => "converged"
   }
 }
 
@@ -527,7 +527,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
     candidate: candidate,
@@ -553,7 +553,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
 
 fn live_deploy_poll_until_service_ready(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
-) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_poll_until_service_ready_for_deploy(
     spec: deployment_spec_srv1(),
     candidate: candidate,

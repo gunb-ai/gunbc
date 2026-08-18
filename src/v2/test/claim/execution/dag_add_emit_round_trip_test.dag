@@ -92,7 +92,7 @@ data dag_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.I
   }
 }
 
-fn anchor_dag_add_emit_accepts() -> Outcome<Medium<String>> {
+fn anchor_dag_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: dag_add_inferred_tree, target: dag_add_target_model)
 }
 
@@ -111,13 +111,13 @@ test fn dag_add_emit_matches_serialize_holds() -> Bool {
     target: dag_add_target_model,
     emitted: dag_add_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match dag_add_emit_receipt {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -126,8 +126,8 @@ test fn dag_add_grammar_inverse_holds() -> Bool {
     target: dag_add_target_model,
     emitted: dag_add_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -137,11 +137,11 @@ test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
     tree: dag_add_inferred_tree,
     target: dag_add_target_model
   ) {
-    Accepted { value: result, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_add_fn)
         && dag_add_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -151,8 +151,8 @@ test fn dag_add_domain_coerce_accepts_holds() -> Bool {
     tree: dag_add_inferred_tree,
     target: dag_add_target_model
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -164,15 +164,15 @@ test fn dag_add_domain_translate_accepts_holds() -> Bool {
     },
     target: dag_add_target_model
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn dag_add_translate_accepts_holds() -> Bool {
   match translate_emitted_node(tree: dag_add_inferred_tree, target: dag_add_target_model) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

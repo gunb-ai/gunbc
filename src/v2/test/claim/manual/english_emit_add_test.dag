@@ -12,8 +12,8 @@ data english_emit_add_noun_inhabitant: Node = english_noun_inhabitant_node()
 data english_emit_add_noun_facts_node: Node = english_noun_facts_node()
 
 fn english_emit_add_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -30,7 +30,7 @@ fn english_emit_add_canonical_grounding(
   }
 }
 
-fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
@@ -84,7 +84,7 @@ fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constr
   }
 }
 
-fn english_emit_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match english_emit_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -99,7 +99,7 @@ fn english_emit_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer
   }
 }
 
-fn english_emit_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
   english_emit_add_inferred_facts_for(node: key)
 }
 
@@ -110,7 +110,7 @@ data english_emit_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compile
   }
 }
 
-fn anchor_english_emit_add_accepts() -> Outcome<Medium<String>> {
+fn anchor_english_emit_add_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model)
 }
 
@@ -118,9 +118,9 @@ data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add
 
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -129,13 +129,13 @@ fn english_emit_add_matches_serialize_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match english_emit_add_receipt {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -144,24 +144,24 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<v2.std.grammar.ParseTree> {
+fn english_emit_add_ingest_parse(source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match tokenize(
     text: source.carried,
     file: ^english_emit_add_round_trip_fixture_file,
     rules: english_lex()
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: english_add_fn_paragraph_grammar())
   }
 }
 
-fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: Node) -> Bool {
+fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: v2.std.node.Node) -> Bool {
   match e.label {
     Named { name: n } =>
       (n == ^grammar_production_identity_node_projection) && (e.target == expected)
@@ -169,7 +169,7 @@ fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: Node) -
   }
 }
 
-fn english_emit_add_parse_identity_matches(root: Node, expected: Node) -> Bool {
+fn english_emit_add_parse_identity_matches(root: v2.std.node.Node, expected: v2.std.node.Node) -> Bool {
   fold_list(
     xs: root.children,
     empty: false,
@@ -183,15 +183,15 @@ test fn english_emit_add_ingest_round_trip_holds() -> Bool {
   let serialize_ok = english_emit_add_matches_serialize_holds()
   let grammar_ok = english_emit_add_grammar_inverse_holds()
   let ingest_ok = match english_emit_add_receipt {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match english_emit_add_ingest_parse(source: source) {
-        Accepted { value: tree, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: tree, diagnostics: d } =>
           english_emit_add_parse_identity_matches(
             root: tree,
             expected: english_emit_add_emitted_root
           ) && (d == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
   serialize_ok && grammar_ok && ingest_ok

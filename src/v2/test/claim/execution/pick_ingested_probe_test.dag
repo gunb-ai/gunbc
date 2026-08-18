@@ -19,8 +19,8 @@ fn pick_probe_deep_unwrap(node: Node) -> Node {
     Present { value: captured } => pick_probe_deep_unwrap(node: captured)
     Absent =>
       match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-        Accepted { value: child, diagnostics: _ } => pick_probe_deep_unwrap(node: child)
-        Rejected { diagnostics: _ } => node
+        v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => pick_probe_deep_unwrap(node: child)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => node
       }
   }
 }
@@ -62,21 +62,21 @@ fn pick_probe_arm_int_literal_has_magnitude_child_holds(body: Node, arm_index: I
 }
 
 fn pick_probe_module_arm_has_magnitude_child_holds(
-  module_outcome: Outcome<Node>,
+  module_outcome: v2.std.diagnostic.Outcome<Node>,
   arm_index: Int
 ) -> Bool {
   match module_outcome {
-    Accepted { value: module_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       match pick_ingested_find_arrow_in_module(root: module_root) {
         Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {
-            Accepted { value: body, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
               pick_probe_arm_int_literal_has_magnitude_child_holds(body: body, arm_index: arm_index)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -126,9 +126,9 @@ fn pick_probe_find_fn_decl_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) -> Optional<Node> {
+fn pick_probe_parsed_then_arm_literal_optional(module_outcome: v2.std.diagnostic.Outcome<Node>) -> Optional<Node> {
   match module_outcome {
-    Accepted { value: module_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       match pick_probe_find_fn_decl_optional(root: module_root) {
         Present { value: fn_decl } =>
           match body_lower_unwrap_captured(shell: fn_decl) {
@@ -150,31 +150,31 @@ fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) ->
           }
         Absent => Absent
       }
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
 fn pick_probe_normalized_has_branch_holds() -> Bool {
   let lm = dag_language_model()
   match tokenize(text: pick_ingested_source, file: ^pick_probe_file, rules: lm.lex) {
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       match parse_module(tokens: tokens, grammar: lm.grammar) {
-        Accepted { value: artifact, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
-            Accepted { value: normalized, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
               match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized.root)) {
-                Accepted { value: body, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
                   match body.kind {
                     ComputationNode { behavior: Branch } => true
                     _ => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

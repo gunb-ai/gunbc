@@ -20,7 +20,7 @@ type DualRepDataInit {
 type DualRepFnFact {
   name: String
   params: List<v2.std.node.Symbol>
-  output: Node
+  output: v2.std.node.Node
 }
 
 type DualRepModuleRef {
@@ -36,8 +36,8 @@ type DualRepModuleScan {
 }
 
 type EqNodeSite {
-  lhs: Node
-  rhs: Node
+  lhs: v2.std.node.Node
+  rhs: v2.std.node.Node
 }
 
 data empty_dual_rep_module_refs: List<DualRepModuleRef> = []
@@ -69,29 +69,29 @@ fn path_is_test_dag(path: String) -> Bool {
   string_contains(s: path, pattern: "_test.dag")
 }
 
-fn pos_edge(target: Node) -> v2.std.node.Edge {
+fn pos_edge(target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn atom_node(sym: v2.std.node.Symbol) -> Node {
+fn atom_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
 
-fn atom_node_name(name: String) -> Node {
+fn atom_node_name(name: String) -> v2.std.node.Node {
   atom_node(sym: name)
 }
 
-fn eq_conj(lhs: Node, rhs: Node) -> Node {
+fn eq_conj(lhs: v2.std.node.Node, rhs: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [pos_edge(target: lhs), pos_edge(target: rhs)]
   )
 }
 
-fn call_node(callee: v2.std.node.Symbol, args: List<Node>) -> Node {
+fn call_node(callee: v2.std.node.Symbol, args: List<v2.std.node.Node>) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
@@ -102,14 +102,14 @@ fn call_node(callee: v2.std.node.Symbol, args: List<Node>) -> Node {
   )
 }
 
-fn node_atom_sym(n: Node) -> v2.std.node.Symbol {
+fn node_atom_sym(n: v2.std.node.Node) -> v2.std.node.Symbol {
   match n.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
     _ => empty_sym
   }
 }
 
-fn node_atom_name(n: Node) -> String {
+fn node_atom_name(n: v2.std.node.Node) -> String {
   node_atom_sym(n: n)
 }
 
@@ -131,7 +131,7 @@ fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> Strin
   )
 }
 
-fn eq_site_from_conj(node: Node) -> List<EqNodeSite> {
+fn eq_site_from_conj(node: v2.std.node.Node) -> List<EqNodeSite> {
   match node.kind {
     TypeNode { connective: Conj } => {
       let kids = node_positional_child_targets(node: node)
@@ -148,7 +148,7 @@ fn eq_site_from_conj(node: Node) -> List<EqNodeSite> {
   }
 }
 
-fn eq_sites_collect_init(n: Node) -> List<EqNodeSite> {
+fn eq_sites_collect_init(n: v2.std.node.Node) -> List<EqNodeSite> {
   eq_site_from_conj(node: n)
 }
 
@@ -163,7 +163,7 @@ fn eq_sites_collect_step(
   )
 }
 
-fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
+fn eq_sites_from_output(root: v2.std.node.Node) -> List<EqNodeSite> {
   fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {
@@ -173,14 +173,14 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
   )
 }
 
-fn skeleton_is_callee_atom(node: Node) -> Bool {
+fn skeleton_is_callee_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     _ => false
   }
 }
 
-fn skeleton_is_call(node: Node) -> Bool {
+fn skeleton_is_call(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
@@ -191,21 +191,21 @@ fn skeleton_is_call(node: Node) -> Bool {
   }
 }
 
-fn skeleton_callee_target(node: Node) -> Node {
+fn skeleton_callee_target(node: v2.std.node.Node) -> v2.std.node.Node {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: callee } => callee
     Absent => atom_node(sym: empty_sym)
   }
 }
 
-fn skeleton_call_argument_targets(node: Node) -> List<Node> {
+fn skeleton_call_argument_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match list_tail(xs: node_positional_child_targets(node: node)) {
     TailFound { tail: args } => args
     TailAbsent => std.algebra.Empty
   }
 }
 
-fn callee_name_from_call(operand: Node) -> String {
+fn callee_name_from_call(operand: v2.std.node.Node) -> String {
   if skeleton_is_call(node: operand) {
     node_atom_name(n: skeleton_callee_target(node: operand))
   } else {
@@ -213,7 +213,7 @@ fn callee_name_from_call(operand: Node) -> String {
   }
 }
 
-fn first_call_arg_name(operand: Node) -> String {
+fn first_call_arg_name(operand: v2.std.node.Node) -> String {
   match list_at_optional(xs: skeleton_call_argument_targets(node: operand), index: 0) {
     Present { value: arg } => node_atom_name(n: arg)
     Absent => ""
@@ -221,8 +221,8 @@ fn first_call_arg_name(operand: Node) -> String {
 }
 
 fn body_alpha_equivalent_to_single_arg_call(
-  lhs: Node,
-  rhs: Node,
+  lhs: v2.std.node.Node,
+  rhs: v2.std.node.Node,
   fns: List<DualRepFnFact>
 ) -> Bool {
   let callee = callee_name_from_call(operand: lhs)
@@ -283,7 +283,7 @@ fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
   })
 }
 
-fn replace_param_in_output(output: Node, param: v2.std.node.Symbol, arg_name: String) -> Node {
+fn replace_param_in_output(output: v2.std.node.Node, param: v2.std.node.Symbol, arg_name: String) -> v2.std.node.Node {
   match output.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       if sym == param {

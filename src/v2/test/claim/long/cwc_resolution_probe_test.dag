@@ -13,7 +13,7 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-fn cwc_norm_of(src: String) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn cwc_norm_of(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
@@ -27,8 +27,8 @@ fn cwc_norm_of(src: String) -> Outcome<v2.compiler.normalized_tree.NormalizedTre
 
 fn cwc_norm_accepts(src: String) -> Bool {
   match cwc_norm_of(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -84,15 +84,15 @@ fn cwc_disj_arm_count(n: Node) -> Int {
 
 fn cwc_norm_rejects(src: String) -> Bool {
   match cwc_norm_of(src: src) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
   match cwc_norm_of(src: cwc_src_type_scalar) {
-    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -112,12 +112,12 @@ test fn cwc_norm_review_event_accepts() -> Bool {
 fn cwc_resolve_accepts(src: String) -> Bool {
   let lm = dag_language_model()
   match cwc_norm_of(src: src) {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -127,15 +127,15 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 
 test fn cwc_review_normalized_has_disj() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cwc_review_disj_has_four_arms() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

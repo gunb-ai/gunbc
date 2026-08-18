@@ -66,21 +66,21 @@ fn body_lowering_diagnostics_carry_wrapper_retention(d: v2.std.diagnostic.Diagno
   }
 }
 
-fn body_lower_outcome_is_wrapper_retained(o: Outcome<Node>) -> Bool {
+fn body_lower_outcome_is_wrapper_retained(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: ne } => body_lowering_any_diagnostic_is_wrapper_retained(ne: ne)
         None => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn body_lower_outcome_frontier_disposition(o: Outcome<Node>) -> BodyLoweringFrontierDisposition {
+fn body_lower_outcome_frontier_disposition(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> BodyLoweringFrontierDisposition {
   match o {
-    Rejected { diagnostics: r } => BodyLoweringRejected { diagnostics: r }
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => BodyLoweringRejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: ne } =>
           if body_lowering_any_diagnostic_is_wrapper_retained(ne: ne) {
@@ -93,14 +93,14 @@ fn body_lower_outcome_frontier_disposition(o: Outcome<Node>) -> BodyLoweringFron
   }
 }
 
-fn body_lower_seq_child(node: Node, name: v2.std.node.Symbol) -> Optional<Node> {
+fn body_lower_seq_child(node: v2.std.node.Node, name: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match find_named_child(root: node, name: name) {
-    Accepted { value: child, diagnostics: _ } => Present { value: child }
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => Present { value: child }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<v2.std.node.Symbol> {
+fn body_lower_fn_decl_ident_from_captured(captured: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
     Absent => Absent
     Present { value: after_kw_fn } =>
@@ -124,7 +124,7 @@ fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<v2.std.nod
   }
 }
 
-fn body_lower_arrow_domain_named_bindings(root: Node) -> List<v2.std.node.Symbol> {
+fn body_lower_arrow_domain_named_bindings(root: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: std.algebra.Empty, f: fn(acc, e) {
@@ -144,7 +144,7 @@ fn body_lower_binding_symbol_lists_match(
   zip_eq(a: expected, b: actual, eq: fn(left, right) { left == right })
 }
 
-fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<v2.std.node.Symbol> {
+fn body_lower_param_binding_symbols_from_param_list(param_list: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => std.algebra.Empty
     Present { value: comma_spine } =>
@@ -161,7 +161,7 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<v2
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<v2.std.node.Symbol> {
+fn body_lower_param_binding_symbols_from_fn_captured(captured: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeFound { captured: param_list } =>
       body_lower_param_binding_symbols_from_param_list(param_list: param_list)
@@ -169,7 +169,7 @@ fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<v2.
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<v2.std.node.Symbol> {
+fn body_lower_param_binding_symbols_from_fn_decl_module(root: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
     ParseSubtreeFound { captured: captured } =>
       body_lower_param_binding_symbols_from_fn_captured(captured: captured)
@@ -177,7 +177,7 @@ fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<v2.s
   }
 }
 
-fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<v2.std.node.Symbol> {
+fn body_lower_arrow_domain_binding_symbols(arrow: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match count(arrow.children) >= 1 {
     true =>
       match first(arrow.children) {
@@ -190,7 +190,7 @@ fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<v2.std.node.Symb
 }
 
 fn body_lower_arrow_domain_matches_ingest_param_bindings(
-  arrow: Node,
+  arrow: v2.std.node.Node,
   ingest_bindings: List<v2.std.node.Symbol>
 ) -> Bool {
   body_lower_binding_symbol_lists_match(
@@ -199,17 +199,17 @@ fn body_lower_arrow_domain_matches_ingest_param_bindings(
   )
 }
 
-fn body_lower_frontend_symbol_index_from_module(tree: Node) -> v2.std.symbol_index.SymbolIndex {
+fn body_lower_frontend_symbol_index_from_module(tree: v2.std.node.Node) -> v2.std.symbol_index.SymbolIndex {
   symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
 }
 
 fn body_lower_arrow_domain_matches_frontend_symbol_index(
-  arrow: Node,
-  module_tree: Node,
+  arrow: v2.std.node.Node,
+  module_tree: v2.std.node.Node,
   fn_name: v2.std.node.Symbol
 ) -> Bool {
   match qualified_name_from_module_node(root: module_tree) {
-    Accepted { value: module_qn, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: module_qn, diagnostics: _ } =>
       let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
       let idx = body_lower_frontend_symbol_index_from_module(tree: module_tree)
       fold(
@@ -229,11 +229,11 @@ fn body_lower_arrow_domain_matches_frontend_symbol_index(
           }
         }
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn body_lower_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+fn body_lower_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
@@ -241,7 +241,7 @@ fn body_lower_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnost
   }
 }
 
-fn body_lower_wrapper_retained_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+fn body_lower_wrapper_retained_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
 }
 
@@ -264,14 +264,14 @@ fn body_lower_resolved_type_binding(sym: v2.std.node.Symbol) -> v2.std.node.Symb
   }
 }
 
-fn body_lower_type_atom_node(sym: v2.std.node.Symbol) -> Node {
+fn body_lower_type_atom_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
     children: []
   )
 }
 
-fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
+fn body_lower_wrapper_retained_shell(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Accepted {
     value: shell,
     diagnostics: v2.std.diagnostic.Some {
@@ -280,7 +280,7 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_is_core_substrate(node: Node) -> Bool {
+fn body_lower_is_core_substrate(node: v2.std.node.Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
@@ -306,7 +306,7 @@ fn body_lower_is_identity_projection_edge(edge: v2.std.node.Edge) -> Bool {
   }
 }
 
-fn body_lower_operand_fold_children_optional(node: Node) -> Optional<Node> {
+fn body_lower_operand_fold_children_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   fold(node.children, init: Absent, f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -349,7 +349,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: v2.std.node.Symbol) -> Bool
     || (emitted == ^dag_surface_import_block)
 }
 
-fn body_lower_param_ref_atom(source: Node, identity: v2.std.node.Symbol) -> Node {
+fn body_lower_param_ref_atom(source: v2.std.node.Node, identity: v2.std.node.Symbol) -> v2.std.node.Node {
   node_with_occurrence_id(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -363,7 +363,7 @@ fn body_lower_find_captured_prunable(id: v2.std.node.Symbol) -> Bool {
     || (id == ^dag_surface_type_expr)
 }
 
-fn body_lower_find_captured_under_children(root: Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
+fn body_lower_find_captured_under_children(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
   fold(root.children, init: ParseSubtreeAbsent, f: fn(acc, edge) {
     match acc {
       ParseSubtreeFound { captured: _ } => acc
@@ -372,7 +372,7 @@ fn body_lower_find_captured_under_children(root: Node, emitted: v2.std.node.Symb
   })
 }
 
-fn body_lower_find_captured(root: Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
+fn body_lower_find_captured(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {
@@ -390,9 +390,9 @@ fn body_lower_find_captured(root: Node, emitted: v2.std.node.Symbol) -> v2.extde
 }
 
 fn body_lower_find_production_shell_under_children(
-  root: Node,
+  root: v2.std.node.Node,
   emitted: v2.std.node.Symbol
-) -> Optional<Node> {
+) -> Optional<v2.std.node.Node> {
   fold(root.children, init: Absent, f: fn(acc, edge) {
     match acc {
       Present { value: _ } => acc
@@ -401,7 +401,7 @@ fn body_lower_find_production_shell_under_children(
   })
 }
 
-fn body_lower_find_production_shell_optional(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
+fn body_lower_find_production_shell_optional(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       match id == emitted {
@@ -417,7 +417,7 @@ fn body_lower_find_production_shell_optional(root: Node, emitted: v2.std.node.Sy
   }
 }
 
-fn body_lower_int_literal_with_magnitude_optional(node: Node) -> Optional<Node> {
+fn body_lower_int_literal_with_magnitude_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let unwrapped = body_lower_deep_unwrap_for_int_literal(node: node)
   if dag_node_is_int_literal_atom(node: unwrapped) {
     match dag_int_literal_magnitude_node_optional(node: unwrapped) {
@@ -429,12 +429,12 @@ fn body_lower_int_literal_with_magnitude_optional(node: Node) -> Optional<Node> 
   }
 }
 
-fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
+fn body_lower_operand_from_shell_optional(shell: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_captured_child_optional(node: shell) {
     Present { value: captured } =>
       match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
-        Accepted { value: op, diagnostics: _ } => optional_present(value: op)
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: op, diagnostics: _ } => optional_present(value: op)
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           match body_lower_int_literal_with_magnitude_optional(node: captured) {
             Present { value: lit } => Present { value: lit }
             Absent => optional_absent()
@@ -442,13 +442,13 @@ fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
       }
     Absent =>
       match body_lower_try_operand_or_reject(shell: shell, captured: shell) {
-        Accepted { value: op, diagnostics: _ } => optional_present(value: op)
-        Rejected { diagnostics: _ } => body_lower_int_literal_with_magnitude_optional(node: shell)
+        v2.std.diagnostic.Accepted { value: op, diagnostics: _ } => optional_present(value: op)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => body_lower_int_literal_with_magnitude_optional(node: shell)
       }
   }
 }
 
-fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
+fn body_lower_operand_ref_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_is_core_substrate(node: node) {
     true => Present { value: node }
     false =>
@@ -494,7 +494,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
+fn body_lower_operator_atom_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
       if dag_lex_token_symbol(sym: id) {
@@ -511,11 +511,11 @@ fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
+fn body_lower_unwrap_captured(shell: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   parse_production_captured_child_optional(node: shell)
 }
 
-fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node> {
+fn body_lower_infix_from_operator_seq(left: v2.std.node.Node, op_seq: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: op_seq)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -534,7 +534,7 @@ fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node
   }
 }
 
-fn body_lower_infix_from_operator_tail(left: Node, tail: Node) -> Optional<Node> {
+fn body_lower_infix_from_operator_tail(left: v2.std.node.Node, tail: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: tail) {
     Present { value: pair } =>
       match body_lower_infix_from_operator_seq(left: left, op_seq: pair.left) {
@@ -543,14 +543,14 @@ fn body_lower_infix_from_operator_tail(left: Node, tail: Node) -> Optional<Node>
       }
     Absent =>
       match find_named_child(root: tail, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: repeat_elem, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: repeat_elem, diagnostics: _ } =>
           body_lower_infix_from_repeat_element(left: left, repeat_elem: repeat_elem)
-        Rejected { diagnostics: _ } => Absent
+        v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
       }
   }
 }
 
-fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Optional<Node> {
+fn body_lower_infix_from_repeat_element(left: v2.std.node.Node, repeat_elem: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -588,7 +588,7 @@ fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Option
   }
 }
 
-fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
+fn body_lower_try_infix_from_sequence(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -601,7 +601,7 @@ fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
+fn body_lower_try_infix_transform(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match body_lower_try_infix_from_sequence(node: stripped) {
     Present { value: transform } => Present { value: transform }
@@ -614,7 +614,7 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
           }
         Absent =>
           match find_named_child(root: stripped, name: ^grammar_repeat_element_node_projection) {
-            Accepted { value: repeat_elem, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: repeat_elem, diagnostics: _ } =>
               match body_lower_try_infix_transform(node: repeat_elem) {
                 Present { value: transform } => Present { value: transform }
                 Absent =>
@@ -630,7 +630,7 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
                       })
                   }
               }
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               match parse_production_captured_child_optional(node: stripped) {
                 Present { value: captured } => body_lower_try_infix_transform(node: captured)
                 Absent =>
@@ -646,7 +646,7 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_fold_loop_search(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_primary_expr {
@@ -665,8 +665,8 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
     Absent =>
       fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: found, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: found, diagnostics: _ } =>
             match found {
               Present { value: _ } => acc
               Absent => body_lower_try_fold_loop(node: e.target)
@@ -676,14 +676,14 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_fold_loop(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
       if fold_family_head(sym: head) {
         match fold_call_to_loop(fold_call: node) {
-          Accepted { value: loop_node, diagnostics: _ } =>
+          v2.std.diagnostic.Accepted { value: loop_node, diagnostics: _ } =>
             outcome_accepted(value: optional_present(value: loop_node))
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         }
       } else {
         body_lower_try_fold_loop_search(node: node)
@@ -692,7 +692,7 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
+fn body_lower_type_atom_from_expr(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_type_expr {
@@ -745,7 +745,7 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_unwrap_surface_shell(node: Node) -> Node {
+fn body_lower_unwrap_surface_shell(node: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if body_lower_is_pass_through_emitted(emitted: emitted) {
@@ -760,7 +760,7 @@ fn body_lower_unwrap_surface_shell(node: Node) -> Node {
   }
 }
 
-fn body_lower_after_comma_tail_optional(node: Node) -> Optional<Node> {
+fn body_lower_after_comma_tail_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: node) {
     Absent => optional_absent()
     Present { value: pair } =>
@@ -776,7 +776,7 @@ fn body_lower_after_comma_tail_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<v2.std.node.Edge> {
+fn body_lower_typed_param_from_comma_seq(sequence_capture: v2.std.node.Node) -> Optional<v2.std.node.Edge> {
   match sugar_sequence_pair_optional(node: sequence_capture) {
     Present { value: pair } =>
       match body_lower_typed_param_edge(param_capture: pair.right) {
@@ -787,62 +787,62 @@ fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<v2.
   }
 }
 
-fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List<v2.std.node.Edge> {
+fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: v2.std.node.Node) -> List<v2.std.node.Edge> {
   if is_empty_conj_root(n: repeat_capture) {
     std.algebra.Empty
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Accepted { value: head_sequence, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: head_sequence, diagnostics: _ } =>
         match body_lower_typed_param_from_comma_seq(sequence_capture: head_sequence) {
           Present { value: edge } =>
             match find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
-              Accepted { value: tail, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
                 list_append(
                   left: [edge],
                   right: body_lower_collect_param_edges_from_repeat_tail(repeat_capture: tail)
                 )
-              Rejected { diagnostics: _ } => [edge]
+              v2.std.diagnostic.Rejected { diagnostics: _ } => [edge]
             }
           Absent =>
             match find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
-              Accepted { value: tail, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
                 body_lower_collect_param_edges_from_repeat_tail(repeat_capture: tail)
-              Rejected { diagnostics: _ } => std.algebra.Empty
+              v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
             }
         }
-      Rejected { diagnostics: _ } => std.algebra.Empty
+      v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
     }
   }
 }
 
-fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Edge> {
+fn body_lower_collect_param_edges(sequence_capture: v2.std.node.Node) -> List<v2.std.node.Edge> {
   match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: first, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: first, diagnostics: _ } =>
       let first_edges = match body_lower_typed_param_edge(param_capture: first) {
         Present { value: edge } => [edge]
         Absent => std.algebra.Empty
       }
       match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
-        Accepted { value: outer_right, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: outer_right, diagnostics: _ } =>
           match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
-            Accepted { value: repeat_capture, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: repeat_capture, diagnostics: _ } =>
               list_append(
                 left: first_edges,
                 right: body_lower_collect_param_edges_from_repeat_tail(
                   repeat_capture: repeat_capture
                 )
               )
-            Rejected { diagnostics: _ } => first_edges
+            v2.std.diagnostic.Rejected { diagnostics: _ } => first_edges
           }
-        Rejected { diagnostics: _ } => first_edges
+        v2.std.diagnostic.Rejected { diagnostics: _ } => first_edges
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match body_lower_typed_param_edge(param_capture: sequence_capture) {
         Present { value: edge } => [edge]
         Absent =>
@@ -870,7 +870,7 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Ed
   }
 }
 
-fn body_lower_param_binding_optional(node: Node) -> Optional<v2.std.node.Symbol> {
+fn body_lower_param_binding_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   match dag_binding_branded_atom_identity(node: node) {
     Present { value: binding } => Present { value: binding }
     Absent =>
@@ -894,7 +894,7 @@ fn body_lower_param_binding_optional(node: Node) -> Optional<v2.std.node.Symbol>
   }
 }
 
-fn body_lower_typed_param_edge(param_capture: Node) -> Optional<v2.std.node.Edge> {
+fn body_lower_typed_param_edge(param_capture: v2.std.node.Node) -> Optional<v2.std.node.Edge> {
   match sugar_sequence_pair_optional(node: param_capture) {
     Absent => Absent
     Present { value: pair } =>
@@ -919,15 +919,15 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<v2.std.node.Edge
   }
 }
 
-fn body_lower_deep_unwrap_optional(node: Node) -> Node {
+fn body_lower_deep_unwrap_optional(node: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-    Accepted { value: child, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } =>
       body_lower_deep_unwrap_optional(node: child)
-    Rejected { diagnostics: _ } => node
+    v2.std.diagnostic.Rejected { diagnostics: _ } => node
   }
 }
 
-fn body_lower_deep_unwrap_for_int_literal(node: Node) -> Node {
+fn body_lower_deep_unwrap_for_int_literal(node: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_captured_child_optional(node: node) {
     Present { value: captured } =>
       body_lower_deep_unwrap_for_int_literal(node: captured)
@@ -935,14 +935,14 @@ fn body_lower_deep_unwrap_for_int_literal(node: Node) -> Node {
   }
 }
 
-fn body_lower_unwrap_optional_element(node: Node) -> Node {
+fn body_lower_unwrap_optional_element(node: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-    Accepted { value: child, diagnostics: _ } => child
-    Rejected { diagnostics: _ } => node
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => child
+    v2.std.diagnostic.Rejected { diagnostics: _ } => node
   }
 }
 
-fn body_lower_param_list_comma_spine_optional(param_list_captured: Node) -> Optional<Node> {
+fn body_lower_param_list_comma_spine_optional(param_list_captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: param_list_captured) {
     Absent => Absent
     Present { value: pair } =>
@@ -956,7 +956,7 @@ fn body_lower_param_list_comma_spine_optional(param_list_captured: Node) -> Opti
   }
 }
 
-fn body_lower_type_atom_from_arrow_seq_right(right: Node) -> Optional<Node> {
+fn body_lower_type_atom_from_arrow_seq_right(right: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(
     root: right,
     emitted: ^dag_surface_type_expr
@@ -980,23 +980,23 @@ fn body_lower_type_atom_from_arrow_seq_right(right: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_arrow_seq_return_type(node: Node) -> Optional<Node> {
+fn body_lower_arrow_seq_return_type(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match find_named_child(root: node, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: left, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: left, diagnostics: _ } =>
       match body_lower_sequence_head_is_arrow(node: left) {
         true =>
           match find_named_child(root: node, name: ^grammar_sequence_right_node_projection) {
-            Accepted { value: right, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: right, diagnostics: _ } =>
               body_lower_type_atom_from_arrow_seq_right(right: right)
-            Rejected { diagnostics: _ } => Absent
+            v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
           }
         false => Absent
       }
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
+fn body_lower_return_type_after_arrow_walk(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_arrow_seq_return_type(node: stripped) {
     Present { value: found } => Present { value: found }
@@ -1024,7 +1024,7 @@ fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+fn body_lower_domain_from_param_list(param_list: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
@@ -1044,7 +1044,7 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
+fn body_lower_sequence_head_is_arrow(node: v2.std.node.Node) -> Bool {
   match node_atom_identity_optional(node: node) {
     Present { value: id } => id == ^dag_token_arrow
     Absent =>
@@ -1055,7 +1055,7 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
   }
 }
 
-fn body_lower_type_expr_after_arrow(node: Node) -> Optional<Node> {
+fn body_lower_type_expr_after_arrow(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: node) {
     Present { value: pair } =>
       if body_lower_sequence_head_is_arrow(node: pair.left) {
@@ -1103,11 +1103,11 @@ fn body_lower_type_expr_after_arrow(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
+fn body_lower_return_type_from_fn_captured(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   body_lower_return_type_after_arrow_walk(node: captured)
 }
 
-fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
+fn body_lower_find_core_substrate_optional(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   if body_lower_is_core_substrate(node: root) {
     optional_present(value: root)
   } else {
@@ -1120,10 +1120,10 @@ fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_fold_behavior_optional(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_fold(node: node) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: folded, diagnostics: fd } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: fd } =>
       if body_lower_is_core_substrate(node: folded) {
         outcome_with_diagnostics(value: optional_present(value: folded), diagnostics: fd)
       } else {
@@ -1132,20 +1132,20 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
-fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_body_lowered(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
   } else {
     match body_lower_try_fold_behavior_optional(node: node) {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: fold_found, diagnostics: fd } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: fold_found, diagnostics: fd } =>
         match fold_found {
           Present { value: lowered } =>
             outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: fd)
           Absent =>
                     match body_lower_try_let_in_from_node(node: node) {
-                      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                      Accepted { value: let_found, diagnostics: ld } =>
+                      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                      v2.std.diagnostic.Accepted { value: let_found, diagnostics: ld } =>
                         match let_found {
                           Present { value: lowered } =>
                             outcome_with_diagnostics(
@@ -1154,8 +1154,8 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                             )
                           Absent =>
                             match body_lower_try_loop_expr_from_node(node: node) {
-                              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                              Accepted { value: loop_found, diagnostics: lcd } =>
+                              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                              v2.std.diagnostic.Accepted { value: loop_found, diagnostics: lcd } =>
                                 match loop_found {
                                   Present { value: lowered } =>
                                     outcome_with_diagnostics(
@@ -1164,8 +1164,8 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                     )
                                   Absent =>
                         match body_lower_try_fold_loop(node: node) {
-                          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                          Accepted { value: fold_result, diagnostics: fd } =>
+                          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                          v2.std.diagnostic.Accepted { value: fold_result, diagnostics: fd } =>
                             match fold_result {
                               Present { value: lowered } =>
                                 outcome_with_diagnostics(
@@ -1174,8 +1174,8 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 )
                               Absent =>
                         match body_lower_try_primary_ident_call(node: node) {
-                          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                          Accepted { value: primary_call, diagnostics: pcd } =>
+                          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                          v2.std.diagnostic.Accepted { value: primary_call, diagnostics: pcd } =>
                             match primary_call {
                               Present { value: lowered } =>
                                 outcome_with_diagnostics(
@@ -1184,8 +1184,8 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 )
                               Absent =>
                                 match body_lower_try_postfix_projection(node: node) {
-                                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                                  Accepted { value: projection, diagnostics: pd } =>
+                                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                                  v2.std.diagnostic.Accepted { value: projection, diagnostics: pd } =>
                                     match projection {
                                       Present { value: lowered } =>
                                         outcome_with_diagnostics(
@@ -1199,9 +1199,9 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                           Absent =>
                                                     let stripped = body_lower_unwrap_surface_shell(node: node)
                                                     match body_lower_try_postfix_projection(node: stripped) {
-                                                      Rejected { diagnostics: r } =>
+                                                      v2.std.diagnostic.Rejected { diagnostics: r } =>
                                                         v2.std.diagnostic.Rejected { diagnostics: r }
-                                                      Accepted { value: stripped_proj, diagnostics: spd } =>
+                                                      v2.std.diagnostic.Accepted { value: stripped_proj, diagnostics: spd } =>
                                                         match stripped_proj {
                                                           Present { value: lowered } =>
                                                             outcome_with_diagnostics(
@@ -1210,9 +1210,9 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                             )
                                                           Absent =>
                                                             match body_lower_try_fold_loop(node: stripped) {
-                                                              Rejected { diagnostics: r } =>
+                                                              v2.std.diagnostic.Rejected { diagnostics: r } =>
                                                                 v2.std.diagnostic.Rejected { diagnostics: r }
-                                                              Accepted { value: stripped_fold, diagnostics: sfd } =>
+                                                              v2.std.diagnostic.Accepted { value: stripped_fold, diagnostics: sfd } =>
                                                                 match stripped_fold {
                                                                   Present { value: lowered } =>
                                                                     outcome_with_diagnostics(
@@ -1221,9 +1221,9 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                                     )
                                                                   Absent =>
                                                             match body_lower_try_primary_ident_call(node: stripped) {
-                                                              Rejected { diagnostics: r } =>
+                                                              v2.std.diagnostic.Rejected { diagnostics: r } =>
                                                                 v2.std.diagnostic.Rejected { diagnostics: r }
-                                                              Accepted { value: stripped_call, diagnostics: scd } =>
+                                                              v2.std.diagnostic.Accepted { value: stripped_call, diagnostics: scd } =>
                                                                 match stripped_call {
                                                                   Present { value: lowered } =>
                                                                     outcome_with_diagnostics(
@@ -1261,21 +1261,21 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
+fn body_lower_reduce_passthrough(folded: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match parse_production_captured_child_optional(node: folded) {
     Present { value: child } => outcome_accepted(value: child)
     Absent => outcome_accepted(value: folded)
   }
 }
 
-fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
+fn body_lower_reduce_or_keep(o: v2.std.diagnostic.Outcome<v2.std.node.Node>, folded: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match o {
-    Accepted { value: v, diagnostics: d } => v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: None, rejected: r) }
+    v2.std.diagnostic.Accepted { value: v, diagnostics: d } => v2.std.diagnostic.Accepted { value: v, diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: None, rejected: r) }
   }
 }
 
-fn body_lower_reduce_emitted(folded: Node, emitted: v2.std.node.Symbol) -> Outcome<Node> {
+fn body_lower_reduce_emitted(folded: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
@@ -1296,7 +1296,7 @@ fn body_lower_reduce_emitted(folded: Node, emitted: v2.std.node.Symbol) -> Outco
   }
 }
 
-fn body_lower_reduce(folded: Node) -> Outcome<Node> {
+fn body_lower_reduce(folded: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_core_substrate(node: folded) {
     outcome_accepted(value: folded)
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
@@ -1309,15 +1309,15 @@ fn body_lower_reduce(folded: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fold_children(node: Node) -> Outcome<Node> {
+fn body_lower_fold_children(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   fold(node.children, init: outcome_accepted(value: node_rebuild(n: node, children: [])), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: shell, diagnostics: ad } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: shell, diagnostics: ad } =>
         match body_lower_fold(node: e.target) {
-          Rejected { diagnostics: cr } =>
+          v2.std.diagnostic.Rejected { diagnostics: cr } =>
             v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
-          Accepted { value: child, diagnostics: cd } =>
+          v2.std.diagnostic.Accepted { value: child, diagnostics: cd } =>
             v2.std.diagnostic.Accepted {
               value: node_rebuild(
                 n: shell,
@@ -1330,13 +1330,13 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
   })
 }
 
-fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
+fn body_lower_fold_identity_absent(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_match_capture_heads_spine(
     spine: body_lower_unwrap_surface_shell(node: node)
   ) {
     match body_lower_try_match_from_captured(captured: node) {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: lowered_opt, diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
         match lowered_opt {
           Present { value: lowered } => v2.std.diagnostic.Accepted { value: lowered, diagnostics: d }
           Absent => body_lower_fold_reduce(node: node)
@@ -1347,7 +1347,7 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fold(node: Node) -> Outcome<Node> {
+fn body_lower_fold(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
   } else {
@@ -1373,25 +1373,25 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
+fn body_lower_fold_reduce(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_fold_children(node: node) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: folded, diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: d } =>
       match body_lower_reduce(folded: folded) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d, rejected: r) }
-        Accepted { value: reduced, diagnostics: rd } =>
+        v2.std.diagnostic.Accepted { value: reduced, diagnostics: rd } =>
           v2.std.diagnostic.Accepted { value: reduced, diagnostics: diagnostics_merge(outer: d, inner: rd) }
       }
   }
 }
 
-fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_subtree_lower_from_primary(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_primary_expr) {
     ParseSubtreeFound { captured: primary } =>
       match body_lower_primary_expr(shell: primary) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered, diagnostics: d } =>
           outcome_with_diagnostics(
             value: optional_present(value: lowered),
             diagnostics: d
@@ -1414,12 +1414,12 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
   }
 }
 
-fn body_lower_body_subtree_lower_from_postfix(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_subtree_lower_from_postfix(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
     ParseSubtreeFound { captured: postfix } =>
       match body_lower_try_body_lowered(node: postfix) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: found, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
               outcome_with_diagnostics(
@@ -1433,12 +1433,12 @@ fn body_lower_body_subtree_lower_from_postfix(captured: Node) -> Outcome<Optiona
   }
 }
 
-fn body_lower_body_subtree_lower_from_expr(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_subtree_lower_from_expr(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } =>
       match body_lower_try_body_lowered(node: expr) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: found, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
               outcome_with_diagnostics(
@@ -1452,12 +1452,12 @@ fn body_lower_body_subtree_lower_from_expr(captured: Node) -> Outcome<Optional<N
   }
 }
 
-fn body_lower_body_subtree_lower_from_binary(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_subtree_lower_from_binary(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
     ParseSubtreeFound { captured: binary } =>
       match body_lower_try_body_lowered(node: binary) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: found, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
               outcome_with_diagnostics(
@@ -1471,10 +1471,10 @@ fn body_lower_body_subtree_lower_from_binary(captured: Node) -> Outcome<Optional
   }
 }
 
-fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_subtree_lower(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_try_body_lowered(node: captured) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: found, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: found, diagnostics: _ } =>
       match found {
         Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
         Absent =>
@@ -1515,14 +1515,14 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_body_from_fn_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => body_lower_body_subtree_lower(captured: body)
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
   }
 }
 
-fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
+fn body_lower_reify_operand_node(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_operand_ref_optional(node: node) {
     Present { value: op } => Present { value: op }
     Absent => body_lower_operand_from_shell_optional(shell: node)
@@ -1532,7 +1532,7 @@ fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
 fn body_lower_reify_transform_edge(
   done: List<v2.std.node.Edge>,
   e: v2.std.node.Edge
-) -> Outcome<List<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   if length(xs: done) == 0 {
     outcome_accepted(
       value: list_snoc_item(
@@ -1560,19 +1560,19 @@ fn body_lower_reify_transform_edge(
   }
 }
 
-fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
+fn body_lower_reify_transform_body(body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body.kind {
     ComputationNode { behavior: Transform } =>
       match fold(body.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: done, diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: done, diagnostics: d } =>
             match body_lower_reify_transform_edge(done: done, e: e) {
-              Rejected { diagnostics: r } =>
+              v2.std.diagnostic.Rejected { diagnostics: r } =>
                 v2.std.diagnostic.Rejected {
                   diagnostics: rejected_with_pending(pending: d, rejected: r)
                 }
-              Accepted { value: next, diagnostics: ed } =>
+              v2.std.diagnostic.Accepted { value: next, diagnostics: ed } =>
                 v2.std.diagnostic.Accepted {
                   value: next,
                   diagnostics: diagnostics_merge(outer: d, inner: ed)
@@ -1580,8 +1580,8 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
             }
         }
       }) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: children, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
             value: node_synthetic(
               kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
@@ -1594,7 +1594,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: v2.std.node.Symbol) -> Node {
+fn body_lower_fn_decl_named_member_wrap(arrow: v2.std.node.Node, fn_name: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -1603,7 +1603,7 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: v2.std.node.Symbol
   )
 }
 
-fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
+fn body_lower_fn_decl_to_arrow(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
@@ -1614,14 +1614,14 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
             Absent => body_lower_wrapper_retained_shell(shell: shell)
             Present { value: domain } =>
               match body_lower_body_from_fn_captured(captured: captured) {
-                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                Accepted { value: body_opt, diagnostics: bd0 } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                v2.std.diagnostic.Accepted { value: body_opt, diagnostics: bd0 } =>
                   match body_opt {
                     Absent => body_lower_wrapper_retained_shell(shell: shell)
                     Present { value: body } =>
                       match body_lower_reify_arrow_body(body: body) {
-                        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                        Accepted { value: reified_body, diagnostics: bd } =>
+                        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                        v2.std.diagnostic.Accepted { value: reified_body, diagnostics: bd } =>
                           match body_lower_return_type_from_fn_captured(captured: captured) {
                             Absent => body_lower_wrapper_retained_shell(shell: shell)
                             Present { value: return_type } =>
@@ -1657,7 +1657,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
+fn body_lower_literal_bool_atom_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let unwrapped = body_lower_deep_unwrap_optional(node: node)
   match node_atom_identity_optional(node: unwrapped) {
     Present { value: id } =>
@@ -1676,7 +1676,7 @@ fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
+fn body_lower_literal_int_atom_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_int_literal_with_magnitude_optional(node: node) {
     Present { value: lit } => Present { value: lit }
     Absent =>
@@ -1694,7 +1694,7 @@ fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_operand_ref_acceptable_optional(node: Node) -> Optional<Node> {
+fn body_lower_operand_ref_acceptable_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_operand_ref_optional(node: node) {
     Present { value: operand } =>
       match body_lower_int_literal_with_magnitude_optional(node: operand) {
@@ -1709,7 +1709,7 @@ fn body_lower_operand_ref_acceptable_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
+fn body_lower_try_operand_or_reject(shell: v2.std.node.Node, captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_operand_ref_acceptable_optional(node: captured) {
     Present { value: operand } => outcome_accepted(value: operand)
     Absent =>
@@ -1734,7 +1734,7 @@ fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node
   }
 }
 
-fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
+fn body_lower_unwrap_pass_through(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -1744,7 +1744,7 @@ fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
+fn body_lower_transform_call(operator: v2.std.node.Node, args: List<v2.std.node.Node>) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: list_append(
@@ -1756,14 +1756,14 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   )
 }
 
-fn body_lower_method_operator_atom(sym: v2.std.node.Symbol) -> Node {
+fn body_lower_method_operator_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
 
-fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
+fn body_lower_arg_operand_optional(arg_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
     ParseSubtreeAbsent =>
@@ -1782,7 +1782,7 @@ fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
+fn body_lower_named_arg_value_optional(arg_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: arg_capture) {
     Absent =>
       match parse_production_emitted_identity_optional(node: arg_capture) {
@@ -1819,14 +1819,14 @@ fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
+fn body_lower_call_arg_edge_optional(arg_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_named_arg_value_optional(arg_capture: arg_capture) {
     Present { value: operand } => Present { value: operand }
     Absent => body_lower_arg_operand_optional(arg_capture: arg_capture)
   }
 }
 
-fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node> {
+fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: v2.std.node.Node) -> List<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Present { value: pair } =>
@@ -1844,7 +1844,7 @@ fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node>
   }
 }
 
-fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
+fn body_lower_extract_comma_list_operand(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_call_arg_edge_optional(arg_capture: stripped) {
     Present { value: operand } => [operand]
@@ -1862,43 +1862,43 @@ fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
   }
 }
 
-fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: Node) -> List<Node> {
+fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: v2.std.node.Node) -> List<v2.std.node.Node> {
   if is_empty_conj_root(n: repeat_capture) {
     std.algebra.Empty
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Accepted { value: head, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: head, diagnostics: _ } =>
         let operands = body_lower_extract_comma_list_operand(node: head)
         match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-          Accepted { value: tail, diagnostics: _ } =>
+          v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
             list_append(
               left: operands,
               right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
             )
-          Rejected { diagnostics: _ } => operands
+          v2.std.diagnostic.Rejected { diagnostics: _ } => operands
         }
-      Rejected { diagnostics: _ } => std.algebra.Empty
+      v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
     }
   }
 }
 
-fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
+fn body_lower_collect_call_arg_operands(sequence_capture: v2.std.node.Node) -> List<v2.std.node.Node> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
   match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: first, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: first, diagnostics: _ } =>
       let first_operands = match body_lower_call_arg_edge_optional(arg_capture: first) {
         Present { value: operand } => [operand]
         Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: first)
       }
       match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
-        Accepted { value: tail, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
           list_append(
             left: first_operands,
             right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
           )
-        Rejected { diagnostics: _ } => first_operands
+        v2.std.diagnostic.Rejected { diagnostics: _ } => first_operands
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match body_lower_call_arg_edge_optional(arg_capture: unwrapped) {
         Present { value: operand } => [operand]
         Absent =>
@@ -1926,7 +1926,7 @@ fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
   }
 }
 
-fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
+fn body_lower_call_args_from_capture(args_capture: v2.std.node.Node) -> List<v2.std.node.Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: args_capture) {
     Present { value: comma_spine } =>
       body_lower_collect_call_arg_operands(sequence_capture: comma_spine)
@@ -1934,7 +1934,7 @@ fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
   }
 }
 
-fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
+fn body_lower_primary_call_suffix_optional(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: root)
   match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
     Present { value: _ } => optional_present(value: stripped)
@@ -1948,7 +1948,7 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_primary_ident_call(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
@@ -1976,7 +1976,7 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>> {
+fn body_lower_postfix_call_suffix_args(call_suffix: v2.std.node.Node) -> Optional<List<v2.std.node.Node>> {
   match sugar_sequence_pair_optional(node: call_suffix) {
     Absent => Absent
     Present { value: pair } =>
@@ -2000,7 +2000,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>
   }
 }
 
-fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<v2.std.node.Symbol> {
+fn body_lower_postfix_projection_step(repeat_elem: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -2024,14 +2024,14 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<v2.std.node
   }
 }
 
-fn body_lower_postfix_optional_unwrap(node: Node) -> Node {
+fn body_lower_postfix_optional_unwrap(node: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-    Accepted { value: child, diagnostics: _ } => child
-    Rejected { diagnostics: _ } => node
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => child
+    v2.std.diagnostic.Rejected { diagnostics: _ } => node
   }
 }
 
-fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node> {
+fn body_lower_postfix_method_suffix_optional(repeat_elem: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => optional_absent()
@@ -2054,7 +2054,7 @@ fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node
   }
 }
 
-fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
+fn body_lower_postfix_projection_args(repeat_elem: v2.std.node.Node) -> List<v2.std.node.Node> {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => std.algebra.Empty
     Present { value: call_suffix } =>
@@ -2065,7 +2065,7 @@ fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
   }
 }
 
-fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
+fn body_lower_postfix_projection_has_call_suffix(repeat_elem: v2.std.node.Node) -> Bool {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => false
     Present { value: call_suffix } =>
@@ -2076,29 +2076,29 @@ fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
   }
 }
 
-fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: Node) -> Node {
+fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: v2.std.node.Node) -> v2.std.node.Node {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => repeat_elem
     Present { value: call_suffix } => call_suffix
   }
 }
 
-fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Node> {
+fn body_lower_postfix_repeat_head_optional(repeat_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   if is_empty_conj_root(n: repeat_capture) {
     optional_absent()
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
         match find_named_child(root: repeat_capture, name: ^grammar_repeat_element_node_projection) {
-          Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-          Rejected { diagnostics: _ } => optional_absent()
+          v2.std.diagnostic.Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
+          v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
         }
     }
   }
 }
 
-fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_postfix_projection(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
@@ -2139,7 +2139,7 @@ fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
+fn body_lower_match_arm_wire(pat_node: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -2149,7 +2149,7 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   )
 }
 
-fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
+fn body_lower_pattern_leaf_atom_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
@@ -2195,7 +2195,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_pattern_first_atom_optional(node: Node) -> Optional<Node> {
+fn body_lower_pattern_first_atom_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_pattern_leaf_atom_optional(node: node) {
     Present { value: atom } => Present { value: atom }
     Absent =>
@@ -2208,11 +2208,11 @@ fn body_lower_pattern_first_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_pattern_atom_optional(pattern_capture: Node) -> Optional<Node> {
+fn body_lower_pattern_atom_optional(pattern_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   body_lower_pattern_first_atom_optional(node: pattern_capture)
 }
 
-fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
+fn body_lower_match_arm_navigation_reject(arm_capture: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   outcome_rejected(
     d: body_lower_diagnostic(
       reason: ^body_lowering_reason_match_arm_navigation_refused,
@@ -2221,7 +2221,7 @@ fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
   )
 }
 
-fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> {
+fn body_lower_match_arm_body_capture_optional(stripped: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: stripped, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => optional_present(value: expr)
     ParseSubtreeAbsent =>
@@ -2242,7 +2242,7 @@ fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> 
   }
 }
 
-fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
+fn body_lower_match_arm_body_optional(body_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: body_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_from_shell_optional(shell: expr)
     ParseSubtreeAbsent =>
@@ -2287,7 +2287,7 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
+fn body_lower_match_arm_wire_from_sequence(stripped: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_find_captured(
     root: stripped,
     emitted: ^dag_surface_pattern
@@ -2387,7 +2387,7 @@ fn body_lower_is_match_arm_navigate_emitted(emitted: v2.std.node.Symbol) -> Bool
     || body_lower_is_pass_through_emitted(emitted: emitted)
 }
 
-fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Node> {
+fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Present { value: pair } =>
@@ -2399,17 +2399,17 @@ fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Nod
   }
 }
 
-fn body_lower_extract_comma_list_arm_head(node: Node) -> Outcome<Node> {
+fn body_lower_extract_comma_list_arm_head(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_wire_match_arm_capture(arm_capture: stripped) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
-    Accepted { value: arm, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: arm, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: arm, diagnostics: d }
   }
 }
 
-fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
+fn body_lower_wire_match_arm_capture(arm_capture: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
@@ -2432,66 +2432,66 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outcome<List<Node>> {
+fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: std.algebra.Empty)
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Accepted { value: head, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: head, diagnostics: _ } =>
         match body_lower_extract_comma_list_arm_head(node: head) {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: arm, diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: arm, diagnostics: d } =>
             match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Accepted { value: tail, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
                 match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
-                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                  Accepted { value: rest, diagnostics: rd } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                  v2.std.diagnostic.Accepted { value: rest, diagnostics: rd } =>
                     v2.std.diagnostic.Accepted {
                       value: list_append(left: [arm], right: rest),
                       diagnostics: diagnostics_merge(outer: d, inner: rd)
                     }
                 }
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Accepted { value: [arm], diagnostics: d }
             }
         }
-      Rejected { diagnostics: _ } => outcome_accepted(value: std.algebra.Empty)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => outcome_accepted(value: std.algebra.Empty)
     }
   }
 }
 
-fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> {
+fn body_lower_collect_match_arms(sequence_capture: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
   match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: first, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: first, diagnostics: _ } =>
       match body_lower_extract_comma_list_arm_head(node: first) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: arm, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: arm, diagnostics: d } =>
           match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
-            Accepted { value: tail, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: tail, diagnostics: _ } =>
               match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
-                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                Accepted { value: rest, diagnostics: rd } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                v2.std.diagnostic.Accepted { value: rest, diagnostics: rd } =>
                   v2.std.diagnostic.Accepted {
                     value: list_append(left: [arm], right: rest),
                     diagnostics: diagnostics_merge(outer: d, inner: rd)
                   }
               }
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               v2.std.diagnostic.Accepted { value: [arm], diagnostics: d }
           }
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match sugar_sequence_pair_optional(node: unwrapped) {
         Present { value: pair } =>
           match body_lower_extract_comma_list_arm_head(node: pair.left) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: arm, diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: arm, diagnostics: d } =>
               match body_lower_after_comma_tail_optional(node: pair.right) {
                 Present { value: tail } =>
                   match body_lower_collect_match_arms(sequence_capture: tail) {
-                    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                    Accepted { value: rest, diagnostics: rd } =>
+                    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                    v2.std.diagnostic.Accepted { value: rest, diagnostics: rd } =>
                       v2.std.diagnostic.Accepted {
                         value: list_append(left: [arm], right: rest),
                         diagnostics: diagnostics_merge(outer: d, inner: rd)
@@ -2502,15 +2502,15 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
           }
         Absent =>
           match body_lower_extract_comma_list_arm_head(node: unwrapped) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: arm, diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: arm, diagnostics: d } =>
               v2.std.diagnostic.Accepted { value: [arm], diagnostics: d }
           }
       }
   }
 }
 
-fn body_lower_reify_branch_target(node: Node) -> Node {
+fn body_lower_reify_branch_target(node: v2.std.node.Node) -> v2.std.node.Node {
   match body_lower_materialize_int_literal_operand_optional(node: node) {
     Present { value: reified } => reified
     Absent =>
@@ -2525,13 +2525,13 @@ fn body_lower_reify_branch_target(node: Node) -> Node {
   }
 }
 
-fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
+fn body_lower_reify_branch_body(body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body.kind {
     ComputationNode { behavior: Branch } =>
       match fold(body.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: done, diagnostics: d } =>
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: done, diagnostics: d } =>
             outcome_with_diagnostics(
               value: list_snoc_item(
                 xs: done,
@@ -2544,8 +2544,8 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
             )
         }
       }) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: children, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
             value: node_synthetic(
               kind: v2.std.node.ComputationNode { behavior: Branch },
@@ -2558,7 +2558,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
+fn body_lower_reify_arrow_body(body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
     ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
@@ -2566,7 +2566,7 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
+fn body_lower_if_navigation_reject(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   outcome_rejected(
     d: body_lower_diagnostic(
       reason: ^body_lowering_reason_if_navigation_refused,
@@ -2575,7 +2575,7 @@ fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
   )
 }
 
-fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<Node> {
+fn body_lower_materialize_int_literal_operand_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_int_literal_with_magnitude_optional(node: node) {
     Present { value: lit } => Present { value: lit }
     Absent =>
@@ -2599,8 +2599,8 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
                             lexeme: symbol_lexeme(sym: id),
                             occurrence_id: node.occurrence_id
                           ) {
-                            Accepted { value: lit, diagnostics: _ } => optional_present(value: lit)
-                            Rejected { diagnostics: _ } => optional_absent()
+                            v2.std.diagnostic.Accepted { value: lit, diagnostics: _ } => optional_present(value: lit)
+                            v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
                           }
                         Absent => optional_absent()
                       }
@@ -2612,7 +2612,7 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
   }
 }
 
-fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
+fn body_lower_arm_operand_resolved_optional(arm: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_materialize_int_literal_operand_optional(node: arm) {
     Present { value: lit } => Present { value: lit }
     Absent =>
@@ -2642,15 +2642,15 @@ fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_arm_operand_optional(arm_capture: Node) -> Optional<Node> {
+fn body_lower_if_arm_operand_optional(arm_capture: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: arm_capture) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_if_expr {
         match body_lower_unwrap_captured(shell: arm_capture) {
           Present { value: captured } =>
             match body_lower_try_if_from_captured(captured: captured) {
-              Rejected { diagnostics: _ } => Absent
-              Accepted { value: lowered_opt, diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+              v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: _ } =>
                 match lowered_opt {
                   Present { value: lowered } => Present { value: lowered }
                   Absent => Absent
@@ -2691,7 +2691,7 @@ fn body_lower_if_arm_operand_optional(arm_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
+fn body_lower_if_expr_capture_optional(spine: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => Present { value: expr }
     ParseSubtreeAbsent =>
@@ -2726,7 +2726,7 @@ fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_fn_body_capture_optional(spine: Node) -> Optional<Node> {
+fn body_lower_if_fn_body_capture_optional(spine: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => Present { value: body }
     ParseSubtreeAbsent =>
@@ -2761,7 +2761,7 @@ fn body_lower_if_fn_body_capture_optional(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
+fn body_lower_if_then_fn_body_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_if_fn_body_capture_optional(spine: spine) {
     Present { value: first } =>
@@ -2773,7 +2773,7 @@ fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
+fn body_lower_if_else_capture_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
     true => Absent
@@ -2823,7 +2823,7 @@ fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
+fn body_lower_if_condition_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
     true => Absent
@@ -2859,7 +2859,7 @@ fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_then_arm_optional(captured: Node) -> Optional<Node> {
+fn body_lower_if_then_arm_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => Present { value: body }
@@ -2895,7 +2895,7 @@ fn body_lower_if_then_arm_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_loop_navigation_reject(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_loop_navigation_reject(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   outcome_rejected(
     d: body_lower_diagnostic(
       reason: ^body_lowering_reason_loop_navigation_refused,
@@ -2904,7 +2904,7 @@ fn body_lower_loop_navigation_reject(captured: Node) -> Outcome<Optional<Node>> 
   )
 }
 
-fn body_lower_let_navigation_reject(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_let_navigation_reject(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   outcome_rejected(
     d: body_lower_diagnostic(
       reason: ^body_lowering_reason_let_navigation_refused,
@@ -2913,7 +2913,7 @@ fn body_lower_let_navigation_reject(captured: Node) -> Outcome<Optional<Node>> {
   )
 }
 
-fn body_lower_let_in_body_capture_optional(captured: Node) -> Optional<Node> {
+fn body_lower_let_in_body_capture_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -2959,7 +2959,7 @@ fn body_lower_let_in_body_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node> {
+fn body_lower_let_in_prefix_before_in_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -2991,7 +2991,7 @@ fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node>
   }
 }
 
-fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
+fn body_lower_let_in_value_capture_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_let_in_prefix_before_in_optional(captured: captured) {
     Absent => Absent
     Present { value: prefix } =>
@@ -3016,7 +3016,7 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<v2.std.node.Symbol> {
+fn body_lower_let_in_key_binding_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -3069,7 +3069,7 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<v2.std.nod
   }
 }
 
-fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_let_in_from_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_let_in_body_capture_optional(captured: captured) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: _ } =>
@@ -3148,7 +3148,7 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
   }
 }
 
-fn body_lower_try_let_in_from_node(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_let_in_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_let_expr {
@@ -3169,11 +3169,11 @@ fn body_lower_try_let_in_from_node(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_try_loop_expr_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_loop_expr_from_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   body_lower_try_loop_keyword_from_captured(captured: captured)
 }
 
-fn body_lower_try_loop_expr_from_node(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_loop_expr_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_loop_expr {
@@ -3194,7 +3194,7 @@ fn body_lower_try_loop_expr_from_node(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_loop_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -3202,8 +3202,8 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_loop_expr_from_captured(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
             Present { value: lowered } =>
               v2.std.diagnostic.Accepted { value: lowered, diagnostics: d }
@@ -3216,7 +3216,7 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_let_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -3224,8 +3224,8 @@ fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_let_in_from_captured(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
             Present { value: lowered } =>
               v2.std.diagnostic.Accepted { value: lowered, diagnostics: d }
@@ -3238,7 +3238,7 @@ fn body_lower_let_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_loop_keyword_from_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -3267,8 +3267,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                 }
               } else {
                 match body_lower_try_loop_keyword_from_captured(captured: left) {
-                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                  Accepted { value: left_found, diagnostics: ld } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                  v2.std.diagnostic.Accepted { value: left_found, diagnostics: ld } =>
                     match left_found {
                       Present { value: lowered } =>
                         outcome_with_diagnostics(
@@ -3281,8 +3281,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
               }
             Absent =>
               match body_lower_try_loop_keyword_from_captured(captured: left) {
-                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                Accepted { value: left_found, diagnostics: ld } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                v2.std.diagnostic.Accepted { value: left_found, diagnostics: ld } =>
                   match left_found {
                     Present { value: lowered } =>
                       outcome_with_diagnostics(
@@ -3297,8 +3297,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
           match sugar_sequence_pair_optional(node: spine) {
             Present { value: pair } =>
               match body_lower_try_loop_keyword_from_captured(captured: pair.left) {
-                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                Accepted { value: left_found, diagnostics: ld } =>
+                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                v2.std.diagnostic.Accepted { value: left_found, diagnostics: ld } =>
                   match left_found {
                     Present { value: lowered } =>
                       outcome_with_diagnostics(
@@ -3311,8 +3311,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
             Absent =>
               fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
                 match acc {
-                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                  Accepted { value: found, diagnostics: _ } =>
+                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                  v2.std.diagnostic.Accepted { value: found, diagnostics: _ } =>
                     match found {
                       Present { value: _ } => acc
                       Absent => body_lower_try_loop_keyword_from_captured(captured: e.target)
@@ -3325,8 +3325,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
       match sugar_sequence_pair_optional(node: spine) {
         Present { value: pair } =>
           match body_lower_try_loop_keyword_from_captured(captured: pair.left) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: left_found, diagnostics: ld } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: left_found, diagnostics: ld } =>
               match left_found {
                 Present { value: lowered } =>
                   outcome_with_diagnostics(
@@ -3339,8 +3339,8 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
         Absent =>
           fold(spine.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
             match acc {
-              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-              Accepted { value: found, diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+              v2.std.diagnostic.Accepted { value: found, diagnostics: _ } =>
                 match found {
                   Present { value: _ } => acc
                   Absent => body_lower_try_loop_keyword_from_captured(captured: e.target)
@@ -3351,7 +3351,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
   }
 }
 
-fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_loop_keyword_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_loop_expr {
@@ -3378,7 +3378,7 @@ fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
-fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_if_from_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_if_condition_optional(captured: captured) {
     Present { value: condition_capture } =>
       match body_lower_if_then_arm_optional(captured: captured) {
@@ -3426,7 +3426,7 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_if_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -3434,8 +3434,8 @@ fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_if_from_captured(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
             Present { value: lowered } =>
               v2.std.diagnostic.Accepted { value: lowered, diagnostics: d }
@@ -3448,7 +3448,7 @@ fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_match_arms_from_brace_interior(interior: Node) -> Outcome<List<Node>> {
+fn body_lower_match_arms_from_brace_interior(interior: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: interior)
   match sugar_sequence_pair_optional(node: unwrapped) {
     Present { value: pair } =>
@@ -3460,10 +3460,10 @@ fn body_lower_match_arms_from_brace_interior(interior: Node) -> Outcome<List<Nod
   }
 }
 
-fn body_lower_match_spine_left(spine: Node) -> Optional<Node> {
+fn body_lower_match_spine_left(spine: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: left, diagnostics: _ } => Present { value: left }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: left, diagnostics: _ } => Present { value: left }
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match sugar_sequence_pair_optional(node: spine) {
         Present { value: pair } => Present { value: pair.left }
         Absent => Absent
@@ -3471,10 +3471,10 @@ fn body_lower_match_spine_left(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
+fn body_lower_match_spine_right(spine: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_right_node_projection) {
-    Accepted { value: right, diagnostics: _ } => Present { value: right }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: right, diagnostics: _ } => Present { value: right }
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match sugar_sequence_pair_optional(node: spine) {
         Present { value: pair } => Present { value: pair.right }
         Absent => Absent
@@ -3482,7 +3482,7 @@ fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_scrutinee_on_token(id: v2.std.node.Symbol, left: Node, right: Node) -> Optional<Node> {
+fn body_lower_match_scrutinee_on_token(id: v2.std.node.Symbol, left: v2.std.node.Node, right: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match id == ^dag_token_lbrace {
     true => Absent
     false =>
@@ -3497,7 +3497,7 @@ fn body_lower_match_scrutinee_on_token(id: v2.std.node.Symbol, left: Node, right
   }
 }
 
-fn body_lower_match_scrutinee_from_spine(spine: Node) -> Optional<Node> {
+fn body_lower_match_scrutinee_from_spine(spine: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   if is_empty_conj_root(n: spine) {
     Absent
   } else {
@@ -3521,7 +3521,7 @@ fn body_lower_match_scrutinee_from_spine(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
+fn body_lower_match_scrutinee_optional(captured: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
     ParseSubtreeFound { captured: binary } =>
       body_lower_operand_ref_optional(node: binary)
@@ -3537,12 +3537,12 @@ fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_arms_on_lbrace_token(id: v2.std.node.Symbol, right: Node) -> Outcome<Optional<List<Node>>> {
+fn body_lower_match_arms_on_lbrace_token(id: v2.std.node.Symbol, right: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<List<v2.std.node.Node>>> {
   match id == ^dag_token_lbrace {
     true =>
       match body_lower_match_arms_from_brace_interior(interior: right) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: arms, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: arms, diagnostics: d } =>
           if count(arms) > 0 {
             v2.std.diagnostic.Accepted {
               value: optional_present(value: arms),
@@ -3561,7 +3561,7 @@ fn body_lower_match_arms_on_lbrace_token(id: v2.std.node.Symbol, right: Node) ->
   }
 }
 
-fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Outcome<Optional<List<Node>>> {
+fn body_lower_match_arms_after_lbrace_optional(spine: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<List<v2.std.node.Node>>> {
   if is_empty_conj_root(n: spine) {
     outcome_accepted(value: optional_absent())
   } else {
@@ -3582,18 +3582,18 @@ fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Outcome<Optional<
   }
 }
 
-fn body_lower_match_arms_optional(captured: Node) -> Outcome<Optional<List<Node>>> {
+fn body_lower_match_arms_optional(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<List<v2.std.node.Node>>> {
   body_lower_match_arms_after_lbrace_optional(
     spine: body_lower_unwrap_surface_shell(node: captured)
   )
 }
 
-fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_match_from_captured(captured: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match body_lower_match_scrutinee_optional(captured: captured) {
     Present { value: scrutinee } =>
       match body_lower_match_arms_optional(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: arms_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: arms_opt, diagnostics: d } =>
           match arms_opt {
             Present { value: arms } =>
               if count(arms) > 0 {
@@ -3628,7 +3628,7 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
   }
 }
 
-fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
+fn body_lower_match_capture_heads_spine(spine: v2.std.node.Node) -> Bool {
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
@@ -3639,7 +3639,7 @@ fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
   }
 }
 
-fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
+fn body_lowering_match_spine_identity_absent_fixture_spine() -> v2.std.node.Node {
   let match_kw = node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_kw_match } },
     children: []
@@ -3672,18 +3672,18 @@ fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
     false
   } else {
     match body_lower_fold_reduce(node: fixture) {
-      Rejected { diagnostics: _ } => false
-      Accepted { value: reduced, diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: reduced, diagnostics: _ } =>
         match body_lower_fold_identity_absent(node: fixture) {
-          Rejected { diagnostics: _ } => true
-          Accepted { value: dispatched, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: _ } => true
+          v2.std.diagnostic.Accepted { value: dispatched, diagnostics: _ } =>
             body_lower_is_core_substrate(node: dispatched) || dispatched != reduced
         }
     }
   }
 }
 
-fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_match_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -3691,8 +3691,8 @@ fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_match_from_captured(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
             Present { value: lowered } =>
               v2.std.diagnostic.Accepted { value: lowered, diagnostics: d }
@@ -3705,7 +3705,7 @@ fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_postfix_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -3716,7 +3716,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           match body_lower_literal_bool_atom_optional(node: captured) {
             Present { value: lit } => outcome_accepted(value: lit)
             Absent =>
@@ -3725,7 +3725,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                 Absent => v2.std.diagnostic.Rejected { diagnostics: r }
               }
           }
-        Accepted { value: found, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: transform } =>
               v2.std.diagnostic.Accepted { value: transform, diagnostics: d }
@@ -3734,9 +3734,9 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
-                    Rejected { diagnostics: _ } =>
+                    v2.std.diagnostic.Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: fold_result, diagnostics: _ } =>
                       match fold_result {
                         Present { value: loop_node } => outcome_accepted(value: loop_node)
                         Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
@@ -3749,7 +3749,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_primary_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
     Absent => shell
@@ -3758,8 +3758,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
       match body_lower_try_loop_keyword_from_captured(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: loop_opt, diagnostics: ld } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: loop_opt, diagnostics: ld } =>
           match loop_opt {
             Present { value: loop_node } =>
               v2.std.diagnostic.Accepted { value: loop_node, diagnostics: ld }
@@ -3768,14 +3768,14 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_primary_ident_call(node: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: primary_call, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: primary_call, diagnostics: d } =>
           match primary_call {
             Present { value: transform } =>
               v2.std.diagnostic.Accepted { value: transform, diagnostics: d }
             Absent =>
       match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           match body_lower_literal_bool_atom_optional(node: captured) {
             Present { value: lit } => outcome_accepted(value: lit)
             Absent =>
@@ -3784,7 +3784,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                 Absent => v2.std.diagnostic.Rejected { diagnostics: r }
               }
           }
-        Accepted { value: found, diagnostics: d2 } =>
+        v2.std.diagnostic.Accepted { value: found, diagnostics: d2 } =>
           match found {
             Present { value: transform } =>
               v2.std.diagnostic.Accepted { value: transform, diagnostics: d2 }
@@ -3793,9 +3793,9 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
-                    Rejected { diagnostics: _ } =>
+                    v2.std.diagnostic.Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: fold_result, diagnostics: _ } =>
                       match fold_result {
                         Present { value: loop_node } => outcome_accepted(value: loop_node)
                         Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
@@ -3812,13 +3812,13 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
+fn body_lower_fn_body_shell(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
       match body_lower_body_subtree_lower(captured: captured) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
             Present { value: lowered } => outcome_with_diagnostics(value: lowered, diagnostics: d)
             Absent => body_lower_wrapper_retained_shell(shell: shell)
@@ -3827,7 +3827,7 @@ fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_forward_row_apply(shell: Node, emitted: v2.std.node.Symbol) -> Outcome<Node> {
+fn body_lower_forward_row_apply(shell: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if emitted == ^dag_surface_fn_decl {
     body_lower_fn_decl_to_arrow(shell: shell)
   } else if emitted == ^dag_surface_fn_body {
@@ -3845,7 +3845,7 @@ fn body_lower_forward_row_apply(shell: Node, emitted: v2.std.node.Symbol) -> Out
   }
 }
 
-fn body_lower_production_emitted(shell: Node, emitted: v2.std.node.Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
+fn body_lower_production_emitted(shell: v2.std.node.Node, emitted: v2.std.node.Symbol, fn_body_pass_through: Bool) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
@@ -3865,7 +3865,7 @@ fn body_lower_production_emitted(shell: Node, emitted: v2.std.node.Symbol, fn_bo
   }
 }
 
-fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<Node> {
+fn body_lower_after_children(folded: v2.std.node.Node, fn_body_pass_through: Bool) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if body_lower_is_core_substrate(node: folded) {
     outcome_accepted(value: folded)
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
@@ -3883,7 +3883,7 @@ fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcom
   }
 }
 
-fn body_lower_finish(n: Node, folded: Node, cd: v2.std.diagnostic.Diagnostics) -> Outcome<Node> {
+fn body_lower_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   body_lower_finish_for_normalize(
     n: n,
     folded: folded,
@@ -3893,15 +3893,15 @@ fn body_lower_finish(n: Node, folded: Node, cd: v2.std.diagnostic.Diagnostics) -
 }
 
 fn body_lower_finish_for_normalize(
-  n: Node,
-  folded: Node,
+  n: v2.std.node.Node,
+  folded: v2.std.node.Node,
   cd: v2.std.diagnostic.Diagnostics,
   fn_body_pass_through: Bool
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body_lower_after_children(folded: folded, fn_body_pass_through: fn_body_pass_through) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
-    Accepted { value: lowered, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: lowered, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: lowered,
         diagnostics: diagnostics_merge(outer: cd, inner: d)

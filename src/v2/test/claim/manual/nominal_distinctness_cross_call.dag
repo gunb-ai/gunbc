@@ -30,21 +30,21 @@ data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: ^no
 data nominal_distinct_brands_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_brands_input_symbol)
 data nominal_distinct_control_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_control_input_symbol)
 
-fn anchor_nominal_distinct_records_compile() -> Outcome<Medium<String>> {
+fn anchor_nominal_distinct_records_compile() -> v2.std.diagnostic.Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_records_source,
     target: nominal_distinct_compile_target
   )
 }
 
-fn anchor_nominal_distinct_brands_compile() -> Outcome<Medium<String>> {
+fn anchor_nominal_distinct_brands_compile() -> v2.std.diagnostic.Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_brands_source,
     target: nominal_distinct_compile_target
   )
 }
 
-fn anchor_nominal_distinct_control_compile() -> Outcome<Medium<String>> {
+fn anchor_nominal_distinct_control_compile() -> v2.std.diagnostic.Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_control_source,
     target: nominal_distinct_compile_target
@@ -73,8 +73,8 @@ fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> v2.std.diagnos
 
 fn nominal_distinct_records_expected_rejection() -> v2.std.diagnostic.NonEmptyDiagnostics {
   match nominal_distinct_records_compile_receipt {
-    Rejected { diagnostics: r } => r
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => r
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       diagnostics_singleton(
         d: nominal_distinct_cross_call_must_reject_diagnostic(at: nominal_distinct_records_input)
       )
@@ -83,8 +83,8 @@ fn nominal_distinct_records_expected_rejection() -> v2.std.diagnostic.NonEmptyDi
 
 fn nominal_distinct_brands_expected_rejection() -> v2.std.diagnostic.NonEmptyDiagnostics {
   match nominal_distinct_brands_compile_receipt {
-    Rejected { diagnostics: r } => r
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => r
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       diagnostics_singleton(
         d: nominal_distinct_cross_call_must_reject_diagnostic(at: nominal_distinct_brands_input)
       )
@@ -93,8 +93,8 @@ fn nominal_distinct_brands_expected_rejection() -> v2.std.diagnostic.NonEmptyDia
 
 fn nominal_distinct_control_compiles_ok() -> Bool {
   match nominal_distinct_control_compile_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -136,24 +136,24 @@ fn nominal_distinct_runtime_unit(node: Node) -> v2.std.runtime.RuntimeValue {
   }
 }
 
-fn nominal_distinct_compile_for_input(node: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
+fn nominal_distinct_compile_for_input(node: Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if node == nominal_distinct_records_input {
     match nominal_distinct_records_compile_receipt {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: _, diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
         v2.std.diagnostic.Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: v2.std.diagnostic.None }
     }
   } else if node == nominal_distinct_brands_input {
     match nominal_distinct_brands_compile_receipt {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      Accepted { value: _, diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
         v2.std.diagnostic.Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: v2.std.diagnostic.None }
     }
   } else if node == nominal_distinct_control_input {
     match nominal_distinct_control_compile_receipt {
-      Accepted { value: _, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
         v2.std.diagnostic.Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: v2.std.diagnostic.None }
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     outcome_rejected(
@@ -165,7 +165,7 @@ fn nominal_distinct_compile_for_input(node: Node) -> Outcome<v2.std.runtime.Runt
 fn nominal_distinct_allocate_literal(
   node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   nominal_distinct_compile_for_input(node: node)
 }
 
@@ -173,7 +173,7 @@ fn nominal_distinct_call_primitive(
   node: Node,
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.RuntimeValue> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   nominal_distinct_compile_for_input(node: node)
 }
 
@@ -181,14 +181,14 @@ fn nominal_distinct_choose_branch(
   node: Node,
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<Node> {
   v2.std.diagnostic.Accepted { value: node, diagnostics: v2.std.diagnostic.None }
 }
 
 fn nominal_distinct_step_loop(
   node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.ControlTransfer> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer> {
   v2.std.diagnostic.Accepted { value: v2.std.runtime.Continue { value: nominal_distinct_runtime_unit(node: node) }, diagnostics: v2.std.diagnostic.None }
 }
 
@@ -196,7 +196,7 @@ fn nominal_distinct_bind_value(
   _key: v2.std.runtime.EnvironmentBindingKey,
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
-) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 

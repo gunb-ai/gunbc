@@ -95,7 +95,7 @@ fn ts_closure_prefix_catalog() -> Node {
 fn ts_closure_emit_value_producing(
   expr: v2.std.compilers.target_model.TargetValueExpression,
   catalog: Node
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: expr,
@@ -118,8 +118,8 @@ fn ts_closure_emit_canonical_text() -> String {
     expr: ts_closure_canonical_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }
 
@@ -128,8 +128,8 @@ fn ts_closure_emit_swapped_operands_text() -> String {
     expr: ts_closure_swapped_operands_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }
 
@@ -138,8 +138,8 @@ fn ts_closure_emit_swapped_params_text() -> String {
     expr: ts_closure_swapped_params_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }
 
@@ -164,8 +164,8 @@ test fn ts_closure_emit_prefix_row_perturbation_fails_closed_holds() -> Bool {
     expr: ts_closure_canonical_expr(),
     catalog: ts_closure_prefix_catalog()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -175,7 +175,7 @@ test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
     projection: ts_value_expression_projection(),
     catalog: ts_closure_infix_catalog()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

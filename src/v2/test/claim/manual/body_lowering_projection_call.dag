@@ -3,7 +3,7 @@ module v2.test.manual.body_lowering_projection_call
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
 
-fn body_lowering_bool_node(pass: Bool) -> Node {
+fn body_lowering_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
     node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_proj_pass } },
@@ -17,7 +17,7 @@ fn body_lowering_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
+fn body_lowering_find_postfix_expr(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
       match emitted == ^dag_surface_postfix_expr {
@@ -40,7 +40,7 @@ fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   }
 }
 
-fn body_lowering_parsed_module() -> Optional<Node> {
+fn body_lowering_parsed_module() -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_projection_source,

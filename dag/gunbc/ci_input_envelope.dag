@@ -8,7 +8,7 @@ type InputSizeAxis
 
 type InputBound {
   axis: InputSizeAxis
-  max: Measure<Count, One, std.nat.Nat>
+  max: std.measure.Measure<Count, One, std.nat.Nat>
 }
 
 type InputEnvelope

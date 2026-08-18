@@ -66,7 +66,7 @@ fn ledger_read_witness(path: String) -> v2.compiler.source_authority.DagSourceRe
   }
 }
 
-fn closure_ingest(closure_paths: FreeMonoid<String>) -> v2.compiler.source_authority.SourceRootIngest {
+fn closure_ingest(closure_paths: std.algebra.FreeMonoid<String>) -> v2.compiler.source_authority.SourceRootIngest {
   list_reverse(
     xs: fold_list(
       xs: closure_paths,
@@ -265,10 +265,10 @@ data known_frontier_causes: List<CauseOwnership> = [
 
 data list_find_first_promotion_note: String = "list_find_first is a short-circuiting element-returning find — the std/algebra gap beside any/filter/contains (which return Bool or the whole filtered list, never the first match with early-exit). Homed locally with ONE consumer (cause_ownership_lookup) per the facts-before-abstraction discipline: promote to v2.std.algebra when a second consumer inhabits it, not before. Short-circuit matters by the standing bare-minimum-cost ruling (2026-07-10): 'n is small here' is not time-stable — known_frontier_causes grows as causes are modeled — so the find returns on the first hit rather than folding the whole table."
 
-fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+fn list_find_first<T>(xs: std.algebra.FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
   match xs {
-    Empty => optional_absent()
-    Cons { head: h, tail: t } =>
+    std.algebra.Empty => optional_absent()
+    std.algebra.Cons { head: h, tail: t } =>
       if predicate(h) {
         optional_present(value: h)
       } else {

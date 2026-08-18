@@ -10,7 +10,7 @@ type QnFoldStatus
   | QnFoldDone { qn: QualifiedName }
   | QnFoldError { diag: v2.std.diagnostic.Diagnostic }
 
-fn qn_fold_init(n: Node) -> QnFoldStatus {
+fn qn_fold_init(n: v2.std.node.Node) -> QnFoldStatus {
   match n.kind {
     TypeNode { connective: Conj } =>
       if count(n.children) == 0 {
@@ -186,7 +186,7 @@ fn qualified_name_snoc(qn: QualifiedName, segment: v2.std.node.Symbol) -> Qualif
   list_snoc_item(xs: qn, item: segment)
 }
 
-fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_node(root: v2.std.node.Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
       let acc = fold_node(n: root, algebra: v2.std.node.NodeFold { init: qn_fold_init, step: qn_fold_step })

@@ -3,16 +3,16 @@ module v2.workflow.witness_admission
 
 fn schedule_row_matches(
   w: std.realization_schedule.ScheduleWitnessEntry,
-  entry: String,
-  function: String
+  entry: v2.std.text.String,
+  function: v2.std.text.String
 ) -> Bool {
   (w.entry == entry) && (w.function == function)
 }
 
 fn schedule_contains_entry(
   xs: List<std.realization_schedule.ScheduleWitnessEntry>,
-  entry: String,
-  function: String
+  entry: v2.std.text.String,
+  function: v2.std.text.String
 ) -> Bool {
   any(
     xs: xs,
@@ -20,15 +20,15 @@ fn schedule_contains_entry(
   )
 }
 
-fn path_contains_substring(path: String, sub: String) -> Bool {
+fn path_contains_substring(path: v2.std.text.String, sub: v2.std.text.String) -> Bool {
   string_contains(s: path, pattern: sub)
 }
 
-fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
+fn path_matches_any_substring(path: v2.std.text.String, subs: List<v2.std.text.String>) -> Bool {
   any(xs: subs, predicate: fn(sub) { path_contains_substring(path: path, sub: sub) })
 }
 
-fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness_admission.WitnessConsumerCadence {
+fn consumer_for_explicit_rosters(entry: v2.std.text.String, function: v2.std.text.String) -> std.witness_admission.WitnessConsumerCadence {
   if schedule_contains_entry(
     xs: falsifier_self_host_wet_entries(),
     entry: entry,
@@ -81,8 +81,8 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness
 }
 
 fn witness_consumer_cadence_for_row(
-  entry: String,
-  function: String,
+  entry: v2.std.text.String,
+  function: v2.std.text.String,
   excluded_from_discovery: Bool
 ) -> std.witness_admission.WitnessConsumerCadence {
   let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
@@ -112,11 +112,11 @@ data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED
 READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
 
 fn witness_path_policy_execution_standing_in(
-  entry: String,
-  function: String,
+  entry: v2.std.text.String,
+  function: v2.std.text.String,
   excluded_from_discovery: Bool,
-  offline: List<String>,
-  fixture: List<String>,
+  offline: List<v2.std.text.String>,
+  fixture: List<v2.std.text.String>,
   frozen: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>
 ) -> std.witness_admission.WitnessExecutionStanding {
   if !excluded_from_discovery {
@@ -135,8 +135,8 @@ fn witness_path_policy_execution_standing_in(
 }
 
 fn witness_path_policy_execution_standing(
-  entry: String,
-  function: String,
+  entry: v2.std.text.String,
+  function: v2.std.text.String,
   excluded_from_discovery: Bool
 ) -> std.witness_admission.WitnessExecutionStanding {
   witness_path_policy_execution_standing_in(
@@ -155,7 +155,7 @@ WHY IT IS CHECKED HERE RATHER THAN FOLDED INTO THE CADENCE. WitnessConsumerCaden
 
 MEASURED COST OF THE OMISSION, which is why this is a correctness fix rather than an extension: 31 identities in the frozen population are enrolled on GithubActionsCiJob today. Without this check the wall would refuse witnesses that already run — a fail-closed FALSE POSITIVE, which is still a wrong answer, and it would have landed on an unrelated lane as a surprise red."
 
-fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
+fn witness_commit_roster_enrolled(entry: v2.std.text.String, function: v2.std.text.String) -> Bool {
   schedule_contains_entry(
     xs: project_ci_floor_witness_entries(roster: commit_gate_roster),
     entry: entry,
@@ -169,8 +169,8 @@ fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
 }
 
 fn witness_execution_standing_for_row(
-  entry: String,
-  function: String,
+  entry: v2.std.text.String,
+  function: v2.std.text.String,
   excluded_from_discovery: Bool
 ) -> std.witness_admission.WitnessExecutionStanding {
   let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
@@ -250,7 +250,7 @@ fn frozen_path_deferrals_all_discovered(
 
 data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR discovery for one of exactly two reasons, and they are different kinds of fact. EXACT ADMISSION: this (entry, function) has its own row on gunbc.explicit_witness_admission naming the cadence that executes it — decided at function grain, so a sibling is untouched. PATH POLICY: the entry sits under a directory- or file-wide substring rule in witness_exclusion_frontier — decided at path grain, and deliberately so, because `test/claim/long/ is the long-test home` is a statement about a place rather than about any one function. Exact admission is checked FIRST and is total for the functions it covers; path policy applies only to functions with no admission. That ordering is what lets a path-offline file legitimately contain an exact-admitted function without either fact restating the other, and it is why the two must not share a representation."
 
-fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool {
+fn witness_row_excluded_from_discovery(entry: v2.std.text.String, function: v2.std.text.String) -> Bool {
   explicit_witness_admission_covers(entry: entry, function: function)
     || schedule_contains_entry(
       xs: falsifier_substrate_long_lane_entries(),
@@ -261,8 +261,8 @@ fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool 
 }
 
 fn witness_execution_standing_for_live_row(
-  entry: String,
-  function: String
+  entry: v2.std.text.String,
+  function: v2.std.text.String
 ) -> std.witness_admission.WitnessExecutionStanding {
   witness_execution_standing_for_row(
     entry: entry,
@@ -274,15 +274,15 @@ fn witness_execution_standing_for_live_row(
   )
 }
 
-fn witness_has_executing_consumer_for_row(entry: String, function: String) -> Bool {
+fn witness_has_executing_consumer_for_row(entry: v2.std.text.String, function: v2.std.text.String) -> Bool {
   witness_has_executing_consumer(
     standing: witness_execution_standing_for_live_row(entry: entry, function: function)
   )
 }
 
 fn witness_floor_admission_holds_for_row(
-  entry: String,
-  function: String,
+  entry: v2.std.text.String,
+  function: v2.std.text.String,
   baseline: std.witness_admission.FrozenBaselineStanding
 ) -> Bool {
   witness_floor_admission_holds(
@@ -291,11 +291,11 @@ fn witness_floor_admission_holds_for_row(
   )
 }
 
-fn witness_admission_manifest_entry_key(entry: String, function: String) -> String {
+fn witness_admission_manifest_entry_key(entry: v2.std.text.String, function: v2.std.text.String) -> v2.std.text.String {
   concat(entry, "::", function)
 }
 
-fn witness_admission_explicit_consumer_manifest() -> List<String> {
+fn witness_admission_explicit_consumer_manifest() -> List<v2.std.text.String> {
   fold_list(
     xs:       concat(
         concat(
@@ -320,7 +320,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
   )
 }
 
-fn witness_admission_manifest_covers_row(entry: String, function: String) -> Bool {
+fn witness_admission_manifest_covers_row(entry: v2.std.text.String, function: v2.std.text.String) -> Bool {
   contains(
     xs: witness_admission_explicit_consumer_manifest(),
     item: witness_admission_manifest_entry_key(entry: entry, function: function),
@@ -328,7 +328,7 @@ fn witness_admission_manifest_covers_row(entry: String, function: String) -> Boo
   )
 }
 
-fn string_eq(a: String, b: String) -> Bool {
+fn string_eq(a: v2.std.text.String, b: v2.std.text.String) -> Bool {
   a == b
 }
 
@@ -359,7 +359,7 @@ fn witness_exclusion_rows_well_formed_holds() -> Bool {
   witness_exclusion_rows_well_formed(rows: witness_exclusion_frontier)
 }
 
-fn schedule_entries_cover_pattern(xs: List<std.realization_schedule.ScheduleWitnessEntry>, pattern: String) -> Bool {
+fn schedule_entries_cover_pattern(xs: List<std.realization_schedule.ScheduleWitnessEntry>, pattern: v2.std.text.String) -> Bool {
   any(
     xs: xs,
     predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) }

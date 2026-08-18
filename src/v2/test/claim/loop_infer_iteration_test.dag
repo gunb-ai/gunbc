@@ -44,7 +44,7 @@ fn loop_infer_registered_measure() -> Node {
   loop_infer_atom(s: ^dag_loop_measure_sym)
 }
 
-fn loop_infer_run(root: Node) -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_infer_run(root: Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   infer(tree: root)
 }
 
@@ -70,9 +70,9 @@ test fn loop_infer_invariant_body_accepts_with_carrier_type() -> Bool {
     measure: loop_infer_registered_measure()
   )
   match loop_infer_run(root: body) {
-    Accepted { value: inferred, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
       loop_infer_loop_type_is_int(tree: inferred, body: body)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -83,8 +83,8 @@ test fn loop_infer_divergent_body_is_refused() -> Bool {
     measure: loop_infer_registered_measure()
   )
   match loop_infer_run(root: body) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -95,8 +95,8 @@ test fn loop_infer_refinement_shaped_body_is_refused() -> Bool {
     measure: loop_infer_registered_measure()
   )
   match loop_infer_run(root: body) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -106,8 +106,8 @@ test fn loop_infer_unregistered_measure_is_refused() -> Bool {
     measure: loop_infer_atom(s: ^loop_infer_unregistered_measure)
   )
   match loop_infer_run(root: body) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -120,7 +120,7 @@ test fn loop_infer_missing_measure_is_refused() -> Bool {
     occurrence_id: SyntheticOccurrence
   }
   match loop_infer_run(root: body) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

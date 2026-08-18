@@ -44,7 +44,7 @@ fn compile_eval_thesis_expected_bool_node() -> Node {
   }
 }
 
-fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
+fn compile_eval_thesis_medium_matches_expected(medium: extdeps.communication.medium.Medium<Node>) -> Bool {
   match medium.fidelity {
     Lossless => medium.carried == compile_eval_thesis_expected_bool_node()
     Lossy => false

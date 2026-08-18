@@ -5,34 +5,34 @@ fn reference_coproduct_exhaustiveness_anchor() -> v2.std.verification.GeneratedA
   coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
 }
 
-fn generated_coproduct_exhaustiveness_claim() -> Outcome<v2.std.verification.TestClaim> {
+fn generated_coproduct_exhaustiveness_claim() -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
   testgen_emit_coproduct_exhaustiveness_claim(anchor: reference_coproduct_exhaustiveness_anchor())
 }
 
-fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
+fn generated_coproduct_exhaustiveness_input() -> v2.std.diagnostic.Outcome<Node> {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: claim, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: test_claim_input(c: claim), diagnostics: v2.std.diagnostic.None }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: claim, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

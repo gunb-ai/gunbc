@@ -16,29 +16,29 @@ fn rust_match_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTr
   }
 }
 
-fn rust_match_emit_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn rust_match_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rust_match_emit_swapped_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn rust_match_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body_swapped_arms() {
-    Accepted { value: root, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rust_match_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn rust_match_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: rust_match_emit_producer_inferred_tree(),
     f: fn(tree) {
@@ -47,7 +47,7 @@ fn rust_match_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) 
   )
 }
 
-fn rust_match_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn rust_match_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
   bind_outcome(
     o: rust_match_emit_swapped_producer_inferred_tree(),
     f: fn(tree) {
@@ -58,19 +58,19 @@ fn rust_match_emit_from_swapped_tree(target: v2.std.compilers.target_model.Targe
 
 test fn rust_match_emit_one_or_two_accepts() -> Bool {
   match rust_match_emit_from_tree(target: rust_match_target_model_staging()) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_match_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn rust_match_emit_swapped_arms_discriminates() -> Bool {
   match rust_match_emit_from_swapped_tree(target: rust_match_target_model_staging()) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_match_emit_swapped_source_text) &&
       (source.carried != rust_match_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

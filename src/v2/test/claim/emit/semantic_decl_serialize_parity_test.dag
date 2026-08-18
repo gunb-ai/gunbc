@@ -14,7 +14,7 @@ fn bool_coproduct() -> Node {
   }
 }
 
-fn serialize_surface_with_target(surface: Node, rules: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
+fn serialize_surface_with_target(surface: Node, rules: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: surface),
     f: fn(row) {
@@ -55,7 +55,7 @@ fn bool_serialize_target(lex: v2.std.compilers.lexing.LexRules, bindings: Map<v2
   }
 }
 
-fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
+fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: semantic_decl_emission_from_target(target: rust_target_model()),
     f: fn(emission) {
@@ -80,25 +80,25 @@ fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> O
 
 test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
-        Accepted { value: decoded_bindings, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: decoded_bindings, diagnostics: _ } =>
           match target_semantic_enum_surface_from_coproduct(
             projection: emission.surface,
             name: ^Bool,
             params: std.algebra.Empty,
             coproduct: bool_coproduct()
           ) {
-            Accepted { value: surface, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
                 rules: rust_enum_general_decl_productions_only_translation_rules(),
                 emitted: surface
               ) {
-                Accepted { value: row, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
                   match grammar_relation_row_tokens_root(row: row) {
-                    Accepted { value: tokens_root, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
                       match concrete_syntax_token_list_from_node(list_node: tokens_root) {
-                        Accepted { value: tokens, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
                           match serialize_concrete_syntax_tokens_to_source(
                             target: bool_serialize_target(
                               lex: rust_decl_general_lex(),
@@ -106,7 +106,7 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
                             ),
                             tokens: tokens
                           ) {
-                            Accepted { value: decoded_medium, diagnostics: _ } =>
+                            v2.std.diagnostic.Accepted { value: decoded_medium, diagnostics: _ } =>
                               match serialize_concrete_syntax_tokens_to_source(
                                 target: bool_serialize_target(
                                   lex: rust_decl_general_lex(),
@@ -114,47 +114,47 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
                                 ),
                                 tokens: tokens
                               ) {
-                                Accepted { value: live_medium, diagnostics: _ } =>
+                                v2.std.diagnostic.Accepted { value: live_medium, diagnostics: _ } =>
                                   decoded_medium.carried == live_medium.carried
-                                Rejected { diagnostics: _ } => false
+                                v2.std.diagnostic.Rejected { diagnostics: _ } => false
                               }
-                            Rejected { diagnostics: _ } => false
+                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
                           }
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
-        Accepted { value: decoded_lex, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: decoded_lex, diagnostics: _ } =>
           match target_semantic_enum_surface_from_coproduct(
             projection: emission.surface,
             name: ^Bool,
             params: std.algebra.Empty,
             coproduct: bool_coproduct()
           ) {
-            Accepted { value: surface, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
                 rules: rust_enum_general_decl_productions_only_translation_rules(),
                 emitted: surface
               ) {
-                Accepted { value: row, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
                   match grammar_relation_row_tokens_root(row: row) {
-                    Accepted { value: tokens_root, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
                       match concrete_syntax_token_list_from_node(list_node: tokens_root) {
-                        Accepted { value: tokens, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
                           match serialize_concrete_syntax_tokens_to_source(
                             target: bool_serialize_target(
                               lex: decoded_lex,
@@ -162,7 +162,7 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
                             ),
                             tokens: tokens
                           ) {
-                            Accepted { value: decoded_medium, diagnostics: _ } =>
+                            v2.std.diagnostic.Accepted { value: decoded_medium, diagnostics: _ } =>
                               match serialize_concrete_syntax_tokens_to_source(
                                 target: bool_serialize_target(
                                   lex: rust_decl_general_lex(),
@@ -170,74 +170,74 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
                                 ),
                                 tokens: tokens
                               ) {
-                                Accepted { value: live_medium, diagnostics: _ } =>
+                                v2.std.diagnostic.Accepted { value: live_medium, diagnostics: _ } =>
                                   decoded_medium.carried == live_medium.carried
-                                Rejected { diagnostics: _ } => false
+                                v2.std.diagnostic.Rejected { diagnostics: _ } => false
                               }
-                            Rejected { diagnostics: _ } => false
+                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
                           }
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn decoded_lex_live_bindings_match_live_target() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
-        Accepted { value: decoded_lex, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: decoded_lex, diagnostics: _ } =>
           match bool_text_with_target(
             target: bool_serialize_target(
               lex: decoded_lex,
               bindings: rust_decl_derive_binding_spellings()
             )
           ) {
-            Accepted { value: decoded_lex_text, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: decoded_lex_text, diagnostics: _ } =>
               match bool_text_with_target(
                 target: bool_serialize_target(
                   lex: rust_decl_general_lex(),
                   bindings: rust_decl_derive_binding_spellings()
                 )
               ) {
-                Accepted { value: live_lex_text, diagnostics: _ } => decoded_lex_text == live_lex_text
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Accepted { value: live_lex_text, diagnostics: _ } => decoded_lex_text == live_lex_text
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 // Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path.
 test fn decoded_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
-        Accepted { value: decoded_lex, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: decoded_lex, diagnostics: _ } =>
           match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
-            Accepted { value: decoded_bindings, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: decoded_bindings, diagnostics: _ } =>
               match bool_text_with_target(
                 target: bool_serialize_target(lex: decoded_lex, bindings: decoded_bindings)
               ) {
-                Accepted { value: t, diagnostics: _ } => t == bool_golden
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => t == bool_golden
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -248,46 +248,46 @@ test fn live_rebuilt_target_matches_golden() -> Bool {
       bindings: rust_decl_derive_binding_spellings()
     )
   ) {
-    Accepted { value: t, diagnostics: _ } => t == bool_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => t == bool_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn live_via_bool_serialize_target_matches_golden() -> Bool {
   match bool_text_with_target(target: rust_enum_general_decl_structural_target_model()) {
-    Accepted { value: t, diagnostics: _ } => t == bool_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => t == bool_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn generic_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
         name: ^Bool,
         params: std.algebra.Empty,
         coproduct: bool_coproduct()
       ) {
-        Accepted { value: surface, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
           match semantic_decl_serialize_target(
             profile: emission.enum_serialize_profile,
             rules: rust_enum_general_decl_productions_only_translation_rules()
           ) {
-            Accepted { value: target, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
               match serialize_surface_with_target(
                 surface: surface,
                 rules: rust_enum_general_decl_productions_only_translation_rules(),
                 target: target
               ) {
-                Accepted { value: t, diagnostics: _ } => t == bool_golden
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => t == bool_golden
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -14,7 +14,7 @@ data sgb_vec_close: v2.std.node.Symbol = ^sgb_vec_close
 data sgb_unrelated_source: v2.std.node.Symbol = ^sgb_unrelated_source
 data sgb_phantom_source: v2.std.node.Symbol = ^sgb_phantom_source
 
-fn sgb_left_param_node() -> Node {
+fn sgb_left_param_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sgb_type_param } },
     children: [],
@@ -22,7 +22,7 @@ fn sgb_left_param_node() -> Node {
   }
 }
 
-fn sgb_right_param_node() -> Node {
+fn sgb_right_param_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sgb_type_param } },
     children: [],
@@ -30,7 +30,7 @@ fn sgb_right_param_node() -> Node {
   }
 }
 
-fn sgb_nested_source_carrier_node() -> Node {
+fn sgb_nested_source_carrier_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
@@ -42,7 +42,7 @@ fn sgb_nested_source_carrier_node() -> Node {
   }
 }
 
-fn sgb_concrete_source_carrier_node() -> Node {
+fn sgb_concrete_source_carrier_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
@@ -53,7 +53,7 @@ fn sgb_concrete_source_carrier_node() -> Node {
   }
 }
 
-fn sgb_collection_eligible_elem_node() -> Node {
+fn sgb_collection_eligible_elem_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: ^target_collection_kernel_string }
@@ -63,7 +63,7 @@ fn sgb_collection_eligible_elem_node() -> Node {
   }
 }
 
-fn sgb_atom_source_carrier_node(identity: v2.std.node.Symbol) -> Node {
+fn sgb_atom_source_carrier_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -235,7 +235,7 @@ fn sgb_nested_choice() -> v2.std.compilers.target_model.TargetRepresentationChoi
 }
 
 fn sgb_realization(
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   primary: v2.std.compilers.target_model.TargetRepresentationChoice,
   alternatives: List<v2.std.compilers.target_model.TargetRepresentationChoice>
 ) -> v2.std.compilers.target_model.TargetCollectionRealization {
@@ -256,7 +256,7 @@ fn sgb_nested_realization() -> v2.std.compilers.target_model.TargetCollectionRea
   )
 }
 
-fn sgb_empty_realization(source_carrier: Node) -> v2.std.compilers.target_model.TargetCollectionRealization {
+fn sgb_empty_realization(source_carrier: v2.std.node.Node) -> v2.std.compilers.target_model.TargetCollectionRealization {
   sgb_realization(
     source_carrier: source_carrier,
     primary: sgb_empty_choice(),
@@ -471,15 +471,15 @@ fn sgb_hash_set_coverage_blockers_match_exact() -> Bool {
   }
 }
 
-fn sgb_choice_bundle_node() -> Node {
+fn sgb_choice_bundle_node() -> v2.std.node.Node {
   rust_collection_choice_bundle_node(choice: sgb_nested_choice())
 }
 
 fn sgb_contract_wire_node(
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority,
-  requirement_nodes: List<Node>
-) -> Node {
+  requirement_nodes: List<v2.std.node.Node>
+) -> v2.std.node.Node {
   target_derive_supplemental_generic_bound_contract_wire_node(
     derive_trait: derive_trait,
     authority: authority,
@@ -491,7 +491,7 @@ fn sgb_requirement_wire_node(
   representation_parameter: v2.std.node.Symbol,
   required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority
-) -> Node {
+) -> v2.std.node.Node {
   target_derive_supplemental_generic_bound_requirement_wire_node(
     representation_parameter: representation_parameter,
     required_trait: required_trait,
@@ -499,7 +499,7 @@ fn sgb_requirement_wire_node(
   )
 }
 
-fn sgb_debug_contract_wire_node() -> Node {
+fn sgb_debug_contract_wire_node() -> v2.std.node.Node {
   sgb_contract_wire_node(
     derive_trait: ReprDeriveDebug,
     authority: im_15_1_0_vector_debug_impl_authority,
@@ -514,8 +514,8 @@ fn sgb_debug_contract_wire_node() -> Node {
 }
 
 fn sgb_choice_bundle_with_contract_nodes(
-  contract_nodes: List<Node>
-) -> Node {
+  contract_nodes: List<v2.std.node.Node>
+) -> v2.std.node.Node {
   let bundle = sgb_choice_bundle_node()
   match bundle.children {
     Cons {
@@ -551,8 +551,8 @@ fn sgb_choice_bundle_with_contract_nodes(
 }
 
 fn sgb_choice_bundle_with_parameter_nodes(
-  parameter_nodes: List<Node>
-) -> Node {
+  parameter_nodes: List<v2.std.node.Node>
+) -> v2.std.node.Node {
   let bundle = rust_collection_choice_bundle_node(
     choice: sgb_choice(
       representation_parameters: sgb_nested_representation_parameters(),
@@ -592,7 +592,7 @@ fn sgb_choice_bundle_with_parameter_nodes(
   }
 }
 
-fn sgb_atom_node(identity: v2.std.node.Symbol) -> Node {
+fn sgb_atom_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -600,7 +600,7 @@ fn sgb_atom_node(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
+fn sgb_choice_bundle_missing_contract_edge_node() -> v2.std.node.Node {
   let bundle = sgb_choice_bundle_node()
   match bundle.children {
     Cons {
@@ -621,7 +621,7 @@ fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
   }
 }
 
-fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
+fn sgb_choice_bundle_duplicate_contract_edge_node() -> v2.std.node.Node {
   let bundle = sgb_choice_bundle_node()
   match bundle.children {
     Cons {
@@ -651,7 +651,7 @@ fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
   }
 }
 
-fn sgb_malformed_contract_row_node() -> Node {
+fn sgb_malformed_contract_row_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -664,7 +664,7 @@ fn sgb_malformed_contract_row_node() -> Node {
   }
 }
 
-fn sgb_contract_missing_authority_node() -> Node {
+fn sgb_contract_missing_authority_node() -> v2.std.node.Node {
   let contract = sgb_debug_contract_wire_node()
   match contract.children {
     Cons {

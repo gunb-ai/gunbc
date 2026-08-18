@@ -17,26 +17,26 @@ fn rust_parse_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn rust_parse_accepted(out: Outcome<v2.std.grammar.ParseTree>) -> Bool {
+fn rust_parse_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn rust_tokenize_and_parse_source(text: String) -> Outcome<v2.std.grammar.ParseTree> {
+fn rust_tokenize_and_parse_source(text: String) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match tokenize(
     text: text,
     file: ^rust_parse_file,
     rules: rust_lex()
   ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: rust_grammar())
   }
 }
 
-fn rust_tokenize_and_parse() -> Outcome<v2.std.grammar.ParseTree> {
+fn rust_tokenize_and_parse() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   rust_tokenize_and_parse_source(text: rust_extended_fn_source)
 }
 

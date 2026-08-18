@@ -105,7 +105,7 @@ fn host_identity_apply_denied(
   effect: gunbc.host_effect.HostEffect,
   transport: gunbc.host_effect.HostEffectTransport,
   reason: String,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   std.realization_reconcile.NotConverged {
     reason: reason,
     applied: gunbc.host_effect.HostEffectIntent {
@@ -124,7 +124,7 @@ fn host_identity_apply_gated(
   plan: HostIdentityPlan,
   transport: gunbc.host_effect.HostEffectTransport,
   fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>? {
   match host_identity_plan_effect(plan: plan) {
     Present { value: effect } =>
       Present {
@@ -163,35 +163,35 @@ fn host_identity_observation_live(
 }
 
 fn host_identity_unprivileged_refusal_has_no_marker(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
   marker: String,
 ) -> Bool {
   match r {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       !string_contains(s: why, pattern: marker)
         && match intent.privilege_denial {
           Present { value: Deny { refusal: _ } } => true
           _ => false
         }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
 fn host_identity_privilege_denial_reason(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
 ) -> String {
   match r {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: d } => deploy_access_decision_reason(d: d)
         Absent => why
       }
-    Converged { evidence: _, applied: _ } => ""
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => ""
   }
 }
 
 fn host_identity_apply_converged(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
 ) -> Bool {
   reconciliation_converged(r: r)
 }

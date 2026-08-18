@@ -13,7 +13,7 @@ type StructuralResolutionKindPolicy
   | OutOfScopeForStructuralResolution
 
 type StructuralResolutionFact {
-  dependencies: List<ClassifiedDependencyView<StructuralResolutionStatus>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>>
 }
 
 fn inferred_facts_for_node(tree: v2.compiler.infer.InferredTree, node: Node) -> Witness<v2.compiler.infer.InferredFacts> {
@@ -80,7 +80,7 @@ fn structural_resolution_status_for_view(
 fn structural_resolution_classify(
   tree: v2.compiler.infer.InferredTree,
   view: v2.std.dependency.DependencyView
-) -> ClassifiedDependencyView<StructuralResolutionStatus> {
+) -> v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus> {
   v2.std.dependency.ClassifiedDependencyView {
     dependency: view,
     classification: structural_resolution_status_for_view(tree: tree, view: view)
@@ -139,8 +139,8 @@ fn structural_resolution_status_eq(
 }
 
 fn structural_resolution_classified_eq(
-  a: ClassifiedDependencyView<StructuralResolutionStatus>,
-  b: ClassifiedDependencyView<StructuralResolutionStatus>
+  a: v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>,
+  b: v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>
 ) -> Bool {
   classified_dependency_view_eq(
     a: a,

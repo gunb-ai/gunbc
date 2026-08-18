@@ -15,30 +15,30 @@ fn typescript_claim_bool_atom(b: Bool) -> Node {
 fn typescript_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: ts_fn_add_grammar_root(), at: at) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn typescript_grammar_parse_accepted() -> Bool {
   match typescript_grammar_parse_fixture() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn typescript_grammar_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
+fn typescript_grammar_parse_fixture() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: ts_source_text,
     file: ^typescript_parse_fixture_file,
     rules: ts_fn_add_lex()
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    Accepted { value: stream, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Accepted { value: stream, diagnostics: _ } =>
       match grammar_validate_for_parse(root: ts_fn_add_grammar_root(), at: at) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-        Accepted { value: validated, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Accepted { value: validated, diagnostics: _ } =>
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),
             validated: validated,

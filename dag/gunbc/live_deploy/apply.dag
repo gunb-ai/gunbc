@@ -65,7 +65,7 @@ fn live_deploy_blue_green_cutover_with_selection(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match selection {
     BlueGreenSlotSelectionRefused { reason } =>
       std.realization_reconcile.NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
@@ -115,7 +115,7 @@ fn live_deploy_mutation_denied(
   effect: gunbc.host_effect.HostEffect,
   transport: gunbc.host_effect.HostEffectTransport,
   gate: std.access.AccessDecision
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   std.realization_reconcile.NotConverged {
     reason: deploy_access_decision_reason(d: gate),
     applied: gunbc.host_effect.HostEffectIntent {
@@ -135,7 +135,7 @@ fn live_deploy_fold(
   access: gunbc.ci_deploy_access.DeployAccess,
   fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?,
   fixture_host: gunbc.ci_deploy_target_host.DeployTargetHostObservation?
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let target = gunbc.host_effect.HostOs { node: spec.target.host }
   let gate = deploy_mutation_gate(
     access: access,
@@ -167,7 +167,7 @@ fn live_deploy_ensure_dependency(
   dep: gunbc.live_deploy.spec.DeploymentDependencyStep,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
     effect: gunbc.host_effect.LiveDeployEnsureDependency { dep: dep },
@@ -183,7 +183,7 @@ fn live_deploy_apply_mutation_via_transport(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
     effect: gunbc.host_effect.LiveDeployApply { spec: spec, candidate: candidate },
@@ -199,8 +199,8 @@ fn live_deploy_apply_readiness_gate(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  mutation: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_readiness_gate_with_readiness(
     mutation: mutation,
     readiness: live_deploy_poll_until_service_ready_for_deploy(
@@ -213,9 +213,9 @@ fn live_deploy_apply_readiness_gate(
 }
 
 fn live_deploy_apply_readiness_gate_with_readiness(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  readiness: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  mutation: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
@@ -223,14 +223,14 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       mutation
     } else {
       match readiness {
-        NotConverged { reason: why, applied: _ } =>
+        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
           match mutation {
-            Converged { evidence: _, applied: intent } =>
+            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
+            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        Converged { evidence: _, applied: _ } => mutation
+        std.realization_reconcile.Converged { evidence: _, applied: _ } => mutation
       }
     }
   }
@@ -240,7 +240,7 @@ fn live_deploy_apply_digest_readback_via_transport(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
     effect: gunbc.host_effect.LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
@@ -256,7 +256,7 @@ fn live_deploy_apply_via_transport(
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let mutation = live_deploy_apply_mutation_via_transport(
     spec: spec,
     candidate: candidate,
@@ -282,14 +282,14 @@ fn live_deploy_apply_via_transport(
       gated
     } else {
       match digest {
-        NotConverged { reason: why, applied: _ } =>
+        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
           match gated {
-            Converged { evidence: _, applied: intent } =>
+            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
+            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        Converged { evidence: _, applied: _ } => gated
+        std.realization_reconcile.Converged { evidence: _, applied: _ } => gated
       }
     }
   }
@@ -299,7 +299,7 @@ fn live_deploy_retract_via_transport(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
   transport: gunbc.host_effect.HostEffectTransport,
   access: gunbc.ci_deploy_access.DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
     effect: gunbc.host_effect.LiveDeployRetract { spec: spec },
@@ -310,7 +310,7 @@ fn live_deploy_retract_via_transport(
   )
 }
 
-fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let proof = deploy_target_proof_from_access(access: access)
   let intent = live_deploy_preflight_intent(access: access)
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
@@ -349,14 +349,14 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
   }
 }
 
-fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_access_preflight() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_access_preflight_for(access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_apply_srv1_with_access(
   access: gunbc.ci_deploy_access.DeployAccess,
   candidate: gunbc.live_deploy.candidate.CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match tailscale_serve_status_read(transport: access.transport) {
     TailscaleServeStatusReadRefused { reason } =>
       std.realization_reconcile.NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
@@ -374,7 +374,7 @@ data retract_carries_no_candidate_note: String = "A RETRACT OBSERVES NO CANDIDAT
 
 fn live_deploy_retract_srv1_with_access(
   access: gunbc.ci_deploy_access.DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_transport(
     spec: deployment_spec_srv1(),
     transport: access.transport,
@@ -382,21 +382,21 @@ fn live_deploy_retract_srv1_with_access(
   )
 }
 
-fn live_deploy_apply_srv1(candidate: gunbc.live_deploy.candidate.CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_apply_srv1(candidate: gunbc.live_deploy.candidate.CandidateRelease) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
-fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_retract_srv1() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> std.process.ProcessExit {
+fn live_deploy_reconciliation_exit(r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>) -> std.process.ProcessExit {
   if reconciliation_converged(r: r) {
     ExitSuccess
   } else {
     match r {
-      NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
-      Converged { evidence: _, applied: _ } => ExitSuccess
+      std.realization_reconcile.NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+      std.realization_reconcile.Converged { evidence: _, applied: _ } => ExitSuccess
     }
   }
 }

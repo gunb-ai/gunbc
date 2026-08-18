@@ -138,15 +138,15 @@ fn world_total_volume(registry: std.spatial_frame.SpatialFrameRegistry, w: World
 // unable to express one.
 type WorldVariant sole_constructor {
   base: World
-  delta: KeyedPatch<product.placement_supply.RoomIdentity, EnclosedSpace>
+  delta: std.change.KeyedPatch<product.placement_supply.RoomIdentity, EnclosedSpace>
 }
 
-fn world_variant(base: World, delta: KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {
+fn world_variant(base: World, delta: std.change.KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {
   WorldVariant { base: base, delta: delta }
 }
 
 fn variant_base(v: WorldVariant) -> World { v.base }
-fn variant_delta(v: WorldVariant) -> KeyedPatch<RoomIdentity, EnclosedSpace> { v.delta }
+fn variant_delta(v: WorldVariant) -> std.change.KeyedPatch<RoomIdentity, EnclosedSpace> { v.delta }
 
 type ApplyAcc {
   rooms: List<PlacedSpace>
@@ -178,17 +178,17 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply
 // built against a different base apply cleanly and produce a world nobody described - the
 // fabricated plausible output DESIGN section 5 forbids, and the stale-parent case its
 // compare-and-swap discipline exists for.
-fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
+fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
     Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
     Absent =>
       match hunk {
-        KeyedDiffAddedHunk { hunk_key: key, to: to } =>
+        std.change.KeyedDiffAddedHunk { hunk_key: key, to: to } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetAlreadyPresent { identity: key } } }
             Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
           }
-        KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
+        std.change.KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
@@ -198,7 +198,7 @@ fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -
                 ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
               }
           }
-        KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
+        std.change.KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>

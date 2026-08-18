@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn pa_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
@@ -73,7 +73,7 @@ fn pa_subject_with_import_use() -> Node {
   }
 }
 
-fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn pa_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pa_graft_module_root(root: pa_subject_with_import_use()),
@@ -92,7 +92,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norma
   )
 }
 
-fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn pa_duplicate_module_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pa_graft_module_root(
@@ -134,30 +134,30 @@ fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   match pa_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
       admission: pa_cross_file_admission(),
       lm: dag_language_model_surface_empty_prelude()
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   match pa_duplicate_module_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
       admission: pa_cross_file_admission(),
       lm: dag_language_model_surface_empty_prelude()
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }
@@ -205,8 +205,8 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     },
     lm: dag_language_model_surface_empty_prelude()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^source_authority_read_artifact_not_source_file
   }
 }

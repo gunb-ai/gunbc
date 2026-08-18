@@ -9,14 +9,14 @@ fn lossless_source(text: String) -> Medium<String> {
   source_medium(text: text, fidelity: Lossless)
 }
 
-fn fidelity_disposition_node_has_named_kind(root: Node, name: v2.std.node.Symbol) -> Bool {
+fn fidelity_disposition_node_has_named_kind(root: v2.std.node.Node, name: v2.std.node.Symbol) -> Bool {
   match find_named_child(root: root, name: name) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<extdeps.communication.medium.DecodeFidelity> {
+fn fidelity_disposition_node_decode_fidelity(node: v2.std.node.Node) -> Outcome<extdeps.communication.medium.DecodeFidelity> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_fidelity_disposition_kind_modeled {
@@ -59,7 +59,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<extdeps.comm
   }
 }
 
-fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<extdeps.communication.medium.DecodeFidelity> {
+fn fidelity_quotient_decode_fidelity(quotient: v2.std.node.Node) -> Outcome<extdeps.communication.medium.DecodeFidelity> {
   match quotient.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -95,7 +95,7 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<extdeps.communic
   }
 }
 
-fn target_fidelity_quotient_optional(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Optional<Node>> {
+fn target_fidelity_quotient_optional(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Optional<v2.std.node.Node>> {
   match find_named_child(
     root: target.bundle,
     name: ^target_model_edge_fidelity_quotient

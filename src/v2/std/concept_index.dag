@@ -19,7 +19,7 @@ type QualifiedConcept {
 type ConceptDecl {
   qualified_name: String
   name: String
-  node: Node
+  node: v2.std.node.Node
 }
 
 type ConceptByName {
@@ -35,7 +35,7 @@ fn concept_decl_facts(pool_roots: List<String>) -> List<ConceptDecl> {
   concept_decl_facts(pool_roots: pool_roots)
 }
 
-fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
+fn field_refs_from_conj_node(node: v2.std.node.Node) -> List<FieldRef> {
   fold(node_labeled_child_edges(node: node), init: std.algebra.Empty, f: fn(acc, e) {
     list_snoc_item(
       xs: acc,
@@ -47,7 +47,7 @@ fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
   })
 }
 
-fn field_refs_from_node(node: Node) -> List<FieldRef> {
+fn field_refs_from_node(node: v2.std.node.Node) -> List<FieldRef> {
   match node.kind {
     TypeNode { connective: Conj } => field_refs_from_conj_node(node: node)
     TypeNode { connective: Disj } =>

@@ -50,7 +50,7 @@ fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.No
 fn host_identity_observation_apply(
   target: gunbc.host_effect.NodeControlPlane,
   transport: gunbc.host_effect.HostEffectTransport,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: target,
     effect: HostIdentityShortHostnameRead,
@@ -60,17 +60,17 @@ fn host_identity_observation_apply(
 }
 
 fn host_identity_observation_from_apply(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
   probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
-    Converged { evidence: e, applied: _ } =>
+    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: out, exit_code: _ } =>
           host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
         ConvergePlanApplied { stdout: _, exit_code: _ } => none
       }
-    NotConverged { reason: _, applied: _ } => none
+    std.realization_reconcile.NotConverged { reason: _, applied: _ } => none
   }
 }
 

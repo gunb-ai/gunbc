@@ -1,7 +1,7 @@
 module v2.compiler.emit_semantic_decl
 
 
-fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn emit_semantic_decl_unsupported_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_semantic_decl_unsupported_shape,
     at: node_locus(node: node),
@@ -10,8 +10,8 @@ fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> v2.std.diagnostic.Di
 }
 
 fn emit_decl_surface(
-  surface: Node,
-  rules: Node,
+  surface: v2.std.node.Node,
+  rules: v2.std.node.Node,
   profile: v2.std.compilers.semantic_decl_emission.TargetSemanticDeclSerializeProfile
 ) -> Outcome<Medium<String>> {
   bind_outcome(
@@ -43,7 +43,7 @@ fn emit_decl_surface(
 fn emit_semantic_type_decl(
   name: v2.std.node.Symbol,
   params: List<v2.std.node.Symbol>,
-  node: Node,
+  node: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   bind_outcome(

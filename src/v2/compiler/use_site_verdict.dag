@@ -21,11 +21,11 @@ data use_site_verdict_borrow_tag: v2.std.node.Symbol = ^use_site_verdict_borrow
 data use_site_verdict_clone_shared_tag: v2.std.node.Symbol = ^use_site_verdict_clone_shared
 data use_site_verdict_unclassified_tag: v2.std.node.Symbol = ^use_site_verdict_unclassified
 
-fn use_site_verdict_atom(tag: v2.std.node.Symbol) -> Node {
+fn use_site_verdict_atom(tag: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } }, children: [])
 }
 
-fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
+fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> v2.std.node.Node {
   match verdict {
     MoveWhole => use_site_verdict_atom(tag: use_site_verdict_move_whole_tag)
     MoveField { field: f } =>
@@ -53,7 +53,7 @@ fn use_site_verdict_move_field_of(children: List<v2.std.node.Edge>) -> UseSiteVe
   }
 }
 
-fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
+fn use_site_verdict_of_node(target: v2.std.node.Node) -> UseSiteVerdict {
   match target.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       if sym == use_site_verdict_move_whole_tag {
@@ -71,7 +71,7 @@ fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
   }
 }
 
-fn use_site_verdict_lookup(node: Node) -> UseSiteVerdictLookup {
+fn use_site_verdict_lookup(node: v2.std.node.Node) -> UseSiteVerdictLookup {
   match named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
     Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
     Absent => VerdictAbsent
@@ -79,7 +79,7 @@ fn use_site_verdict_lookup(node: Node) -> UseSiteVerdictLookup {
   }
 }
 
-fn attach_use_site_verdict(node: Node, verdict: UseSiteVerdict) -> Node {
+fn attach_use_site_verdict(node: v2.std.node.Node, verdict: UseSiteVerdict) -> v2.std.node.Node {
   node_rebuild(
     n: node,
     children: list_snoc_item(

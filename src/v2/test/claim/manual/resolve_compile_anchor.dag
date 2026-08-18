@@ -19,21 +19,21 @@ fn service_atom_conj_tree() -> Node {
 }
 }
 
-fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<v2.compiler.resolve.ResolvedTree> {
+fn anchor_resolve_service_atom_via_canonical_symbols() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_void()
   )
 }
 
-fn anchor_resolve_empty_prelude_service_atom() -> Outcome<v2.compiler.resolve.ResolvedTree> {
+fn anchor_resolve_empty_prelude_service_atom() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_surface_empty_prelude()
   )
 }
 
-fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler.resolve.ResolvedTree> {
+fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   match admit_normalized_tree(
     root: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
@@ -63,12 +63,12 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler
 },
     diagnostics: None
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
-fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree> {
+fn anchor_resolve_bind_binder_use() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   match admit_normalized_tree(
     root: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
@@ -117,8 +117,8 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
 },
     diagnostics: None
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
@@ -233,7 +233,7 @@ fn resolve_subject_name() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^anchor_subject_path_segment, tail: std.algebra.Empty }
 }
 
-fn resolve_roots_single_import() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+fn resolve_roots_single_import() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: std.algebra.Cons {
     head: resolve_subject_module_root_with_import_use(),
@@ -260,8 +260,8 @@ fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_roots_single_import() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -281,8 +281,8 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }

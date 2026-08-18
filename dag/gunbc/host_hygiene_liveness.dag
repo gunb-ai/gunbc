@@ -98,16 +98,16 @@ fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> Grounding<Fle
 }
 
 fn reconcile_fleet_listening(
-  read: ShowEffectiveRead<List<SlotListeningVerdict>>,
+  read: std.realization_reconcile.ShowEffectiveRead<List<SlotListeningVerdict>>,
 ) -> Reconciliation<String, FleetListeningEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: verdicts } =>
+    std.realization_reconcile.ReadObserved { value: verdicts } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,

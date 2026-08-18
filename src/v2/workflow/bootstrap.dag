@@ -23,7 +23,7 @@ type SeedCapability {
 }
 
 type BootstrapSourceSnapshot {
-  root: Node
+  root: v2.std.node.Node
   language_model: v2.std.language_model.LanguageModel
   content_hash: BootstrapHashPin
 }
@@ -169,7 +169,7 @@ fn seed_capability_language_model() -> v2.std.language_model.LanguageModel {
   void_language_model(identity: ^bootstrap_seed_language_model_identity)
 }
 
-fn bootstrap_construct_subset_node(identity: v2.std.node.Symbol) -> Node {
+fn bootstrap_construct_subset_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -177,11 +177,11 @@ fn bootstrap_construct_subset_node(identity: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn bootstrap_source_snapshot_root() -> Node {
+fn bootstrap_source_snapshot_root() -> v2.std.node.Node {
   bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
 }
 
-fn bootstrap_seed_capability_inventory_root() -> Node {
+fn bootstrap_seed_capability_inventory_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -210,7 +210,7 @@ type BootstrapConstructFoldState {
   constructs: List<BootstrapConstruct>
 }
 
-fn bootstrap_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+fn bootstrap_construct_fold_init(n: v2.std.node.Node) -> BootstrapConstructFoldState {
   match n.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       BootstrapConstructFoldState {
@@ -237,11 +237,11 @@ fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
   }
 }
 
-fn bootstrap_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+fn bootstrap_construct_fold_state(root: v2.std.node.Node) -> BootstrapConstructFoldState {
   fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
 }
 
-fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstruct> {
+fn bootstrap_footprint_constructs_from_node(root: v2.std.node.Node) -> List<BootstrapConstruct> {
   bootstrap_construct_fold_state(root: root).constructs
 }
 
@@ -255,7 +255,7 @@ fn bootstrap_target_model_bundle_construct_facet(label: v2.std.node.Symbol) -> L
   }
 }
 
-fn bootstrap_target_model_bundle_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+fn bootstrap_target_model_bundle_construct_fold_init(n: v2.std.node.Node) -> BootstrapConstructFoldState {
   BootstrapConstructFoldState { constructs: [] }
 }
 
@@ -281,7 +281,7 @@ fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapC
   }
 }
 
-fn bootstrap_target_model_bundle_construct_fold_state(root: Node) -> BootstrapConstructFoldState {
+fn bootstrap_target_model_bundle_construct_fold_state(root: v2.std.node.Node) -> BootstrapConstructFoldState {
   fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
 }
 
@@ -329,7 +329,7 @@ fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<Bootstrap
   bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
 }
 
-fn bootstrap_projection_runtime_identity_node(runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime) -> Node {
+fn bootstrap_projection_runtime_identity_node(runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: runtime.runtime_identity } },
     children: [],
@@ -337,7 +337,7 @@ fn bootstrap_projection_runtime_identity_node(runtime: v2.extdeps.runtimes.v2_ev
 }
 }
 
-fn bootstrap_projection_snapshot_content_hash_pin_node(pin: v2.std.node.Symbol) -> Node {
+fn bootstrap_projection_snapshot_content_hash_pin_node(pin: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
     children: [],
@@ -351,7 +351,7 @@ fn bootstrap_hash_digest_in_fixture_constants(digest: v2.std.node.Hash) -> Bool 
     || (digest == pinned_v4_fixed_point_hash)
 }
 
-fn bootstrap_hash_digest_fixture_atom_node(digest: v2.std.node.Hash) -> Node {
+fn bootstrap_hash_digest_fixture_atom_node(digest: v2.std.node.Hash) -> v2.std.node.Node {
   if digest == v2_stage0_hash {
     v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage0_hash } },
@@ -379,7 +379,7 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: v2.std.node.Hash) -> Node {
   }
 }
 
-fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.std.node.Hash) -> Node {
+fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.std.node.Hash) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -400,7 +400,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.s
 }
 }
 
-fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
+fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if bootstrap_hash_digest_in_fixture_constants(digest: pin.digest) {
     if (pin.pin == ^v2_stage0_hash_pin) && (pin.digest == v2_stage0_hash) {
       v2.std.diagnostic.Accepted {
@@ -446,41 +446,41 @@ fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
 
 fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
   match bootstrap_hash_pin_projection_node(pin: plan.seed.produces_hash) {
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       match bootstrap_hash_pin_projection_node(pin: plan.self0.produces_hash) {
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           match bootstrap_hash_pin_projection_node(pin: plan.self1.produces_hash) {
-            Accepted { value: _, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
               match bootstrap_hash_pin_projection_node(pin: plan.fixpt.left_hash) {
-                Accepted { value: _, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                   match bootstrap_hash_pin_projection_node(pin: plan.fixpt.right_hash) {
-                    Accepted { value: _, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                       match bootstrap_hash_pin_projection_node(pin: plan.fixpt.pinned_hash) {
-                        Accepted { value: _, diagnostics: _ } => true
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
   match bootstrap_plan {
-    Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
-fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node {
+fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -550,11 +550,11 @@ fn bootstrap_seed_capability_matches_footprint(
   }
 }
 
-fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
+fn bootstrap_convergence_ladder(plan: v2.std.diagnostic.Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
   match plan {
-    Accepted { value: bp, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
       v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
 }
@@ -573,7 +573,7 @@ fn independent_compiler_pair_witness(
 fn seed_self_verify_check(
   claim: DiverseCompilationRun,
   check: DiverseCompilationRun
-) -> Outcome<SeedSelfVerifyReceipt> {
+) -> v2.std.diagnostic.Outcome<SeedSelfVerifyReceipt> {
   if claim.output == check.output {
     v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
@@ -723,15 +723,15 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
   )
 )
 
-fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
+fn bootstrap_stage_output(plan: v2.std.diagnostic.Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
   match plan {
-    Accepted { value: bp, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
+fn bootstrap_plan_well_formed(p: BootstrapPlan) -> v2.std.diagnostic.Outcome<BootstrapPlan> {
   match bootstrap_fixpt_witness(f: p.fixpt) {
     Holds { value: _ } =>
       if bs_list_eq(a: p.seed.consumes, b: [^v2_dag_source])
@@ -817,6 +817,6 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
 data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
-  Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+  v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
+  v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

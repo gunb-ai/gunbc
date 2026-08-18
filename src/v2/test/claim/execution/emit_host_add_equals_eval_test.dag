@@ -150,14 +150,14 @@ fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvi
   )
 }
 
-fn emit_eval_run(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimRun<Node, RuntimeValue> {
+fn emit_eval_run(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> v2.compiler.eval.TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: call_primitive),
     target: rust_target_model_staging()
   )
 }
 
-fn emit_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn emit_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -167,7 +167,7 @@ fn emit_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   }
 }
 
-fn emit_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn emit_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false

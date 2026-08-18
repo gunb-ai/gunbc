@@ -98,7 +98,7 @@ fn reference_snoc_refusal(
   list_snoc_item(xs: acc, item: refusal)
 }
 
-fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> Outcome<Node> {
+fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex),
@@ -116,7 +116,7 @@ fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symb
 fn reference_qn_from_qualified_name_production_strict(
   production_node: Node,
   module_root: Node
-) -> Outcome<v2.std.qualified_name.QualifiedName> {
+) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_production_captured_child_optional(node: production_node) {
     Absent =>
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
@@ -126,28 +126,28 @@ fn reference_qn_from_qualified_name_production_strict(
       })
     Present { value: capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: segments, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
           v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
 }
 
-fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
+fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(
     root: node,
     emitted: ^dag_surface_qualified_name
   ) {
     ParseSubtreeAbsent =>
       match find_named_child(root: node, name: ^dag_surface_import_decl_qualified_name) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: qn_node, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: qn_node, diagnostics: _ } =>
           qualified_name_from_node(root: qn_node)
       }
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: segments, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
           v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
@@ -170,7 +170,7 @@ fn reference_sites_collect_edges(
   module_root: Node,
   module_qn: v2.std.qualified_name.QualifiedName,
   acc: List<v2.std.qualified_name.QualifiedName>
-) -> Outcome<List<v2.std.qualified_name.QualifiedName>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
   match edges |> first {
     Absent => outcome_accepted(value: acc)
     Present { value: edge } =>
@@ -180,8 +180,8 @@ fn reference_sites_collect_edges(
         module_qn: module_qn,
         acc: acc
       ) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: next_acc, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: next_acc, diagnostics: _ } =>
           reference_sites_collect_edges(
             edges: edges |> skip(1),
             module_root: module_root,
@@ -197,7 +197,7 @@ fn reference_sites_collect_node(
   module_root: Node,
   module_qn: v2.std.qualified_name.QualifiedName,
   acc: List<v2.std.qualified_name.QualifiedName>
-) -> Outcome<List<v2.std.qualified_name.QualifiedName>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_qualified_name {
@@ -205,8 +205,8 @@ fn reference_sites_collect_node(
           production_node: node,
           module_root: module_root
         ) {
-          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-          Accepted { value: site_qn, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          v2.std.diagnostic.Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
               module_root: module_root,
@@ -220,8 +220,8 @@ fn reference_sites_collect_node(
         }
       } else if id == ^dag_surface_import_decl {
         match reference_qn_from_import_decl_strict(node: node, module_root: module_root) {
-          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-          Accepted { value: site_qn, diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          v2.std.diagnostic.Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
               module_root: module_root,
@@ -251,10 +251,10 @@ fn reference_sites_collect_node(
   }
 }
 
-fn reference_sites_from_parsed_module(module_root: Node) -> Outcome<List<v2.std.qualified_name.QualifiedName>> {
+fn reference_sites_from_parsed_module(module_root: Node) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
   match qualified_name_from_module_node(root: module_root) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: module_qn, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: module_qn, diagnostics: _ } =>
       reference_sites_collect_node(
         node: module_root,
         module_root: module_root,
@@ -402,13 +402,13 @@ fn reference_file_census_parsed(
   module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
   match reference_sites_from_parsed_module(module_root: module_root) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       reference_file_census_refused(
         rel_path: rel_path,
         stage: "reference_site",
         reason: d.head.reason
       )
-    Accepted { value: sites, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: sites, diagnostics: _ } =>
       ReferenceResolutionCensus {
         facts: reference_facts_for_qn_sites(
           rel_path: rel_path,
@@ -446,13 +446,13 @@ fn reference_file_census_from_source(
   module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
   match reference_deps_ingest_source_text(source_text: source_text, file: reference_deps_file_anchor) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       reference_file_census_refused(
         rel_path: rel_path,
         stage: "ingest",
         reason: d.head.reason
       )
-    Accepted { value: module_root, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       reference_file_census_parsed(
         rel_path: rel_path,
         module_root: module_root,
@@ -542,7 +542,7 @@ fn reference_resolution_facts_live(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
-) -> Outcome<List<ReferenceResolutionFact>> {
+) -> v2.std.diagnostic.Outcome<List<ReferenceResolutionFact>> {
   let census = reference_resolution_census_live(
     pool_roots: pool_roots,
     importer_roots: importer_roots,
@@ -661,7 +661,7 @@ fn reference_closure_bfs_parsed_walk(
   pool_roots: List<String>,
   exclude_substrings: List<String>,
   census_cache: Map<String, ReferenceResolutionCensus>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   match state.queue |> first {
     Absent => outcome_accepted(value: state.reached)
     Present { value: path } =>
@@ -830,7 +830,7 @@ fn reference_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
     outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: reference_deps_closure_entry_excluded,
@@ -850,7 +850,7 @@ fn reference_closure_parsed_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
     outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: reference_deps_closure_entry_excluded,
@@ -876,7 +876,7 @@ fn reference_closure_parsed_live_excluding(
 fn reference_closure_parsed_live(
   entry_path: String,
   pool_roots: List<String>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   reference_closure_parsed_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
@@ -887,7 +887,7 @@ fn reference_closure_parsed_live(
 fn reference_closure_live(
   entry_path: String,
   pool_roots: List<String>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   reference_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
@@ -897,7 +897,7 @@ fn reference_closure_live(
 
 fn reference_closure_ingest_refusal_witness(
   pool_roots: List<String>
-) -> Outcome<FreeMonoid<String>> {
+) -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
   let declared = module_declaration_facts_live(pool_roots: pool_roots)
   let module_to_path = build_module_to_path(nodes: declared)
   let census = reference_file_census_from_source(

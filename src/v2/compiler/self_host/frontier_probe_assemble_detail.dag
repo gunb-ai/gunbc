@@ -352,7 +352,7 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
 }
 
 fn frontier_probe_receipt_from_assemble_rejection(
-  module_path: String,
+  module_path: v2.std.text.String,
   diagnostics: v2.std.diagnostic.NonEmptyDiagnostics,
   detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail,
   overlap_residue_stage: Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics>

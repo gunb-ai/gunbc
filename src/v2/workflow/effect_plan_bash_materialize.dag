@@ -162,16 +162,16 @@ fn effect_plan_bash_encode_invocation(
 }
 
 fn effect_plan_bash_encode_step(
-  step: EffectPlanStep<BashBoundOperationInvocation>,
+  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match step {
-    Do { effect: bound } =>
+    v2.std.effect_plan.Do { effect: bound } =>
       effect_plan_bash_encode_invocation(
         bound: bound,
         step_index: step_index
       )
-    If { cond: _, then_: _, else_: _ } =>
+    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -179,7 +179,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedIf
         }
       )
-    For { binder: _, over: _, body: _ } =>
+    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -187,7 +187,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedFor
         }
       )
-    While { cond: _, body: _ } =>
+    v2.std.effect_plan.While { cond: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -195,7 +195,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedWhile
         }
       )
-    Retry { body: _, escalations: _, on_exhausted: _ } =>
+    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -203,7 +203,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedRetry
         }
       )
-    Let { name: _, value: _ } =>
+    v2.std.effect_plan.Let { name: _, value: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -211,7 +211,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedLet
         }
       )
-    Call { callee: _, args: _ } =>
+    v2.std.effect_plan.Call { callee: _, args: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -243,7 +243,7 @@ fn effect_plan_bash_and_then(
 }
 
 fn effect_plan_bash_encode_steps(
-  steps: List<EffectPlanStep<BashBoundOperationInvocation>>,
+  steps: List<v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match list_head(xs: steps) {
@@ -278,7 +278,7 @@ fn effect_plan_bash_encode_steps(
 }
 
 fn effect_plan_bash_encode(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: v2.std.effect_plan.EffectPlan<BashBoundOperationInvocation>
 ) -> EffectPlanBashEncodeResult {
   match plan.on_failure {
     Continue =>
@@ -357,7 +357,7 @@ fn effect_plan_bash_refusal_label(refusal: EffectPlanBashRefusal) -> String {
 }
 
 fn effect_plan_bash_materialize(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: v2.std.effect_plan.EffectPlan<BashBoundOperationInvocation>
 ) -> EffectPlanBashMaterialization {
   match effect_plan_bash_encode(plan: plan) {
     EffectPlanBashEncodingRefused { refusal: refusal } =>

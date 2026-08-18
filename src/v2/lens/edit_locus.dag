@@ -45,9 +45,9 @@ fn node_eq(left: Node, right: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
-fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
+fn push_locus_if_absent(acc: std.algebra.FreeMonoid<Node>, locus: Node) -> std.algebra.FreeMonoid<Node> {
   if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
-    list_append(left: acc, right: std.algebra.Cons { head: locus, tail: Empty })
+    list_append(left: acc, right: std.algebra.Cons { head: locus, tail: std.algebra.Empty })
   } else {
     acc
   }
@@ -56,12 +56,12 @@ fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> 
 fn loci_from_bindings_for_path(
   read: EditLocusRead,
   changed: RepoPath,
-  bindings: FreeMonoid<EditLocusBinding>,
-  acc: FreeMonoid<Node>
-) -> FreeMonoid<Node> {
+  bindings: std.algebra.FreeMonoid<EditLocusBinding>,
+  acc: std.algebra.FreeMonoid<Node>
+) -> std.algebra.FreeMonoid<Node> {
   match bindings {
-    Empty => acc
-    Cons { head: binding, tail: rest } =>
+    std.algebra.Empty => acc
+    std.algebra.Cons { head: binding, tail: rest } =>
       let acc2 = if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
         push_locus_if_absent(acc: acc, locus: binding.locus)
       } else {
@@ -78,9 +78,9 @@ fn loci_from_bindings_for_path(
 
 fn loci_from_provenance_for_path(
   changed: RepoPath,
-  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
-  acc: FreeMonoid<Node>
-) -> FreeMonoid<Node> {
+  provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
+  acc: std.algebra.FreeMonoid<Node>
+) -> std.algebra.FreeMonoid<Node> {
   fold_list(
     xs: provenance,
     empty: acc,
@@ -97,36 +97,36 @@ fn loci_from_provenance_for_path(
 fn collect_edit_loci(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
-  bindings: FreeMonoid<EditLocusBinding>
-) -> FreeMonoid<Node> {
+  bindings: std.algebra.FreeMonoid<EditLocusBinding>
+) -> std.algebra.FreeMonoid<Node> {
   collect_edit_loci_on_paths(
     read: read,
     changed_paths: git_diff.changed_paths,
     bindings: bindings,
-    acc: Empty
+    acc: std.algebra.Empty
   )
 }
 
 fn collect_edit_loci_from_provenance(
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
-) -> FreeMonoid<Node> {
+  provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+) -> std.algebra.FreeMonoid<Node> {
   collect_edit_loci_from_provenance_on_paths(
     changed_paths: git_diff.changed_paths,
     provenance: provenance,
-    acc: Empty
+    acc: std.algebra.Empty
   )
 }
 
 fn collect_edit_loci_on_paths(
   read: EditLocusRead,
-  changed_paths: FreeMonoid<RepoPath>,
-  bindings: FreeMonoid<EditLocusBinding>,
-  acc: FreeMonoid<Node>
-) -> FreeMonoid<Node> {
+  changed_paths: std.algebra.FreeMonoid<RepoPath>,
+  bindings: std.algebra.FreeMonoid<EditLocusBinding>,
+  acc: std.algebra.FreeMonoid<Node>
+) -> std.algebra.FreeMonoid<Node> {
   match changed_paths {
-    Empty => acc
-    Cons { head: changed, tail: rest } =>
+    std.algebra.Empty => acc
+    std.algebra.Cons { head: changed, tail: rest } =>
       let with_bindings = loci_from_bindings_for_path(
         read: read,
         changed: changed,
@@ -143,10 +143,10 @@ fn collect_edit_loci_on_paths(
 }
 
 fn collect_edit_loci_from_provenance_on_paths(
-  changed_paths: FreeMonoid<RepoPath>,
-  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
-  acc: FreeMonoid<Node>
-) -> FreeMonoid<Node> {
+  changed_paths: std.algebra.FreeMonoid<RepoPath>,
+  provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
+  acc: std.algebra.FreeMonoid<Node>
+) -> std.algebra.FreeMonoid<Node> {
   fold_list(
     xs: changed_paths,
     empty: acc,
@@ -160,15 +160,15 @@ fn collect_edit_loci_from_provenance_on_paths(
   )
 }
 
-fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
+fn resolve_edit_locus_from_loci(loci: std.algebra.FreeMonoid<Node>) -> Witness<Node> {
   match length(xs: loci) {
     0 =>
       v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
     1 =>
       match loci {
-        Cons { head: head, tail: _ } =>
+        std.algebra.Cons { head: head, tail: _ } =>
           Holds { value: head }
-        Empty =>
+        std.algebra.Empty =>
           v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
       }
     _ =>
@@ -179,7 +179,7 @@ fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
 fn resolve_edit_locus(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
-  bindings: FreeMonoid<EditLocusBinding>
+  bindings: std.algebra.FreeMonoid<EditLocusBinding>
 ) -> Witness<Node> {
   resolve_edit_locus_from_loci(
     loci: collect_edit_loci(
@@ -192,7 +192,7 @@ fn resolve_edit_locus(
 
 fn resolve_edit_locus_from_provenance(
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+  provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> Witness<Node> {
   resolve_edit_locus_from_loci(
     loci: collect_edit_loci_from_provenance(
@@ -206,7 +206,7 @@ fn affected_set_reading_from_git_diff(
   edit_read: EditLocusRead,
   graph: v2.compiler.infer.InferredTree,
   git_diff: GitDiffNameOnly,
-  bindings: FreeMonoid<EditLocusBinding>
+  bindings: std.algebra.FreeMonoid<EditLocusBinding>
 ) -> Witness<v2.lens.affected_set.AffectedSetReading> {
   match resolve_edit_locus(
     read: edit_read,
@@ -223,7 +223,7 @@ fn affected_set_reading_from_git_diff(
 fn affected_set_reading_from_git_diff_provenance(
   graph: v2.compiler.infer.InferredTree,
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+  provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> Witness<v2.lens.affected_set.AffectedSetReading> {
   match resolve_edit_locus_from_provenance(
     git_diff: git_diff,

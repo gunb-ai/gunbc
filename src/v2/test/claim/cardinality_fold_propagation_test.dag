@@ -17,7 +17,7 @@ fn within_byte(n: Int) -> Bool {
   (0 <= n) && (n <= byte_value_max())
 }
 
-fn refine_byte(n: Int, at: v2.std.diagnostic.Locus) -> Outcome<Refined<Int>> {
+fn refine_byte(n: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<Int>> {
   refine(
     base: n,
     by: v2.std.refinement.Validation { reason: ^byte_value_overflow, admits: fn(v) { within_byte(n: v) } },
@@ -29,15 +29,15 @@ fn byte_sum(values: FreeMonoid<Int>) -> Int {
   fold_list(xs: values, empty: 0, cons: fn(acc, v) { acc + v })
 }
 
-fn checked_byte_sum(values: FreeMonoid<Int>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<Int>> {
+fn checked_byte_sum(values: FreeMonoid<Int>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<Int>> {
   refine_byte(n: byte_sum(values: values), at: at)
 }
 
-fn is_accepted(o: Outcome<Refined<Int>>) -> Bool {
-  match o { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+fn is_accepted(o: v2.std.diagnostic.Outcome<Refined<Int>>) -> Bool {
+  match o { v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true  v2.std.diagnostic.Rejected { diagnostics: _ } => false }
 }
-fn is_rejected(o: Outcome<Refined<Int>>) -> Bool {
-  match o { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: _ } => true }
+fn is_rejected(o: v2.std.diagnostic.Outcome<Refined<Int>>) -> Bool {
+  match o { v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false  v2.std.diagnostic.Rejected { diagnostics: _ } => true }
 }
 
 test fn fold_within_bound_accepts() -> Bool {

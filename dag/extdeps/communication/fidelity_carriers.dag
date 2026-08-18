@@ -23,10 +23,10 @@ fn decode_fidelity_from_step_fidelities(steps: List<extdeps.communication.medium
   )
 }
 
-fn source_medium_carried<R>(carried: R, fidelity: extdeps.communication.medium.DecodeFidelity) -> Medium<R> {
+fn source_medium_carried<R>(carried: R, fidelity: extdeps.communication.medium.DecodeFidelity) -> extdeps.communication.medium.Medium<R> {
   extdeps.communication.medium.Medium { carried: carried, fidelity: fidelity }
 }
 
-fn medium_section_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+fn medium_section_equal<R>(left: extdeps.communication.medium.Medium<R>, right: extdeps.communication.medium.Medium<R>) -> Bool {
   left.carried == right.carried
 }

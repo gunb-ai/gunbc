@@ -42,24 +42,24 @@ fn semantic_pair_record() -> Node {
   sdrg_record(edges: [ sdrg_field_edge(name: ^key, type_name: ^K), sdrg_field_edge(name: ^value, type_name: ^V) ])
 }
 
-fn semantic_generic_emit_text(name: v2.std.node.Symbol, params: List<v2.std.node.Symbol>, node: Node) -> Outcome<String> {
+fn semantic_generic_emit_text(name: v2.std.node.Symbol, params: List<v2.std.node.Symbol>, node: Node) -> v2.std.diagnostic.Outcome<String> {
   match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_target_model()) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn semantic_witness_matches(golden: String) -> Bool {
   match semantic_generic_emit_text(name: ^Witness, params: [^C], node: semantic_witness_coproduct()) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn semantic_pair_matches(golden: String) -> Bool {
   match semantic_generic_emit_text(name: ^Pair, params: [^K, ^V], node: semantic_pair_record()) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

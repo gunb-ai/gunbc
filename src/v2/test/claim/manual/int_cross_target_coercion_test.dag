@@ -20,7 +20,7 @@ fn python_unbounded_int_grounding() -> v2.std.constraints.CanonicalGrounding {
   }
 }
 
-fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<v2.std.coercion.CoercionResult> {
+fn cross_target_python_to_rust_i32_coercion_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: rust_declared_inhabitants_root(),
@@ -36,11 +36,11 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<v2.std.coercion.Co
   )
 }
 
-fn coercion_outcome_node_projection(actual: Outcome<v2.std.coercion.CoercionResult>) -> Outcome<Node> {
+fn coercion_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult>) -> v2.std.diagnostic.Outcome<Node> {
   match actual {
-    Accepted { value: r, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: r.target, diagnostics: ad }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -106,7 +106,7 @@ fn rust_i32_grounding() -> v2.std.constraints.CanonicalGrounding {
   }
 }
 
-fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<v2.std.coercion.CoercionResult> {
+fn cross_target_rust_i32_to_python_int_coercion_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: python_declared_inhabitants_root(),
@@ -133,14 +133,14 @@ fn quality_is_widened(q: v2.std.coercion.CoercionQuality) -> Bool {
 test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   let outcome = cross_target_rust_i32_to_python_int_coercion_fold()
   match outcome {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       (r.target == python_int_inhabitant_node()) && quality_is_widened(q: r.quality)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 
-fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<v2.std.coercion.CoercionResult> {
+fn cross_target_python_to_rust_i32_narrowing_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: rust_declared_inhabitants_root(),

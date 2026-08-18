@@ -50,19 +50,19 @@ fn match_fixture_inputs() -> v2.compiler.eval.Inputs {
   )
 }
 
-fn match_primary_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn match_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   emit_match_eval_producer_tree()
 }
 
-fn match_alt_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn match_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   emit_match_eval_swapped_producer_tree()
 }
 
-fn loop_primary_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   emit_loop_eval_producer_tree()
 }
 
-fn loop_alt_tree() -> Outcome<v2.compiler.infer.InferredTree> {
+fn loop_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   emit_loop_eval_wrong_value_producer_tree()
 }
 
@@ -134,9 +134,9 @@ fn mlf_family_member_run(
     fixture_inputs: match_fixture_inputs(),
     run_args: rust_family_member_run_args(member_id: member_id)
   ) {
-    Accepted { value: receipt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
-        Accepted {
+        v2.std.diagnostic.Accepted {
           value: HostLogicalRun { stdout: stdout },
           diagnostics: None
         } =>
@@ -144,7 +144,7 @@ fn mlf_family_member_run(
             && stdout.bytes == emit_host_octets_byte_string(octets: expected_octets)
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -160,12 +160,12 @@ fn mlf_family_member_run_refused(
     fixture_inputs: match_fixture_inputs(),
     run_args: rust_family_member_run_args(member_id: member_id)
   ) {
-    Accepted { value: receipt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -309,13 +309,13 @@ fn mlf_family_one_build_with_sources(
 
 test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
   match match_primary_tree() {
-    Accepted { value: match_tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: match_tree, diagnostics: _ } =>
       match loop_primary_tree() {
-        Accepted { value: loop_tree, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: loop_tree, diagnostics: _ } =>
           match match_alt_tree() {
-            Accepted { value: match_alt, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: match_alt, diagnostics: _ } =>
               match loop_alt_tree() {
-                Accepted { value: loop_alt, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: loop_alt, diagnostics: _ } =>
                   let members = mlf_family_members(
                     match_tree: match_tree,
                     loop_tree: loop_tree,
@@ -352,12 +352,12 @@ test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
                       members: members,
                       transport_target: rust_match_loop_fold_family_target_model_staging()
                     ) {
-                      Accepted { value: source, diagnostics: _ } =>
+                      v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
                         match emit_family(
                           members: alt_members,
                           transport_target: rust_match_loop_fold_family_target_model_staging()
                         ) {
-                          Accepted { value: alt_source, diagnostics: _ } =>
+                          v2.std.diagnostic.Accepted { value: alt_source, diagnostics: _ } =>
                             mlf_family_one_build_with_sources(
                               workspace_primary: workspace_primary,
                               workspace_alt: workspace_alt,
@@ -367,24 +367,24 @@ test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
                               loop_tree: loop_tree,
                               loop_alt: loop_alt
                             )
-                          Rejected { diagnostics: _ } => false
+                          v2.std.diagnostic.Rejected { diagnostics: _ } => false
                         }
-                      Rejected { diagnostics: _ } => false
+                      v2.std.diagnostic.Rejected { diagnostics: _ } => false
                     }
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
   match match_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       let digest = inferred_tree_digest(tree: tree)
       let source = emit_on_demand_key(
         closure_digest: digest,
@@ -399,13 +399,13 @@ test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
         grain: NativeArtifact
       )
       (source == native) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool {
   match match_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
         Present { value: store } =>
           let key = family_native_key_for(tree: tree)
@@ -424,13 +424,13 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
           )
         Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> Bool {
   match match_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
         Present { value: store } =>
           let lookup = emit_on_demand_lookup(
@@ -443,7 +443,7 @@ test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> 
           }
         Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -453,7 +453,7 @@ test fn emit_on_demand_match_loop_fold_interpreter_roles_bounded_holds() -> Bool
 
 test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds() -> Bool {
   match match_primary_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match witness_family_realize_width(
         bound_bytes: byte_size(count: 25),
         budget: BudgetUnreadable,
@@ -464,7 +464,7 @@ test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds(
         PackedWidth { width: _ } => false
         MaturationReserve { width: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

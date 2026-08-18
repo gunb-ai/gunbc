@@ -51,9 +51,9 @@ fn sl_derive_attr(binding: v2.std.node.Symbol) -> Node {
 
 fn sl_enum_derive_binding_row(coproduct: Node) -> v2.std.node.Edge {
   match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
-    Accepted { value: binding, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: binding, diagnostics: _ } =>
       sl_pos(target: sl_derive_attr(binding: binding))
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       sl_pos(target: sl_derive_attr(binding: ^sl_coproduct_derive_binding_refused))
   }
 }
@@ -77,7 +77,7 @@ fn std_logic_bool_decl() -> Node {
   )
 }
 
-fn std_logic_bool_emit_text() -> Outcome<String> {
+fn std_logic_bool_emit_text() -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(
       rules: rust_enum_general_decl_productions_only_translation_rules(),
@@ -107,8 +107,8 @@ fn std_logic_bool_emit_text() -> Outcome<String> {
 
 fn std_logic_bool_emit_matches(golden: String) -> Bool {
   match std_logic_bool_emit_text() {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -126,7 +126,7 @@ fn sl_coproduct_derive_binding_rejects_non_disj() -> Bool {
       occurrence_id: SyntheticOccurrence
     }
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

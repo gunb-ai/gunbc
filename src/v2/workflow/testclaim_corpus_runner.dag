@@ -27,7 +27,7 @@ type TestClaimSubjectRosterUnsupportedRow {
 type TestClaimSubjectRosterFamilyReceipt {
   subject_family: v2.std.node.Symbol
   run_family: v2.std.node.Symbol
-  subjects: List<TestClaimEvalSubject<Node>>
+  subjects: List<v2.compiler.eval.TestClaimEvalSubject<Node>>
   runs: List<TestClaimRun<Node, RuntimeValue>>
   unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>
   report: CorpusEvalReport
@@ -144,12 +144,12 @@ fn corpus_entries_from_node_runtime_value_runs(
 }
 
 fn run_node_runtime_value_subjects(
-  subjects: List<TestClaimEvalSubject<Node>>
+  subjects: List<v2.compiler.eval.TestClaimEvalSubject<Node>>
 ) -> List<TestClaimRun<Node, RuntimeValue>> {
   map(subjects, fn(subject) { run_test_claim(subject: subject) })
 }
 
-fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> v2.std.verification.UnifiedTestClaim {
+fn node_corpus_claim_from_subject(subject: v2.compiler.eval.TestClaimEvalSubject<Node>) -> v2.std.verification.UnifiedTestClaim {
   v2.std.verification.NodeCorpus {
     claim: subject.claim,
     transport: EvalOnly

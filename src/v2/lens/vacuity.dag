@@ -40,7 +40,7 @@ type VacuityEvidence
   | Unknown
 
 type VacuityCensusRow {
-  label: String
+  label: v2.std.text.String
   evidence: VacuityEvidence
   carries_parallel_authority_debt: Bool
 }
@@ -51,7 +51,7 @@ type VacuityAdvisoryCensus {
   unknown_count: Int
 }
 
-fn operands_structurally_equal(lhs: Node, rhs: Node) -> Bool {
+fn operands_structurally_equal(lhs: v2.std.node.Node, rhs: v2.std.node.Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
 }
 
@@ -78,8 +78,8 @@ fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> Bool {
 fn vacuity_evidence_record_for_binary_claim(
   subject: VacuityEvidenceSubject,
   transport: v2.std.verification.TestClaimTransportMode,
-  lhs: Node,
-  rhs: Node,
+  lhs: v2.std.node.Node,
+  rhs: v2.std.node.Node,
   lhs_provenance: TestClaimOperandProvenance,
   rhs_provenance: TestClaimOperandProvenance
 ) -> VacuityEvidenceRecord {
@@ -266,20 +266,20 @@ data vacuity_bool_witness_body_lowering_ceiling_note: String = "SECOND, INDEPEND
 
 data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROADER CEILING (empirically executed, not guessed; found while wiring the item-5 consumer witness's derived-site enumeration): fn-declaration COLLECTION itself — vacuity_collect_fn_decls, via dag_node_is_fn_decl/parse_production_emitted_identity_optional over normalize() output — returns EMPTY for real corpus files, independent of body shape and broader than the bare-`==`-body case above. This is NOT specific to vacuity.dag: src/v2/lens/enforcement/cost_coverage.dag's cost_coverage_collect_fn_decls is byte-identical logic over the byte-identical three-stage ingest (filesystem_read -> tokenize -> parse_module -> normalize), and running BOTH collectors over the SAME successfully-normalized module_root (src/v2/std/nat.dag, four known fn declarations) in one execution returned empty for both, ruling out a vacuity-specific bug. Independently reconfirmed by executing cost_coverage's OWN already-merged witnesses directly — cost_coverage_dag_logic_has_three_fn_bodies (asserts fn_attempted == 3 for dag/std/logic.dag) and cost_coverage_v2_tree_receipt_by_execution (asserts fn_attempted > 0 for real src/v2 files including nat.dag) — both FAIL by direct execution today. And reconfirmed a second time on a pristine origin/main checkout (git worktree add against origin/main, this branch's compiled claim_batch binary, cd into the worktree with relative --source-root paths): cost_coverage_dag_logic_has_three_fn_bodies FAILS on clean main too, so this is pre-existing and corpus-wide, not introduced by this branch and not limited to vacuity's own mandate. Consequence for this lens: vacuity_consumer_witness_live_derived_sites() (v2.test.claim.vacuity_consumer_witness) legitimately enumerates zero sites against its declared fixture file today, even though that file is independently confirmed to normalize() cleanly — the derived-site/shadow join still holds by real execution (empty == empty, never vacuously skipped), and the fixture-module-reach requirement (DESIGN.md §6 inert-lens hygiene) is separately satisfied by a direct compile-time symbol reference (vacuity_consumer_witness_fixture_module_reached_by_direct_call), not by fn-decl collection. This is the SAME \"general body producer\" DESIGN.md open thread the body-lowering ceiling above already cites — broader in scope (declaration discovery, not just one body shape) but the same authority and the same dissolve-on trigger, per §3 single authority, not a second independently-named trigger. Mechanism-vs-reachability stays separated exactly as above: classify_vacuity_same_eval_record's correctness is proven by the direct-call RED control regardless of this ceiling."
 
-fn vacuity_witness_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn vacuity_witness_ingest_source_text(source_text: v2.std.text.String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: ts, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
   }
 }
 
-fn vacuity_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
+fn vacuity_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   let acc1 = if dag_node_is_fn_decl(node: root) {
     list_append(left: acc, right: [root])
   } else {
@@ -290,7 +290,7 @@ fn vacuity_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
   })
 }
 
-fn vacuity_fn_decl_name_optional(fn_decl: Node) -> v2.std.node.Symbol? {
+fn vacuity_fn_decl_name_optional(fn_decl: v2.std.node.Node) -> v2.std.node.Symbol? {
   match body_lower_unwrap_captured(shell: fn_decl) {
     Absent => optional_absent()
     Present { value: captured } =>
@@ -298,14 +298,14 @@ fn vacuity_fn_decl_name_optional(fn_decl: Node) -> v2.std.node.Symbol? {
   }
 }
 
-fn vacuity_fn_decl_named(fn_decl: Node, name: v2.std.node.Symbol) -> Bool {
+fn vacuity_fn_decl_named(fn_decl: v2.std.node.Node, name: v2.std.node.Symbol) -> Bool {
   match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
     Absent => false
     Present { value: sym } => sym == name
   }
 }
 
-fn vacuity_find_fn_decl_by_name(decls: List<Node>, name: v2.std.node.Symbol) -> Node? {
+fn vacuity_find_fn_decl_by_name(decls: List<v2.std.node.Node>, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   fold(decls, init: optional_absent(), f: fn(acc, decl) {
     match acc {
       Present { value: _ } => acc
@@ -319,21 +319,21 @@ fn vacuity_find_fn_decl_by_name(decls: List<Node>, name: v2.std.node.Symbol) -> 
   })
 }
 
-fn vacuity_fn_body_from_decl(fn_decl: Node) -> Node? {
+fn vacuity_fn_body_from_decl(fn_decl: v2.std.node.Node) -> v2.std.node.Node? {
   match parse_subtree_find_production_captured(root: fn_decl, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => optional_present(value: body)
     ParseSubtreeAbsent => optional_absent()
   }
 }
 
-fn vacuity_stmt_seq_from_body(body: Node) -> Node? {
+fn vacuity_stmt_seq_from_body(body: v2.std.node.Node) -> v2.std.node.Node? {
   match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_stmt_seq) {
     ParseSubtreeFound { captured: seq } => optional_present(value: seq)
     ParseSubtreeAbsent => optional_absent()
   }
 }
 
-fn vacuity_stmt_seq_is_single_statement(stmt_seq: Node) -> Bool {
+fn vacuity_stmt_seq_is_single_statement(stmt_seq: v2.std.node.Node) -> Bool {
   if is_empty_conj_root(n: stmt_seq) {
     false
   } else {
@@ -344,7 +344,7 @@ fn vacuity_stmt_seq_is_single_statement(stmt_seq: Node) -> Bool {
   }
 }
 
-fn vacuity_transform_operator_symbol_optional(transform: Node) -> v2.std.node.Symbol? {
+fn vacuity_transform_operator_symbol_optional(transform: v2.std.node.Node) -> v2.std.node.Symbol? {
   match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
     Absent => optional_absent()
     Present { value: op_node } =>
@@ -355,21 +355,21 @@ fn vacuity_transform_operator_symbol_optional(transform: Node) -> v2.std.node.Sy
   }
 }
 
-fn vacuity_transform_is_equality(transform: Node) -> Bool {
+fn vacuity_transform_is_equality(transform: v2.std.node.Node) -> Bool {
   match vacuity_transform_operator_symbol_optional(transform: transform) {
     Absent => false
     Present { value: id } => id == ^dag_token_eq_eq
   }
 }
 
-fn vacuity_operand_provenance_from_node(node: Node) -> TestClaimOperandProvenance {
+fn vacuity_operand_provenance_from_node(node: v2.std.node.Node) -> TestClaimOperandProvenance {
   match dag_canonical_literal_from_node(node: node) {
-    Accepted { value: _, diagnostics: _ } => LiteralOracle
-    Rejected { diagnostics: _ } => OperandProvenanceUnknown
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => LiteralOracle
+    v2.std.diagnostic.Rejected { diagnostics: _ } => OperandProvenanceUnknown
   }
 }
 
-fn vacuity_bool_witness_body_evidence(transform: Node) -> VacuityEvidence {
+fn vacuity_bool_witness_body_evidence(transform: v2.std.node.Node) -> VacuityEvidence {
   if vacuity_transform_is_equality(transform: transform) {
     match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
       Absent => Unknown
@@ -393,7 +393,7 @@ fn vacuity_bool_witness_body_evidence(transform: Node) -> VacuityEvidence {
   }
 }
 
-fn vacuity_bool_witness_fn_body_evidence(fn_decl: Node) -> VacuityEvidence {
+fn vacuity_bool_witness_fn_body_evidence(fn_decl: v2.std.node.Node) -> VacuityEvidence {
   match vacuity_fn_body_from_decl(fn_decl: fn_decl) {
     Absent => Unknown
     Present { value: body } =>
@@ -419,8 +419,8 @@ fn vacuity_bool_witness_evidence(witness: v2.std.verification.BoolWitness) -> Va
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
-    Rejected { diagnostics: _ } => Unknown
-    Accepted { value: module_root, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Unknown
+    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       match vacuity_find_fn_decl_by_name(
         decls: vacuity_collect_fn_decls(root: module_root.root, acc: v2.std.algebra.Empty),
         name: witness.function
@@ -459,7 +459,7 @@ fn vacuity_carries_parallel_authority_debt(
 }
 
 fn vacuity_census_row(
-  label: String,
+  label: v2.std.text.String,
   evidence: VacuityEvidence,
   carries_parallel_authority_debt: Bool
 ) -> VacuityCensusRow {

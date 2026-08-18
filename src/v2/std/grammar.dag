@@ -232,7 +232,7 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
 type GrammarProduction {
   name: v2.std.node.Symbol
   expression: GrammarExpr
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
 type GrammarRoot {
@@ -257,7 +257,7 @@ type GrammarSchema {
 type GrammarSchemaProbe {
   fixture: String
   production: FormalProduction
-  expected_parse_surface: Node
+  expected_parse_surface: v2.std.node.Node
 }
 
 type GrammarSchemaProbeBinding {
@@ -267,7 +267,7 @@ type GrammarSchemaProbeBinding {
 
 type GrammarRelationRow {
   production: FormalProduction
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
 type ParseTree = Node
@@ -276,7 +276,7 @@ type GrammarSymbolFoldState {
   found: Bool
 }
 
-fn grammar_atom(identity: v2.std.node.Symbol) -> Node {
+fn grammar_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: identity }
@@ -286,7 +286,7 @@ fn grammar_atom(identity: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn grammar_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+fn grammar_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge {
     label: Named { name: name },
     target: target
@@ -297,7 +297,7 @@ fn grammar_empty_sync_tokens() -> Set<v2.std.node.Symbol> {
   std.types.Set { member: fn(_) { false } }
 }
 
-fn grammar_empty_node() -> Node {
+fn grammar_empty_node() -> v2.std.node.Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
 
@@ -357,7 +357,7 @@ fn grammar_formal_production(lhs: v2.std.node.Symbol, rhs: List<FormalGrammarSym
   }
 }
 
-fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
+fn formal_terminal_to_node(terminal: FormalTerminal) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -369,7 +369,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 }
 }
 
-fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<v2.std.node.Symbol>) -> Node {
+fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<v2.std.node.Symbol>) -> v2.std.node.Node {
   match binding {
     Present { value: binding } =>
       v2.std.node.Node {
@@ -392,7 +392,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
   }
 }
 
-fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
+fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -404,7 +404,7 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
 }
 }
 
-fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
+fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> v2.std.node.Node {
   match symbol {
     FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
       v2.std.node.Node {
@@ -445,7 +445,7 @@ fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<v2.std.node.E
   )
 }
 
-fn formal_production_to_node(production: FormalProduction) -> Node {
+fn formal_production_to_node(production: FormalProduction) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -467,7 +467,7 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
 }
 }
 
-fn grammar_atom_identity_from_node(node: Node) -> Witness<v2.std.node.Symbol> {
+fn grammar_atom_identity_from_node(node: v2.std.node.Node) -> Witness<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => v2.std.witness.Holds { value: id }
   _ =>
@@ -481,17 +481,17 @@ fn grammar_atom_identity_from_node(node: Node) -> Witness<v2.std.node.Symbol> {
   }
 }
 
-fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
+fn formal_nonterminal_from_node(node: v2.std.node.Node) -> Witness<FormalNonterminal> {
   match node.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^formal_nonterminal_identity_node_projection) {
-        Accepted { value: identity_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: identity_node, diagnostics: _ } =>
           match grammar_atom_identity_from_node(node: identity_node) {
             Holds { value: id } =>
               v2.std.witness.Holds { value: FormalNonterminal { identity: id } }
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Rejected { diagnostics: nd } =>
+        v2.std.diagnostic.Rejected { diagnostics: nd } =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
@@ -511,17 +511,17 @@ fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
   }
 }
 
-fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
+fn formal_terminal_from_node(node: v2.std.node.Node) -> Witness<FormalTerminal> {
   match node.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^formal_terminal_identity_node_projection) {
-        Accepted { value: identity_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: identity_node, diagnostics: _ } =>
           match grammar_atom_identity_from_node(node: identity_node) {
             Holds { value: id } =>
               v2.std.witness.Holds { value: FormalTerminal { identity: id } }
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
@@ -541,11 +541,11 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
   }
 }
 
-fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
+fn formal_terminal_occurrence_from_node(node: v2.std.node.Node) -> Witness<FormalGrammarSymbol> {
   match formal_terminal_from_node(node: node) {
     Holds { value: terminal } =>
       match find_named_child(root: node, name: ^formal_terminal_occurrence_binding_node_projection) {
-        Accepted { value: binding_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: binding_node, diagnostics: _ } =>
           match grammar_atom_identity_from_node(node: binding_node) {
             Holds { value: binding } =>
               v2.std.witness.Holds {
@@ -556,7 +556,7 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
               }
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           v2.std.witness.Holds {
             value: FormalTerminalOccurrence {
               terminal: terminal,
@@ -568,15 +568,15 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
   }
 }
 
-fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
+fn formal_grammar_symbol_from_node(node: v2.std.node.Node) -> Witness<FormalGrammarSymbol> {
   match node.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^formal_symbol_terminal_node_projection) {
-        Accepted { value: terminal_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: terminal_node, diagnostics: _ } =>
           formal_terminal_occurrence_from_node(node: terminal_node)
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           match find_named_child(root: node, name: ^formal_symbol_nonterminal_node_projection) {
-            Accepted { value: nonterminal_node, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: nonterminal_node, diagnostics: _ } =>
               match formal_nonterminal_from_node(node: nonterminal_node) {
                 Holds { value: nonterminal } =>
                   v2.std.witness.Holds {
@@ -584,7 +584,7 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
                   }
                 Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               v2.std.witness.Violates {
                 diagnostic: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_production_not_found,
@@ -605,7 +605,7 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   }
 }
 
-fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
+fn formal_rhs_from_node(node: v2.std.node.Node) -> Witness<List<FormalGrammarSymbol>> {
   match node.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -643,13 +643,13 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
   }
 }
 
-fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
+fn formal_production_from_node(node: v2.std.node.Node) -> Witness<FormalProduction> {
   match node.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^formal_production_lhs_node_projection) {
-        Accepted { value: lhs_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: lhs_node, diagnostics: _ } =>
           match find_named_child(root: node, name: ^formal_production_rhs_node_projection) {
-            Accepted { value: rhs_node, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: rhs_node, diagnostics: _ } =>
               match formal_nonterminal_from_node(node: lhs_node) {
                 Holds { value: lhs } =>
                   match formal_rhs_from_node(node: rhs_node) {
@@ -661,7 +661,7 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
                   }
                 Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               v2.std.witness.Violates {
                 diagnostic: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_production_not_found,
@@ -670,7 +670,7 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
                 }
               }
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
@@ -690,11 +690,11 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
   }
 }
 
-fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduction> {
+fn grammar_relation_row_production_from_node(row: v2.std.node.Node) -> Witness<FormalProduction> {
   match find_named_child(root: row, name: ^grammar_relation_field_production) {
-    Accepted { value: production_node, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: production_node, diagnostics: _ } =>
       formal_production_from_node(node: production_node)
-    Rejected { diagnostics: nd } =>
+    v2.std.diagnostic.Rejected { diagnostics: nd } =>
       v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
@@ -705,14 +705,14 @@ fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduct
   }
 }
 
-fn grammar_relation_row_emitted_fixture(row: Node) -> Outcome<Node> {
+fn grammar_relation_row_emitted_fixture(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   find_named_child(root: row, name: ^grammar_relation_field_emitted)
 }
 
 fn grammar_relation_rules_formal_productions_step(
-  acc: Outcome<List<FormalProduction>>,
-  row: Node
-) -> Outcome<List<FormalProduction>> {
+  acc: v2.std.diagnostic.Outcome<List<FormalProduction>>,
+  row: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<List<FormalProduction>> {
   bind_outcome(
     o: acc,
     f: fn(productions) {
@@ -725,7 +725,7 @@ fn grammar_relation_rules_formal_productions_step(
   )
 }
 
-fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<List<FormalProduction>> {
+fn grammar_relation_rules_formal_productions_from_rows(rules: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<FormalProduction>> {
   match rules.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -754,7 +754,7 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
   }
 }
 
-fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
+fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -776,7 +776,7 @@ fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> No
   }
 }
 
-fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduction>> {
+fn formal_productions_from_catalog_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<FormalProduction>> {
   match node.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -812,23 +812,23 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
   }
 }
 
-fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
+fn grammar_relation_rules_formal_productions(rules: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<FormalProduction>> {
   match find_named_child(root: rules, name: ^grammar_relation_rules_formal_productions) {
-    Accepted { value: catalog, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: catalog, diagnostics: _ } =>
       formal_productions_from_catalog_node(node: catalog)
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       grammar_relation_rules_formal_productions_from_rows(rules: rules)
   }
 }
 
-fn derive_grammar_relation_row(production: FormalProduction, emitted: Node) -> GrammarRelationRow {
+fn derive_grammar_relation_row(production: FormalProduction, emitted: v2.std.node.Node) -> GrammarRelationRow {
   GrammarRelationRow {
     production: production,
     emitted: emitted
   }
 }
 
-fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
+fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -847,16 +847,16 @@ fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
 
 fn grammar_relation_tokens_node<T>(
   tokens: List<T>,
-  token_to_node: fn(T) -> Node
-) -> Node {
+  token_to_node: fn(T) -> v2.std.node.Node
+) -> v2.std.node.Node {
   fold_list_node(xs: tokens, item_node: token_to_node)
 }
 
-fn grammar_concrete_fixed_token_node(token_class: v2.std.node.Symbol) -> Node {
+fn grammar_concrete_fixed_token_node(token_class: v2.std.node.Symbol) -> v2.std.node.Node {
   concrete_syntax_token_to_node(token: v2.std.compilers.target_model.FixedToken { token_class: token_class })
 }
 
-fn grammar_concrete_bound_token_node(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> Node {
+fn grammar_concrete_bound_token_node(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> v2.std.node.Node {
   concrete_syntax_token_to_node(
     token: v2.std.compilers.target_model.BoundToken { token_class: token_class, binding: binding }
   )
@@ -901,7 +901,7 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
   )
 }
 
-fn conj_positional_child_count(children: List<Node>) -> Int {
+fn conj_positional_child_count(children: List<v2.std.node.Node>) -> Int {
   fold_list(
     xs: children,
     empty: 0,
@@ -911,7 +911,7 @@ fn conj_positional_child_count(children: List<Node>) -> Int {
   )
 }
 
-fn conj_positional_children(parent: Node) -> List<Node> {
+fn conj_positional_children(parent: v2.std.node.Node) -> List<v2.std.node.Node> {
   match parent.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -1055,7 +1055,7 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> v2.s
   }
 }
 
-fn node_atom_identity_optional(node: Node) -> v2.std.node.Symbol? {
+fn node_atom_identity_optional(node: v2.std.node.Node) -> v2.std.node.Symbol? {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
     _ => Absent
@@ -1074,7 +1074,7 @@ fn formal_binding_conj_slot_arm(binding: v2.std.node.Symbol) -> FormalBindingCon
   }
 }
 
-fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
+fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^grammar_relation_emitted_conj_slot_missing,
     at: node_locus(node: emitted),
@@ -1083,10 +1083,10 @@ fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> v2.st
 }
 
 fn formal_conj_child_atom_at_index(
-  children: List<Node>,
+  children: List<v2.std.node.Node>,
   index: Int,
-  emitted: Node
-) -> Witness<Node> {
+  emitted: v2.std.node.Node
+) -> Witness<v2.std.node.Node> {
   match list_nth(
     xs: children,
     wanted: index,
@@ -1105,13 +1105,13 @@ fn formal_conj_child_atom_at_index(
 }
 
 type EmittedRhsMatchState
-  = EmittedRhsMatchOk { children: List<Node>, index: Int }
+  = EmittedRhsMatchOk { children: List<v2.std.node.Node>, index: Int }
   | EmittedRhsMatchFail
 
 fn formal_production_rhs_matches_emitted_conj_step(
   state: EmittedRhsMatchState,
   productions: List<FormalProduction>,
-  emitted: Node,
+  emitted: v2.std.node.Node,
   symbol: FormalGrammarSymbol
 ) -> EmittedRhsMatchState {
   match state {
@@ -1183,7 +1183,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
 fn formal_production_rhs_matches_emitted_conj(
   production: FormalProduction,
   productions: List<FormalProduction>,
-  emitted: Node
+  emitted: v2.std.node.Node
 ) -> Bool {
   match emitted.kind {
     TypeNode { connective: Conj } =>
@@ -1199,7 +1199,7 @@ fn formal_production_rhs_matches_emitted_conj(
 fn formal_production_rhs_matches_emitted_conj_conj(
   production: FormalProduction,
   productions: List<FormalProduction>,
-  emitted: Node
+  emitted: v2.std.node.Node
 ) -> Bool {
   let children = conj_positional_children(parent: emitted)
   let child_count = conj_positional_child_count(children: children)
@@ -1223,7 +1223,7 @@ fn formal_production_rhs_matches_emitted_conj_conj(
 fn formal_production_matches_emitted_child(
   production: FormalProduction,
   productions: List<FormalProduction>,
-  child: Node
+  child: v2.std.node.Node
 ) -> Bool {
   match child.kind {
     TypeNode { connective: Atom { identity: atom_id } } =>
@@ -1249,7 +1249,7 @@ fn formal_production_matches_emitted_child(
   }
 }
 
-fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
+fn emitted_shape_supported_for_lhs_exact(child: v2.std.node.Node) -> Bool {
   match child.kind {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => true
@@ -1260,7 +1260,7 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
-  child: Node
+  child: v2.std.node.Node
 ) -> Witness<FormalProduction> {
   if emitted_shape_supported_for_lhs_exact(child: child) {
     formal_production_for_lhs_exact_supported(
@@ -1282,7 +1282,7 @@ fn formal_production_for_lhs_exact(
 fn formal_production_for_lhs_exact_supported(
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
-  child: Node
+  child: v2.std.node.Node
 ) -> Witness<FormalProduction> {
   formal_production_unique_lhs_exact_match(
     productions: productions,
@@ -1294,10 +1294,10 @@ fn formal_production_for_lhs_exact_supported(
 type DeriveGrammarRelationTokensProgress {
   edges: List<v2.std.node.Edge>
   conj_index: Int
-  conj_children: List<Node>
+  conj_children: List<v2.std.node.Node>
 }
 
-fn emitted_node_slot_count(emitted: Node) -> Int {
+fn emitted_node_slot_count(emitted: v2.std.node.Node) -> Int {
   match emitted.kind {
     TypeNode { connective: Conj } =>
       conj_positional_child_count(children: conj_positional_children(parent: emitted))
@@ -1309,7 +1309,7 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
 fn derive_grammar_relation_token_edges_recursive_step(
   progress: Witness<DeriveGrammarRelationTokensProgress>,
   productions: List<FormalProduction>,
-  emitted: Node,
+  emitted: v2.std.node.Node,
   symbol: FormalGrammarSymbol
 ) -> Witness<DeriveGrammarRelationTokensProgress> {
   match progress {
@@ -1421,7 +1421,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
 fn derive_grammar_relation_token_edges_recursive(
   production: FormalProduction,
   productions: List<FormalProduction>,
-  emitted: Node
+  emitted: v2.std.node.Node
 ) -> Witness<List<v2.std.node.Edge>> {
   let conj_children = conj_positional_children(parent: emitted)
   match fold_list(
@@ -1458,7 +1458,7 @@ fn derive_grammar_relation_token_edges_recursive(
   }
 }
 
-fn grammar_relation_token_edge_targets(edges: List<v2.std.node.Edge>) -> List<Node> {
+fn grammar_relation_token_edge_targets(edges: List<v2.std.node.Edge>) -> List<v2.std.node.Node> {
   fold(
     edges,
     init: std.algebra.Empty,
@@ -1471,8 +1471,8 @@ fn grammar_relation_token_edge_targets(edges: List<v2.std.node.Edge>) -> List<No
 fn derive_grammar_relation_row_node(
   production: FormalProduction,
   productions: List<FormalProduction>,
-  emitted: Node
-) -> Witness<Node> {
+  emitted: v2.std.node.Node
+) -> Witness<v2.std.node.Node> {
   match emitted.kind {
     TypeNode { connective: Conj } =>
       match derive_grammar_relation_token_edges_recursive(
@@ -1503,7 +1503,7 @@ fn derive_grammar_relation_row_node(
   }
 }
 
-fn grammar_expr_node(children: List<v2.std.node.Edge>) -> Node {
+fn grammar_expr_node(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -1513,7 +1513,7 @@ fn grammar_expr_node(children: List<v2.std.node.Edge>) -> Node {
 }
 }
 
-fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
+fn grammar_expr_to_node(expr: GrammarExpr) -> v2.std.node.Node {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
@@ -1566,7 +1566,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   )
 }
 
-fn grammar_production_to_node(production: GrammarProduction) -> Node {
+fn grammar_production_to_node(production: GrammarProduction) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -1590,7 +1590,7 @@ fn grammar_production_to_list_step(acc: List<v2.std.node.Edge>, production: Gram
   )
 }
 
-fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
+fn grammar_productions_to_node(productions: List<GrammarProduction>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -1606,7 +1606,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 }
 
-fn grammar_root_to_node(root: GrammarRoot) -> Node {
+fn grammar_root_to_node(root: GrammarRoot) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: Conj
@@ -1619,7 +1619,7 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
 }
 }
 
-fn grammar_to_node(grammar: ParseGrammar) -> Node {
+fn grammar_to_node(grammar: ParseGrammar) -> v2.std.node.Node {
   match grammar {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
@@ -1635,7 +1635,7 @@ fn grammar_symbol_fold(sym: v2.std.node.Symbol) -> NodeFold<GrammarSymbolFoldSta
   }
 }
 
-fn grammar_symbol_fold_init(n: Node, sym: v2.std.node.Symbol) -> GrammarSymbolFoldState {
+fn grammar_symbol_fold_init(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> GrammarSymbolFoldState {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       GrammarSymbolFoldState { found: id == sym }
@@ -1652,7 +1652,7 @@ fn grammar_symbol_fold_step(
   GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
 }
 
-fn grammar_symbol_fold_state(n: Node, sym: v2.std.node.Symbol) -> GrammarSymbolFoldState {
+fn grammar_symbol_fold_state(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> GrammarSymbolFoldState {
   fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
 }
 
@@ -1685,7 +1685,7 @@ type LhsExactProductionMatchFold
 fn formal_production_matches_lhs_exact_child(
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
-  child: Node,
+  child: v2.std.node.Node,
   candidate: FormalProduction
 ) -> Bool {
   if emitted_shape_supported_for_lhs_exact(child: child) {
@@ -1709,7 +1709,7 @@ fn lhs_exact_production_match_fold_step(
   acc: LhsExactProductionMatchFold,
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
-  child: Node,
+  child: v2.std.node.Node,
   candidate: FormalProduction
 ) -> LhsExactProductionMatchFold {
   if formal_production_matches_lhs_exact_child(
@@ -1732,7 +1732,7 @@ fn lhs_exact_production_match_fold_step(
 fn emitted_production_match_fold_step(
   acc: LhsExactProductionMatchFold,
   productions: List<FormalProduction>,
-  child: Node,
+  child: v2.std.node.Node,
   candidate: FormalProduction
 ) -> LhsExactProductionMatchFold {
   if formal_production_matches_emitted_child(
@@ -1753,7 +1753,7 @@ fn emitted_production_match_fold_step(
 
 fn formal_production_unique_emitted_match(
   productions: List<FormalProduction>,
-  child: Node
+  child: v2.std.node.Node
 ) -> Witness<FormalProduction> {
   if emitted_shape_supported_for_lhs_exact(child: child) {
     match fold_list(
@@ -1799,19 +1799,19 @@ fn formal_production_unique_emitted_match(
 }
 
 type RebuildRhsWalkState
-  = RebuildRhsWalkOk { children: List<Node>, token_index: Int }
+  = RebuildRhsWalkOk { children: List<v2.std.node.Node>, token_index: Int }
   | RebuildRhsWalkFail
 
 type RebuildEmittedResult
-  = RebuildEmittedOk { emitted: Node, token_index: Int }
+  = RebuildEmittedOk { emitted: v2.std.node.Node, token_index: Int }
   | RebuildEmittedFail
 
 type RebuildProductionMatchFold
   = RebuildProductionMatchNone
-  | RebuildProductionMatchOne { emitted: Node, token_index: Int }
+  | RebuildProductionMatchOne { emitted: v2.std.node.Node, token_index: Int }
   | RebuildProductionMatchMany
 
-fn rebuild_emitted_atom_node(identity: v2.std.node.Symbol) -> Node {
+fn rebuild_emitted_atom_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -1819,7 +1819,7 @@ fn rebuild_emitted_atom_node(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
+fn rebuild_emitted_conj_node(children: List<v2.std.node.Node>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
@@ -2040,7 +2040,7 @@ fn grammar_relation_emitted_rebuild_from_token_spine(
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> Witness<Node> {
+) -> Witness<v2.std.node.Node> {
   let token_count = fold_list(
     xs: tokens,
     empty: 0,
@@ -2070,8 +2070,8 @@ fn grammar_relation_emitted_rebuild_from_token_spine(
 
 fn grammar_relation_row_derived_from_productions(
   productions: List<FormalProduction>,
-  emitted: Node
-) -> Outcome<Node> {
+  emitted: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match formal_production_unique_emitted_match(productions: productions, child: emitted) {
     Holds { value: production } =>
       match derive_grammar_relation_row_node(
@@ -2089,7 +2089,7 @@ fn grammar_relation_row_derived_from_productions(
 fn formal_production_unique_lhs_exact_match(
   productions: List<FormalProduction>,
   lhs: v2.std.node.Symbol,
-  child: Node
+  child: v2.std.node.Node
 ) -> Witness<FormalProduction> {
   if emitted_shape_supported_for_lhs_exact(child: child) {
     let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
@@ -2162,9 +2162,9 @@ fn grammar_relation_row_backward_selection(
 }
 
 fn grammar_relation_row_emitted_reverse_parse_matches(
-  row: Node,
+  row: v2.std.node.Node,
   productions: List<FormalProduction>,
-  emitted: Node
+  emitted: v2.std.node.Node
 ) -> Bool {
   if emitted_shape_supported_for_lhs_exact(child: emitted) {
     match grammar_relation_row_production_from_node(row: row) {
@@ -2179,22 +2179,22 @@ fn grammar_relation_row_emitted_reverse_parse_matches(
     }
   } else {
     match grammar_relation_row_emitted_fixture(row: row) {
-      Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 type BackwardRowSelection
   = BackwardRowNone
-  | BackwardRowOne { row: Node }
+  | BackwardRowOne { row: v2.std.node.Node }
   | BackwardRowMany
 
 fn backward_row_select_step(
   acc: BackwardRowSelection,
   productions: List<FormalProduction>,
-  emitted: Node,
-  row: Node
+  emitted: v2.std.node.Node,
+  row: v2.std.node.Node
 ) -> BackwardRowSelection {
   if grammar_relation_row_emitted_reverse_parse_matches(
     row: row,
@@ -2211,7 +2211,7 @@ fn backward_row_select_step(
   }
 }
 
-fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
+fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^grammar_relation_production_not_found,
     at: node_locus(node: emitted),
@@ -2219,7 +2219,7 @@ fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: No
   }
 }
 
-fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
+fn grammar_relation_row_reverse_parse_selection(rules: v2.std.node.Node, emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: grammar_relation_rules_formal_productions(rules: rules),
     f: fn(productions) {
@@ -2271,12 +2271,12 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
 
 type GrammarRelationForwardRowSelection
   = GrammarRelationForwardRowNone
-  | GrammarRelationForwardRowOne { row: Node }
+  | GrammarRelationForwardRowOne { row: v2.std.node.Node }
   | GrammarRelationForwardRowMany
 
 fn grammar_relation_forward_row_select_merge(
   acc: GrammarRelationForwardRowSelection,
-  row: Node,
+  row: v2.std.node.Node,
   matches: Bool
 ) -> GrammarRelationForwardRowSelection {
   if matches {
@@ -2295,8 +2295,8 @@ fn grammar_relation_forward_row_select_skip_catalog_edge(name: v2.std.node.Symbo
 }
 
 fn grammar_relation_row_forward_select(
-  rules: Node,
-  row_matches: fn(Node) -> Bool
+  rules: v2.std.node.Node,
+  row_matches: fn(v2.std.node.Node) -> Bool
 ) -> GrammarRelationForwardRowSelection {
   match rules.kind {
     TypeNode { connective: Conj } =>
@@ -2324,11 +2324,11 @@ fn grammar_relation_row_forward_select(
 }
 
 fn grammar_relation_forward_row_selection_outcome_row(
-  rules: Node,
+  rules: v2.std.node.Node,
   selection: GrammarRelationForwardRowSelection,
   none_reason: v2.std.node.Symbol,
   many_reason: v2.std.node.Symbol
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match selection {
     GrammarRelationForwardRowOne { row: row } => outcome_accepted(value: row)
     GrammarRelationForwardRowMany =>
@@ -2351,9 +2351,9 @@ fn grammar_relation_forward_row_selection_outcome_row(
 }
 
 fn grammar_relation_forward_row_selection_outcome_emitted(
-  rules: Node,
+  rules: v2.std.node.Node,
   selection: GrammarRelationForwardRowSelection
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match selection {
     GrammarRelationForwardRowOne { row: row } =>
       find_named_child(root: row, name: ^grammar_relation_field_emitted)
@@ -2376,7 +2376,7 @@ fn grammar_relation_forward_row_selection_outcome_emitted(
   }
 }
 
-fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn grammar_relation_row_token_spine_classes(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -2399,8 +2399,8 @@ fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.no
 
 fn grammar_relation_row_forward_token_spine_selection(
   frontier: List<v2.std.node.Symbol>,
-  rules: Node
-) -> Outcome<Node> {
+  rules: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match rules.kind {
     TypeNode { connective: Conj } =>
       grammar_relation_forward_row_selection_outcome_emitted(
@@ -2409,8 +2409,8 @@ fn grammar_relation_row_forward_token_spine_selection(
           rules: rules,
           row_matches: fn(row) {
             match grammar_relation_row_token_spine_classes(row: row) {
-              Rejected { diagnostics: _ } => false
-              Accepted { value: spine, diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Accepted { value: spine, diagnostics: _ } =>
                 zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y })
             }
           }
@@ -2427,7 +2427,7 @@ fn grammar_relation_row_forward_token_spine_selection(
   }
 }
 
-fn grammar_node_carries_surface_identity(node: Node, surface_identity: v2.std.node.Symbol) -> Bool {
+fn grammar_node_carries_surface_identity(node: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == surface_identity
     TypeNode { connective: Conj } =>
@@ -2454,11 +2454,11 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: v2.std.no
   }
 }
 
-fn grammar_relation_row_surface_identity_matches(row: Node, surface_identity: v2.std.node.Symbol) -> Bool {
+fn grammar_relation_row_surface_identity_matches(row: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> Bool {
   match grammar_relation_row_emitted_fixture(row: row) {
-    Accepted { value: emitted, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
       grammar_node_carries_surface_identity(node: emitted, surface_identity: surface_identity)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -2479,9 +2479,9 @@ fn grammar_relation_row_forward_production_selection_not_found_diagnostic(
 }
 
 fn grammar_relation_row_forward_production_selection(
-  rules: Node,
+  rules: v2.std.node.Node,
   surface_identity: v2.std.node.Symbol
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match rules.kind {
     TypeNode { connective: Conj } =>
       grammar_relation_forward_row_selection_outcome_row(

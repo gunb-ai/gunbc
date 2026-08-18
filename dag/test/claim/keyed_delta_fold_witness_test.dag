@@ -54,7 +54,7 @@ fn fixture_rows_removed() -> List<KeyedRow<String, FixtureVal>> {
   [fixture_row(label: "alpha", payload: "one")]
 }
 
-fn fixture_modified_hunk() -> KeyedPatch<String, FixtureVal> {
+fn fixture_modified_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_b(),
@@ -63,7 +63,7 @@ fn fixture_modified_hunk() -> KeyedPatch<String, FixtureVal> {
   )
 }
 
-fn fixture_added_hunk() -> KeyedPatch<String, FixtureVal> {
+fn fixture_added_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_added(),
@@ -72,7 +72,7 @@ fn fixture_added_hunk() -> KeyedPatch<String, FixtureVal> {
   )
 }
 
-fn fixture_removed_hunk() -> KeyedPatch<String, FixtureVal> {
+fn fixture_removed_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_removed(),
@@ -170,7 +170,7 @@ test fn witness_leaf_verdict_join_bottom() -> Bool {
       },
       equal: fixture_val_eq,
     ) {
-      KeyedApplyHunk { from: f, to: t } =>
+      std.change.KeyedApplyHunk { from: f, to: t } =>
         f.payload == "a" && t.payload == "b"
       _ => false
     }
@@ -182,7 +182,7 @@ test fn witness_leaf_verdict_join_bottom() -> Bool {
       b: KeyedUnchanged,
       equal: fixture_val_eq,
     ) {
-      KeyedApplyHunk { from: f, to: t } =>
+      std.change.KeyedApplyHunk { from: f, to: t } =>
         f.payload == "a" && t.payload == "b"
       _ => false
     }
@@ -191,7 +191,7 @@ test fn witness_leaf_verdict_join_bottom() -> Bool {
 test fn witness_leaf_verdict_join_added_idempotent() -> Bool {
   let added = fixture_verdict_added(label: "new")
   match keyed_leaf_verdict_join(a: added, b: added, equal: fixture_val_eq) {
-    KeyedVerdictAdded { value: v } => v.payload == "new"
+    std.change.KeyedVerdictAdded { value: v } => v.payload == "new"
     _ => false
   }
 }
@@ -199,7 +199,7 @@ test fn witness_leaf_verdict_join_added_idempotent() -> Bool {
 test fn witness_leaf_verdict_join_removed_idempotent() -> Bool {
   let removed = fixture_verdict_removed(label: "old")
   match keyed_leaf_verdict_join(a: removed, b: removed, equal: fixture_val_eq) {
-    KeyedVerdictRemoved { value: v } => v.payload == "old"
+    std.change.KeyedVerdictRemoved { value: v } => v.payload == "old"
     _ => false
   }
 }
@@ -404,7 +404,7 @@ test fn witness_three_way_apply_hunk() -> Bool {
     desired: fixture_val(payload: "two"),
     equal: fixture_val_eq,
   ) {
-    KeyedApplyHunk { from: f, to: t } =>
+    std.change.KeyedApplyHunk { from: f, to: t } =>
       f.payload == "one" && t.payload == "two"
     _ => false
   }
@@ -430,9 +430,9 @@ test fn witness_three_way_conflict() -> Bool {
     equal: fixture_val_eq,
   ) {
     KeyedConflict => true
-    KeyedApplyHunk { from: _, to: _ } => false
-    KeyedVerdictAdded { value: _ } => false
-    KeyedVerdictRemoved { value: _ } => false
+    std.change.KeyedApplyHunk { from: _, to: _ } => false
+    std.change.KeyedVerdictAdded { value: _ } => false
+    std.change.KeyedVerdictRemoved { value: _ } => false
     KeyedUnchanged => false
   }
 }
@@ -442,13 +442,13 @@ test fn witness_conflict_has_no_mutation_arm() -> Bool {
   match blocked {
     KeyedConflict => true
     KeyedUnchanged => false
-    KeyedApplyHunk { from: _, to: _ } => false
-    KeyedVerdictAdded { value: _ } => false
-    KeyedVerdictRemoved { value: _ } => false
+    std.change.KeyedApplyHunk { from: _, to: _ } => false
+    std.change.KeyedVerdictAdded { value: _ } => false
+    std.change.KeyedVerdictRemoved { value: _ } => false
   }
 }
 
-fn fixture_apply_verdict(from_label: String, to_label: String) -> KeyedLeafVerdict<FixtureVal> {
+fn fixture_apply_verdict(from_label: String, to_label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
   std.change.KeyedApplyHunk {
     from: fixture_val(payload: from_label),
     to: fixture_val(payload: to_label),
@@ -457,27 +457,27 @@ fn fixture_apply_verdict(from_label: String, to_label: String) -> KeyedLeafVerdi
 
 test fn witness_apply_verdict_has_mutation_arm() -> Bool {
   match fixture_apply_verdict(from_label: "a", to_label: "b") {
-    KeyedApplyHunk { from: f, to: t } =>
+    std.change.KeyedApplyHunk { from: f, to: t } =>
       f.payload == "a" && t.payload == "b"
     _ => false
   }
 }
 
-fn fixture_verdict_added(label: String) -> KeyedLeafVerdict<FixtureVal> {
+fn fixture_verdict_added(label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
   std.change.KeyedVerdictAdded { value: fixture_val(payload: label) }
 }
 
-fn fixture_verdict_removed(label: String) -> KeyedLeafVerdict<FixtureVal> {
+fn fixture_verdict_removed(label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
   std.change.KeyedVerdictRemoved { value: fixture_val(payload: label) }
 }
 
 test fn witness_verdict_add_is_not_remove() -> Bool {
   match fixture_verdict_added(label: "new") {
-    KeyedVerdictAdded { value: v } => v.payload == "new"
+    std.change.KeyedVerdictAdded { value: v } => v.payload == "new"
     _ => false
   }
     && match fixture_verdict_removed(label: "old") {
-      KeyedVerdictRemoved { value: v } => v.payload == "old"
+      std.change.KeyedVerdictRemoved { value: v } => v.payload == "old"
       _ => false
     }
 }

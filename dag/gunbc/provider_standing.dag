@@ -132,7 +132,7 @@ type ProviderStandingObservationFact {
 type ProviderStanding
   = ProviderStandingUnobserved { reason: std.types.NonEmptyStr }
   | ProviderStandingFromFact {
-      fact: RecordedFact<ProviderStandingObservationFact>,
+      fact: std.claim_evidence.RecordedFact<ProviderStandingObservationFact>,
     }
 
 data inventory_declared_standing_unobserved_reason: std.types.NonEmptyStr = "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr

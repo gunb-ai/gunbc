@@ -62,13 +62,13 @@ fn provider_ready_claim(
 }
 
 fn provider_readiness_evidence_link(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   direction: std.claim_evidence.EvidenceDirection,
   inference_rule: std.claim_evidence.InferenceRuleId,
   authority: extdeps.external_authority.ExternalAuthority,
   provenance: std.claim_evidence.EvidenceProvenance,
-  freshness: EvidenceFreshness<ProviderReadinessClaim>,
-  fidelity: EvidenceFidelity<extdeps.llm.cli_lifecycle.ProviderReadiness>,
+  freshness: std.claim_evidence.EvidenceFreshness<ProviderReadinessClaim>,
+  fidelity: std.claim_evidence.EvidenceFidelity<extdeps.llm.cli_lifecycle.ProviderReadiness>,
   probe: gunbc.readback_independence.ReadBackProbe,
 ) -> ProviderReadinessEvidenceLink {
   std.claim_evidence.EvidenceLink {
@@ -84,7 +84,7 @@ fn provider_readiness_evidence_link(
 }
 
 fn provider_observation_insufficient(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
   inference_rule: std.claim_evidence.InferenceRuleId,
   probe: gunbc.readback_independence.ReadBackProbe,
@@ -102,7 +102,7 @@ fn provider_observation_insufficient(
 }
 
 fn provider_login_status_support(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
@@ -131,7 +131,7 @@ fn provider_login_status_support(
 }
 
 fn provider_live_request_challenge(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
   reason: std.types.NonEmptyStr,
 ) -> ProviderReadinessEvidenceInference {
@@ -158,7 +158,7 @@ fn provider_live_request_challenge(
 }
 
 fn provider_live_request_support(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
@@ -184,7 +184,7 @@ fn provider_live_request_support(
 }
 
 fn provider_login_status_inference(
-  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  observed_fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   provider: extdeps.llm.cli_lifecycle.ProviderInstance,
   bound: std.types.RunKey,
 ) -> ProviderReadinessEvidenceInference {
@@ -238,7 +238,7 @@ fn provider_login_status_inference(
 }
 
 fn provider_live_request_failed_inference(
-  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  observed_fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   provider: extdeps.llm.cli_lifecycle.ProviderInstance,
   bound: std.types.RunKey,
 ) -> ProviderReadinessEvidenceInference {
@@ -273,7 +273,7 @@ fn provider_live_request_failed_inference(
 }
 
 fn provider_live_request_succeeded_inference(
-  observed_fact: RecordedFact<ProviderReadinessObservation>,
+  observed_fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   provider: extdeps.llm.cli_lifecycle.ProviderInstance,
   bound: std.types.RunKey,
 ) -> ProviderReadinessEvidenceInference {
@@ -308,7 +308,7 @@ fn provider_live_request_succeeded_inference(
 }
 
 fn provider_readiness_fact_claim(
-  fact: RecordedFact<ProviderReadinessObservation>,
+  fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
 ) -> Bool {
   fact.value.provider == claim.subject
@@ -351,14 +351,14 @@ fn provider_readiness_provenance_claim(
 }
 
 fn provider_readiness_freshness_claim(
-  freshness: EvidenceFreshness<ProviderReadinessClaim>,
+  freshness: std.claim_evidence.EvidenceFreshness<ProviderReadinessClaim>,
   claim: ProviderReadinessClaim,
 ) -> Bool {
   freshness.maximum_conclusion == claim
 }
 
 fn provider_readiness_fidelity_claim(
-  fidelity: EvidenceFidelity<extdeps.llm.cli_lifecycle.ProviderReadiness>,
+  fidelity: std.claim_evidence.EvidenceFidelity<extdeps.llm.cli_lifecycle.ProviderReadiness>,
   _: ProviderReadinessClaim,
 ) -> Bool {
   match fidelity.boundary {

@@ -35,7 +35,7 @@ data rust_add_missing_translation_rules_target: v2.std.compilers.target_model.Ta
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: rust_add_missing_translation_rules_target,
     emitted: rust_add_emitted_root
@@ -46,8 +46,8 @@ data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_ad
 
 test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -232,11 +232,11 @@ data rust_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.
   }
 }
 
-fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
+fn anchor_rust_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
 }
 
-fn anchor_rust_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
+fn anchor_rust_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: rust_add_inferred_tree,
     mode: v2.compiler.compile.TranslateTo { target: rust_add_poisoned_authority_target_model }
@@ -247,9 +247,9 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -257,8 +257,8 @@ data rust_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutpu
 
 test fn rust_add_compile_inferred_receipt_holds() -> Bool {
   match rust_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

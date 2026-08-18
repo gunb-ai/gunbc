@@ -1,7 +1,7 @@
 module v2.std.inhabitant_neutralization
 
 
-fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn inhabitant_neutralization_std_projection_missing_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_std_projection_missing,
     at: node_locus(node: node),
@@ -9,7 +9,7 @@ fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> v2
   }
 }
 
-fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn inhabitant_neutralization_type_atom_missing_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_type_atom_missing,
     at: node_locus(node: node),
@@ -17,7 +17,7 @@ fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> v2.std.
   }
 }
 
-fn inhabitant_neutralization_surface_spelling_missing_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn inhabitant_neutralization_surface_spelling_missing_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_surface_spelling_missing,
     at: node_locus(node: node),
@@ -45,7 +45,7 @@ fn inhabitant_neutralization_ambiguous_target_diagnostic(
   }
 }
 
-fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
+fn inhabitant_facts_node_from_inhabitant(inhabitant: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   fold(
     node_labeled_child_edges(node: inhabitant),
     init: outcome_rejected(
@@ -53,19 +53,19 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
     ),
     f: fn(acc, edge) {
       match acc {
-        Accepted { value: _, diagnostics: _ } => acc
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           match find_named_child(root: edge.target, name: ^facts_field_std_projection) {
-            Accepted { value: _, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
               v2.std.diagnostic.Accepted { value: edge.target, diagnostics: None }
-            Rejected { diagnostics: _ } => acc
+            v2.std.diagnostic.Rejected { diagnostics: _ } => acc
           }
       }
     }
   )
 }
 
-fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<v2.std.node.Symbol> {
+fn inhabitant_std_projection_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
@@ -86,9 +86,9 @@ fn inhabitant_std_projection_symbol(inhabitant: Node) -> Outcome<v2.std.node.Sym
   )
 }
 
-fn inhabitant_type_atom_symbol(inhabitant: Node) -> Outcome<v2.std.node.Symbol> {
+fn inhabitant_type_atom_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match find_named_child(root: inhabitant, name: ^inhabitant_field_atom) {
-    Accepted { value: atom_node, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
       match node_atom_identity_optional(node: atom_node) {
         Present { value: sym } =>
           v2.std.diagnostic.Accepted { value: sym, diagnostics: None }
@@ -97,19 +97,19 @@ fn inhabitant_type_atom_symbol(inhabitant: Node) -> Outcome<v2.std.node.Symbol> 
             inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
           )
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       outcome_rejected(
         inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
       )
   }
 }
 
-fn inhabitant_surface_spelling_symbol(inhabitant: Node) -> Outcome<v2.std.node.Symbol> {
+fn inhabitant_surface_spelling_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
       match find_named_child(root: facts, name: ^facts_field_surface_spelling) {
-        Accepted { value: atom_node, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
           match node_atom_identity_optional(node: atom_node) {
             Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: None }
@@ -120,7 +120,7 @@ fn inhabitant_surface_spelling_symbol(inhabitant: Node) -> Outcome<v2.std.node.S
                 )
               )
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           outcome_rejected(
             inhabitant_neutralization_surface_spelling_missing_diagnostic(node: inhabitant)
           )
@@ -129,7 +129,7 @@ fn inhabitant_surface_spelling_symbol(inhabitant: Node) -> Outcome<v2.std.node.S
   )
 }
 
-fn inhabitant_width_node(inhabitant: Node) -> Outcome<Node> {
+fn inhabitant_width_node(inhabitant: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: inhabitant_facts_node_from_inhabitant(inhabitant: inhabitant),
     f: fn(facts) {
@@ -138,75 +138,75 @@ fn inhabitant_width_node(inhabitant: Node) -> Outcome<Node> {
   )
 }
 
-fn inhabitant_aligns_with_selection_policy(candidate: Node, selection: Node) -> Bool {
+fn inhabitant_aligns_with_selection_policy(candidate: v2.std.node.Node, selection: v2.std.node.Node) -> Bool {
   match inhabitant_type_atom_symbol(inhabitant: candidate) {
-    Accepted { value: candidate_atom, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: candidate_atom, diagnostics: _ } =>
       match inhabitant_type_atom_symbol(inhabitant: selection) {
-        Accepted { value: selection_atom, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: selection_atom, diagnostics: _ } =>
           if candidate_atom != selection_atom {
             false
           } else {
             match inhabitant_surface_spelling_symbol(inhabitant: candidate) {
-              Accepted { value: candidate_spelling, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: candidate_spelling, diagnostics: _ } =>
                 match inhabitant_surface_spelling_symbol(inhabitant: selection) {
-                  Accepted { value: selection_spelling, diagnostics: _ } =>
+                  v2.std.diagnostic.Accepted { value: selection_spelling, diagnostics: _ } =>
                     if candidate_spelling != selection_spelling {
                       false
                     } else {
                       match inhabitant_width_node(inhabitant: candidate) {
-                        Accepted { value: candidate_width, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: candidate_width, diagnostics: _ } =>
                           match inhabitant_width_node(inhabitant: selection) {
-                            Accepted { value: selection_width, diagnostics: _ } =>
+                            v2.std.diagnostic.Accepted { value: selection_width, diagnostics: _ } =>
                               candidate_width == selection_width
-                            Rejected { diagnostics: _ } => false
+                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
                           }
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
                     }
-                  Rejected { diagnostics: _ } => false
+                  v2.std.diagnostic.Rejected { diagnostics: _ } => false
                 }
-              Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
             }
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn target_inhabitant_selection_policy_fold_step(
-  acc: PassingCandidateFold<Node>,
-  candidate: Node,
+  acc: v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node>,
+  candidate: v2.std.node.Node,
   std_projection: v2.std.node.Symbol,
-  selection_policy: Node
-) -> PassingCandidateFold<Node> {
+  selection_policy: v2.std.node.Node
+) -> v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node> {
   match inhabitant_std_projection_symbol(inhabitant: candidate) {
-    Accepted { value: proj, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: proj, diagnostics: _ } =>
       if (proj == std_projection)
         && inhabitant_aligns_with_selection_policy(
           candidate: candidate,
           selection: selection_policy
         ) {
         match acc {
-          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
-          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
-          ManyPassingCandidates => ManyPassingCandidates
+          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
+          v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
       }
-    Rejected { diagnostics: _ } => acc
+    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
   }
 }
 
 fn target_inhabitant_for_std_projection_with_selection_policy(
   std_projection: v2.std.node.Symbol,
-  inhabitants_root: Node,
-  selection_policy: Node
-) -> Outcome<Node> {
+  inhabitants_root: v2.std.node.Node,
+  selection_policy: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let fold_result = fold(
     inhabitants_root.children,
-    init: NoPassingCandidate,
+    init: v2.std.passing_candidate_fold.NoPassingCandidate,
     f: fn(acc, edge) {
       target_inhabitant_selection_policy_fold_step(
         acc: acc,
@@ -217,13 +217,13 @@ fn target_inhabitant_for_std_projection_with_selection_policy(
     }
   )
   match fold_result {
-    NoPassingCandidate =>
+    v2.std.passing_candidate_fold.NoPassingCandidate =>
       outcome_rejected(
         inhabitant_neutralization_no_target_diagnostic(std_projection: std_projection)
       )
-    OnePassingCandidate { candidate: c } =>
+    v2.std.passing_candidate_fold.OnePassingCandidate { candidate: c } =>
       v2.std.diagnostic.Accepted { value: c, diagnostics: None }
-    ManyPassingCandidates =>
+    v2.std.passing_candidate_fold.ManyPassingCandidates =>
       outcome_rejected(
         inhabitant_neutralization_ambiguous_target_diagnostic(
           std_projection: std_projection
@@ -233,35 +233,35 @@ fn target_inhabitant_for_std_projection_with_selection_policy(
 }
 
 fn target_inhabitant_fold_step(
-  acc: PassingCandidateFold<Node>,
-  candidate: Node,
+  acc: v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node>,
+  candidate: v2.std.node.Node,
   std_projection: v2.std.node.Symbol
-) -> PassingCandidateFold<Node> {
+) -> v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node> {
   match inhabitant_std_projection_symbol(inhabitant: candidate) {
-    Accepted { value: proj, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: proj, diagnostics: _ } =>
       if proj == std_projection {
         match acc {
-          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
-          OnePassingCandidate { candidate: _ } => ManyPassingCandidates
-          ManyPassingCandidates => ManyPassingCandidates
+          v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
+          v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+          v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
       }
-    Rejected { diagnostics: _ } => acc
+    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
   }
 }
 
 fn target_inhabitant_for_std_projection(
   std_projection: v2.std.node.Symbol,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: find_named_child(root: target.bundle, name: ^target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
       let fold_result = fold(
         inhabitants_root.children,
-        init: NoPassingCandidate,
+        init: v2.std.passing_candidate_fold.NoPassingCandidate,
         f: fn(acc, edge) {
           target_inhabitant_fold_step(
             acc: acc,
@@ -271,15 +271,15 @@ fn target_inhabitant_for_std_projection(
         }
       )
       match fold_result {
-        NoPassingCandidate =>
+        v2.std.passing_candidate_fold.NoPassingCandidate =>
           outcome_rejected(
             inhabitant_neutralization_no_target_diagnostic(
               std_projection: std_projection
             )
           )
-        OnePassingCandidate { candidate: c } =>
+        v2.std.passing_candidate_fold.OnePassingCandidate { candidate: c } =>
           v2.std.diagnostic.Accepted { value: c, diagnostics: None }
-        ManyPassingCandidates =>
+        v2.std.passing_candidate_fold.ManyPassingCandidates =>
           bind_outcome(
             o: find_named_child(
               root: target.bundle,
@@ -299,9 +299,9 @@ fn target_inhabitant_for_std_projection(
 }
 
 fn neutralize_inhabitant_node(
-  inhabitant: Node,
+  inhabitant: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: inhabitant_std_projection_symbol(inhabitant: inhabitant),
     f: fn(proj) {
@@ -313,14 +313,14 @@ fn neutralize_inhabitant_node(
 fn neutralize_edges_for_target(
   edges: List<v2.std.node.Edge>,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<List<v2.std.node.Edge>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Edge>> {
   fold(
     edges,
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: None },
     f: fn(acc, edge) {
       match acc {
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: rebuilt_edges, diagnostics: ad } =>
+        v2.std.diagnostic.Accepted { value: rebuilt_edges, diagnostics: ad } =>
           bind_outcome(
             o: neutralize_node_for_target(node: edge.target, target: target),
             f: fn(neutralized_target) {
@@ -339,13 +339,13 @@ fn neutralize_edges_for_target(
 }
 
 fn neutralize_node_for_target(
-  node: Node,
+  node: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match inhabitant_facts_node_from_inhabitant(inhabitant: node) {
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       neutralize_inhabitant_node(inhabitant: node, target: target)
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       bind_outcome(
         o: neutralize_edges_for_target(edges: node.children, target: target),
         f: fn(children) {
@@ -359,8 +359,8 @@ fn neutralize_node_for_target(
 }
 
 fn neutralize_core_for_target(
-  core: Node,
+  core: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   neutralize_node_for_target(node: core, target: target)
 }

@@ -152,16 +152,16 @@ fn ground_residual_reap(obs_list: List<ResidualSlotObservation>) -> Grounding<Re
 }
 
 fn reconcile_residual_reap(
-  read: ShowEffectiveRead<List<ResidualSlotObservation>>,
+  read: std.realization_reconcile.ShowEffectiveRead<List<ResidualSlotObservation>>,
 ) -> Reconciliation<String, ResidualReapEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_reaper.timer",
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: obs_list } =>
+    std.realization_reconcile.ReadObserved { value: obs_list } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_reaper.timer",
         show_read: read,

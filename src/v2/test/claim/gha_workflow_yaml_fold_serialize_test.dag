@@ -7,14 +7,14 @@ fn gha_fold_oracle_job(job: extdeps.github.actions.Job) -> String {
   serialize_yaml(v: job_yaml(job: job))
 }
 
-fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Outcome<String> {
+fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> v2.std.diagnostic.Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
         None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
         Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -25,9 +25,9 @@ fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
       match gha_fold_job_emitted_witness(job: job) {
         Holds { value: emitted } =>
           match target_serialize_source_from_model(target: target, emitted: emitted) {
-            Accepted { value: source, diagnostics: d } =>
+            v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         Violates { diagnostic: _ } => false
       }
@@ -49,8 +49,8 @@ test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
         target: target,
         emitted: gha_fold_job_wrong_production_emitted
       ) {
-        Accepted { value: folded, diagnostics: _ } => folded != oracle
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != oracle
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => true
   }
@@ -64,8 +64,8 @@ test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
         target: target,
         emitted: gha_fold_flat_steps_wrong_emitted
       ) {
-        Accepted { value: folded, diagnostics: _ } => folded != oracle
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != oracle
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => true
   }

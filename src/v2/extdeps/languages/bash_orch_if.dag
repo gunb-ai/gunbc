@@ -72,7 +72,7 @@ fn bash_absolute_parts_text(parts: std.types.FilePathParts) -> String {
   concat("/", bash_relative_parts_text(parts: parts))
 }
 
-fn bash_path_intent_text(path: std.path_intent.PathIntent) -> Outcome<String> {
+fn bash_path_intent_text(path: std.path_intent.PathIntent) -> v2.std.diagnostic.Outcome<String> {
   match path {
     PathRef { name: n } =>
       if !bash_path_ident_ok(name: n as String) {
@@ -100,14 +100,14 @@ fn bash_path_intent_text(path: std.path_intent.PathIntent) -> Outcome<String> {
   }
 }
 
-fn bash_path_operand_quoted_text(path: std.path_intent.PathIntent) -> Outcome<String> {
+fn bash_path_operand_quoted_text(path: std.path_intent.PathIntent) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: bash_path_intent_text(path: path),
     f: fn(text) { outcome_accepted(concat("\"", concat(text, "\""))) }
   )
 }
 
-fn bash_test_path_kind_op(kind: std.filesystem.types.EntryKind) -> Outcome<String> {
+fn bash_test_path_kind_op(kind: std.filesystem.types.EntryKind) -> v2.std.diagnostic.Outcome<String> {
   match kind {
     RegularFile => outcome_accepted("-f ")
     Directory => outcome_accepted("-d ")
@@ -153,7 +153,7 @@ fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<v2.
   )
 }
 
-fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_path_kind_target_model(op: String, operand: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_path_kind_tokens(),
@@ -184,7 +184,7 @@ fn bash_path_intent_invalid_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   match predicate {
     PathNonempty { path: p } =>
       bind_outcome(
@@ -261,7 +261,7 @@ fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) ->
   }
 }
 
-fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   match ascent.path {
     PathRef { name: n } =>
       if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
@@ -359,7 +359,7 @@ fn bash_stmt_if_else_binding_spellings(
   )
 }
 
-fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_if_else_tokens(),
@@ -426,7 +426,7 @@ fn bash_stmt_if_else_block_translation_rules_node() -> Node {
   )
 }
 
-fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_if_else_block_tokens(),
@@ -495,7 +495,7 @@ fn bash_test_str_eq_binding_spellings(lhs: String, rhs: String) -> Map<v2.std.no
   )
 }
 
-fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_eq_tokens(),
@@ -556,7 +556,7 @@ fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<v2.st
   )
 }
 
-fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_not_eq_tokens(),
@@ -611,7 +611,7 @@ fn bash_test_str_empty_binding_spellings(operand: String) -> Map<v2.std.node.Sym
   map_insert(empty_map(), ^bash_test_str_empty_operand, operand)
 }
 
-fn bash_test_str_empty_target_model(operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_str_empty_target_model(operand: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_empty_tokens(),
@@ -666,7 +666,7 @@ fn bash_test_str_nonempty_binding_spellings(operand: String) -> Map<v2.std.node.
   map_insert(empty_map(), ^bash_test_str_nonempty_operand, operand)
 }
 
-fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_str_nonempty_target_model(operand: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_nonempty_tokens(),
@@ -725,7 +725,7 @@ fn bash_log_matches_grep_binding_spellings(pattern: String, source: String) -> M
   )
 }
 
-fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_log_matches_grep_target_model(pattern: String, source: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_log_matches_grep_tokens(),
@@ -778,7 +778,7 @@ fn bash_stmt_or_ignore_fail_binding_spellings(stmt: String) -> Map<v2.std.node.S
   map_insert(empty_map(), ^bash_stmt_or_ignore_fail_stmt, stmt)
 }
 
-fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_or_ignore_fail_tokens(),
@@ -801,19 +801,19 @@ fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<v2.std.compile
   )
 }
 
-fn orch_if_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn orch_if_target_model(cond: String, body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_target_model(cond: cond, body: body)
 }
 
-fn orch_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn orch_if_else_target_model(cond: String, then_body: String, else_body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_else_target_model(cond: cond, then_body: then_body, else_body: else_body)
 }
 
-fn orch_if_block_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn orch_if_block_target_model(cond: String, body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_block_target_model(cond: cond, body: body)
 }
 
-fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_else_block_target_model(cond: cond, then_body: then_body, else_body: else_body)
 }
 
@@ -855,7 +855,7 @@ fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<v2.std.n
   )
 }
 
-fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_stmt_while_target_model(cond: String, body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_while_tokens(),
@@ -878,7 +878,7 @@ fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<v2.std.co
   )
 }
 
-fn orch_while_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn orch_while_target_model(cond: String, body: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_while_target_model(cond: cond, body: body)
 }
 
@@ -920,7 +920,7 @@ fn bash_test_int_ne_binding_spellings(lhs: String, rhs: String) -> Map<v2.std.no
   )
 }
 
-fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_int_ne_tokens(),
@@ -965,12 +965,12 @@ fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncest
   match bash_path_predicate_target_model(
     predicate: nearest_ancestor_while_predicate(spec: spec)
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -978,11 +978,11 @@ fn bash_nearest_ancestor_locate_body_command(spec: std.path_intent.NearestAncest
   match bash_dirname_ascent_target_model(
     ascent: nearest_ancestor_while_ascent(spec: spec)
   ) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }

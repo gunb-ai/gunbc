@@ -8,7 +8,7 @@ type UseRelation
   | RequiresResolutionWitness
 
 type UseClassificationFact {
-  uses: List<ClassifiedDependencyView<UseRelation>>
+  uses: List<v2.std.dependency.ClassifiedDependencyView<UseRelation>>
 }
 
 type UnusedParameterFact {
@@ -39,7 +39,7 @@ fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRela
   }
 }
 
-fn use_classify(view: v2.std.dependency.DependencyView) -> ClassifiedDependencyView<UseRelation> {
+fn use_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.ClassifiedDependencyView<UseRelation> {
 
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
@@ -67,7 +67,7 @@ fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
   }
 }
 
-fn declaration_has_use_or_unresolved(uses: List<ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
+fn declaration_has_use_or_unresolved(uses: List<v2.std.dependency.ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
   fold(uses, init: false, f: fn(acc, classified) {
     if acc {
       acc
@@ -142,8 +142,8 @@ fn use_relation_eq(a: UseRelation, b: UseRelation) -> Bool {
 }
 
 fn use_classification_classified_eq(
-  a: ClassifiedDependencyView<UseRelation>,
-  b: ClassifiedDependencyView<UseRelation>
+  a: v2.std.dependency.ClassifiedDependencyView<UseRelation>,
+  b: v2.std.dependency.ClassifiedDependencyView<UseRelation>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: use_relation_eq)
 }

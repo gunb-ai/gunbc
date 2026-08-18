@@ -2,7 +2,7 @@ module v2.lens.parallelism
 
 
 type ParallelismFact {
-  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>>
 }
 
 fn parallelism_relation_for_view(
@@ -78,7 +78,7 @@ fn parallelism_relation_for_policy(
 fn parallelism_classify(
   tree: v2.compiler.infer.InferredTree,
   view: v2.std.dependency.DependencyView
-) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation> {
+) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation> {
   v2.std.dependency.ClassifiedDependencyView {
     dependency: view,
     classification: parallelism_relation_for_view(tree: tree, view: view)
@@ -157,8 +157,8 @@ fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRe
 }
 
 fn parallelism_classified_eq(
-  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>,
-  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>
+  a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>,
+  b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
 }

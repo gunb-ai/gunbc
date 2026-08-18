@@ -3,7 +3,7 @@ module v2.test.manual.emit_ingest_same_language_row_fold
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
+fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> v2.std.diagnostic.Outcome<Node> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -38,7 +38,7 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
   }
 }
 
-fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.node.Symbol>> {
+fn emit_ingest_fold_row_token_spine_classes(row: Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -59,33 +59,33 @@ fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.no
   )
 }
 
-fn emit_ingest_fold_row_emitted(row: Node) -> Outcome<Node> {
+fn emit_ingest_fold_row_emitted(row: Node) -> v2.std.diagnostic.Outcome<Node> {
   find_named_child(root: row, name: ^grammar_relation_field_emitted)
 }
 
 fn emit_ingest_fold_row_selector_bijectivity_holds(row: Node, rules: Node) -> Bool {
   match emit_ingest_fold_row_emitted(row: row) {
-    Accepted { value: emitted, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
-        Accepted { value: selected_row, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: selected_row, diagnostics: _ } =>
           selected_row == row
             && match emit_ingest_fold_row_token_spine_classes(row: row) {
-              Accepted { value: frontier, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
                 match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-                  Accepted { value: recovered, diagnostics: _ } =>
+                  v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
                     recovered == emitted
                       && match grammar_relation_row_for_emitted(rules: rules, emitted: recovered) {
-                        Accepted { value: roundtrip_row, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: roundtrip_row, diagnostics: _ } =>
                           roundtrip_row == row
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                  Rejected { diagnostics: _ } => false
+                  v2.std.diagnostic.Rejected { diagnostics: _ } => false
                 }
-              Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
             }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -132,8 +132,8 @@ fn emit_ingest_fold_perturbed_dag_row() -> Node {
     row: emit_ingest_fold_dag_add_row(),
     emitted: python_emitted_add_fn_node()
   ) {
-    Accepted { value: perturbed, diagnostics: _ } => perturbed
-    Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
+    v2.std.diagnostic.Accepted { value: perturbed, diagnostics: _ } => perturbed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
   }
 }
 
@@ -142,8 +142,8 @@ fn emit_ingest_fold_perturbed_python_row() -> Node {
     row: emit_ingest_fold_python_add_row(),
     emitted: dag_fixture_emitted_add_fn
   ) {
-    Accepted { value: perturbed, diagnostics: _ } => perturbed
-    Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()
+    v2.std.diagnostic.Accepted { value: perturbed, diagnostics: _ } => perturbed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()
   }
 }
 

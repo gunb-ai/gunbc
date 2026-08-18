@@ -86,7 +86,7 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  cost: CostAccount<std.measure.Nano>
+  cost: std.realization_schedule.CostAccount<std.measure.Nano>
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
@@ -138,7 +138,7 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> std.ve
   )
 }
 
-fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<std.measure.Nano> {
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> std.realization_schedule.CostAccount<std.measure.Nano> {
   cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
     space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))

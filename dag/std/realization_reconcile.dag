@@ -56,7 +56,7 @@ fn reconciliation_converged<A, E>(r: Reconciliation<A, E>) -> Bool {
 
 fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
   grounding: Grounding<E>,
-  durability: StateDurabilityVerdict<Target, ReadbackSubject>,
+  durability: std.state_durability.StateDurabilityVerdict<Target, ReadbackSubject>,
 ) -> DurabilityQualifiedGrounding<E, Target, ReadbackSubject> {
   match grounding {
     DoesNotGround { reason: reason } =>
@@ -65,12 +65,12 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
       }
     Grounds { evidence: evidence } =>
       match durability {
-        StateDurabilityQualified { qualification: qualification } =>
+        std.state_durability.StateDurabilityQualified { qualification: qualification } =>
           DurabilityGrounds {
             effective_state_evidence: evidence,
             durability_evidence: qualification,
           }
-        StateDurabilityRefused { cause: cause } =>
+        std.state_durability.StateDurabilityRefused { cause: cause } =>
           DurabilityDoesNotGround {
             cause: DeclaredLifetimeDoesNotGround { cause: cause },
           }
