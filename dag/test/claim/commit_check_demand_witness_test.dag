@@ -113,8 +113,8 @@ fn check_is_file_grain_witness(check: CommitCheckKind) -> Bool {
 fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
   [
     complete_discovery(
-      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
-      module_path: "v2.test.execution.bind_eval_by_execution",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
+      module_path: "v2.test.long.bind_eval_by_execution",
       declaration_names: [
         "bind_source_pipeline_admits_holds",
         "bind_source_driven_executes_holds",
@@ -127,8 +127,8 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       ]
     ),
     complete_discovery(
-      entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
-      module_path: "v2.test.execution.loop_eval_by_execution",
+      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
+      module_path: "v2.test.long.loop_eval_by_execution",
       declaration_names: [
         "loop_source_pipeline_admits_holds",
         "loop_source_driven_executes_holds",
