@@ -98,6 +98,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: [],
   ) {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
@@ -226,6 +227,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 host: observed_host,
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
+                observed_spark: [],
               ) {
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
@@ -233,6 +235,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_baseline_hex: trim(s: read_base.content),
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
+                observed_spark: [],
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(

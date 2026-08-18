@@ -243,13 +243,21 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
       SparkServingPlanArtifactRefused {
         cause: join(["plan-refused observation ", why], ""),
       }
-    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed } =>
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, linger_observed: linger_observed, observed_members: observed_members } =>
       if !unit_observed {
         SparkServingPlanArtifactRefused {
           cause: join([
             "plan-refused unit-unobserved host=", host as String,
             ": the unit member was not observed, and planning it as an addition against an",
             " unobserved state would write it on every run while no replan could ever be empty",
+          ], ""),
+        }
+      } else if !linger_observed {
+        SparkServingPlanArtifactRefused {
+          cause: join([
+            "plan-refused linger-unobserved host=", host as String,
+            ": an unobserved linger is indistinguishable from a disabled one on the member list,",
+            " so planning against it would select the privileged enable-linger effect off a failed probe",
           ], ""),
         }
       } else {
@@ -266,6 +274,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
               observed_caps: observed_caps,
               spark_plan: full_plan,
               spark_rows: spark_rows,
+              observed_spark: observed_members,
             ) {
               Absent =>
                 SparkServingPlanArtifactRefused {
@@ -286,11 +295,13 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   observed_caps: List<CapMember>,
   spark_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
   spark_rows: List<FleetConvergeSparkServingTypedAction>,
+  observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     )
     let timer_plan = timer_retirement_plan(observed: observed_timers)
     let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -301,6 +312,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     )
     let planned_generation = prior_generation + 1
     let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: spark_rows)
@@ -393,7 +405,7 @@ fn spark_serving_full_membership_plan(
   match projection {
     SparkServingObservedMembersRefused { cause: cause } =>
       SparkServingFullMembershipPlanRefused { cause: cause }
-    SparkServingObservedMembers { members: observed, unit_observed: unit_observed } =>
+    SparkServingObservedMembers { members: observed, unit_observed: unit_observed, linger_observed: linger_observed } =>
       SparkServingFullMembershipPlanReady {
         plan: spark_serving_membership_reconcile(
           desired: spark_serving_desired_members(
@@ -403,10 +415,12 @@ fn spark_serving_full_membership_plan(
           observed: observed,
         ),
         unit_observed: unit_observed,
+        linger_observed: linger_observed,
+        observed_members: observed,
       }
   }
 }
 
 type SparkServingFullMembershipPlan
-  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool }
+  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool, linger_observed: Bool, observed_members: List<SparkServingMember> }
   | SparkServingFullMembershipPlanRefused { cause: String }

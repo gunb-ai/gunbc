@@ -85,7 +85,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, unit_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, unit_observed: Bool, linger_observed: Bool }
   | SparkServingObservedMembersRefused { cause: String }
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -164,6 +164,7 @@ fn spark_serving_observed_members(
           spark_serving_observed_linger_members(host: h, linger: linger),
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
       }
     SparkServingObserved { host: h, loaded_release: loaded } =>
       SparkServingObservedMembers {
@@ -190,7 +191,25 @@ fn spark_serving_observed_members(
           ),
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
       }
+  }
+}
+
+// AN UNOBSERVED LINGER IS NOT A DISABLED LINGER. Both project to the empty member list -- absence is
+// what makes reconcile plan a change -- so on the members alone the two are indistinguishable, and a
+// FAILED probe would select the privileged enable-linger effect. That is the empty-observation
+// narrow selecting an actuation, which is worse than the merely-uncovered form: the remedy for
+// "linger is off" is to enable it, and the remedy for "we could not ask" is to stop.
+//
+// The completeness fact therefore travels beside the members exactly as the unit's does, and the
+// consumer refuses on it. It is NOT repaired by filtering the member list, because a projection that
+// dropped the member would still be reporting a population it could not vouch for.
+fn spark_serving_linger_state_was_observed(linger: SparkServingObservedLingerState) -> Bool {
+  match linger {
+    LingerObservedEnabled => true
+    LingerObservedDisabled => true
+    LingerUnobservedState => false
   }
 }
 
@@ -210,7 +229,7 @@ fn spark_serving_projection_supports_empty_replan(
 ) -> Bool {
   match projection {
     SparkServingObservedMembersRefused { cause: _ } => false
-    SparkServingObservedMembers { members: _, unit_observed: observed } => observed
+    SparkServingObservedMembers { members: _, unit_observed: observed, linger_observed: linger_seen } => observed && linger_seen
   }
 }
 

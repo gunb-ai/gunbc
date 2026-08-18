@@ -81,14 +81,14 @@ fn project(
 fn observed_count(p: SparkServingObservedMemberProjection) -> Int {
   match p {
     SparkServingObservedMembersRefused { cause: _ } => 0 - 1
-    SparkServingObservedMembers { members: ms, unit_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, unit_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
 fn plan_writes(p: SparkServingFullMembershipPlan) -> Int {
   match p {
     SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
-    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, linger_observed: _, observed_members: _ } =>
       membership_write_count(plan: plan)
   }
 }
@@ -195,7 +195,7 @@ test fn a_refused_observation_refuses_the_projection() -> Bool {
     linger: LingerUnobservedState,
   ) {
     SparkServingObservedMembersRefused { cause: _ } => true
-    SparkServingObservedMembers { members: _, unit_observed: _ } => false
+    SparkServingObservedMembers { members: _, unit_observed: _, linger_observed: _ } => false
   }
 }
 
@@ -216,7 +216,7 @@ test fn the_projection_refusal_names_the_host() -> Bool {
   ) {
     SparkServingObservedMembersRefused { cause: c } =>
       string_contains(c, "srv6") && string_contains(c, "ssh unreachable")
-    SparkServingObservedMembers { members: _, unit_observed: _ } => false
+    SparkServingObservedMembers { members: _, unit_observed: _, linger_observed: _ } => false
   }
 }
 
@@ -308,7 +308,7 @@ test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
         projection: observed_exactly_desired(r: r),
       ) {
         SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed } =>
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 0 && observed
       }
   }
@@ -346,7 +346,7 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         ),
       ) {
         SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 1
       }
   }
@@ -504,4 +504,47 @@ test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
     ),
   )
   unobserved != unreached && unreached != wrong_host && unobserved != wrong_host
+}
+
+// AN UNOBSERVED LINGER REFUSES, and is a DIFFERENT cause than an unobserved unit. Both project to
+// nothing on the member list, so the plan cannot tell them apart from the members alone -- and the
+// linger case is the dangerous one, because the effect it would select is privileged. A failed probe
+// must stop the plan, not authorize an enable-linger.
+test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      string_contains(
+        artifact_refusal_cause(
+          v: artifact_verdict(
+            host: subject_host,
+            projection: project(
+              obs: SparkServingObserved { host: subject_host, loaded_release: r },
+              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+              linger: LingerUnobservedState,
+            ),
+          ),
+        ),
+        "linger-unobserved",
+      )
+  }
+}
+
+// And a DISABLED linger does not refuse -- it plans. Without this the claim above would also pass if
+// linger observation were broken outright, which is the failure it is meant to exclude.
+test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(
+        v: artifact_verdict(
+          host: subject_host,
+          projection: project(
+            obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            linger: LingerObservedDisabled,
+          ),
+        ),
+      ) == 1
+  }
 }

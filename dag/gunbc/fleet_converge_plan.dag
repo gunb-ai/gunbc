@@ -69,7 +69,7 @@ import gunbc.spark_serving_membership {
   spark_serving_member_key,
 }
 import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
-import gunbc.remote_operation { RemoteOperation, remote_operation_label }
+import gunbc.remote_operation { RemoteOperation, remote_operation_label, remote_operations_wire }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -99,6 +99,7 @@ fn fleet_converge_plan_subject(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -106,6 +107,7 @@ fn fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ),
   }
 }
@@ -114,12 +116,14 @@ fn fleet_converge_member_set_fingerprint(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ) as NonEmptyStr,
   )
 }
@@ -129,6 +133,7 @@ fn fleet_converge_apply_subject_admits(
   observed_host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   planned_subject.host == observed_host
     && compare_content_hash(
@@ -137,6 +142,7 @@ fn fleet_converge_apply_subject_admits(
         host: observed_host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) == ContentHashEqual
 }
@@ -168,6 +174,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
@@ -175,6 +182,7 @@ fn fleet_converge_member_set_fingerprint_matches(
         host: host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) as String
   )
@@ -303,16 +311,36 @@ fn fleet_converge_desired_caps() -> List<CapMember> {
   ]
 }
 
+// THE OBSERVED SPARK POPULATION IS PART OF THE COMPARE-AND-SWAP BASELINE.
+//
+// It was not, and the consequence was specific rather than theoretical: the baseline fingerprinted
+// host, timers and caps only, so a Spark member could change between plan and apply -- a model
+// replaced, a unit rewritten, linger turned off -- WITHOUT invalidating the approved plan. The lease
+// would still admit, and apply would execute operations planned against a state that no longer held.
+//
+// Freezing the operations (above) closed the other half of that: apply executes exactly what plan
+// admitted. This closes the half the freeze cannot reach, because a frozen operation is only as
+// good as the baseline it was planned against. Each member contributes its ADDRESS and its
+// state_digest -- the address alone would let a value change without moving the fingerprint, which
+// is precisely the drift being guarded.
 fn observed_baseline_text(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> String {
   join(
     concat(
-      [concat("host:", host as String)],
-      map(observed_timers, m => concat("timer:", m.unit_name as String)),
-      map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+      concat(
+        [concat("host:", host as String)],
+        map(observed_timers, m => concat("timer:", m.unit_name as String)),
+      ),
+      concat(
+        map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+        map(observed_spark, m => concat(
+          "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+        )),
+      ),
     ),
     "\n",
   )
@@ -389,6 +417,8 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
       spark_serving_member_key(member: member),
       " effects=",
       join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      " ops=",
+      remote_operations_wire(operations: row.operations),
     ],
     "",
   )
@@ -692,11 +722,13 @@ fn fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -706,6 +738,7 @@ fn fleet_converge_plan_artifact(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let planned_generation = prior_generation + 1
   let body = join(
@@ -780,11 +813,13 @@ fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex

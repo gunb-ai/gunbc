@@ -21,7 +21,19 @@ import gunbc.remote_operation {
   remote_operation_count,
   remote_operation_file_write_count,
   remote_operations_argv_only,
+  remote_operation_label,
+  remote_operation_wire,
+  remote_operations_wire,
 }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite,
+}
+import std.types { NonEmptyStr }
+import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.file_access { FileTreeScope }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
 
@@ -170,4 +182,56 @@ test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
         && length(remote_operations_argv_only(operations: ops)) == 1
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
+}
+
+// ── The frozen operations are inside the hash, not merely inside the row ─────────────────────────
+
+// THE DEFECT THIS CLOSES, and it was mine. Freezing the operations into the typed row stopped apply
+// from re-deriving the unit bytes -- but the row's wire serialized kind, member key and EFFECT NAMES
+// only, and the bundle hash is computed over that wire. So the bytes were frozen and unverified: an
+// artifact whose unit content had been swapped wholesale still hashed identically and still admitted.
+// I claimed the hash covered the bytes when it did not. It does now, and this is what says so.
+//
+// Two operations differing ONLY in content must produce different wires. Same path, same mode, same
+// kind, same count -- so nothing but the bytes can be doing the work.
+test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
+  match typed_remote_file_write_seal(
+    path: spark_serving_user_unit_path(),
+    content: "[Unit]\nDescription=A\n",
+    allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmitted { write: a } =>
+      match typed_remote_file_write_seal(
+        path: spark_serving_user_unit_path(),
+        content: "[Unit]\nDescription=B\n",
+        allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+      ) {
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+        TypedRemoteFileWriteAdmitted { write: b } =>
+          remote_operation_wire(operation: RemoteFileBytes { write: a, mode: RemoteFileModeOwnerReadWrite })
+            != remote_operation_wire(operation: RemoteFileBytes { write: b, mode: RemoteFileModeOwnerReadWrite })
+            && remote_operation_label(operation: RemoteFileBytes { write: a, mode: RemoteFileModeOwnerReadWrite })
+              == remote_operation_label(operation: RemoteFileBytes { write: b, mode: RemoteFileModeOwnerReadWrite })
+      }
+  }
+}
+
+// And the LABEL does not discriminate them -- which is the whole reason the wire had to exist rather
+// than reusing the human rendering. This is asserted directly above; stated separately so a reader
+// sees that the label collapsing is intentional, not a second bug.
+test fn the_wire_discriminates_where_the_label_does_not() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      string_contains(remote_operations_wire(operations: ops), "content=")
+        && string_contains(remote_operations_wire(operations: ops), "mode=600")
+  }
+}
+
+// An argv operation's words are in the wire too. Without this, freezing an argv and swapping its
+// words would be the same silent hole one kind over.
+test fn an_argv_operations_words_are_in_its_wire() -> Bool {
+  remote_operation_wire(operation: RemoteArgv { argv: ["mkdir", "-p", "/a"] })
+    != remote_operation_wire(operation: RemoteArgv { argv: ["mkdir", "-p", "/b"] })
 }

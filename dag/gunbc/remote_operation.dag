@@ -1,7 +1,8 @@
 module gunbc.remote_operation
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
-import gunbc.typed_remote_file_write { TypedRemoteFileWrite, RemoteFileMode }
+import gunbc.typed_remote_file_write { TypedRemoteFileWrite, RemoteFileMode, remote_file_mode_octal }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 
 // WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
 //
@@ -77,4 +78,34 @@ fn remote_operation_file_write_count(operations: List<RemoteOperation>) -> Int {
       RemoteArgv { argv: _ } => []
     }
   ))
+}
+
+// THE WIRE THE PLAN BUNDLE HASH COVERS.
+//
+// `remote_operation_label` is for humans and is NOT this: it renders a file write as
+// "write-file <path>", which names the path and says nothing about the bytes -- so a hash over
+// labels would admit an artifact whose unit content had been swapped wholesale.
+//
+// Freezing the operations into the row stopped apply from RE-DERIVING them, which is a different
+// property from the bundle covering them: a frozen value outside the hash is still frozen, and
+// still unverified. This closes the second half. The content enters as its own identity rather
+// than inline, because the wire is a fingerprint input and a multi-kilobyte unit file pasted into
+// it would make every downstream comparison carry the payload for no additional discrimination.
+fn remote_operation_wire(operation: RemoteOperation) -> String {
+  match operation {
+    RemoteArgv { argv: words } => join(["argv[", join(words, "\u{1f}"), "]"], "")
+    RemoteFileBytes { write: w, mode: m } =>
+      join([
+        "file[", w.path as String,
+        " mode=", remote_file_mode_octal(mode: m),
+        " content=", serialize_content_hash(
+          hash: content_hash_of_value(value: join(["unit-content:", w.content], "") as NonEmptyStr),
+        ) as String,
+        "]",
+      ], "")
+  }
+}
+
+fn remote_operations_wire(operations: List<RemoteOperation>) -> String {
+  join(map(operations, o => remote_operation_wire(operation: o)), "|")
 }
