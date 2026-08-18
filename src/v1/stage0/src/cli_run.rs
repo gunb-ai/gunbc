@@ -29822,11 +29822,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -38736,12 +38736,22 @@ pub fn claim_scope_for(
     // produced it are read off ONE field. Deriving the population from the authored module node
     // while deriving the closure from `func_env` would be two spellings of a module identity,
     // and a scope whose members disagree with its own closure is the defect one level up.
-    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+    //
+    // ORDERED BY PRECEDENCE, not `prepared.graph.modules` iteration — `build_scope_indexes`
+    // walks this list to populate bare `fn_nodes`, and last-write-wins over the wrong order
+    // let a transitively-reached homonym steal the entry module's bare name (measured:
+    // `refusal_is` in five witness modules; scoped floor bound the wrong one and reported
+    // non-exhaustive match on `DuplicateComponentIdentity`).
+    let scoped_module_by_name: HashMap<String, Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
-        .cloned()
+        .map(|m| (m.func_env.name.clone(), m.clone()))
+        .collect();
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
+        .iter()
+        .filter_map(|module_name| scoped_module_by_name.get(module_name).cloned())
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
     // module's own registry rather than filtering the global one on `ItemInfo.module_name`.

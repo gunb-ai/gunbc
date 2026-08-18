@@ -2001,7 +2001,14 @@ impl InterpContext {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    fn_nodes.insert(name.clone(), item.clone());
+                    // Bare names collide across modules; the population order is precedence
+                    // (entry module first, then import closure, then reference closure). First
+                    // write wins here to match `claim_scope_for`'s item_registry union — a
+                    // later module must not overwrite the entry's own `refusal_is` with another
+                    // witness module's homonym.
+                    if !fn_nodes.contains_key(&name) {
+                        fn_nodes.insert(name.clone(), item.clone());
+                    }
                     if !module_path.is_empty() {
                         let qualified = format!("{}.{}", module_path, name);
                         fn_nodes.insert(qualified.clone(), item.clone());
