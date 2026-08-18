@@ -184,7 +184,7 @@ type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 type IntentId     = NonEmptyStr where brand("IntentId")
 type IssueId      = NonEmptyStr where brand("IssueId")
-type RunKey       = NonEmptyStr where brand("RunKey")
+type RunKey       = std.types.NonEmptyStr where brand("RunKey")
 type ArtifactId   = NonEmptyStr where brand("ArtifactId")
 type LeaseToken   = NonEmptyStr where brand("LeaseToken")
 type WorkerId     = NonEmptyStr where brand("WorkerId")
