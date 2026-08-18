@@ -35,9 +35,22 @@ data spark_serving_membership_authority_note: String = "Member-grain membership 
 
 data spark_serving_primary_model_slot: NonEmptyStr = "primary" as NonEmptyStr
 
+// ENABLEMENT IS ITS OWN RESOURCE, NOT A PREFIX ON THE CONTENT DIGEST.
+//
+// The unit member carried ONE digest and enablement was folded into it by prefixing the bytes --
+// `join(["disabled:", read_stdout])`. That is a product (content x enablement) collapsed into a
+// scalar, and the collapse produced a wrong REMEDY, not merely an imprecise report: byte-perfect
+// content that happened to be disabled hashed differently, read as content drift, and selected
+// WriteUserUnitFile plus a manager reload -- rewriting a correct file in order to enable it.
+//
+// Two addresses, because they are two resources with two remediations. Content drift writes the
+// file; enablement drift enables the unit; and a host needing only the second no longer pays for
+// the first. The minimal effect set falls out of modeling the subjects separately rather than being
+// computed by a rule on top of a fused value.
 type SparkServingResourceAddress
   = SparkServingRuntimeRootAddress
   | SparkServingUserUnitAddress
+  | SparkServingUserUnitEnablementAddress
   | SparkServingModelSlotAddress { slot: NonEmptyStr }
   | SparkServingLingerAddress
 
@@ -61,6 +74,8 @@ fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> 
     SparkServingRuntimeRootAddress => "runtime-root"
     SparkServingUserUnitAddress =>
       join(["user-unit:", spark_serving_unit_name], "")
+    SparkServingUserUnitEnablementAddress =>
+      join(["user-unit-enablement:", spark_serving_unit_name], "")
     SparkServingModelSlotAddress { slot: slot } =>
       join(["model-slot:", slot as String], "")
     SparkServingLingerAddress => "linger"
@@ -98,6 +113,19 @@ fn spark_serving_serving_principal() -> NonEmptyStr {
 // would put the two sides in different identity domains, so a converged host could never match.
 fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
   spark_serving_desired_user_unit_content_identity()
+}
+
+// The DESIRED enablement is a constant, because the model declares the unit must survive a reboot.
+// It is a member value rather than a Bool on the unit member so that reconcile answers the question
+// -- an enablement mismatch is a MemberChanged at this address, selecting only the enable effect.
+data spark_serving_user_unit_enabled_state: NonEmptyStr = "user-unit-enabled" as NonEmptyStr
+
+data spark_serving_user_unit_disabled_state: NonEmptyStr = "user-unit-disabled" as NonEmptyStr
+
+data spark_serving_user_unit_not_registered_state: NonEmptyStr = "user-unit-not-registered" as NonEmptyStr
+
+fn spark_serving_user_unit_enabled_state_digest() -> NonEmptyStr {
+  spark_serving_user_unit_enabled_state
 }
 
 type ExecutorLingerEnabled {}
@@ -187,6 +215,13 @@ fn spark_serving_desired_members(
       principal: principal,
       address: SparkServingUserUnitAddress,
       state_digest: spark_serving_user_unit_state_digest(),
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      principal: principal,
+      address: SparkServingUserUnitEnablementAddress,
+      state_digest: spark_serving_user_unit_enabled_state_digest(),
       ownership: Owned,
     ),
     spark_serving_member(

@@ -146,6 +146,7 @@ fn spark_serving_observed_unit_members(
 fn spark_serving_observed_members(
   observation: SparkServingObservation,
   unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   match observation {
@@ -160,7 +161,10 @@ fn spark_serving_observed_members(
     SparkServingAbsent { host: h } =>
       SparkServingObservedMembers {
         members: concat(
-          spark_serving_observed_unit_members(host: h, unit: unit),
+          concat(
+            spark_serving_observed_unit_members(host: h, unit: unit),
+            spark_serving_observed_unit_enablement_members(host: h, unit: unit, enablement: enablement),
+          ),
           spark_serving_observed_linger_members(host: h, linger: linger),
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
@@ -186,7 +190,10 @@ fn spark_serving_observed_members(
             ),
           ],
           concat(
-            spark_serving_observed_unit_members(host: h, unit: unit),
+            concat(
+              spark_serving_observed_unit_members(host: h, unit: unit),
+              spark_serving_observed_unit_enablement_members(host: h, unit: unit, enablement: enablement),
+            ),
             spark_serving_observed_linger_members(host: h, linger: linger),
           ),
         ),
@@ -298,18 +305,65 @@ fn classify_observed_user_unit(
         }
       UserUnitDisabled =>
         UserUnitStateObserved {
-          unit_state_digest: spark_serving_user_unit_content_identity(
-            bytes: join(["disabled:", read_stdout], ""),
-          ),
+          unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
         }
       UserUnitEnablementNotFound =>
         UserUnitStateObserved {
-          unit_state_digest: spark_serving_user_unit_content_identity(
-            bytes: join(["not-registered:", read_stdout], ""),
-          ),
+          unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
         }
     }
   } else {
     if file_absent { UserUnitStateAbsent } else { UserUnitStateUnobserved }
+  }
+}
+
+// THE ENABLEMENT MEMBER, projected from the same probe but as its own fact.
+//
+// The content identity above is now identity-of-bytes on both sides with nothing folded in, so
+// exact bytes match exact bytes whatever the enablement. Enablement answers separately here, and a
+// disabled-but-correct unit therefore plans EnableUserUnit alone rather than a rewrite plus reload.
+//
+// Unobserved projects to no member at all, exactly as the other unobserved states do: absence from
+// the observed list is what makes reconcile plan a change, so a member nobody measured must not
+// appear -- and the projection's completeness bit is what stops that absence being read as drift.
+fn spark_serving_observed_unit_enablement_members(
+  host: HostIdentity,
+  unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitEnablement,
+) -> List<SparkServingMember> {
+  match unit {
+    UserUnitStateUnobserved => []
+    UserUnitStateAbsent => []
+    UserUnitStateObserved { unit_state_digest: _ } =>
+      match enablement {
+        UserUnitEnablementUnobserved => []
+        UserUnitEnabled => [
+          spark_serving_member(
+            host: host,
+            principal: spark_serving_serving_principal(),
+            address: SparkServingUserUnitEnablementAddress,
+            state_digest: spark_serving_user_unit_enabled_state,
+            ownership: Owned,
+          ),
+        ]
+        UserUnitDisabled => [
+          spark_serving_member(
+            host: host,
+            principal: spark_serving_serving_principal(),
+            address: SparkServingUserUnitEnablementAddress,
+            state_digest: spark_serving_user_unit_disabled_state,
+            ownership: Owned,
+          ),
+        ]
+        UserUnitEnablementNotFound => [
+          spark_serving_member(
+            host: host,
+            principal: spark_serving_serving_principal(),
+            address: SparkServingUserUnitEnablementAddress,
+            state_digest: spark_serving_user_unit_not_registered_state,
+            ownership: Owned,
+          ),
+        ]
+      }
   }
 }

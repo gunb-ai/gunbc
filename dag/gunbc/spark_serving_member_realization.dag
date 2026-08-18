@@ -14,6 +14,7 @@ import gunbc.spark_serving_membership {
   SparkServingResourceAddress,
   SparkServingRuntimeRootAddress,
   SparkServingUserUnitAddress,
+  SparkServingUserUnitEnablementAddress,
   SparkServingModelSlotAddress,
   SparkServingLingerAddress,
 }
@@ -37,6 +38,7 @@ fn spark_serving_install_effects_for_address(address: SparkServingResourceAddres
   match address {
     SparkServingRuntimeRootAddress => [InstallOwnedRuntimeClosure]
     SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
+    SparkServingUserUnitEnablementAddress => [EnableUserUnit]
     SparkServingModelSlotAddress { slot: _ } => [PullModelArtifact]
     SparkServingLingerAddress => [EnableLingerForOwnAccount]
   }
