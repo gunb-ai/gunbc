@@ -837,3 +837,69 @@ references. `v2.std.node` is load-bearing under DESIGN, so the migration
 that would delete the facade and repoint its 22 consumers onto the single
 authority is correct work under section 3 regardless of the overflow -- but
 it is not to be performed as a guess against an unverified causal claim.
+
+## The overflow: located, and it falsifies a premise the code states (2026-08-18)
+
+`peel_alias_once_for_field_access` recursed 20,001 deep while every other
+recursion in the phase stayed at 54 or below:
+
+```
+[depth] REFUSED peel_alias_once_for_field_access exceeded 20000
+[depth]   max  20001 peel_alias_once_for_field_access
+[depth]   max     54 collect_explicit_return_values
+[depth]   max     33 classify_body_provenance
+[depth]   max     15 annotate_descent
+[depth]   max      2 classify_argument
+```
+
+That ratio is the whole answer: a cycle, not deep structure. The chain trace
+names it:
+
+```
+[peel] depth=41..59 module=test.claim.shared_pool_encoding_control in=List out=List
+```
+
+**The premise the guard rests on is written down, and this branch falsifies
+it.** `peel_alias_fixpoint_guard_note` in `src/v1/04_infer.dag` records that a
+prior session measured this exact function spinning 3M+ iterations on
+`List`, added the `resolved_once == n` check, and stated the reason it is
+sufficient:
+
+> progress-then-self-loop, no >1-cycle, so consecutive-equal suffices
+
+Consecutive-equal detects a period-1 self-loop and nothing longer. Under the
+namespace cut there are TWO `List` authorities --
+
+```
+dag/std/types.dag:105          type List<element> = FreeMonoid<element>
+src/v2/std/collection.dag:16   type List<T>       = std.algebra.FreeMonoid<T>
+```
+
+-- so resolution can alternate between them and never return the node it was
+handed. The check never fires, and `stacker::maybe_grow` turns what would be
+a fast loud failure into 23 minutes of CPU-saturated grinding ending in an
+abort with no type, no location and no count.
+
+**Two defects, and they are separable.** The compiler's is that a stated
+premise about the corpus is enforced by a check that cannot detect its own
+violation; the remedy is a cycle bound of any length -- and the OUTER caller
+`expand_alias_chain_for_field_access` already threads a `seen: Map<String,
+Bool>` for exactly this, so the mechanism exists one frame up and is simply
+absent from the inner peel. The corpus's is the duplicate `List` authority,
+which is a modeling decision of the same class as `Nat`, `UInt32`,
+`FilePath` and `ProjectionKind`.
+
+**A correction to this document's own census.** The ambiguous population was
+reported as 113 spans over names like `Nat` and `UInt32`. That count excluded
+`List`, because Round 2's skip list asserted
+`KERNEL = {List, String, Int, Bool, Float, Map, Optional, Set}` -- hand-written,
+never checked against the declaration index. `List` is declared twice in the
+corpus and is not a kernel primitive. The exclusion hid the fork that caused
+the crash, and the same doubt now applies to the other seven names.
+
+REPRODUCTION, for whoever lands the fix. `gunbc compile` is the WRONG
+instrument: it selects 2,373 sources against the floor's 3,654, completes
+cleanly, and emits 23,949 diagnostics CI never sees. Use `claim_executor
+--required-floor` under `ulimit -s 2048` -- the small stack makes the same
+recursion die in ~4 minutes at ~4 GB instead of 23 minutes, and the run
+tracks CI's own RSS curve to within 0.6% at equal wall time.
