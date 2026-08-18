@@ -17,17 +17,10 @@ import gunbc.generated_projection_paths {
   CommittedGeneratedArtifact,
   GeneratedProjectionPathCollision,
   GeneratedProjectionPathRow,
-  GeneratedProjectionStage0PlanRefused,
   GeneratedProjectionPathsAccepted,
   GeneratedProjectionPathsRefused,
-  Stage0EmittedRust,
   deterministic_generated_projection_paths,
-  deterministic_generated_projection_paths_from_stage0_plan,
   deterministic_generated_projection_paths_from_rows
-}
-import gunbc.stage0_emit_plan {
-  SourceIdentitySupplyUnavailableRefusal,
-  Stage0EmissionPlanRefused
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -74,25 +67,12 @@ test fn witness_projection_population_contains_stage0_rust() -> Bool {
 test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
   match deterministic_generated_projection_paths_from_rows(rows: [
     GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact },
-    GeneratedProjectionPathRow { path: "same/path.rs", source: Stage0EmittedRust }
+    GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact }
   ]) {
     GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path, first_source, duplicate_source } } =>
-      path == "same/path.rs" && first_source == CommittedGeneratedArtifact && duplicate_source == Stage0EmittedRust
-    GeneratedProjectionPathsRefused { cause: GeneratedProjectionStage0PlanRefused { cause: _ } } => false
-    GeneratedProjectionPathsAccepted { paths: _ } => false
-  }
-}
-
-test fn witness_unavailable_live_plan_refuses_merge_policy_population() -> Bool {
-  match deterministic_generated_projection_paths_from_stage0_plan(outcome: Stage0EmissionPlanRefused {
-    cause: SourceIdentitySupplyUnavailableRefusal { cause: "synthetic unavailable live plan" }
-  }) {
-    GeneratedProjectionPathsRefused {
-      cause: GeneratedProjectionStage0PlanRefused {
-        cause: SourceIdentitySupplyUnavailableRefusal { cause }
-      }
-    } => cause == "synthetic unavailable live plan"
-    GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path: _, first_source: _, duplicate_source: _ } } => false
+      path == "same/path.rs"
+        && first_source == CommittedGeneratedArtifact
+        && duplicate_source == CommittedGeneratedArtifact
     GeneratedProjectionPathsAccepted { paths: _ } => false
   }
 }
@@ -131,7 +111,6 @@ test fn witness_holds() -> Bool {
   witness_all_committed_paths_have_merge_rows_holds()
     && witness_projection_population_contains_stage0_rust()
     && witness_duplicate_projection_path_refuses_before_emission()
-    && witness_unavailable_live_plan_refuses_merge_policy_population()
     && witness_presentation_policy_row_present_holds()
     && witness_committed_matches_emit_holds()
     && witness_red_missing_merge_row_fails()

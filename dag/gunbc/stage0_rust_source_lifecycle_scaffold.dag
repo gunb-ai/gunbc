@@ -14,8 +14,6 @@ import gunbc.stage0_rust_host_observation {
   current_stage0_rust_source_observation
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
-import gunbc.stage0_emit_model { is_generated_stage0_file }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
@@ -288,8 +286,8 @@ data rust_source_discovery_prefix_hints: List<String> = [
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_plan_generated",
-  decl_name: "generated_stage0_files",
+  module_path: "gunbc.generated_artifact",
+  decl_name: "generated_artifact_registry",
   field: WholeDeclaration
 }
 
@@ -338,7 +336,22 @@ fn stage0_src_repo_path(filename: String) -> String {
 }
 
 fn derived_generated_stage0_repo_paths() -> List<String> {
-  list_map(xs: generated_stage0_files, f: fn(basename) { stage0_src_repo_path(filename: basename) })
+  match current_stage0_rust_source_observation() {
+    RustManifestObserved { tracked_rust_repo_paths: paths, .. } =>
+      filter(
+        xs: paths,
+        predicate: fn(path) {
+          rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix)
+            && !path_in_list(
+              path: replace(path: path, pattern: stage0_src_repo_prefix, replacement: ""),
+              paths: hand_maintained_stage0_filenames()
+            )
+        }
+      )
+    RustManifestReadRefused { .. } => []
+    RustManifestParseRefused { .. } => []
+    GitObservationRefused { .. } => []
+  }
 }
 
 fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
@@ -697,30 +710,6 @@ fn duplicate_exact_paths_zero_holds() -> Bool {
   list_paths_all_unique(paths: file_grain_lifecycle_repo_paths())
 }
 
-fn generated_repo_paths_cover_authority_holds() -> Bool {
-  fold_list(
-    xs: generated_stage0_files,
-    empty: true,
-    cons: fn(ok, basename) {
-      ok && any(
-        xs: derived_generated_stage0_repo_paths(),
-        predicate: fn(p) { p == stage0_src_repo_path(filename: basename) }
-      )
-    }
-  )
-}
-
-fn generated_authority_subset_of_derived_holds() -> Bool {
-  fold_list(
-    xs: derived_generated_stage0_repo_paths(),
-    empty: true,
-    cons: fn(ok, path) {
-      let basename = replace(path, stage0_src_repo_prefix, "")
-      ok && is_generated_stage0_file(basename: basename)
-    }
-  )
-}
-
 fn partition_crate_paths_complete_holds() -> Bool {
   length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
 }
@@ -758,9 +747,7 @@ fn manifest_state_verdict_scaffold_holds() -> Bool {
 }
 
 fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
-  generated_repo_paths_cover_authority_holds()
-    && generated_authority_subset_of_derived_holds()
-    && partition_crate_paths_complete_holds()
+  partition_crate_paths_complete_holds()
     && derived_generated_hand_disjoint_holds()
     && classified_residue_disjoint_holds()
     && file_grain_paths_avoid_discovery_prefix_holds()

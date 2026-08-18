@@ -6,7 +6,7 @@ import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, SelfHostReadsRealBytesGate
+  SourceRootIngestGate
 }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
@@ -31,9 +31,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     ProseRowIntroductionGate => run_prose_row_introduction_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
-    )
-    SelfHostReadsRealBytesGate => exit_failure(
-      reason: "SelfHostReadsRealBytesGate: run via ci_floor_plan (self_host_realized_comparison_claims.reads_real_bytes_both_sides_holds)"
     )
   }
 }

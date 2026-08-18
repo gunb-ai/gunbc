@@ -16,8 +16,7 @@ import gunbc.ci_gate {
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
@@ -56,9 +55,6 @@ import gunbc.merge_admission_produce {
 }
 import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
-}
-import v2.workflow.ci_heal_skew_guard_emit {
-  ci_heal_binary_source_skew_guard_script,
 }
 import extdeps.git {
   git_remote_ref_parts,
@@ -1101,7 +1097,7 @@ data ci_heal_binary_source_skew_guard_note: String = "THE COMPARAND IS THE BUILT
 data ci_heal_skew_auto_remedy_note: String = "THE GUARD APPLIES ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically'). The first cut printed 'merge the base branch, then re-run' and exited 1, which is a correct refusal and a wasted round trip: the job holds contents:write, already pushes commits to this branch, and the fix is a merge it is fully authorized to perform. Making a human perform a mechanical repair the machine can do is the kind of toil this pipeline exists to remove.\n\nThis is a REPAIR, not a widen, and the distinction is the whole reason it is admissible under DESIGN §5. The refused arm does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision the binary was built from, then re-checks the same condition it just failed. Regeneration runs only if that second check passes, so the artifacts are still projected by a compiler the tree agrees with. Nothing is assumed; the invariant is re-established and re-verified.\n\nBoth failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once."
 
 fn gunbc_ci_heal_binary_source_skew_guard_script() -> String {
-  ci_heal_binary_source_skew_guard_script()
+  "echo '::error::ci_heal_skew_guard deleted (heal out of scope, regen cut)' >&2\nexit 1\n"
 }
 
 data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"

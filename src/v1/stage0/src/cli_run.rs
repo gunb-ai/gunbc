@@ -50,6 +50,8 @@ pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[path = "required_regen_host.rs"]
+mod required_regen_host;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -3519,7 +3521,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
+        collect_dag_files(root, &mut dag_paths);
         for path in dag_paths {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -3552,7 +3554,8 @@ fn import_closure_dag_files(
                 continue;
             };
             for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                let rel =
+                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
                 if !seen.insert(rel) {
                     continue;
                 }
@@ -3583,8 +3586,8 @@ fn collect_repo_files_under_prefix(
             if path.is_dir() {
                 walk(&path, workspace, seen)?;
             } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(
-                    &path, workspace,
+                seen.insert(normalize_repo_path(&workspace_relative_repo_path(
+                    &path.to_string_lossy(),
                 )));
             }
         }
@@ -40012,4 +40015,18 @@ fn required_floor_claims_from_admission(
         out.len()
     );
     Ok(out)
+}
+
+pub fn run_required_regen(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+pub fn run_required_regen_fixed_point(
+    receipt_rel: &str,
+    pass1_digest: Option<String>,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }

@@ -1,32 +1,20 @@
 module gunbc.generated_projection_paths
 
 import gunbc.generated_artifact { committed_generated_artifact_paths }
-import gunbc.stage0_emit_plan {
-  Stage0EmissionPlanAccepted,
-  Stage0EmissionPlanOutcome,
-  Stage0EmissionPlanRefusalCause,
-  Stage0EmissionPlanRefused,
-  generated_stage0_paths_from_plan_rows,
-  stage0_emission_plan
-}
 import std.types { List, String }
 
-type GeneratedProjectionPathSource
-  = CommittedGeneratedArtifact
-  | Stage0EmittedRust
+type GeneratedProjectionPathSource = CommittedGeneratedArtifact
 
 type GeneratedProjectionPathRow {
   path: String
   source: GeneratedProjectionPathSource
 }
 
-type GeneratedProjectionPathsRefusal
-  = GeneratedProjectionPathCollision {
-      path: String,
-      first_source: GeneratedProjectionPathSource,
-      duplicate_source: GeneratedProjectionPathSource
-    }
-  | GeneratedProjectionStage0PlanRefused { cause: Stage0EmissionPlanRefusalCause }
+type GeneratedProjectionPathsRefusal = GeneratedProjectionPathCollision {
+  path: String,
+  first_source: GeneratedProjectionPathSource,
+  duplicate_source: GeneratedProjectionPathSource
+}
 
 type GeneratedProjectionPathsOutcome
   = GeneratedProjectionPathsAccepted { paths: List<String> }
@@ -68,23 +56,8 @@ fn deterministic_generated_projection_paths_from_rows(
   }
 }
 
-fn deterministic_generated_projection_paths_from_stage0_plan(
-  outcome: Stage0EmissionPlanOutcome
-) -> GeneratedProjectionPathsOutcome {
-  let committed = committed_generated_artifact_paths()
-    |> map(path => GeneratedProjectionPathRow { path: path, source: CommittedGeneratedArtifact })
-  match outcome {
-    Stage0EmissionPlanRefused { cause } => GeneratedProjectionPathsRefused {
-      cause: GeneratedProjectionStage0PlanRefused { cause: cause }
-    }
-    Stage0EmissionPlanAccepted { rows } => {
-      let stage0 = generated_stage0_paths_from_plan_rows(rows: rows)
-        |> map(path => GeneratedProjectionPathRow { path: path, source: Stage0EmittedRust })
-      deterministic_generated_projection_paths_from_rows(rows: concat(committed, stage0))
-    }
-  }
-}
-
 fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome {
-  deterministic_generated_projection_paths_from_stage0_plan(outcome: stage0_emission_plan())
+  let rows = committed_generated_artifact_paths()
+    |> map(path => GeneratedProjectionPathRow { path: path, source: CommittedGeneratedArtifact })
+  deterministic_generated_projection_paths_from_rows(rows: rows)
 }
