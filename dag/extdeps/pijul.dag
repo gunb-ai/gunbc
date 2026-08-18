@@ -51,7 +51,7 @@ type PijulUpstreamVersion {
   beta: std.integer.NonNegativeInt
 }
 
-data pijul_upstream_version: PijulUpstreamVersion = PijulUpstreamVersion {
+data pijul_upstream_version: extdeps.pijul.PijulUpstreamVersion = PijulUpstreamVersion {
   major: 1
   minor: 0
   patch: 0
@@ -78,16 +78,16 @@ type PijulVertexPosition {
 }
 
 type PijulVertexId {
-  introduced_by: PijulChangeHash
-  position: PijulVertexPosition
+  introduced_by: extdeps.pijul.PijulChangeHash
+  position: extdeps.pijul.PijulVertexPosition
 }
 
 type PijulChangeIdentityProducer
-  = PijulChangeFileObserved { pijul_version: PijulUpstreamVersion }
+  = PijulChangeFileObserved { pijul_version: extdeps.pijul.PijulUpstreamVersion }
 
 type PijulChangeIdentity {
-  hash: PijulChangeHash
-  producer: PijulChangeIdentityProducer
+  hash: extdeps.pijul.PijulChangeHash
+  producer: extdeps.pijul.PijulChangeIdentityProducer
 }
 
 type PijulDependencyKind
@@ -95,12 +95,12 @@ type PijulDependencyKind
   | PijulExtraDependency
 
 type PijulDependency {
-  change: PijulChangeHash
-  kind: PijulDependencyKind
+  change: extdeps.pijul.PijulChangeHash
+  kind: extdeps.pijul.PijulDependencyKind
 }
 
 type PijulContext {
-  vertex: PijulVertexId
+  vertex: extdeps.pijul.PijulVertexId
 }
 
 type PijulEdgeDisposition
@@ -108,42 +108,42 @@ type PijulEdgeDisposition
   | PijulDeletedEdge
 
 type PijulGraphEdge {
-  source: PijulVertexId
-  target: PijulVertexId
-  introduced_by: PijulChangeHash
-  disposition: PijulEdgeDisposition
+  source: extdeps.pijul.PijulVertexId
+  target: extdeps.pijul.PijulVertexId
+  introduced_by: extdeps.pijul.PijulChangeHash
+  disposition: extdeps.pijul.PijulEdgeDisposition
 }
 
 type PijulChangeAction
   = PijulNewVertex {
-      vertex: PijulVertexId,
-      up_context: List<PijulContext>,
-      down_context: List<PijulContext>,
+      vertex: extdeps.pijul.PijulVertexId,
+      up_context: List<extdeps.pijul.PijulContext>,
+      down_context: List<extdeps.pijul.PijulContext>,
       content: Bytes,
     }
   | PijulMapEdge {
-      edge: PijulGraphEdge,
-      from: PijulEdgeDisposition,
-      to: PijulEdgeDisposition,
+      edge: extdeps.pijul.PijulGraphEdge,
+      from: extdeps.pijul.PijulEdgeDisposition,
+      to: extdeps.pijul.PijulEdgeDisposition,
     }
 
 type PijulChangeActionFold<R> {
   new_vertex: fn(
     PijulVertexId,
-    List<PijulContext>,
-    List<PijulContext>,
+    List<extdeps.pijul.PijulContext>,
+    List<extdeps.pijul.PijulContext>,
     Bytes,
   ) -> R
   map_edge: fn(
     PijulGraphEdge,
-    PijulEdgeDisposition,
-    PijulEdgeDisposition,
+    extdeps.pijul.PijulEdgeDisposition,
+    extdeps.pijul.PijulEdgeDisposition,
   ) -> R
 }
 
 fn pijul_change_action_fold<R>(
-  action: PijulChangeAction,
-  fold: PijulChangeActionFold<R>,
+  action: extdeps.pijul.PijulChangeAction,
+  fold: extdeps.pijul.PijulChangeActionFold<R>,
 ) -> R {
   match action {
     PijulNewVertex { vertex, up_context, down_context, content } =>
@@ -154,55 +154,55 @@ fn pijul_change_action_fold<R>(
 }
 
 type PijulRecordedChange {
-  identity: PijulChangeIdentity
-  dependencies: List<PijulDependency>
-  actions: List<PijulChangeAction>
+  identity: extdeps.pijul.PijulChangeIdentity
+  dependencies: List<extdeps.pijul.PijulDependency>
+  actions: List<extdeps.pijul.PijulChangeAction>
   authors: List<std.types.NonEmptyStr>
   message: std.types.NonEmptyStr
   recorded_at: std.types.Timestamp
 }
 
 type PijulGraphVertex {
-  id: PijulVertexId
+  id: extdeps.pijul.PijulVertexId
   content: Bytes
 }
 
 type PijulConflictFact
   = PijulOrderConflict {
-      left: PijulChangeHash,
-      right: PijulChangeHash,
-      at: PijulVertexId,
+      left: extdeps.pijul.PijulChangeHash,
+      right: extdeps.pijul.PijulChangeHash,
+      at: extdeps.pijul.PijulVertexId,
     }
   | PijulCycleConflict {
-      changes: List<PijulChangeHash>,
-      vertices: List<PijulVertexId>,
+      changes: List<extdeps.pijul.PijulChangeHash>,
+      vertices: List<extdeps.pijul.PijulVertexId>,
     }
   | PijulZombieConflict {
-      introduced_by: PijulChangeHash,
-      vertex: PijulVertexId,
+      introduced_by: extdeps.pijul.PijulChangeHash,
+      vertex: extdeps.pijul.PijulVertexId,
     }
   | PijulNameConflict {
-      left: PijulChangeHash,
-      right: PijulChangeHash,
-      path: PijulPath,
+      left: extdeps.pijul.PijulChangeHash,
+      right: extdeps.pijul.PijulChangeHash,
+      path: extdeps.pijul.PijulPath,
     }
   | PijulMoveConflict {
-      changes: List<PijulChangeHash>,
-      inode: PijulInode,
-      paths: List<PijulPath>,
+      changes: List<extdeps.pijul.PijulChangeHash>,
+      inode: extdeps.pijul.PijulInode,
+      paths: List<extdeps.pijul.PijulPath>,
     }
 
 type PijulConflictFactFold<R> {
-  order: fn(PijulChangeHash, PijulChangeHash, PijulVertexId) -> R
-  cycle: fn(List<PijulChangeHash>, List<PijulVertexId>) -> R
-  zombie: fn(PijulChangeHash, PijulVertexId) -> R
-  name: fn(PijulChangeHash, PijulChangeHash, PijulPath) -> R
-  move: fn(List<PijulChangeHash>, PijulInode, List<PijulPath>) -> R
+  order: fn(extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulVertexId) -> R
+  cycle: fn(List<extdeps.pijul.PijulChangeHash>, List<extdeps.pijul.PijulVertexId>) -> R
+  zombie: fn(extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulVertexId) -> R
+  name: fn(extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulPath) -> R
+  move: fn(List<extdeps.pijul.PijulChangeHash>, extdeps.pijul.PijulInode, List<extdeps.pijul.PijulPath>) -> R
 }
 
 fn pijul_conflict_fact_fold<R>(
-  conflict: PijulConflictFact,
-  fold: PijulConflictFactFold<R>,
+  conflict: extdeps.pijul.PijulConflictFact,
+  fold: extdeps.pijul.PijulConflictFactFold<R>,
 ) -> R {
   match conflict {
     PijulOrderConflict { left, right, at } =>
@@ -219,9 +219,9 @@ fn pijul_conflict_fact_fold<R>(
 }
 
 type PijulPristineState {
-  vertices: List<PijulGraphVertex>
-  edges: List<PijulGraphEdge>
-  conflicts: List<PijulConflictFact>
+  vertices: List<extdeps.pijul.PijulGraphVertex>
+  edges: List<extdeps.pijul.PijulGraphEdge>
+  conflicts: List<extdeps.pijul.PijulConflictFact>
 }
 
 type PijulTreeEntryKind
@@ -230,14 +230,14 @@ type PijulTreeEntryKind
   | PijulSymlinkEntry
 
 type PijulTreeEntry {
-  inode: PijulInode
-  path: PijulPath
-  kind: PijulTreeEntryKind
-  introduced_by: PijulChangeHash
+  inode: extdeps.pijul.PijulInode
+  path: extdeps.pijul.PijulPath
+  kind: extdeps.pijul.PijulTreeEntryKind
+  introduced_by: extdeps.pijul.PijulChangeHash
 }
 
 type PijulTree {
-  entries: List<PijulTreeEntry>
+  entries: List<extdeps.pijul.PijulTreeEntry>
 }
 
 type PijulWorkingCopyDisposition
@@ -246,64 +246,64 @@ type PijulWorkingCopyDisposition
   | PijulWorkingCopyUntracked
 
 type PijulWorkingCopyEntry {
-  path: PijulPath
+  path: extdeps.pijul.PijulPath
   content: Bytes
-  disposition: PijulWorkingCopyDisposition
+  disposition: extdeps.pijul.PijulWorkingCopyDisposition
 }
 
 type PijulWorkingCopy {
-  entries: List<PijulWorkingCopyEntry>
+  entries: List<extdeps.pijul.PijulWorkingCopyEntry>
 }
 
 type PijulStateIdentityProducer
-  = PijulLogStateObserved { pijul_version: PijulUpstreamVersion }
+  = PijulLogStateObserved { pijul_version: extdeps.pijul.PijulUpstreamVersion }
 
 type PijulChannelStateIdentity {
-  state: PijulStateHash
-  changes: List<PijulChangeHash>
-  producer: PijulStateIdentityProducer
+  state: extdeps.pijul.PijulStateHash
+  changes: List<extdeps.pijul.PijulChangeHash>
+  producer: extdeps.pijul.PijulStateIdentityProducer
 }
 
 type PijulChannel {
-  name: PijulChannelName
-  state_identity: PijulChannelStateIdentity
+  name: extdeps.pijul.PijulChannelName
+  state_identity: extdeps.pijul.PijulChannelStateIdentity
 }
 
 type PijulRepositoryState {
-  changes: List<PijulRecordedChange>
-  pristine: PijulPristineState
-  tree: PijulTree
-  working_copy: PijulWorkingCopy
-  channels: List<PijulChannel>
-  current_channel: PijulChannelName
+  changes: List<extdeps.pijul.PijulRecordedChange>
+  pristine: extdeps.pijul.PijulPristineState
+  tree: extdeps.pijul.PijulTree
+  working_copy: extdeps.pijul.PijulWorkingCopy
+  channels: List<extdeps.pijul.PijulChannel>
+  current_channel: extdeps.pijul.PijulChannelName
 }
 
 type PijulRepositoryProjection
   = PijulCompleteProjection {
-      candidate: PijulRepositoryState,
+      candidate: extdeps.pijul.PijulRepositoryState,
     }
   | PijulPartialProjection {
-      candidate: PijulRepositoryState,
-      missing_changes: List<PijulChangeHash>,
-      missing_vertices: List<PijulVertexId>,
-      missing_paths: List<PijulPath>,
+      candidate: extdeps.pijul.PijulRepositoryState,
+      missing_changes: List<extdeps.pijul.PijulChangeHash>,
+      missing_vertices: List<extdeps.pijul.PijulVertexId>,
+      missing_paths: List<extdeps.pijul.PijulPath>,
     }
   | PijulInaccessibleProjection { reason: std.types.NonEmptyStr }
 
 type PijulRepositoryProjectionFold<R> {
-  complete: fn(PijulRepositoryState) -> R
+  complete: fn(extdeps.pijul.PijulRepositoryState) -> R
   partial: fn(
     PijulRepositoryState,
-    List<PijulChangeHash>,
-    List<PijulVertexId>,
-    List<PijulPath>,
+    List<extdeps.pijul.PijulChangeHash>,
+    List<extdeps.pijul.PijulVertexId>,
+    List<extdeps.pijul.PijulPath>,
   ) -> R
   inaccessible: fn(NonEmptyStr) -> R
 }
 
 fn pijul_repository_projection_fold<R>(
-  projection: PijulRepositoryProjection,
-  fold: PijulRepositoryProjectionFold<R>,
+  projection: extdeps.pijul.PijulRepositoryProjection,
+  fold: extdeps.pijul.PijulRepositoryProjectionFold<R>,
 ) -> R {
   match projection {
     PijulCompleteProjection { candidate } => fold.complete(candidate)
@@ -325,86 +325,86 @@ fn pijul_repository_projection_fold<R>(
 type PijulDecodedAvailability
   = PijulDecodedComplete
   | PijulDecodedPartial {
-      missing_changes: List<PijulChangeHash>,
-      missing_vertices: List<PijulVertexId>,
-      missing_paths: List<PijulPath>,
+      missing_changes: List<extdeps.pijul.PijulChangeHash>,
+      missing_vertices: List<extdeps.pijul.PijulVertexId>,
+      missing_paths: List<extdeps.pijul.PijulPath>,
     }
 
 type PijulDecodedRepository {
-  state: PijulRepositoryState
-  availability: PijulDecodedAvailability
+  state: extdeps.pijul.PijulRepositoryState
+  availability: extdeps.pijul.PijulDecodedAvailability
 }
 
 type PijulReferenceOrigin
-  = PijulDependencyReference { owner: PijulChangeHash }
-  | PijulContextChangeReference { owner: PijulChangeHash }
-  | PijulChannelMemberReference { channel: PijulChannelName }
-  | PijulTreeChangeReference { path: PijulPath }
+  = PijulDependencyReference { owner: extdeps.pijul.PijulChangeHash }
+  | PijulContextChangeReference { owner: extdeps.pijul.PijulChangeHash }
+  | PijulChannelMemberReference { channel: extdeps.pijul.PijulChannelName }
+  | PijulTreeChangeReference { path: extdeps.pijul.PijulPath }
   | PijulConflictChangeReference
 
 type PijulProjectionRefusal
-  = PijulDuplicateChange { change: PijulChangeHash }
-  | PijulDuplicateChannel { channel: PijulChannelName }
+  = PijulDuplicateChange { change: extdeps.pijul.PijulChangeHash }
+  | PijulDuplicateChannel { channel: extdeps.pijul.PijulChannelName }
   | PijulDuplicateChannelMember {
-      channel: PijulChannelName,
-      change: PijulChangeHash,
+      channel: extdeps.pijul.PijulChannelName,
+      change: extdeps.pijul.PijulChangeHash,
     }
   | PijulMissingChange {
-      change: PijulChangeHash,
-      origin: PijulReferenceOrigin,
+      change: extdeps.pijul.PijulChangeHash,
+      origin: extdeps.pijul.PijulReferenceOrigin,
     }
-  | PijulSelfDependency { change: PijulChangeHash }
+  | PijulSelfDependency { change: extdeps.pijul.PijulChangeHash }
   | PijulMissingContext {
-      owner: PijulChangeHash,
-      vertex: PijulVertexId,
+      owner: extdeps.pijul.PijulChangeHash,
+      vertex: extdeps.pijul.PijulVertexId,
     }
-  | PijulDuplicateVertex { vertex: PijulVertexId }
-  | PijulDuplicateTreePath { path: PijulPath }
-  | PijulDuplicateTreeInode { inode: PijulInode }
-  | PijulDuplicateWorkingCopyPath { path: PijulPath }
-  | PijulPresentChangeDeclaredMissing { change: PijulChangeHash }
-  | PijulPresentVertexDeclaredMissing { vertex: PijulVertexId }
-  | PijulPresentPathDeclaredMissing { path: PijulPath }
+  | PijulDuplicateVertex { vertex: extdeps.pijul.PijulVertexId }
+  | PijulDuplicateTreePath { path: extdeps.pijul.PijulPath }
+  | PijulDuplicateTreeInode { inode: extdeps.pijul.PijulInode }
+  | PijulDuplicateWorkingCopyPath { path: extdeps.pijul.PijulPath }
+  | PijulPresentChangeDeclaredMissing { change: extdeps.pijul.PijulChangeHash }
+  | PijulPresentVertexDeclaredMissing { vertex: extdeps.pijul.PijulVertexId }
+  | PijulPresentPathDeclaredMissing { path: extdeps.pijul.PijulPath }
   | PijulStateIdentityCollision {
-      state: PijulStateHash,
-      left: PijulChannelName,
-      right: PijulChannelName,
+      state: extdeps.pijul.PijulStateHash,
+      left: extdeps.pijul.PijulChannelName,
+      right: extdeps.pijul.PijulChannelName,
     }
   | PijulStateIdentityDivergence {
-      left_state: PijulStateHash,
-      right_state: PijulStateHash,
-      left: PijulChannelName,
-      right: PijulChannelName,
+      left_state: extdeps.pijul.PijulStateHash,
+      right_state: extdeps.pijul.PijulStateHash,
+      left: extdeps.pijul.PijulChannelName,
+      right: extdeps.pijul.PijulChannelName,
     }
-  | PijulCurrentChannelMissing { channel: PijulChannelName }
+  | PijulCurrentChannelMissing { channel: extdeps.pijul.PijulChannelName }
   | PijulInaccessible { reason: std.types.NonEmptyStr }
 
 type PijulRepositoryDecodeOutcome
-  = PijulDecoded { repository: PijulDecodedRepository }
-  | PijulDecodeRefused { cause: PijulProjectionRefusal }
+  = PijulDecoded { repository: extdeps.pijul.PijulDecodedRepository }
+  | PijulDecodeRefused { cause: extdeps.pijul.PijulProjectionRefusal }
 
 type PijulProjectionOutcome
-  = PijulProjected { projection: PijulRepositoryProjection }
-  | PijulProjectionRefused { cause: PijulProjectionRefusal }
+  = PijulProjected { projection: extdeps.pijul.PijulRepositoryProjection }
+  | PijulProjectionRefused { cause: extdeps.pijul.PijulProjectionRefusal }
 
-fn pijul_change_hash(change: PijulRecordedChange) -> PijulChangeHash {
+fn pijul_change_hash(change: extdeps.pijul.PijulRecordedChange) -> extdeps.pijul.PijulChangeHash {
   change.identity.hash
 }
 
-fn pijul_change_hashes(changes: List<PijulRecordedChange>) -> List<PijulChangeHash> {
+fn pijul_change_hashes(changes: List<extdeps.pijul.PijulRecordedChange>) -> List<extdeps.pijul.PijulChangeHash> {
   changes |> map(change => pijul_change_hash(change: change))
 }
 
 fn pijul_hash_count(
-  changes: List<PijulChangeHash>,
-  target: PijulChangeHash,
+  changes: List<extdeps.pijul.PijulChangeHash>,
+  target: extdeps.pijul.PijulChangeHash,
 ) -> std.integer.NonNegativeInt {
   changes |> filter(change => change == target) |> count
 }
 
 fn pijul_hash_present(
-  changes: List<PijulChangeHash>,
-  target: PijulChangeHash,
+  changes: List<extdeps.pijul.PijulChangeHash>,
+  target: extdeps.pijul.PijulChangeHash,
 ) -> Bool {
   pijul_hash_count(changes: changes, target: target) > 0
 }
@@ -416,9 +416,9 @@ type PijulUniqueScan<K> {
 }
 
 fn pijul_unique_scan_step<K>(
-  scan: PijulUniqueScan<K>,
+  scan: extdeps.pijul.PijulUniqueScan<K>,
   item: K,
-) -> PijulUniqueScan<K> {
+) -> extdeps.pijul.PijulUniqueScan<K> {
   if map_contains_key(scan.seen, item) {
     PijulUniqueScan {
       seen: scan.seen,
@@ -437,10 +437,10 @@ fn pijul_unique_scan_step<K>(
   }
 }
 
-fn pijul_scan_unique<K>(items: List<K>) -> PijulUniqueScan<K> {
+fn pijul_scan_unique<K>(items: List<K>) -> extdeps.pijul.PijulUniqueScan<K> {
   fold(
     items,
-    init: PijulUniqueScan {
+    init: extdeps.pijul.PijulUniqueScan {
       seen: empty_map(),
       ordered: [],
       duplicate: Absent,
@@ -450,8 +450,8 @@ fn pijul_scan_unique<K>(items: List<K>) -> PijulUniqueScan<K> {
 }
 
 fn pijul_change_sets_equal(
-  left: List<PijulChangeHash>,
-  right: List<PijulChangeHash>,
+  left: List<extdeps.pijul.PijulChangeHash>,
+  right: List<extdeps.pijul.PijulChangeHash>,
 ) -> Bool {
   let left_scan = pijul_scan_unique(items: left)
   let right_scan = pijul_scan_unique(items: right)
@@ -465,16 +465,16 @@ fn pijul_change_sets_equal(
 }
 
 fn pijul_change_set_union(
-  left: List<PijulChangeHash>,
-  right: List<PijulChangeHash>,
-) -> List<PijulChangeHash> {
+  left: List<extdeps.pijul.PijulChangeHash>,
+  right: List<extdeps.pijul.PijulChangeHash>,
+) -> List<extdeps.pijul.PijulChangeHash> {
   pijul_scan_unique(items: concat(left, right)).ordered
 }
 
 fn pijul_change_known_or_declared_missing(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-  change: PijulChangeHash,
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+  change: extdeps.pijul.PijulChangeHash,
 ) -> Bool {
   pijul_hash_present(
     changes: pijul_change_hashes(changes: state.changes),
@@ -487,16 +487,16 @@ fn pijul_change_known_or_declared_missing(
 }
 
 fn pijul_vertex_present(
-  pristine: PijulPristineState,
-  vertex: PijulVertexId,
+  pristine: extdeps.pijul.PijulPristineState,
+  vertex: extdeps.pijul.PijulVertexId,
 ) -> Bool {
   pristine.vertices |> filter(found => found.id == vertex) |> count > 0
 }
 
 fn pijul_vertex_known_or_declared_missing(
-  state: PijulRepositoryState,
-  missing_vertices: List<PijulVertexId>,
-  vertex: PijulVertexId,
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_vertices: List<extdeps.pijul.PijulVertexId>,
+  vertex: extdeps.pijul.PijulVertexId,
 ) -> Bool {
   pijul_vertex_present(pristine: state.pristine, vertex: vertex)
     || missing_vertices
@@ -505,45 +505,45 @@ fn pijul_vertex_known_or_declared_missing(
 }
 
 type PijulDuplicateChangeIssue {
-  change: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
 }
 
 fn pijul_duplicate_change(
-  changes: List<PijulRecordedChange>,
-) -> PijulDuplicateChangeIssue? {
+  changes: List<extdeps.pijul.PijulRecordedChange>,
+) -> extdeps.pijul.PijulDuplicateChangeIssue? {
   match pijul_scan_unique(
     items: pijul_change_hashes(changes: changes),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateChangeIssue { change: value } }
+      Present { value: extdeps.pijul.PijulDuplicateChangeIssue { change: value } }
     Absent => Absent
   }
 }
 
 type PijulDuplicateChannelIssue {
-  channel: PijulChannelName
+  channel: extdeps.pijul.PijulChannelName
 }
 
 fn pijul_duplicate_channel(
-  channels: List<PijulChannel>,
-) -> PijulDuplicateChannelIssue? {
+  channels: List<extdeps.pijul.PijulChannel>,
+) -> extdeps.pijul.PijulDuplicateChannelIssue? {
   match pijul_scan_unique(
     items: channels |> map(channel => channel.name),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateChannelIssue { channel: value } }
+      Present { value: extdeps.pijul.PijulDuplicateChannelIssue { channel: value } }
     Absent => Absent
   }
 }
 
 type PijulDuplicateChannelMemberIssue {
-  channel: PijulChannelName
-  change: PijulChangeHash
+  channel: extdeps.pijul.PijulChannelName
+  change: extdeps.pijul.PijulChangeHash
 }
 
 fn pijul_duplicate_channel_member(
-  channels: List<PijulChannel>,
-) -> PijulDuplicateChannelMemberIssue? {
+  channels: List<extdeps.pijul.PijulChannel>,
+) -> extdeps.pijul.PijulDuplicateChannelMemberIssue? {
   fold(
     channels,
     init: Absent,
@@ -555,7 +555,7 @@ fn pijul_duplicate_channel_member(
             items: channel.state_identity.changes,
           ).duplicate {
             Present { value } => Present {
-              value: PijulDuplicateChannelMemberIssue {
+              value: extdeps.pijul.PijulDuplicateChannelMemberIssue {
                 channel: channel.name,
                 change: value,
               },
@@ -568,14 +568,14 @@ fn pijul_duplicate_channel_member(
 }
 
 type PijulMissingChangeIssue {
-  change: PijulChangeHash
-  origin: PijulReferenceOrigin
+  change: extdeps.pijul.PijulChangeHash
+  origin: extdeps.pijul.PijulReferenceOrigin
 }
 
 fn pijul_missing_dependency_issue(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-) -> PijulMissingChangeIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulMissingChangeIssue? {
   state.changes
     |> flat_map(change =>
       change.dependencies
@@ -597,12 +597,12 @@ fn pijul_missing_dependency_issue(
 }
 
 type PijulSelfDependencyIssue {
-  change: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
 }
 
 fn pijul_self_dependency(
-  changes: List<PijulRecordedChange>,
-) -> PijulSelfDependencyIssue? {
+  changes: List<extdeps.pijul.PijulRecordedChange>,
+) -> extdeps.pijul.PijulSelfDependencyIssue? {
   changes
     |> filter(change =>
       change.dependencies
@@ -615,10 +615,10 @@ fn pijul_self_dependency(
     |> first
 }
 
-fn pijul_action_contexts(action: PijulChangeAction) -> List<PijulContext> {
+fn pijul_action_contexts(action: extdeps.pijul.PijulChangeAction) -> List<extdeps.pijul.PijulContext> {
   pijul_change_action_fold(
     action: action,
-    fold: PijulChangeActionFold {
+    fold: extdeps.pijul.PijulChangeActionFold {
       new_vertex: pijul_new_vertex_contexts,
       map_edge: pijul_map_edge_contexts,
     },
@@ -626,34 +626,34 @@ fn pijul_action_contexts(action: PijulChangeAction) -> List<PijulContext> {
 }
 
 fn pijul_new_vertex_contexts(
-  vertex: PijulVertexId,
-  up_context: List<PijulContext>,
-  down_context: List<PijulContext>,
+  vertex: extdeps.pijul.PijulVertexId,
+  up_context: List<extdeps.pijul.PijulContext>,
+  down_context: List<extdeps.pijul.PijulContext>,
   content: Bytes,
-) -> List<PijulContext> {
+) -> List<extdeps.pijul.PijulContext> {
   append(up_context, items: down_context)
 }
 
 fn pijul_map_edge_contexts(
-  edge: PijulGraphEdge,
-  from: PijulEdgeDisposition,
-  to: PijulEdgeDisposition,
-) -> List<PijulContext> {
+  edge: extdeps.pijul.PijulGraphEdge,
+  from: extdeps.pijul.PijulEdgeDisposition,
+  to: extdeps.pijul.PijulEdgeDisposition,
+) -> List<extdeps.pijul.PijulContext> {
   [
     PijulContext { vertex: edge.source },
-    PijulContext { vertex: edge.target },
+    extdeps.pijul.PijulContext { vertex: edge.target },
   ]
 }
 
 type PijulMissingContextIssue {
-  owner: PijulChangeHash
-  vertex: PijulVertexId
+  owner: extdeps.pijul.PijulChangeHash
+  vertex: extdeps.pijul.PijulVertexId
 }
 
 fn pijul_missing_context_issue(
-  state: PijulRepositoryState,
-  missing_vertices: List<PijulVertexId>,
-) -> PijulMissingContextIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_vertices: List<extdeps.pijul.PijulVertexId>,
+) -> extdeps.pijul.PijulMissingContextIssue? {
   state.changes
     |> flat_map(change =>
       change.actions
@@ -674,69 +674,69 @@ fn pijul_missing_context_issue(
 }
 
 type PijulDuplicateVertexIssue {
-  vertex: PijulVertexId
+  vertex: extdeps.pijul.PijulVertexId
 }
 
 fn pijul_duplicate_vertex(
-  pristine: PijulPristineState,
-) -> PijulDuplicateVertexIssue? {
+  pristine: extdeps.pijul.PijulPristineState,
+) -> extdeps.pijul.PijulDuplicateVertexIssue? {
   match pijul_scan_unique(
     items: pristine.vertices |> map(vertex => vertex.id),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateVertexIssue { vertex: value } }
+      Present { value: extdeps.pijul.PijulDuplicateVertexIssue { vertex: value } }
     Absent => Absent
   }
 }
 
 type PijulDuplicateTreePathIssue {
-  path: PijulPath
+  path: extdeps.pijul.PijulPath
 }
 
-fn pijul_duplicate_tree_path(tree: PijulTree) -> PijulDuplicateTreePathIssue? {
+fn pijul_duplicate_tree_path(tree: extdeps.pijul.PijulTree) -> extdeps.pijul.PijulDuplicateTreePathIssue? {
   match pijul_scan_unique(
     items: tree.entries |> map(entry => entry.path),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateTreePathIssue { path: value } }
+      Present { value: extdeps.pijul.PijulDuplicateTreePathIssue { path: value } }
     Absent => Absent
   }
 }
 
 type PijulDuplicateTreeInodeIssue {
-  inode: PijulInode
+  inode: extdeps.pijul.PijulInode
 }
 
-fn pijul_duplicate_tree_inode(tree: PijulTree) -> PijulDuplicateTreeInodeIssue? {
+fn pijul_duplicate_tree_inode(tree: extdeps.pijul.PijulTree) -> extdeps.pijul.PijulDuplicateTreeInodeIssue? {
   match pijul_scan_unique(
     items: tree.entries |> map(entry => entry.inode),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateTreeInodeIssue { inode: value } }
+      Present { value: extdeps.pijul.PijulDuplicateTreeInodeIssue { inode: value } }
     Absent => Absent
   }
 }
 
 type PijulDuplicateWorkingCopyPathIssue {
-  path: PijulPath
+  path: extdeps.pijul.PijulPath
 }
 
 fn pijul_duplicate_working_copy_path(
-  working_copy: PijulWorkingCopy,
-) -> PijulDuplicateWorkingCopyPathIssue? {
+  working_copy: extdeps.pijul.PijulWorkingCopy,
+) -> extdeps.pijul.PijulDuplicateWorkingCopyPathIssue? {
   match pijul_scan_unique(
     items: working_copy.entries |> map(entry => entry.path),
   ).duplicate {
     Present { value } =>
-      Present { value: PijulDuplicateWorkingCopyPathIssue { path: value } }
+      Present { value: extdeps.pijul.PijulDuplicateWorkingCopyPathIssue { path: value } }
     Absent => Absent
   }
 }
 
 fn pijul_missing_channel_member_issue(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-) -> PijulMissingChangeIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulMissingChangeIssue? {
   state.channels
     |> flat_map(channel =>
       channel.state_identity.changes
@@ -755,10 +755,10 @@ fn pijul_missing_channel_member_issue(
     |> first
 }
 
-fn pijul_conflict_changes(conflict: PijulConflictFact) -> List<PijulChangeHash> {
+fn pijul_conflict_changes(conflict: extdeps.pijul.PijulConflictFact) -> List<extdeps.pijul.PijulChangeHash> {
   pijul_conflict_fact_fold(
     conflict: conflict,
-    fold: PijulConflictFactFold {
+    fold: extdeps.pijul.PijulConflictFactFold {
       order: fn(left, right, _) { [left, right] },
       cycle: fn(changes, _) { changes },
       zombie: fn(introduced_by, _) { [introduced_by] },
@@ -769,9 +769,9 @@ fn pijul_conflict_changes(conflict: PijulConflictFact) -> List<PijulChangeHash> 
 }
 
 fn pijul_missing_conflict_change_issue(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-) -> PijulMissingChangeIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulMissingChangeIssue? {
   state.pristine.conflicts
     |> flat_map(conflict => pijul_conflict_changes(conflict: conflict))
     |> filter(change =>
@@ -789,9 +789,9 @@ fn pijul_missing_conflict_change_issue(
 }
 
 fn pijul_missing_tree_change_issue(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-) -> PijulMissingChangeIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulMissingChangeIssue? {
   state.tree.entries
     |> filter(entry =>
       !pijul_change_known_or_declared_missing(
@@ -808,28 +808,28 @@ fn pijul_missing_tree_change_issue(
 }
 
 fn pijul_find_channel(
-  channels: List<PijulChannel>,
-  name: PijulChannelName,
-) -> PijulChannel? {
+  channels: List<extdeps.pijul.PijulChannel>,
+  name: extdeps.pijul.PijulChannelName,
+) -> extdeps.pijul.PijulChannel? {
   channels |> filter(channel => channel.name == name) |> first
 }
 
 type PijulStateIdentityIssue
   = PijulStateCollisionIssue {
-      state: PijulStateHash,
-      left: PijulChannelName,
-      right: PijulChannelName,
+      state: extdeps.pijul.PijulStateHash,
+      left: extdeps.pijul.PijulChannelName,
+      right: extdeps.pijul.PijulChannelName,
     }
   | PijulStateDivergenceIssue {
-      left_state: PijulStateHash,
-      right_state: PijulStateHash,
-      left: PijulChannelName,
-      right: PijulChannelName,
+      left_state: extdeps.pijul.PijulStateHash,
+      right_state: extdeps.pijul.PijulStateHash,
+      left: extdeps.pijul.PijulChannelName,
+      right: extdeps.pijul.PijulChannelName,
     }
 
 fn pijul_state_identity_issue(
-  channels: List<PijulChannel>,
-) -> PijulStateIdentityIssue? {
+  channels: List<extdeps.pijul.PijulChannel>,
+) -> extdeps.pijul.PijulStateIdentityIssue? {
   channels
     |> flat_map(left =>
       channels
@@ -871,21 +871,21 @@ fn pijul_state_identity_issue(
 }
 
 type PijulPresentChangeDeclaredMissingIssue {
-  change: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
 }
 
 type PijulPresentVertexDeclaredMissingIssue {
-  vertex: PijulVertexId
+  vertex: extdeps.pijul.PijulVertexId
 }
 
 type PijulPresentPathDeclaredMissingIssue {
-  path: PijulPath
+  path: extdeps.pijul.PijulPath
 }
 
 fn pijul_present_change_declared_missing(
-  state: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-) -> PijulPresentChangeDeclaredMissingIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulPresentChangeDeclaredMissingIssue? {
   missing_changes
     |> filter(missing =>
       pijul_hash_present(
@@ -898,9 +898,9 @@ fn pijul_present_change_declared_missing(
 }
 
 fn pijul_present_vertex_declared_missing(
-  state: PijulRepositoryState,
-  missing_vertices: List<PijulVertexId>,
-) -> PijulPresentVertexDeclaredMissingIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_vertices: List<extdeps.pijul.PijulVertexId>,
+) -> extdeps.pijul.PijulPresentVertexDeclaredMissingIssue? {
   missing_vertices
     |> filter(missing =>
       pijul_vertex_present(pristine: state.pristine, vertex: missing)
@@ -910,9 +910,9 @@ fn pijul_present_vertex_declared_missing(
 }
 
 fn pijul_present_path_declared_missing(
-  state: PijulRepositoryState,
-  missing_paths: List<PijulPath>,
-) -> PijulPresentPathDeclaredMissingIssue? {
+  state: extdeps.pijul.PijulRepositoryState,
+  missing_paths: List<extdeps.pijul.PijulPath>,
+) -> extdeps.pijul.PijulPresentPathDeclaredMissingIssue? {
   let present_paths = append(
     state.tree.entries |> map(entry => entry.path),
     items: state.working_copy.entries |> map(entry => entry.path),
@@ -926,11 +926,11 @@ fn pijul_present_path_declared_missing(
 }
 
 fn pijul_decode_accessible_projection(
-  candidate: PijulRepositoryState,
-  availability: PijulDecodedAvailability,
-  missing_changes: List<PijulChangeHash>,
-  missing_vertices: List<PijulVertexId>,
-) -> PijulRepositoryDecodeOutcome {
+  candidate: extdeps.pijul.PijulRepositoryState,
+  availability: extdeps.pijul.PijulDecodedAvailability,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+  missing_vertices: List<extdeps.pijul.PijulVertexId>,
+) -> extdeps.pijul.PijulRepositoryDecodeOutcome {
   match pijul_duplicate_change(changes: candidate.changes) {
       Present { value: issue } =>
         PijulDecodeRefused {
@@ -1057,7 +1057,7 @@ fn pijul_decode_accessible_projection(
                                   name: candidate.current_channel,
                                 ) {
                                   Present { value: _ } => PijulDecoded {
-                                    repository: PijulDecodedRepository {
+                                    repository: extdeps.pijul.PijulDecodedRepository {
                                       state: candidate,
                                       availability: availability,
                                     }
@@ -1085,11 +1085,11 @@ fn pijul_decode_accessible_projection(
 }
 
 fn pijul_decode_partial_projection(
-  candidate: PijulRepositoryState,
-  missing_changes: List<PijulChangeHash>,
-  missing_vertices: List<PijulVertexId>,
-  missing_paths: List<PijulPath>,
-) -> PijulRepositoryDecodeOutcome {
+  candidate: extdeps.pijul.PijulRepositoryState,
+  missing_changes: List<extdeps.pijul.PijulChangeHash>,
+  missing_vertices: List<extdeps.pijul.PijulVertexId>,
+  missing_paths: List<extdeps.pijul.PijulPath>,
+) -> extdeps.pijul.PijulRepositoryDecodeOutcome {
   match pijul_present_change_declared_missing(
     state: candidate,
     missing_changes: missing_changes,
@@ -1127,11 +1127,11 @@ fn pijul_decode_partial_projection(
 }
 
 fn pijul_decode_projection(
-  projection: PijulRepositoryProjection,
-) -> PijulRepositoryDecodeOutcome {
+  projection: extdeps.pijul.PijulRepositoryProjection,
+) -> extdeps.pijul.PijulRepositoryDecodeOutcome {
   pijul_repository_projection_fold(
     projection: projection,
-    fold: PijulRepositoryProjectionFold {
+    fold: extdeps.pijul.PijulRepositoryProjectionFold {
       complete: fn(candidate) {
         pijul_decode_accessible_projection(
           candidate: candidate,
@@ -1158,8 +1158,8 @@ fn pijul_decode_projection(
 }
 
 fn pijul_project_repository(
-  repository: PijulRepositoryState,
-) -> PijulProjectionOutcome {
+  repository: extdeps.pijul.PijulRepositoryState,
+) -> extdeps.pijul.PijulProjectionOutcome {
   let projection = PijulCompleteProjection { candidate: repository }
   match pijul_decode_projection(projection: projection) {
     PijulDecoded { repository: _ } => PijulProjected { projection: projection }
@@ -1168,8 +1168,8 @@ fn pijul_project_repository(
 }
 
 fn pijul_channels_equivalent(
-  left: List<PijulChannel>,
-  right: List<PijulChannel>,
+  left: List<extdeps.pijul.PijulChannel>,
+  right: List<extdeps.pijul.PijulChannel>,
 ) -> Bool {
   count(left) == count(right)
     && all(left, channel =>
@@ -1186,8 +1186,8 @@ fn pijul_channels_equivalent(
 }
 
 type PijulLogHeadWire {
-  change: PijulChangeHash
-  state: PijulStateHash
+  change: extdeps.pijul.PijulChangeHash
+  state: extdeps.pijul.PijulStateHash
 }
 
 type PijulLogWireRefusal
@@ -1196,15 +1196,15 @@ type PijulLogWireRefusal
   | PijulLogHeadStateMissing
   | PijulLogHeadStateDuplicate
   | PijulLogHashSetEmpty
-  | PijulLogHashSetDuplicate { change: PijulChangeHash }
+  | PijulLogHashSetDuplicate { change: extdeps.pijul.PijulChangeHash }
 
 type PijulLogHeadDecodeOutcome
-  = PijulLogHeadDecoded { head: PijulLogHeadWire }
-  | PijulLogHeadDecodeRefused { cause: PijulLogWireRefusal }
+  = PijulLogHeadDecoded { head: extdeps.pijul.PijulLogHeadWire }
+  | PijulLogHeadDecodeRefused { cause: extdeps.pijul.PijulLogWireRefusal }
 
 type PijulLogHashSetDecodeOutcome
-  = PijulLogHashSetDecoded { changes: List<PijulChangeHash> }
-  | PijulLogHashSetDecodeRefused { cause: PijulLogWireRefusal }
+  = PijulLogHashSetDecoded { changes: List<extdeps.pijul.PijulChangeHash> }
+  | PijulLogHashSetDecodeRefused { cause: extdeps.pijul.PijulLogWireRefusal }
 
 type PijulPrefixedLine {
   value: std.types.NonEmptyStr
@@ -1213,7 +1213,7 @@ type PijulPrefixedLine {
 fn pijul_prefixed_lines(
   text: String,
   prefix: std.types.NonEmptyStr,
-) -> List<PijulPrefixedLine> {
+) -> List<extdeps.pijul.PijulPrefixedLine> {
   split(s: text, delimiter: "\n")
     |> map(line => trim(s: line))
     |> filter(line =>
@@ -1229,7 +1229,7 @@ fn pijul_prefixed_lines(
     })
 }
 
-fn pijul_decode_log_head_plaintext(text: String) -> PijulLogHeadDecodeOutcome {
+fn pijul_decode_log_head_plaintext(text: String) -> extdeps.pijul.PijulLogHeadDecodeOutcome {
   let changes = pijul_prefixed_lines(text: text, prefix: "Change ")
   let states = pijul_prefixed_lines(text: text, prefix: "State: ")
   if count(changes) == 0 {
@@ -1246,7 +1246,7 @@ fn pijul_decode_log_head_plaintext(text: String) -> PijulLogHeadDecodeOutcome {
       Present { value: change } => match states.first() {
         Absent => PijulLogHeadDecodeRefused { cause: PijulLogHeadStateMissing }
         Present { value: state } => PijulLogHeadDecoded {
-          head: PijulLogHeadWire {
+          head: extdeps.pijul.PijulLogHeadWire {
             change: change.value as PijulChangeHash,
             state: state.value as PijulStateHash,
           }
@@ -1256,7 +1256,7 @@ fn pijul_decode_log_head_plaintext(text: String) -> PijulLogHeadDecodeOutcome {
   }
 }
 
-fn pijul_decode_hash_only_log(text: String) -> PijulLogHashSetDecodeOutcome {
+fn pijul_decode_hash_only_log(text: String) -> extdeps.pijul.PijulLogHashSetDecodeOutcome {
   let changes = split(s: text, delimiter: "\n")
     |> map(line => trim(s: line))
     |> filter(line => line != "")
@@ -1275,22 +1275,22 @@ fn pijul_decode_hash_only_log(text: String) -> PijulLogHashSetDecodeOutcome {
 }
 
 type PijulChannelLogObservation {
-  pijul_version: PijulUpstreamVersion
-  channel: PijulChannelName
-  head: PijulLogHeadWire
-  changes: List<PijulChangeHash>
+  pijul_version: extdeps.pijul.PijulUpstreamVersion
+  channel: extdeps.pijul.PijulChannelName
+  head: extdeps.pijul.PijulLogHeadWire
+  changes: List<extdeps.pijul.PijulChangeHash>
 }
 
 type PijulChannelLogDecodeOutcome
-  = PijulChannelLogObserved { observation: PijulChannelLogObservation }
-  | PijulChannelLogInvalid { cause: PijulLogWireRefusal }
+  = PijulChannelLogObserved { observation: extdeps.pijul.PijulChannelLogObservation }
+  | PijulChannelLogInvalid { cause: extdeps.pijul.PijulLogWireRefusal }
 
 fn pijul_decode_channel_log_observation(
-  pijul_version: PijulUpstreamVersion,
-  channel: PijulChannelName,
+  pijul_version: extdeps.pijul.PijulUpstreamVersion,
+  channel: extdeps.pijul.PijulChannelName,
   head_plaintext: String,
   hash_only: String,
-) -> PijulChannelLogDecodeOutcome {
+) -> extdeps.pijul.PijulChannelLogDecodeOutcome {
   match pijul_decode_log_head_plaintext(text: head_plaintext) {
     PijulLogHeadDecodeRefused { cause } =>
       PijulChannelLogInvalid { cause: cause }
@@ -1303,7 +1303,7 @@ fn pijul_decode_channel_log_observation(
             PijulChannelLogInvalid { cause: PijulLogHeadChangeMissing }
           } else {
             PijulChannelLogObserved {
-              observation: PijulChannelLogObservation {
+              observation: extdeps.pijul.PijulChannelLogObservation {
                 pijul_version: pijul_version,
                 channel: channel,
                 head: head,
@@ -1321,16 +1321,16 @@ type PijulChannelLogMismatchAxis
 
 type PijulChannelLogReadBackOutcome
   = PijulChannelLogReadBackMatches {
-      observation: PijulChannelLogObservation,
+      observation: extdeps.pijul.PijulChannelLogObservation,
     }
   | PijulChannelLogReadBackMismatch {
-      axis: PijulChannelLogMismatchAxis,
+      axis: extdeps.pijul.PijulChannelLogMismatchAxis,
     }
 
 fn pijul_assess_channel_log_read_back(
-  expected: PijulChannelStateIdentity,
-  observation: PijulChannelLogObservation,
-) -> PijulChannelLogReadBackOutcome {
+  expected: extdeps.pijul.PijulChannelStateIdentity,
+  observation: extdeps.pijul.PijulChannelLogObservation,
+) -> extdeps.pijul.PijulChannelLogReadBackOutcome {
   if !(expected.state == observation.head.state) {
     PijulChannelLogReadBackMismatch { axis: PijulChannelLogStateMismatch }
   } else if !pijul_change_sets_equal(
@@ -1346,23 +1346,23 @@ fn pijul_assess_channel_log_read_back(
 }
 
 type PijulRenderedOrderConflictObservation {
-  path: PijulPath
-  left: PijulChangeHash
-  right: PijulChangeHash
+  path: extdeps.pijul.PijulPath
+  left: extdeps.pijul.PijulChangeHash
+  right: extdeps.pijul.PijulChangeHash
   rendered_working_copy: String
 }
 
 type PijulRenderedConflictAssessment
   = PijulRenderedOrderConflictGrounded {
-      path: PijulPath,
-      left: PijulChangeHash,
-      right: PijulChangeHash,
+      path: extdeps.pijul.PijulPath,
+      left: extdeps.pijul.PijulChangeHash,
+      right: extdeps.pijul.PijulChangeHash,
     }
   | PijulRenderedConflictNotGrounded
 
 fn pijul_assess_rendered_order_conflict(
-  observation: PijulRenderedOrderConflictObservation,
-) -> PijulRenderedConflictAssessment {
+  observation: extdeps.pijul.PijulRenderedOrderConflictObservation,
+) -> extdeps.pijul.PijulRenderedConflictAssessment {
   let left = observation.left as String
   let right = observation.right as String
   if left.length() < 8 || right.length() < 8 {
@@ -1392,21 +1392,21 @@ fn pijul_assess_rendered_order_conflict(
 }
 
 type PijulDependencyTextObservation {
-  change: PijulChangeHash
-  dependency: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
+  dependency: extdeps.pijul.PijulChangeHash
   change_text: String
 }
 
 type PijulDependencyTextAssessment
   = PijulDependencyMentionGrounded {
-      change: PijulChangeHash,
-      dependency: PijulChangeHash,
+      change: extdeps.pijul.PijulChangeHash,
+      dependency: extdeps.pijul.PijulChangeHash,
     }
   | PijulDependencyMentionNotGrounded
 
 fn pijul_assess_dependency_text(
-  observation: PijulDependencyTextObservation,
-) -> PijulDependencyTextAssessment {
+  observation: extdeps.pijul.PijulDependencyTextObservation,
+) -> extdeps.pijul.PijulDependencyTextAssessment {
   let pieces = split(s: observation.change_text, delimiter: "# Dependencies")
   if count(pieces) != 2 {
     PijulDependencyMentionNotGrounded
@@ -1434,8 +1434,8 @@ fn pijul_assess_dependency_text(
 }
 
 type PijulReadBackObservation {
-  pijul_version: PijulUpstreamVersion
-  projection: PijulRepositoryProjection
+  pijul_version: extdeps.pijul.PijulUpstreamVersion
+  projection: extdeps.pijul.PijulRepositoryProjection
 }
 
 type PijulReadBackMismatchAxis
@@ -1448,14 +1448,14 @@ type PijulReadBackMismatchAxis
   | PijulReadBackAvailabilityMismatch
 
 type PijulReadBackOutcome
-  = PijulReadBackMatches { observation: PijulReadBackObservation }
-  | PijulReadBackMismatch { axis: PijulReadBackMismatchAxis }
-  | PijulReadBackInvalid { cause: PijulProjectionRefusal }
+  = PijulReadBackMatches { observation: extdeps.pijul.PijulReadBackObservation }
+  | PijulReadBackMismatch { axis: extdeps.pijul.PijulReadBackMismatchAxis }
+  | PijulReadBackInvalid { cause: extdeps.pijul.PijulProjectionRefusal }
 
 fn pijul_assess_read_back(
-  expected: PijulRepositoryProjection,
-  observation: PijulReadBackObservation,
-) -> PijulReadBackOutcome {
+  expected: extdeps.pijul.PijulRepositoryProjection,
+  observation: extdeps.pijul.PijulReadBackObservation,
+) -> extdeps.pijul.PijulReadBackOutcome {
   match pijul_decode_projection(projection: expected) {
     PijulDecodeRefused { cause } => PijulReadBackInvalid { cause: cause }
     PijulDecoded { repository: expected_repository } =>
@@ -1487,24 +1487,24 @@ fn pijul_assess_read_back(
 }
 
 type PijulDeliveryRefusal
-  = PijulDeliveryRepositoryInvalid { cause: PijulProjectionRefusal }
-  | PijulDeliveryTargetMissing { channel: PijulChannelName }
-  | PijulDeliveryChangeUnavailable { change: PijulChangeHash }
+  = PijulDeliveryRepositoryInvalid { cause: extdeps.pijul.PijulProjectionRefusal }
+  | PijulDeliveryTargetMissing { channel: extdeps.pijul.PijulChannelName }
+  | PijulDeliveryChangeUnavailable { change: extdeps.pijul.PijulChangeHash }
   | PijulDeliveryMissingDependency {
-      change: PijulChangeHash,
-      dependency: PijulChangeHash,
+      change: extdeps.pijul.PijulChangeHash,
+      dependency: extdeps.pijul.PijulChangeHash,
     }
 
 type PijulDeliveryOutcome
   = PijulDeliveryAdmissible {
-      channel: PijulChannelName,
-      resulting_changes: List<PijulChangeHash>,
+      channel: extdeps.pijul.PijulChannelName,
+      resulting_changes: List<extdeps.pijul.PijulChangeHash>,
     }
-  | PijulDeliveryRefused { cause: PijulDeliveryRefusal }
+  | PijulDeliveryRefused { cause: extdeps.pijul.PijulDeliveryRefusal }
 
 fn pijul_recorded_change_index(
-  changes: List<PijulRecordedChange>,
-) -> Map<PijulChangeHash, PijulRecordedChange> {
+  changes: List<extdeps.pijul.PijulRecordedChange>,
+) -> Map<extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulRecordedChange> {
   fold(
     changes,
     init: empty_map(),
@@ -1519,18 +1519,18 @@ fn pijul_recorded_change_index(
 }
 
 type PijulDeliveryDependencyIssue {
-  change: PijulChangeHash
-  dependency: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
+  dependency: extdeps.pijul.PijulChangeHash
 }
 
 type PijulDeliveryUnavailableIssue {
-  change: PijulChangeHash
+  change: extdeps.pijul.PijulChangeHash
 }
 
 fn pijul_delivery_dependency_issue(
-  available: Map<PijulChangeHash, PijulRecordedChange>,
-  resulting: List<PijulChangeHash>,
-) -> PijulDeliveryDependencyIssue? {
+  available: Map<extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulRecordedChange>,
+  resulting: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulDeliveryDependencyIssue? {
   let resulting_index = pijul_scan_unique(items: resulting).seen
   resulting
     |> flat_map(hash =>
@@ -1552,9 +1552,9 @@ fn pijul_delivery_dependency_issue(
 }
 
 fn pijul_delivery_unavailable_issue(
-  available: Map<PijulChangeHash, PijulRecordedChange>,
-  changes: List<PijulChangeHash>,
-) -> PijulDeliveryUnavailableIssue? {
+  available: Map<extdeps.pijul.PijulChangeHash, extdeps.pijul.PijulRecordedChange>,
+  changes: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulDeliveryUnavailableIssue? {
   changes
     |> filter(change => !map_contains_key(available, change))
     |> map(change => PijulDeliveryUnavailableIssue { change: change })
@@ -1562,10 +1562,10 @@ fn pijul_delivery_unavailable_issue(
 }
 
 fn pijul_plan_delivery(
-  projection: PijulRepositoryProjection,
-  channel_name: PijulChannelName,
-  delivered: List<PijulChangeHash>,
-) -> PijulDeliveryOutcome {
+  projection: extdeps.pijul.PijulRepositoryProjection,
+  channel_name: extdeps.pijul.PijulChannelName,
+  delivered: List<extdeps.pijul.PijulChangeHash>,
+) -> extdeps.pijul.PijulDeliveryOutcome {
   match pijul_decode_projection(projection: projection) {
     PijulDecodeRefused { cause } => PijulDeliveryRefused {
       cause: PijulDeliveryRepositoryInvalid { cause: cause }
@@ -1631,7 +1631,7 @@ fn pijul_plan_delivery(
 type PijulConditionalAdvanceCapability
   = PijulConditionalAdvanceUnavailable { reason: std.types.NonEmptyStr }
 
-fn pijul_r0_conditional_advance() -> PijulConditionalAdvanceCapability {
+fn pijul_r0_conditional_advance() -> extdeps.pijul.PijulConditionalAdvanceCapability {
   PijulConditionalAdvanceUnavailable {
     reason: "R0 models bounded Pijul capture, projection, dependency closure, and read-back only. No executing upstream operation has yet established the target policy's conditional-advance guarantee."
   }
