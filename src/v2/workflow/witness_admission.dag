@@ -17,7 +17,6 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_is_falsifier_wet,
   witness_exclusion_row_is_rehomed_bin_wet,
   witness_exclusion_row_is_substrate_long_lane,
-  falsifier_silent_pick_gate_entries,
   falsifier_rehomed_bin_wet_entries,
   falsifier_substrate_long_lane_entries
 }
@@ -463,7 +462,7 @@ fn witness_exclusion_explicit_roster_rows_consistent(
 }
 
 fn witness_exclusion_bin_witness_wet_universe() -> List<ScheduleWitnessEntry> {
-  concat(bin_witness_wet_entries, falsifier_silent_pick_gate_entries)
+  bin_witness_wet_entries
 }
 
 fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
