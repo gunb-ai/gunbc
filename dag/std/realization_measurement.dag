@@ -29,11 +29,11 @@ fn space_measure_list_seq(spaces: List<std.measure.ByteSize>) -> std.measure.Byt
   fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
 }
 
-fn cost_account_measured_from_time<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
+fn cost_account_measured_from_time<S>(time: Measure<Time, S, std.nat.Nat>) -> std.realization_schedule.CostAccount<S> {
   cost_account_measured(time: time)
 }
 
-fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> CostAccount<S> {
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> std.realization_schedule.CostAccount<S> {
   std.realization_schedule.CostAccount {
     time: time
     space: space
@@ -121,11 +121,11 @@ fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, std.na
 
 fn cost_account_measured_from_schedule_critical_path<S>(
   batch_times: List<List<Measure<Time, S, std.nat.Nat>>>
-) -> CostAccount<S> {
+) -> std.realization_schedule.CostAccount<S> {
   cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
 }
 
-fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> CostAccount<S> {
+fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> std.realization_schedule.CostAccount<S> {
   cost_account_measured_from_time(time: time_measure_list_total(times: times))
 }
 
