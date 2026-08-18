@@ -91,10 +91,11 @@ path = "src/bin/json_parse_scaling_probe.rs"
 
 # Isolated char_at scaling receipt: position x string-length, uncontaminated by the
 # JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
-# 2026-08-17). DISPOSITION: Terminal, not Scaffold -- authority is
+# 2026-08-17). SCAFFOLD -- disposition authority is
 # `char_at_scaling_probe_disposition` in dag/gunbc/char_at_scaling_probe_support.dag.
-# This bin is the discriminating evidence for CHARAT-0's O(1) claim and carries no
-# dissolution condition; it does NOT delete alongside json_parse_scaling_probe.rs.
+# DISSOLUTION: its OWN trigger (`char_at_scaling_probe_dissolution`), NOT alongside
+# json_parse_scaling_probe.rs -- the two probes measure different primitives and can
+# have independently different lifetimes (DESIGN section 5, same-unit rule).
 [[bin]]
 name = "char_at_scaling_probe"
 path = "src/bin/char_at_scaling_probe.rs"

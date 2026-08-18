@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-//! TERMINAL (DESIGN §4b discriminating evidence / CHARAT-0) — isolated `char_at` scaling
+//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / CHARAT-0) — isolated `char_at` scaling
 //! receipt: many repeated calls at varying position and varying string length, uncontaminated
 //! by the JSON parser's independent `value_to_list_carrier` / `free_monoid_to_vec`
 //! materialization cost (a different, separately scoped defect — eager-koi-458's 2026-08-17
@@ -19,17 +19,16 @@
 //! CHECKABLE RECEIPT: for each (length, position) pair, mean per-call elapsed time over
 //! `CHAR_AT_PROBE_REPS` repeated calls through the interpreter — printed as TSV.
 //!
-//! DISPOSITION: `char_at_scaling_probe_disposition` in
-//! `dag/gunbc/char_at_scaling_probe_support.dag` is `Terminal`, not `Scaffold` — this bin is
-//! the discriminating evidence for CHARAT-0's O(1) `char_at` claim and does not dissolve
-//! (DESIGN §4b: evidence for a surviving claim stays enrolled; a Terminal disposition carries
-//! no dissolution condition by construction). If the property later becomes structurally
-//! guaranteed, this bin's role transitions to a permanent regression control rather than being
-//! deleted.
-//! Receipt: `rg CHAR_AT_SCALING_PROBE_IDENTITY_MARKER src/v1/stage0`.
+//! DISSOLUTION (own trigger, independent of `json_parse_scaling_probe.rs`'s — see
+//! `char_at_scaling_probe_dissolution` in `dag/gunbc/char_at_scaling_probe_support.dag`,
+//! DESIGN §5's same-unit rule): delete this bin when CHARAT-0's `char_at` O(1) property is
+//! floor-enrolled with a modeled witness, or when a fresh run's own printed TSV (the
+//! CHECKABLE RECEIPT below) shows `mean_call_us` growing with `string_len` across the
+//! `CHAR_AT_PROBE_LENGTHS` range instead of staying flat.
+//! Receipt: `rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER src/v1/stage0` until deletion.
 
-/// Grep receipt for this probe's identity (`rg CHAR_AT_SCALING_PROBE_IDENTITY_MARKER`).
-pub const CHAR_AT_SCALING_PROBE_IDENTITY_MARKER: &str =
+/// Grep receipt for scaffold dissolution (`rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`).
+pub const CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER: &str =
     "CHARAT-0 char_at_scaling_probe measurement transport (not floor-enrolled)";
 
 use std::process::ExitCode;
