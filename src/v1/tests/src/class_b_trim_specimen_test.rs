@@ -280,3 +280,71 @@ fn trim_method_form_fails_on_freemonoid_receiver() {
             .collect::<Vec<_>>()
     );
 }
+
+const WIRE_ENTRY: &str = "fixtures/class_b_trim/wire_projection_specimen.dag";
+
+/// Pool for the wire-projection specimen. It needs `dag/extdeps` in addition to the roots the
+/// hand-authored specimens use, because its subject is a real service-op output declaration
+/// (`Filesystem.Read` `content: String from "content"`) rather than a hand-declared carrier.
+fn wire_projection_pool_roots() -> Vec<String> {
+    vec![
+        "dag/std".to_string(),
+        "dag/extdeps".to_string(),
+        "fixtures/class_b_trim".to_string(),
+    ]
+}
+
+/// REGRESSION CONTROL for the service-op wire-projection class.
+///
+/// THE CLASS AS REGISTERED (`extdeps.shell.exec` `service_op_string_wire_projection_method_fork_note`,
+/// `gunbc.plans.model_realization_fork`): a service-op output field declared `T from "wire_key"`
+/// infers as a FaithfulFreeMonoid/Coproduct carrier when the closure lacks v1-seed sources, so the
+/// METHOD form on it refuses (`method trim not found on Coproduct(FreeMonoid)`) although the extdeps
+/// contract names String. Both carriers name `monoid_specimen.dag` +
+/// `trim_method_form_fails_on_freemonoid_receiver` as the pinning witness.
+///
+/// THAT WITNESS CANNOT SEE THE CLASS. Its subject is a HAND-DECLARED `FreeMonoid<String>` parameter;
+/// the class's subject is a String field MINTED BY A WIRE PROJECTION. Measured: zero `T from "key"`
+/// declarations existed anywhere in this fixture directory, so the class had no discriminating
+/// evidence and read identically whether it was live or dead.
+///
+/// MEASURED HERE, 2026-08-17, on a tree that STILL CONTAINS `v1.compiler.infer` `rust_corpus_repr`
+/// (i.e. before the Root B cut that deletes it): the method form on a real wire field COMPILES —
+/// `hard_diagnostics = 0`, `trim_not_found = 0`, `refused = false`. So removing `rust_corpus_repr` is
+/// NOT the condition under which this class disappears; it does not reproduce with that mechanism
+/// present. The class is therefore narrower than "every String method on any service-op result
+/// field", or already dissolved and its note stale.
+///
+/// SCOPE OF THE CLAIM, deliberately narrow: one service op (`Filesystem.Read` `content`), one method
+/// (`trim`), one pool. It says nothing about `shell.Exec.Run` `stdout`, whose input is a
+/// `sole_constructor`-sealed `TransportScript` and so cannot be minted in a fixture.
+///
+/// This control locks the compiling behaviour in. If the wire projection later starts minting a
+/// distinct carrier again, this goes red.
+#[test]
+fn wire_projection_method_form_compiles_on_service_op_string_field() {
+    std::env::set_current_dir(workspace_root()).expect("cwd");
+    let pool = wire_projection_pool_roots();
+    let compiled = compile_declared_import_closure_only_with_pool(&pool, WIRE_ENTRY, None)
+        .expect("wire-projection specimen must load its declared-import closure");
+
+    assert_eq!(
+        trim_not_found_diagnostic_count(compiled.as_ref()),
+        0,
+        "method form on a service-op String wire field must not report trim-not-found: {:?}",
+        compiled
+            .diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !trim_compile_refused(compiled.as_ref()),
+        "wire-field method form must compile: {:?}",
+        compiled
+            .diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect::<Vec<_>>()
+    );
+}
