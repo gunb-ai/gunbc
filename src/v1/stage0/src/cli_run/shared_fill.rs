@@ -202,11 +202,12 @@ pub(crate) fn render_shared_fill_row_text_mirror(
     paid_by: Option<&str>,
     consumer_claims: usize,
     consumer_modules: usize,
+    modules: &str,
 ) -> String {
     format!(
         "[floor-shared-fill] cache={cache} key={key} fill_ms={fill_ms} \
          inclusive_ms={inclusive_ms} paid_by={} consumer_claims={consumer_claims} \
-         consumer_modules={consumer_modules} disposition={}",
+         consumer_modules={consumer_modules} disposition={} modules={modules}",
         paid_by.unwrap_or("<outside-fold>"),
         shared_fill_disposition_tag(paid_by.is_some(), consumer_modules),
     )
@@ -273,6 +274,7 @@ pub(crate) fn report() -> String {
                     fill.filler.as_deref(),
                     fill.consumers.len(),
                     modules.len(),
+                    &modules.iter().copied().collect::<Vec<_>>().join(","),
                 ));
                 out.push('\n');
             }
@@ -313,10 +315,11 @@ mod tests {
                 Some("test.claim.foo.w_bar"),
                 3,
                 2,
+                "test.claim.foo,test.claim.other",
             ),
             "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 \
              inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 \
-             consumer_modules=2 disposition=shared"
+             consumer_modules=2 disposition=shared modules=test.claim.foo,test.claim.other"
         );
         assert_eq!(
             render_shared_fill_total_text_mirror(9, 60000, 42000, 0),
@@ -342,6 +345,26 @@ mod tests {
         assert!(
             text.contains("shared_fill_ms=5000"),
             "the shared total must carry the fill: {text}"
+        );
+    }
+
+    /// WHICH MODULES, NOT HOW MANY. A count cannot answer "did the row that inherited this bill
+    /// read this exact fill before" — that is an identity join, and DESIGN §5 rules a count is
+    /// not one. The named list is what lets a relocation be checked at identity grain instead of
+    /// by matching magnitudes.
+    #[test]
+    fn the_consumer_modules_are_named_not_merely_counted() {
+        reset();
+        set_current_claim(Some("test.claim.payer.w_one"));
+        begin_fill();
+        record_fill("c", "k", 1_000_000);
+        set_current_claim(Some("test.claim.rider.w_two"));
+        record_hit("c", "k");
+        set_current_claim(None);
+        let text = report();
+        assert!(
+            text.contains("modules=test.claim.payer,test.claim.rider"),
+            "a reader must be able to ask whether a specific module rode this fill: {text}"
         );
     }
 

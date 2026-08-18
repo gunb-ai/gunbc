@@ -148,5 +148,26 @@ eras. **Quarantining a first toucher relocates the bill; it does not retire it.*
 tidy-lark-471. It landed in the failures channel rather than the refused one, which is why a scan
 for new refusals read the run as refuting the prediction.)
 
+### What `exclusive` does and does not establish
+
+`exclusive` means **no other module in the executed population read this fill on this run**. It
+does not establish that no other module ever would. If the payer were removed, a would-be
+consumer could pay the same fill next run — the first-toucher trap one level up, and the ledger
+cannot see it from inside one run.
+
+Two things bound how far that doubt reaches. The `key` is the fill's *declared inputs*, so an
+exclusive fill on a key no other consumer requests is exclusive by construction rather than by
+luck — the 29017ms `module_graph_facts` above is keyed on `dag+src/v2` roots that the shared
+51508ms `module_path_index` fill also serves, while the 17890ms one is keyed on a four-root pool
+only its own module asks for. And the answer is decidable by execution rather than argument: run
+the fold with the payer absent and read the ledger again. Until that run exists, an `exclusive`
+row is one run's observation, and a recovery estimated from it is an upper bound.
+
+The distinction has a second edge worth stating, because it corrects a reading of the same rows
+from isolation. A witness whose SUBJECT is the corpus is not made cheap by shrinking the corpus:
+the 71s row measures 70–85ms in a 67-module closure and 71060ms against the floor's 2376-module
+subject, with nothing about the witness changed. Isolation is structurally unable to price that
+class, which is why the ledger measures on the floor path (quiet-ibex-39, 2026-08-18).
+
 `unattributed_hits=1`: one read was served by a fill this ledger did not observe, so the shared
 figure is a lower bound. One is small; it is reported rather than rounded away.

@@ -810,6 +810,7 @@ fn ci_shared_fill_row_text(
   payer: SharedFillPayer,
   consumer_claims: Nat,
   consumer_modules: Nat,
+  modules: String,
 ) -> String {
   concat(
     "[floor-shared-fill] cache=",
@@ -841,11 +842,14 @@ fn ci_shared_fill_row_text(
                           to_string(consumer_modules),
                           concat(
                             " disposition=",
-                            shared_fill_disposition_tag(
-                              disposition: shared_fill_disposition(
-                                payer: payer,
-                                consumer_modules: consumer_modules
-                              )
+                            concat(
+                              shared_fill_disposition_tag(
+                                disposition: shared_fill_disposition(
+                                  payer: payer,
+                                  consumer_modules: consumer_modules
+                                )
+                              ),
+                              concat(" modules=", modules)
                             )
                           )
                         )

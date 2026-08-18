@@ -723,8 +723,9 @@ test fn w_shared_fill_row_line_holds() -> Bool {
     inclusive: millisecond(count: 17890),
     payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
     consumer_claims: 3,
-    consumer_modules: 2
-  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared"
+    consumer_modules: 2,
+    modules: "test.claim.foo,test.claim.other"
+  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared modules=test.claim.foo,test.claim.other"
 }
 
 test fn w_shared_fill_total_line_holds() -> Bool {
