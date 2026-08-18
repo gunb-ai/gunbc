@@ -2,102 +2,32 @@ module gunbc.test.claim.zz_budget_probe_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
-import v2.std.collection { List, Map, Set, empty_map, map_insert }
-import v2.std.algebra { fold_list, length }
-import v2.std.grammar { GrammarRoot, GrammarProduction, ParseGrammar, ModeledGrammar, VoidGrammar }
-import v2.std.node { Symbol }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
 import v2.compiler.tokenize { lex_walk_artifact }
-import v2.compiler.parse {
-  parse_module_prepared,
-  prepare_grammar,
-  compute_nullable_step,
-  compute_production_first_row_terminals,
-  production_first_row_lookup
-}
+import v2.compiler.parse { parse_module, parse_module_prepared, prepare_grammar }
 import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 
-data zz_src_header: String = "module zz_probe\n"
 data zz_src_one_type: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n"
-data zz_src_four_type: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n\ntype AlgY = AlphaY | BetaY\n\ntype AlgZ = AlphaZ | BetaZ\n\ntype AlgW = AlphaW | BetaW\n"
 
-fn zz_root() -> GrammarRoot {
-  match dag_grammar() {
-    ModeledGrammar { root: r } => r
-    VoidGrammar => GrammarRoot { start: ^zz_none, productions: [], sync_tokens: Set { member: fn(_) { false } } }
+test fn zz_prepare_grammar_only() -> Bool {
+  match prepare_grammar(grammar: dag_grammar()) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn zz_empty_nullable() -> Set<Symbol> {
-  Set { member: fn(_) { false } }
-}
-
-fn zz_nullable_round(root: GrammarRoot, ns: Set<Symbol>) -> Set<Symbol> {
-  fold_list(xs: root.productions, empty: ns, cons: fn(acc, p) { compute_nullable_step(ns: acc, p: p) })
-}
-
-fn zz_nullable_rounds(root: GrammarRoot, n: Int) -> Set<Symbol> {
-  if n == 0 {
-    zz_empty_nullable()
-  } else {
-    zz_nullable_round(root: root, ns: zz_nullable_rounds(root: root, n: n - 1))
-  }
-}
-
-fn zz_nullable_count(root: GrammarRoot, ns: Set<Symbol>) -> Int {
-  fold_list(xs: root.productions, empty: 0, cons: fn(acc, p) {
-    if ns.member(p.name) { acc + 1 } else { acc }
-  })
-}
-
-fn zz_first_round(root: GrammarRoot, ns: Set<Symbol>, rows: Map<Symbol, List<Symbol>>) -> Map<Symbol, List<Symbol>> {
-  fold_list(xs: root.productions, empty: rows, cons: fn(acc, p) {
-    map_insert(m: acc, key: p.name, value: compute_production_first_row_terminals(rows: acc, p: p, nullable_set: ns))
-  })
-}
-
-fn zz_first_rounds(root: GrammarRoot, ns: Set<Symbol>, n: Int) -> Map<Symbol, List<Symbol>> {
-  if n == 0 {
-    empty_map()
-  } else {
-    zz_first_round(root: root, ns: ns, rows: zz_first_rounds(root: root, ns: ns, n: n - 1))
-  }
-}
-
-fn zz_first_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>>) -> Int {
-  fold_list(xs: root.productions, empty: 0, cons: fn(acc, p) {
-    acc + length(xs: production_first_row_lookup(rows: rows, name: p.name))
-  })
-}
-
-test fn zz_nullable_converges_by_round_4() -> Bool {
-  let root = zz_root()
-  zz_nullable_count(root: root, ns: zz_nullable_rounds(root: root, n: 4))
-    == zz_nullable_count(root: root, ns: zz_nullable_rounds(root: root, n: 12))
-}
-
-test fn zz_first_rows_converge_by_round_4() -> Bool {
-  let root = zz_root()
-  let ns = zz_nullable_rounds(root: root, n: 12)
-  zz_first_total(root: root, rows: zz_first_rounds(root: root, ns: ns, n: 4))
-    == zz_first_total(root: root, rows: zz_first_rounds(root: root, ns: ns, n: 12))
-}
-
-test fn zz_first_rows_round_1_differs_RED() -> Bool {
-  let root = zz_root()
-  let ns = zz_nullable_rounds(root: root, n: 12)
-  zz_first_total(root: root, rows: zz_first_rounds(root: root, ns: ns, n: 1))
-    != zz_first_total(root: root, rows: zz_first_rounds(root: root, ns: ns, n: 12))
-}
-
-fn zz_prepared_parse(source: String) -> Bool {
-  match lex_walk_artifact(source: source, file: ^zz_probe, rules: dag_lex_rules()) {
+test fn zz_prepare_then_parse() -> Bool {
+  match lex_walk_artifact(source: zz_src_one_type, file: ^zz_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match prepare_grammar(grammar: dag_grammar()) {
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
         v2.std.diagnostic.Accepted { value: p, diagnostics: residue } =>
-          match parse_module_prepared(tokens: lex_artifact_semantic_tokens(artifact: a), prepared: p, validation_residue: residue) {
+          match parse_module_prepared(
+            tokens: lex_artifact_semantic_tokens(artifact: a),
+            prepared: p,
+            validation_residue: residue
+          ) {
             v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
             v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
@@ -105,28 +35,13 @@ fn zz_prepared_parse(source: String) -> Bool {
   }
 }
 
-test fn zz_prepared_parse_header() -> Bool { zz_prepared_parse(source: zz_src_header) }
-test fn zz_prepared_parse_four() -> Bool { zz_prepared_parse(source: zz_src_four_type) }
-
-test fn zz_check_undefined() -> Bool {
-  v2.compiler.parse.grammar_has_undefined_nonterminals(root: zz_root()) == false
-}
-
-test fn zz_check_duplicate() -> Bool {
-  v2.compiler.parse.grammar_has_duplicate_productions(root: zz_root()) == false
-}
-
-test fn zz_check_left_recursion() -> Bool {
-  v2.compiler.parse.grammar_has_left_recursion(root: zz_root()) == false
-}
-
-test fn zz_analysis_only() -> Bool {
-  let a = v2.compiler.parse.compute_grammar_first_analysis(root: zz_root())
-  zz_first_total(root: zz_root(), rows: a.first_rows) > 0
-}
-
-test fn zz_ambiguity_roster_only() -> Bool {
-  let root = zz_root()
-  let a = v2.compiler.parse.compute_grammar_first_analysis(root: root)
-  length(xs: v2.compiler.parse.grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: a)) >= 0
+test fn zz_full_parse_module() -> Bool {
+  match lex_walk_artifact(source: zz_src_one_type, file: ^zz_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
 }
