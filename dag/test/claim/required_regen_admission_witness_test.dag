@@ -16,7 +16,6 @@ test fn witness_zero_planned_population_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
-    phases: [],
     authority_digest: "fnv1a64:deadbeefdeadbeef",
     planned_surfaces: 0,
     executed_surfaces: 0
@@ -31,7 +30,6 @@ test fn witness_zero_executed_population_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
-    phases: [],
     authority_digest: "fnv1a64:deadbeefdeadbeef",
     planned_surfaces: 3,
     executed_surfaces: 0
@@ -46,7 +44,6 @@ test fn witness_planned_executed_mismatch_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
-    phases: [],
     authority_digest: "fnv1a64:deadbeefdeadbeef",
     planned_surfaces: 3,
     executed_surfaces: 2
@@ -64,7 +61,6 @@ test fn witness_nonempty_matching_population_admits() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
     hand_outcomes: [],
-    phases: [],
     authority_digest: "fnv1a64:deadbeefdeadbeef",
     planned_surfaces: 1,
     executed_surfaces: 1

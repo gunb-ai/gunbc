@@ -56,8 +56,7 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
-    let phases = Vec::new();
-    let emitted = time_phase(&phases, "compile_stage0", || compile_stage0(&workspace))?;
+    let emitted = compile_stage0(&workspace)?;
 
     let committed_basenames = committed_generated_basenames(&stage0_src)?;
     if emitted.is_empty() {
@@ -597,14 +596,6 @@ fn write_receipt(path: &Path, receipt: &RegenReceipt) -> Result<(), String> {
         .map_err(|e| format!("serialize regen receipt: {e}"))?;
     fs::write(path, json).map_err(|e| format!("write receipt {}: {e}", path.display()))?;
     Ok(())
-}
-
-fn time_phase<T>(
-    _phases: &Vec<(String, u128)>,
-    _name: &str,
-    f: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    f()
 }
 
 #[cfg(test)]

@@ -25,11 +25,6 @@ type HandMaintainedOutcome
   | HandNoCandidate { filename: String }
   | HandUnverifiable { filename: String, reason: String }
 
-type RequiredRegenPhaseReceipt {
-  name: String
-  elapsed_ms: Int
-}
-
 type RequiredRegenRefusal
   = GeneratedDrift { paths: List<String> }
   | SurfacePopulationMismatch {
@@ -47,7 +42,6 @@ type RequiredRegenRefusal
 type RequiredRegenAttempt {
   generated_outcomes: List<RegenSurfaceOutcome>
   hand_outcomes: List<HandMaintainedOutcome>
-  phases: List<RequiredRegenPhaseReceipt>
   authority_digest: String
 }
 
@@ -107,7 +101,6 @@ fn collect_hand_unverifiable(
 fn required_regen_sync_admission(
   generated_outcomes: List<RegenSurfaceOutcome>,
   hand_outcomes: List<HandMaintainedOutcome>,
-  phases: List<RequiredRegenPhaseReceipt>,
   authority_digest: String,
   planned_surfaces: Int,
   executed_surfaces: Int
@@ -175,7 +168,6 @@ fn required_regen_sync_admission(
     attempt: RequiredRegenAttempt {
       generated_outcomes: generated_outcomes,
       hand_outcomes: hand_outcomes,
-      phases: phases,
       authority_digest: authority_digest
     }
   }
@@ -191,7 +183,6 @@ fn required_regen_fixed_point_admission(
       attempt: RequiredRegenAttempt {
         generated_outcomes: [],
         hand_outcomes: [],
-        phases: [],
         authority_digest: pass1_digest
       }
     }
