@@ -446,35 +446,35 @@ fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> v2.std.diagnosti
 
 fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
   match bootstrap_hash_pin_projection_node(pin: plan.seed.produces_hash) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+    Accepted { value: _, diagnostics: _ } =>
       match bootstrap_hash_pin_projection_node(pin: plan.self0.produces_hash) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+        Accepted { value: _, diagnostics: _ } =>
           match bootstrap_hash_pin_projection_node(pin: plan.self1.produces_hash) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+            Accepted { value: _, diagnostics: _ } =>
               match bootstrap_hash_pin_projection_node(pin: plan.fixpt.left_hash) {
-                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+                Accepted { value: _, diagnostics: _ } =>
                   match bootstrap_hash_pin_projection_node(pin: plan.fixpt.right_hash) {
-                    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+                    Accepted { value: _, diagnostics: _ } =>
                       match bootstrap_hash_pin_projection_node(pin: plan.fixpt.pinned_hash) {
-                        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Accepted { value: _, diagnostics: _ } => true
+                        Rejected { diagnostics: _ } => false
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
   match bootstrap_plan {
-    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -552,9 +552,9 @@ fn bootstrap_seed_capability_matches_footprint(
 
 fn bootstrap_convergence_ladder(plan: v2.std.diagnostic.Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
   match plan {
-    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
+    Accepted { value: bp, diagnostics: _ } =>
       v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
 }
@@ -725,9 +725,9 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
 
 fn bootstrap_stage_output(plan: v2.std.diagnostic.Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
   match plan {
-    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
+    Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -817,6 +817,6 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
 data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
-  v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+  Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
+  Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

@@ -70,9 +70,9 @@ data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
 
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -103,8 +103,8 @@ data bash_serialize_reject_receipt: Outcome<Medium<String>> = anchor_bash_serial
 
 test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -123,9 +123,9 @@ data bash_bound_words_emit_receipt: Outcome<Medium<String>> = anchor_bash_bound_
 
 test fn bash_emit_bound_words_holds() -> Bool {
   match bash_bound_words_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_bound_words_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -144,9 +144,9 @@ data bash_embedded_quote_emit_receipt: Outcome<Medium<String>> = anchor_bash_emb
 
 test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_embedded_quote_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -168,9 +168,9 @@ data bash_source_root_ingest_gate_emit_receipt: Outcome<Medium<String>> = anchor
 
 test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
   match bash_source_root_ingest_gate_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_root_ingest_gate_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -184,8 +184,8 @@ fn bash_emit_slice4_holds(
     facts: std.types.Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == v2.std.diagnostic.None)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -287,9 +287,9 @@ fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
     facts: std.types.Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried != bash_pipe_and_or_brace_grouped_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

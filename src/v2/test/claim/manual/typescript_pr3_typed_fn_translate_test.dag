@@ -105,14 +105,14 @@ data typescript_pr3_emit_receipt: Outcome<Medium<String>> = anchor_typescript_pr
 data typescript_pr3_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_pr3_compile_inferred_accepts()
 test fn typescript_pr3_emit_receipt_decided() -> Bool {
   match typescript_pr3_emit_receipt {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 test fn typescript_pr3_compile_inferred_receipt_decided() -> Bool {
   match typescript_pr3_compile_inferred_receipt {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

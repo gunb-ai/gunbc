@@ -117,25 +117,25 @@ fn idempotent_operation_subject_from_claim(claim: v2.std.verification.TestClaim)
   )
 }
 
-fn idempotent_operation_run_via_test_claim(claim: v2.std.verification.TestClaim) -> v2.compiler.eval.TestClaimRun<Node, RuntimeValue> {
+fn idempotent_operation_run_via_test_claim(claim: v2.std.verification.TestClaim) -> v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue> {
   run_test_claim(subject: idempotent_operation_subject_from_claim(claim: claim))
 }
 
-fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>) -> v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, RuntimeValue>> {
+fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>) -> v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>> {
   match row {
-    v2.std.diagnostic.Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match row {
-    v2.std.diagnostic.Accepted { value: run, diagnostics: None } =>
+    Accepted { value: run, diagnostics: None } =>
       match run.verdict {
         Pass => false
         SemanticMismatch { actual: _, falsification: _ } => true
@@ -143,7 +143,7 @@ fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.
         RunFailed { actual: _, diagnostic: _ } => true
         Deferred { actual: _, diagnostic: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -179,8 +179,8 @@ data generated_label_only_idempotent_skip: Outcome<v2.std.verification.TestClaim
 
 fn generated_label_only_skip_is_rejected() -> Bool {
   match generated_label_only_idempotent_skip {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -235,7 +235,7 @@ fn generated_idempotent_operation_scheduled_subject_count_is_four() -> Bool {
   length(xs: testgen_scheduled_idempotent_operation_subjects()) == 4
 }
 
-fn generated_idempotent_operation_run_rows() -> List<v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, RuntimeValue>>> {
+fn generated_idempotent_operation_run_rows() -> List<v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>>> {
   [
     run_read_idempotent_operation_via_run_test_claim,
     run_upsert_idempotent_operation_via_run_test_claim,

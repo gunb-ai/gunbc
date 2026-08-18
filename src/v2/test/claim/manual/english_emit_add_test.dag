@@ -118,9 +118,9 @@ data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add
 
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -129,13 +129,13 @@ fn english_emit_add_matches_serialize_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
+    Accepted { value: authority, diagnostics: ad } =>
       match english_emit_add_receipt {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+        Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -144,8 +144,8 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -155,8 +155,8 @@ fn english_emit_add_ingest_parse(source: extdeps.communication.medium.Medium<Str
     file: ^english_emit_add_round_trip_fixture_file,
     rules: english_lex()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: english_add_fn_paragraph_grammar())
   }
 }
@@ -183,15 +183,15 @@ test fn english_emit_add_ingest_round_trip_holds() -> Bool {
   let serialize_ok = english_emit_add_matches_serialize_holds()
   let grammar_ok = english_emit_add_grammar_inverse_holds()
   let ingest_ok = match english_emit_add_receipt {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: source, diagnostics: _ } =>
       match english_emit_add_ingest_parse(source: source) {
-        v2.std.diagnostic.Accepted { value: tree, diagnostics: d } =>
+        Accepted { value: tree, diagnostics: d } =>
           english_emit_add_parse_identity_matches(
             root: tree,
             expected: english_emit_add_emitted_root
           ) && (d == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
   serialize_ok && grammar_ok && ingest_ok

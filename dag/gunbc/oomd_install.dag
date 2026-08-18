@@ -167,13 +167,13 @@ fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) 
 
 fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: why } =>
+    ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    std.realization_reconcile.ReadObserved { value: observed } =>
+    ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
@@ -195,8 +195,8 @@ data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = std.
 
 fn gunbc_oomd_install_evidence() -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match gunbc_oomd_show_effective_read {
-    std.realization_reconcile.ReadAbsent { reason: _ } => OomdUnverified
-    std.realization_reconcile.ReadObserved { value: _ } => OomdUnverified
+    ReadAbsent { reason: _ } => OomdUnverified
+    ReadObserved { value: _ } => OomdUnverified
   }
 }
 

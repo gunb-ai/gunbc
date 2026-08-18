@@ -30,40 +30,40 @@ type WitnessExclusionRow {
 
 data excl_bin_wet_reason: String = "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs) the hermetic envelope refuses by construction; they run every PR as the declared bin-witness wet batch via bin_witness_wet_entries (bin_witness_wet_note)"
 
-data excl_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)")
+data excl_bin_wet_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)")
 
 data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found 2026-08-16, PR #8286 CI red, run 31922786399, batch 3 discovery-corpus, 3 of 9782): every fn in this file invokes the compiled `gunbc` seed as a SUBPROCESS and reads the status of that process, so the hermetic envelope refuses them — 'no mock_response for operation Run' and 'for operation IsExecutable', the class excl_install_media_reason names. The refusal is correct and the file cannot be made hermetic: the subject IS the process exit status, which no in-process assertion can observe, and mocking the invocation would let the witness pass against a fabricated status — precisely the defect it exists to detect. The file was authored into dag/test/claim/ and so was swept into unshrunk hermetic discovery by path; the witnesses were right and the enrolment was wrong. Per DESIGN 'witness cost derives from purpose', this row alone would only remove them from hermetic discovery, which is NOT an executing consumer — so all three fns are ALSO enrolled in bin_witness_wet_entries below, which is their real per-PR executing consumer under WitnessHasExecutingConsumer standing. Size is derived, not chosen: three subprocess invocations of a three-constructor fixture, one per arm of the driver's verdict map."
 
-data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
+data excl_run_verdict_exit_status_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
 
 data excl_rehomed_bin_wet_reason: String = "bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they run as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in falsifier_rehomed_bin_wet_rows)"
 
-data excl_rehomed_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet")
+data excl_rehomed_bin_wet_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet")
 
 data excl_substrate_long_lane_reason: String = "SubstrateInputsOnly long-lane witness class re-homed to the falsifier hermetic cadence (test-decomposition Class C, 2026-07-25): the row's own eval exceeds the per-PR 5s fast-lane budget but the mechanism is fixture-shaped ingest/parse pipeline coverage, not wet integration — so it runs as falsifier batch 6 via falsifier_substrate_long_lane_entries (typed frontier rows in falsifier_substrate_long_lane_rows)"
 
-data excl_substrate_long_lane_dissolve: DissolutionCondition = unbound_dissolution(description: "per falsifier_substrate_long_lane_rows dissolve_on: the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as a duplicate); then this classification flips back to DiscoverySelection")
+data excl_substrate_long_lane_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "per falsifier_substrate_long_lane_rows dissolve_on: the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as a duplicate); then this classification flips back to DiscoverySelection")
 
 data excl_behavioral_receipt_reason: String = "emit->compile->run->equals-seed self-host behavioral receipt class: enrolled fns run on the falsifier nightly Wet cadence (wet_receipt_enrollment / falsifier_self_host_wet_note); non-enrolled fns run by local recipe"
-data excl_behavioral_receipt_dissolve: DissolutionCondition = unbound_dissolution(description: "per-module receipts graduate to per-PR admission when proven cheap enough (falsifier_self_host_wet_note); row deletes")
+data excl_behavioral_receipt_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "per-module receipts graduate to per-PR admission when proven cheap enough (falsifier_self_host_wet_note); row deletes")
 
 data excl_wet_integration_reason: String = "wet-integration class, operator-ruled OFFLINE (hermetic-floor posture 2026-07-11): performs genuinely live host effects the hermetic envelope refuses by construction (wet_integration_offline_note)"
 
-data excl_wet_integration_dissolve: DissolutionCondition = unbound_dissolution(description: "the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget; then the file enrolls there as declared execution rows and this row deletes (wet_integration_offline_note)")
+data excl_wet_integration_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget; then the file enrolls there as declared execution rows and this row deletes (wet_integration_offline_note)")
 
 data excl_probe_universe_carrier_reason: String = "non-witness workflow carrier: discovery never scans it (not a *_test.dag); the row exists for the whole_tree_resolve_exclusion_substrings probe-universe consumers"
 
-data excl_probe_universe_carrier_dissolve: DissolutionCondition = unbound_dissolution(description: "the probe universe derives from module identity (module-identity-storage-binding lane) or the carrier relocates; a row that excludes nothing deletes")
+data excl_probe_universe_carrier_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the probe universe derives from module identity (module-identity-storage-binding lane) or the carrier relocates; a row that excludes nothing deletes")
 
-data excl_roster_gate_dissolve: DissolutionCondition = unbound_dissolution(description: "resolved-graph memoization receipts land AND G2 path-intersection (not G1 module-closure alone) is wired into floor admission axis (iv); then re-enroll consciously through the floor owner's lane")
+data excl_roster_gate_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "resolved-graph memoization receipts land AND G2 path-intersection (not G1 module-closure alone) is wired into floor admission axis (iv); then re-enroll consciously through the floor owner's lane")
 
 data excl_predates_per_row_reason: String = "operator/lane-ruled discovery exclusion predating per-row reasons; Phase 0(b) admission classifies its witnesses OfflineLocalRecipe (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>)"
 
-data excl_predates_per_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the owning lane records a scheduled consumer for the file, or the row proves dead (excludes nothing) and deletes")
+data excl_predates_per_row_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the owning lane records a scheduled consumer for the file, or the row proves dead (excludes nothing) and deletes")
 
 data excl_install_media_reason: String = "real host-effect execution witness (shell effects with no mock_response coverage, or real network/build effects) refused by the hermetic envelope; runs in the bin-witness wet lane (install_media_real_execution_wet_note)"
 
-data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
+data excl_install_media_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
@@ -845,7 +845,7 @@ data witness_admission_fixture_note: String = "Phase 0(b) admitted control fixtu
 
 data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses that EXPECT RED on main — the falsifier probe batch runs them SelectionApplied; greening is a counted un-quarantine event (per-row dissolve_on on the authority). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts). SINGLE AUTHORITY (2026-08-03): the rows live at function grain in gunbc.explicit_witness_admission explicit_witness_admissions and BOTH consumers derive from them — this roster is the falsifier batch's projection, and v2.workflow.floor_discovery_producer drops exactly the same (entry, function) pairs from per-PR discovery. The former shape was a dual representation: a QuarantineProbeExpectRed WitnessExclusionRow removing the whole FILE plus a probe_red(entry, f) row enrolling one FUNCTION, reconciled by a check instead of by construction. Those pattern rows are deleted; a pattern row that re-states a quarantine is now refused by witness_exclusion_row_well_formed."
 
-fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {
+fn known_red_probe_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   concat(
     known_red_probe_corpus_roster(),
     known_red_probe_v1_envelope_roster()
@@ -880,8 +880,8 @@ data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on
 // (affected_set_floor_runner_test.dag) became permanently unskippable, which is what took
 // the scheduled falsifier dark at its build gate.
 
-fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+fn bin_wet(entry: String, f: String) -> std.realization_schedule.ScheduleWitnessEntry {
+  std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
 data v1_claim_scoped_witness_batch_deleted_note: String = "THE SCOPED WITNESS BATCH IS DELETED (2026-08-15), and with it the only ScopedWitnessBatch instance that ever existed. It ran five file-grain v1 claim entries under a dag plus src/v1 source-root envelope, in a sequential child worker, so the v1 compiler closure could be resolved without widening witness_layer_roots for everything else.\n\nWHY IT COULD NOT SURVIVE AFFECTED-SET SELECTION. It was the last SelectionApplied consumer on the required path, and its 720-second clamp was derived (PR #8259) from a measured 565-second wall on the assumption that unrelated PRs skip it. With selection deleted the two available readings were both wrong: run it every PR and the required floor grows by roughly nine minutes under a clamp basis that no longer describes it, or keep a selection mechanism alive for one batch. Its cost was also never really the witnesses — the same receipt measured about 390 seconds of closure materialization before the first witness line and about 30 seconds of witness evaluation, so it was paying a whole second subject preparation to check thirty rows.\n\nWHAT THIS NARROWS, stated rather than implied: the five entries under src/v1/tests/claim have NO executing consumer. They are not covered by ordinary discovery, whose roots are dag plus src/v2. Their generated stage0 emissions still compile into the seed crate, which is not execution. This is a real loss of coverage over v1 parser and namespace-binding behavior, taken deliberately as part of deleting the floor rather than discovered later, and it is NOT backstopped by any cadence — the cadence lane those rows might have moved to was refused for the same reason the per-PR slot was: a second subject envelope is the defect, not the schedule it runs on.\n\nRESTORATION: one prepared subject spanning dag, src/v1 and src/v2, at which point a separate envelope, a separate worker, a separate clamp and a separate receipt family all stop existing and these rows are ordinary discovery."
@@ -894,13 +894,13 @@ data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spaw
 
 data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3). D6-rehomed to FalsifierRehomedBinWet with its anomaly sibling (run 30220304152: ~89–136s/row vs the 60s per-row budget)."
 
-data excl_expectation_frontier_dissolve: DissolutionCondition = unbound_dissolution(description: "fires with the UntracedDefault arm itself: when the counted frontier reaches zero corpus-wide, an undeclared expectation becomes a hard typed refusal at the dispatch boundary, the receipt has nothing left to report, and this witness plus these rows delete together. Until then the frontier is the thing being shrunk, so the receipt that measures it must keep executing.")
+data excl_expectation_frontier_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "fires with the UntracedDefault arm itself: when the counted frontier reaches zero corpus-wide, an undeclared expectation becomes a hard typed refusal at the dispatch boundary, the receipt has nothing left to report, and this witness plus these rows delete together. Until then the frontier is the thing being shrunk, so the receipt that measures it must keep executing.")
 
-data excl_no_fake_anomalies_dissolve: DissolutionCondition = unbound_dissolution(description: "paired with falsifier_rehomed_bin_wet_rows dissolve_on for the two no_fake_anomalies check_fns: re-enroll per-PR (flip this row back to BinWitnessWet) only when a measured run lands both under bin_witness_wet_per_row_wall_budget_seconds; if the wall is ever superseded by a structural lens over the effect graph (task #15's call-node admissibility), this row deletes with the witness.")
+data excl_no_fake_anomalies_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "paired with falsifier_rehomed_bin_wet_rows dissolve_on for the two no_fake_anomalies check_fns: re-enroll per-PR (flip this row back to BinWitnessWet) only when a measured run lands both under bin_witness_wet_per_row_wall_budget_seconds; if the wall is ever superseded by a structural lens over the effect graph (task #15's call-node admissibility), this row deletes with the witness.")
 
 data install_media_real_execution_wet_note: String = "The four srv3_install_media_fetch_real_execution_witness_test.dag / srv3_seeded_install_media_real_execution_witness_test.dag entries at the tail of bin_witness_wet_entries below share this lane with the bin-execution witnesses (same RunnableDiscoveryBatch Wet mechanism, not a forked one - DESIGN §3) though they are not bin-execution: they drive real shell.Mktemp.Dir/Filesystem.Write/shell.Remove.RecursiveForce effects that dag/extdeps/shell/shell.dag has no mock_response for (only shell.Exec.Run/Check do), so the Hermetic discovery corpus refuses them by construction (typed 'no mock_response for operation Dir' error). Split out of their parent files (shell-to-dag B1, 2026-07-14) so the parent files' pure classification witnesses keep hermetic per-PR discovery undiminished. Dissolve-on: shell.dag's file-effect operations gain mock_response coverage AND these fns' assertions are re-checked for correctness under a fixed mock (some assert behavior-dependent outcomes, e.g. matched == false on a wrong hash, which a naive fixed mock would falsify) - then they re-enroll as ordinary hermetic discovery rows and these rows delete."
 
-data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
+data bin_witness_wet_entries: List<std.realization_schedule.ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "a_real_cargo_build_materializes_through_the_real_digest"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_materialized_path_is_the_one_the_real_cargo_stream_named"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "a_target_the_build_never_produced_refuses_and_does_not_materialize"),
@@ -1099,14 +1099,14 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
   }
 ]
 
-fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
+fn falsifier_rehomed_bin_wet_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {
     concat(acc, [bin_wet(entry: r.entry, f: r.function)])
   })
 }
 
-fn corpus_long(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
+fn corpus_long(entry: String, f: String) -> std.realization_schedule.ScheduleWitnessEntry {
+  std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
 }
 
 type SubstrateLongLaneRow {
@@ -1589,7 +1589,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   }
 ]
 
-fn falsifier_substrate_long_lane_entries() -> List<ScheduleWitnessEntry> {
+fn falsifier_substrate_long_lane_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   fold(falsifier_substrate_long_lane_rows, init: [], f: fn(acc, r) {
     concat(acc, [corpus_long(entry: r.entry, f: r.function)])
   })
@@ -1598,15 +1598,15 @@ fn falsifier_substrate_long_lane_entries() -> List<ScheduleWitnessEntry> {
 data witness_long_eval_budget_entries_note: String = "THE SCHEDULER'S CEILING CONDITION, and it is deliberately NOT the long-lane batch roster. Two different questions were answered by one list until 2026-08-06: WHICH BATCH RUNS THIS (falsifier_substrate_long_lane_rows above, batch 6) and HOW MUCH EVAL TIME THIS WITNESS NEEDS. Because claim_executor armed the 180s ceiling only where a batch's explicit entries intersected the batch roster, the second answer could only be obtained by joining the first — so an expensive KNOWN-RED root had to occur twice in the schedule, once for its polarity and once for its budget, and the second occurrence sat on a batch that expects green and paged the operator for a witness that is red by design (gunbc#7737). This union is the separation: batch membership still routes execution, gunbc.explicit_witness_admission witness_long_eval_budget_roster sizes the ceiling from each row's OWN declared budget, and a witness needs no second batch to be given the time it requires. The residual — declared by neither — keeps the fast lane, so an undeclared lane reds loudly at 5s rather than running unbounded (DESIGN 5, the arm narrows). LANE GRANULARITY, AND WHY THE KNOWN-RED LANE IS NO LONGER WIDENED BY IT (operator ruling, 2026-08-06): claim_executor scopes a ceiling to a BATCH, so a mixed batch holding one declared-long row runs every sibling at the long ceiling. The first shape of this change disclosed that widening and kept it; the correction removes it where it was introduced, by partitioning the known-red probe lane into two budget-homogeneous batches derived from the declared budget (gunbc.explicit_witness_admission known_red_probe_budget_partition_note). Each batch therefore arms exactly the ceiling its own rows declared. The residual widening is the pre-existing substrate long-lane batch, unchanged by this lane and narrowing on the same trigger. IT IS AN IDENTITY SET, NOT A CONCATENATION (review, 2026-08-06): a witness reaching the ceiling through BOTH inputs — on the long-lane batch roster and also declaring SubstrateLongLaneEvalBudget on its admission row — is a legitimate and expected state during the migration, and a bare concat would list it twice. Membership joins on schedule_witness_entry_eq (entry, function, kind), the same identity grain the schedule-multiplicity wall uses, never a bare name. The fold is exposed as witness_long_eval_budget_union_in so a witness can plant the overlap the live inputs do not currently exhibit; a control that can only observe today's disjoint population proves nothing about the join. A duplicate here would not change which ceiling is armed, since the executor only asks whether the batch INTERSECTS this roster, but it would corrupt every count taken over it — including the witness that asserts a declared-budget row needs no second batch. Dissolve-on: per-witness declared cost envelopes replace the blanket lane ceiling, the same trigger long_lane_exclusion_note names; then this union collapses to the declared-budget roster alone and each row is bounded by its own declaration."
 
 fn witness_long_eval_budget_union_in(
-  batch: List<ScheduleWitnessEntry>,
-  declared: List<ScheduleWitnessEntry>
-) -> List<ScheduleWitnessEntry> {
+  batch: List<std.realization_schedule.ScheduleWitnessEntry>,
+  declared: List<std.realization_schedule.ScheduleWitnessEntry>
+) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   fold(declared, init: batch, f: fn(acc, w) {
     if schedule_witness_entry_roster_contains(xs: acc, w: w) { acc } else { concat(acc, [w]) }
   })
 }
 
-fn witness_long_eval_budget_entries() -> List<ScheduleWitnessEntry> {
+fn witness_long_eval_budget_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   witness_long_eval_budget_union_in(
     batch: falsifier_substrate_long_lane_entries(),
     declared: witness_long_eval_budget_roster()
@@ -1657,7 +1657,7 @@ fn witness_layer_source_flags(roots: List<String>) -> String {
 }
 
 fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
-  source_roots_shell_flags(roots: roots, style: SourceRootRooted { root_var: "$ROOT" })
+  source_roots_shell_flags(roots: roots, style: gunbc.cli_invoke.SourceRootRooted { root_var: "$ROOT" })
 }
 
 fn witness_layer_scan_flags() -> String {

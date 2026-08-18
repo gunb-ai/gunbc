@@ -1,7 +1,7 @@
 module v2.std.float
 
-type Float32Interchange = Word32
-type Float64Interchange = Word64
+type Float32Interchange = v2.std.machine.Word32
+type Float64Interchange = v2.std.machine.Word64
 
 type FloatSpecial
   = QuietNan
@@ -25,13 +25,13 @@ type Float64 {
   body: FloatBody
 }
 type Float = Float64
-fn sign_rank_lex(s: Bit) -> v2.std.nat.Nat {
+fn sign_rank_lex(s: v2.std.machine.Bit) -> v2.std.nat.Nat {
   match s {
     true => v2.std.nat.Zero
     false => v2.std.nat.Succ { prev: v2.std.nat.Zero }
   }
 }
-fn ordering_invert(o: Ordering) -> Ordering {
+fn ordering_invert(o: v2.std.algebra.Ordering) -> v2.std.algebra.Ordering {
   match o {
     Less => Greater
     Greater => Less
@@ -43,12 +43,12 @@ fn float_finite_unsigned_field_order(
   fa: v2.std.nat.Nat,
   eb: v2.std.nat.Nat,
   fb: v2.std.nat.Nat,
-) -> Ordering {
-  let o2 = nat_compare(a: ea, b: eb)
+) -> v2.std.algebra.Ordering {
+  let o2 = v2.std.nat.nat_compare(a: ea, b: eb)
   match o2 {
     Less => Less
     Greater => Greater
-    Equal => nat_compare(a: fa, b: fb)
+    Equal => v2.std.nat.nat_compare(a: fa, b: fb)
   }
 }
 
@@ -71,11 +71,11 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
 fn float_finite_magnitude_zero(e: v2.std.nat.Nat, f: v2.std.nat.Nat) -> Bool {
   is_zero(e) && is_zero(f)
 }
-fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
+fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> v2.std.algebra.Ordering {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
       Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
-        let o = nat_compare(a: sign_rank_lex(sa), b: sign_rank_lex(sb))
+        let o = v2.std.nat.nat_compare(a: sign_rank_lex(sa), b: sign_rank_lex(sb))
         match o {
           Less => Less
           Greater => Greater
@@ -107,21 +107,21 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
         NegInfinity => Less
         _ => Greater
       }
-      NonFinite { tag: tb } => nat_compare(
+      NonFinite { tag: tb } => v2.std.nat.nat_compare(
         a: float_special_rank(ta),
         b: float_special_rank(tb)
       )
     }
   }
 }
-fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcome<Ordering> {
+fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcome<v2.std.algebra.Ordering> {
   if float_body_is_nan(a) {
     float_ordered_compare_nan_rejected()
   } else {
     if float_body_is_nan(b) {
       float_ordered_compare_nan_rejected()
     } else {
-      Accepted { value: match a {
+      v2.std.diagnostic.Accepted { value: match a {
           Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
             Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
               if float_finite_magnitude_zero(e: ea, f: fa)
@@ -135,21 +135,21 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
             NonFinite { tag: tb } => float_body_compare_semantic_total(a: a, b: b)
           }
           NonFinite { tag: ta } => float_body_compare_semantic_total(a: a, b: b)
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     }
   }
 }
-fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
-  Rejected { diagnostics: diagnostics_singleton(d: Diagnostic {
+fn float_ordered_compare_nan_rejected() -> Outcome<v2.std.algebra.Ordering> {
+  Rejected { diagnostics: diagnostics_singleton(d: v2.std.diagnostic.Diagnostic {
       reason: ^float_totalizer_reason_ieee754_nan_unordered,
       at: port_locus(port: ^float_totalizer_port_ieee754_nan_totalizer),
-      correction: Unavailable { reason: UserInputBoundary },
+      correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary },
     }) }
 }
-fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<Ordering> {
+fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<v2.std.algebra.Ordering> {
   float_body_compare_ieee_ordered_outcome(a: a.body, b: b.body)
 }
-fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
+fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<v2.std.algebra.Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }
 

@@ -46,8 +46,8 @@ data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_ad
 
 test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -247,9 +247,9 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -257,8 +257,8 @@ data rust_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutpu
 
 test fn rust_add_compile_inferred_receipt_holds() -> Bool {
   match rust_add_compile_inferred_receipt {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    Rejected { diagnostics: _ } => false
   }
 }
 
