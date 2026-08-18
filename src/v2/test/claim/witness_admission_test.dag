@@ -116,6 +116,21 @@ test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() ->
   }
 }
 
+test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
+    function: "infer_transform_add_vertical_witness_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSubstrateLongLane => true
+    _ => false
+  }
+    && witness_has_executing_consumer_for_row(
+      entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
+      function: "infer_transform_add_vertical_witness_holds"
+    )
+}
+
 test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",

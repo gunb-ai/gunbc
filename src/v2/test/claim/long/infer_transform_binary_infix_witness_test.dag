@@ -8,7 +8,7 @@ import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data infer_transform_binary_infix_long_note: String = "Transform binary-infix Int add derivation (long lane): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission only (SubstrateLongLaneEvalBudget + ExpectWitnessHolds — not on falsifier_substrate_long_lane_rows batch roster). Fast subtract dispatch-gate control stays per-PR in body_lowering/infer_transform_binary_infix_witness_test.dag. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag --functions infer_transform_add_vertical_witness_holds."
+data infer_transform_binary_infix_long_note: String = "Transform binary-infix Int add derivation (long lane): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission (SubstrateLongLaneEvalBudget + ExpectWitnessHolds); batch 6 schedules via explicit_witness_admission_substrate_long_lane_roster union (not falsifier_substrate_long_lane_rows). Fast subtract dispatch-gate control stays per-PR in body_lowering/infer_transform_binary_infix_witness_test.dag."
 
 test fn infer_transform_add_vertical_witness_holds() -> Bool {
   infer_transform_add_vertical_discriminating_holds()
