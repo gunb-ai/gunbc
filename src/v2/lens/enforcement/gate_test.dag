@@ -198,6 +198,6 @@ test fn consumer_requirement_discriminates() -> Bool {
 test fn enforcement_mode_order_discriminates() -> Bool {
   return !enforcement_mode_satisfies(actual: AuditOnly, required: v2.lens.enforcement.vocab.Blocking)
     && enforcement_mode_satisfies(actual: v2.lens.enforcement.vocab.Blocking, required: AuditOnly)
-    && !enforcement_mode_satisfies(actual: Advisory, required: AuditOnly)
-    && enforcement_mode_satisfies(actual: AuditOnly, required: Advisory)
+    && !enforcement_mode_satisfies(actual: v2.lens.enforcement.vocab.Advisory, required: AuditOnly)
+    && enforcement_mode_satisfies(actual: AuditOnly, required: v2.lens.enforcement.vocab.Advisory)
 }

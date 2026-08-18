@@ -56,7 +56,7 @@ fn fold_fixture_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v
       fold_fixture_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: v2.std.node.ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [
             fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_plus)),
             fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
@@ -91,7 +91,7 @@ fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operan
       fold_fixture_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: v2.std.node.ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [
             fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_minus)),
             fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
@@ -105,7 +105,7 @@ fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operan
 
 fn fold_fixture_call_body(xs: Node, z: Node, closure: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_mvp1_fold_callee)),
       fold_fixture_positional(target: xs),

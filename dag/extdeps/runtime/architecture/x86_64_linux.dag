@@ -26,7 +26,7 @@ data x86_64_linux_architecture_profile: extdeps.toolchain.architecture_profile.A
   architecture: X86_64,
   word_width: bit_width(64),
   pointer_width: bit_width(64),
-  endianness: LittleEndian,
+  endianness: extdeps.toolchain.architecture_profile.LittleEndian,
   page_size: byte_size(4096),
   default_alignment: byte_size(16),
   register_file: x86_64_general_purpose_registers,

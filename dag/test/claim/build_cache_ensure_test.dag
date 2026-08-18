@@ -14,8 +14,8 @@ fn current() -> gunbc.build_cache_endpoint_path.ObservationCurrency {
   gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
 }
 
-fn srv1_stranded_owner() -> ProcessIdentity {
-  ProcessIdentity {
+fn srv1_stranded_owner() -> gunbc.build_cache_instance.ProcessIdentity {
+  gunbc.build_cache_instance.ProcessIdentity {
     boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: 3975946,
     start_time: "79870020" as std.types.NonEmptyStr,

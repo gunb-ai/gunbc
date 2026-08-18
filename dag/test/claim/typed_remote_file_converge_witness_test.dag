@@ -63,9 +63,9 @@ test fn the_stage_step_does_not_echo_content_back() -> Bool {
     Absent => false
     Present { value: w } => {
       let argv = gunbc.typed_remote_file_write.typed_remote_file_stage_argv(write: w)
-      !string_list_contains(xs: argv, wanted: "tee")
-        && string_list_contains(xs: argv, wanted: "dd")
-        && string_list_contains(xs: argv, wanted: "status=none")
+      !std.materialization_ladder.string_list_contains(xs: argv, wanted: "tee")
+        && std.materialization_ladder.string_list_contains(xs: argv, wanted: "dd")
+        && std.materialization_ladder.string_list_contains(xs: argv, wanted: "status=none")
     }
   }
 }
@@ -97,7 +97,7 @@ test fn the_read_back_reads_the_destination_not_the_staging_file() -> Bool {
     Present { value: w } => {
       let argv = gunbc.typed_remote_file_write.typed_remote_file_readback_argv(write: w)
       argv == ["cat", subject_path as String]
-        && !string_list_contains(xs: argv, wanted: gunbc.typed_remote_file_write.typed_remote_file_staging_path(write: w))
+        && !std.materialization_ladder.string_list_contains(xs: argv, wanted: gunbc.typed_remote_file_write.typed_remote_file_staging_path(write: w))
     }
   }
 }

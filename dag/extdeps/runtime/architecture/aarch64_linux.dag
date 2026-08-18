@@ -25,7 +25,7 @@ data aarch64_linux_architecture_profile: extdeps.toolchain.architecture_profile.
   architecture: extdeps.toolchain.types.Aarch64,
   word_width: bit_width(64),
   pointer_width: bit_width(64),
-  endianness: LittleEndian,
+  endianness: extdeps.toolchain.architecture_profile.LittleEndian,
   page_size: byte_size(4096),
   default_alignment: byte_size(16),
   register_file: aarch64_general_purpose_registers,
