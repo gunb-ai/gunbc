@@ -5745,6 +5745,10 @@ fn rust_pure_memo_subject_matches(module_path: String, name: String) -> Bool {
     |> count) > 0
 }
 
+// Names the uncached definition. Only the EMITTED SYMBOL is renamed at a
+// subject: self-call detection in emit_fn_def keeps the authored name, so a
+// recursive subject routes its own recursion through the memoized wrapper
+// rather than bypassing it.
 fn rust_pure_memo_inner_name(name: String) -> String {
   concat(name, "_uncached")
 }
@@ -5882,9 +5886,6 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
   let is_pure_memo_subject = rust_pure_memo_subject_matches(module_path: module_path, name: name)
-  // Only the EMITTED SYMBOL is renamed. Self-call detection below keeps the
-  // authored name, so a recursive subject routes its own recursion through the
-  // wrapper rather than bypassing it.
   let emit_name = if is_pure_memo_subject { rust_pure_memo_inner_name(name: name) } else { name }
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
