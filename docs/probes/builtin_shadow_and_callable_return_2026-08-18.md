@@ -165,3 +165,59 @@ each is small, self-contained, and in `05_emit_rust.dag` or four authored rows �
 worth more than their counts**, because each is a fail-open that rustc happened to notice: one is a
 type error the compile seam admitted, the other is a match the emitted program gets wrong at
 runtime.
+
+## 8. Mechanism 4 decided by execution: the floor holds — the hole is at the SECOND refinement hop
+
+`smart-ram-730` asked for one discriminating compile, on the reading that an `Int` literal into a
+`String`-typed field might be a base-type failure (below-baseline floor) rather than a refinement
+failure. Run with a positive control in the same arm, because a bare refusal signal is also what a
+missing emitted file looks like.
+
+| # | subject | verdict |
+|---|---|---|
+| A | `type Box { s: String }` · `Box { s: 0 }` | **REFUSED** — `type mismatch: expected 'Primitive(String)', got 'Primitive(Int)'` |
+| B | positive control: `Box { s: "ok" }` | **ACCEPTED**, 5 files emitted, 0 diagnostics |
+| C | `type Row2 { s: NonEmptyStr }` · `Row2 { s: 0 }` (`NonEmptyStr = String where non_empty`, depth 1) | **REFUSED** — `expected 'Product(NonEmptyStr)', got 'Primitive(Int)'` |
+| D | `type T1 = String where brand("T1")` · `RowA { v: 0 }` (depth 1, brand) | **REFUSED** — `expected 'Product(T1)', got 'Primitive(Int)'` |
+| E | `type Row { at: LogicalTime }` · `Row { at: 0 }` (`LogicalTime = NonEmptyStr where brand(...)`, depth 2) | **ACCEPTED**, 8 files emitted |
+| F | local depth-2, no std: `type S1 = String where non_empty` · `type S2 = S1 where brand("S2")` · `RowB { v: 0 }` | **ACCEPTED** (no diagnostic for the row) |
+
+**So the ordinary compiler floor is intact, and the below-baseline reading is refuted** (A refuses,
+B is green). One refinement hop is intact too (C, D). The hole opens at the **second** hop — a
+refined alias whose base is itself a refined alias — and it is neither brand-specific nor
+std-specific: F reproduces it in eight lines with no import.
+
+**The tell is the diagnostic the accepting arm actually emits**, which self-describes the failure:
+
+```
+advisory[...]: where-refinement unenforced: predicate 'non_empty' on 'Product(LogicalTime)'
+               — non-literal value at refined position
+```
+
+The literal `0` at a string-refined position is classified as a **non-literal value**, so the arm
+degrades to an advisory instead of refusing. That is DESIGN §5's absorbing fallback exactly: the
+arm that cannot decide widens to "unenforced" rather than stopping the line, and the deficit's
+frequency is zero by construction because nothing counts it. At depth 1 the base-type comparison
+answers first and refuses; at depth 2 the expected type is reported as `Product(LogicalTime)` and
+the base type is no longer the thing being compared, leaving the refinement check as the only
+judge — and it absorbs.
+
+`where_refinement_enforcement_witness_note` claims this population by name — "record fields", and
+"inherited predicates compose through refined-alias chains (review 45121 — NonEmptyStr where
+brand)". **The composition is precisely where it stops holding**, so the note is a §4b rung-honesty
+failure rather than an unbuilt wall: an inflated class never ranks for climbing.
+
+How far the fail-open runs, since it is not confined to compile: the emitted artifact for E is
+
+```rust
+serde_json::from_value(serde_json::json!({"at": 0})).expect("valid data definition")
+```
+
+— an `Int` in a `String` field, behind an `.expect` that asserts validity. The compile seam admits
+it, the emitter serializes it, and the claim of validity is made at the point it would panic.
+
+**Disposition:** the four authored `observed_at: 0` rows are a two-line repair, but they are the
+symptom. The subject is the depth-2 arm, and the repair is that a value whose base type does not
+match the refined type's base must **refuse** at the literal site rather than report the predicate
+unenforced. Left routed, not fixed here — this section is the receipt that decides which lane owns it.
+
