@@ -31,10 +31,38 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 361 identities, after the declared rung drop below took 108 out by relocation
-// (469 -> 361). The count is NOT the whole population affected: 78 healthy passing witnesses
-// left the floor with them as collateral and are enrolled nowhere, so no number in this file
-// counts them. Read the rung drop, not this line, for what left.
+// POPULATION: 358 identities, after the declared rung drop below took 111 out by relocation
+// (469 -> 361 -> 358). The count is NOT the whole population affected, and the rest is stated
+// exactly here rather than left to the waves: 38 modules were relocated carrying 429 `test fn`
+// declarations. THE PARTITION MUST BE DISJOINT, and an earlier revision of this block was not:
+// it read "111 enrolled, 111 over-budget, 207 healthy", which sums to 429 only by counting the
+// 102 rows that are BOTH enrolled here AND over budget on both sides of the sum. Enrolment and
+// cost are independent axes, so the partition is taken on enrolment and the cost facts are
+// stated inside each part:
+//
+//   111 enrolled here and removed (the 469 -> 358 delta), which the pre-quarantine run
+//       32177951514 partitions exactly -- 469 = 367 held red + 97 budget-refused + 5 passed
+//       over budget -- so the 111 are 9 held red, 97 budget-refused, and all 5 passed-over-budget.
+//     5 unenrolled and budget-refused: that run reported budget_refused=102 while only 97 of
+//       them were enrolled here.
+//   313 passing when they were relocated, enrolled nowhere, counted by no number in this file.
+//       NINE of those later tipped over the ceiling once wave 1 removed the slow head (8 in
+//       32189985063, 1 straggler in 32193032348), so 304 have never been observed over budget.
+//
+//   111 + 5 + 313 = 429. Independently: `grep -c '^test fn'` over the 38 relocated modules is
+//   also 429, and differencing the two floor runs gives the same split (below).
+//
+// THE PROBLEM POPULATION IS NOT ONE NUMBER EITHER, which is why several circulated at once:
+// 107 rows were over budget or failing at quarantine time (102 budget-refused + 5 passed over
+// budget), and 116 including the 9 that tipped afterwards. 102 is the interrupted rows alone.
+//
+// The figures above are checkable against the tree and the run counters, and they are stated
+// because the earlier revision of this line said 361 while the roster carried 358, said 108
+// where the delta is 111, and described its collateral as "roughly 200". A bounded population
+// is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink wall reads
+// this carrier as its baseline, so a stale count here is load-bearing for work that is not
+// mine. The 358/111 corrections are tidy-lark-471's external review; the disjointness and the
+// per-part cost split are royal-hawk-392's.
 //
 // HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
@@ -104,9 +132,8 @@ import v2.std.text { String }
 // measured rather than predicted. Sixteen more modules leave here: the fifteen over 1000ms, and
 // test.claim.e0308_mechanical_trio_test at 774ms, which is below the line but FAILED on that
 // run, so it is quarantined on evidence rather than on threshold. Three more enrolled rows
-// retire with them (roster 361 -> 358), and a further 235 healthy siblings leave under the
-// same module-grain rule as the 78 above -- 313 in total, derived below rather than estimated;
-// the "roughly 200" this line carried until 2026-08-18 was a guess and read as one. The ceiling is 1552ms and it was calibrated as
+// retire with them (roster 361 -> 358), and further healthy siblings leave under the same
+// module-grain rule as the 78 above -- counted exactly in the POPULATION block, never rounded. The ceiling is 1552ms and it was calibrated as
 // measured-max-plus-one-quantum from a SINGLE 1527ms observation, so rows within a few hundred
 // ms of it are not stably green on a shared runner; that is the real reason this wave exists.
 //
@@ -118,26 +145,16 @@ import v2.std.text { String }
 // exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
 // leave with it; no roster row named it, so the roster stays at 358.
 //
-// TOTAL COLLATERAL, DERIVED, 2026-08-18 (supersedes the per-wave 78 and "roughly 200"): 313
-// healthy, fast, PASSING identities left the required floor across all three waves. It is derived
-// twice, from independent sources that agree exactly, because a coverage-loss figure asserted
-// once is the thing this declaration exists to prevent.
-//
-//   ROUTE A -- the two floor runs on main, differenced:
-//     pre  32177951514 @59653f569e  planned=9420 passed=8951 known_red=367 stale_quarantine=5 budget_refused=102
-//     post 32193032348 @6f3d374de0  planned=8997 passed=8638 known_red=358 stale_quarantine=0 budget_refused=0
-//     passed 313 + known_red 9 + interrupted 102 + passed-over-budget 5 = 429 identities left.
-//   ROUTE B -- the source: 429 `test fn` declarations across the 38 modules relocated by #8457.
-//
-//   The 6-identity gap against `planned` (9420 - 8997 = 423, not 429) is six identities that
-//   LANDED between the two runs, in the three commits separating those heads. It is not a
-//   discrepancy in this population, and it is stated so that the next reader does not read 423
-//   as the answer.
-//
-// TWO NUMBERS THIS SETTLES, both of which were live prose drift: the relocated module count is
-// 38 (21 first wave + 16 second + 1 third), and the problem population is 107, not 102 -- 102
-// BudgetInterrupted plus the 5 that PASSED over budget. Those are different observations with
-// different remedies, and collapsing them is why the two counts circulated at once.
+// THE SECOND DERIVATION, kept because a coverage-loss figure asserted once is exactly what this
+// declaration exists to prevent. Differencing the two floor runs on main reproduces the split
+// above from run counters alone, without reading the tree:
+//   pre  32177951514 @59653f569e  planned=9420 passed=8951 known_red=367 stale_quarantine=5 budget_refused=102
+//   post 32193032348 @6f3d374de0  planned=8997 passed=8638 known_red=358 stale_quarantine=0 budget_refused=0
+//   passed 313 + known_red 9 + budget_refused 102 + passed-over-budget 5 = 429.
+// The 6-identity gap against `planned` (9420 - 8997 = 423, not 429) is six identities that
+// LANDED between the two runs, in the three commits separating those heads. It is not a
+// discrepancy in this population, and it is stated so the next reader does not read 423 as the
+// answer.
 //
 // WHAT IS STILL NOT DERIVED, named rather than left to be assumed: which INDIVIDUAL identities
 // make up the 313. The figures above are exact in aggregate and unavailable at identity grain,
