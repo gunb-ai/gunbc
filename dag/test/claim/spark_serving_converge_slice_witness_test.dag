@@ -97,7 +97,7 @@ import gunbc.spark_serving_converge_realize {
 import gunbc.remote_operation { remote_operations_argv_only, remote_operation_count }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
-import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, PullModelArtifact }
+import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -163,7 +163,7 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount, PullModelArtifact],
+    effects: [EnableLingerForOwnAccount, RunContainerAsOwnUser],
     executor_login: spark_serving_automation_principal_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true

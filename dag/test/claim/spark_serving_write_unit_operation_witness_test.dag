@@ -5,7 +5,7 @@ import gunbc.spark_serving_realization {
   ServingInstallEffect,
   WriteUserUnitFile,
   EnableLingerForOwnAccount,
-  PullModelArtifact,
+  RunContainerAsOwnUser,
 }
 import gunbc.spark_serving_converge_realize {
   SparkServingInstallRemoteCommandsVerdict,
@@ -163,11 +163,11 @@ test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
 
 // ── What still refuses, so the widening did not become an absorbing arm ─────────────────────────
 
-// Widening the representation must not turn unimplemented effects into successes. `PullModelArtifact`
+// Widening the representation must not turn unimplemented effects into successes. `RunContainerAsOwnUser`
 // has no realization, and a sequence containing it still refuses whole rather than silently
 // realizing the part it understands.
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
-  match realize(effects: [WriteUserUnitFile, PullModelArtifact]) {
+  match realize(effects: [WriteUserUnitFile, RunContainerAsOwnUser]) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
     SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }

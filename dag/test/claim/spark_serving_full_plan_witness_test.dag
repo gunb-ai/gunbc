@@ -415,6 +415,10 @@ test fn an_exactly_desired_host_supports_an_empty_replan() -> Bool {
 
 // The two components must be independently discriminating: if the projection fused them again, a
 // runtime-only drift would move the model member too. Four members, exactly one changed.
+// THE MODEL IS HELD AT DESIRED HERE, because this claim isolates the RUNTIME. An earlier revision
+// passed bare_store() -- inserted mechanically alongside the runtime rather than chosen -- which
+// drifted the model too and made a claim named "exactly one member" measure two. The fixture, not
+// the plan, was wrong.
 test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
   match subject_release() {
     Absent => false
@@ -424,7 +428,7 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         serving_release: r,
         projection: spark_serving_observed_members(
           observation: SparkServingObserved { host: subject_host, loaded_release: r },
-          store: bare_store(),
+          store: complete_required_store(),
           runtime: RuntimeMaterializationIncomplete {
             identity: ollama_runtime_materialization_identity_for_required_release(),
             first_defect: RuntimeExecutableMissing {
@@ -476,27 +480,54 @@ fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
 // THE CUTOVER KEYSTONE. This function planned a one-member linger list; it now plans the declared
 // population. A bare host with linger already on owes the other three members, and the artifact must
 // freeze a typed row for each -- not the single linger row the superseded planner produced.
-test fn a_bare_host_refuses_because_two_effects_are_still_unrealized() -> Bool {
-  string_contains(
-    artifact_refusal_cause(
-      v: artifact_verdict(
-        host: subject_host,
-        projection: project(
-          obs: SparkServingAbsent { host: subject_host },
-          runtime: bare_runtime(), store: bare_store(),
-          unit: UserUnitStateAbsent,
-          enablement: UserUnitEnablementNotFound,
-          linger: LingerObservedEnabled,
-        ),
-      ),
+// THE FRONTIER MOVED, AND THIS IS THE BAR IT MOVED TO.
+//
+// This claim used to assert that a bare host REFUSED, because InstallOwnedRuntimeClosure and
+// PullModelArtifact were both unrealized and a plan containing an unrealized effect refuses whole.
+// Both are realized now, so the refusal is gone -- and its absence is the operator's stated push
+// criterion: a bare host must produce a complete executable plan rather than a typed-action refusal.
+//
+// So it asserts the new state rather than being deleted. A frontier control that stops holding is
+// evidence the frontier moved, and the honest response is to state where it moved to.
+//
+// It pins the ROW COUNT as a distinct constant rather than merely "not refused", because "no
+// refusal" would also be satisfied by a plan that produced nothing at all -- which is the empty
+// observation narrow, and on a bare host it is the exact wrong answer.
+//
+// FOUR, NOT FIVE, and the second half of the claim is what makes that number mean something rather
+// than be curve-fitted. The declared population is five members, but this fixture observes linger
+// ALREADY ENABLED, so linger converges and owes no action. Flipping only linger to disabled yields
+// five. A first attempt asserted five against the linger-enabled fixture and was simply wrong about
+// its own subject; carrying both counts states the relationship instead of a remembered constant.
+test fn a_bare_host_produces_a_complete_plan_with_no_typed_action_refusal() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      obs: SparkServingAbsent { host: subject_host },
+      runtime: bare_runtime(), store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitEnablementNotFound,
+      linger: LingerObservedEnabled,
     ),
-    "typed-actions",
   )
+  let with_linger_off = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      obs: SparkServingAbsent { host: subject_host },
+      runtime: bare_runtime(), store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitEnablementNotFound,
+      linger: LingerObservedDisabled,
+    ),
+  )
+  artifact_refusal_cause(v: v) == "<ready>"
+    && artifact_row_count(v: v) == 4
+    && artifact_row_count(v: with_linger_off) == 5
 }
 
-// AND THE UNIT MEMBER ALONE DOES PLAN, which is what proves the refusal above is about the two
-// unrealized effects and not about the widening itself. A host whose runtime and model are already
-// correct but whose unit drifted owes exactly one row, and that row realizes end to end.
+// AND A SINGLE DRIFTED MEMBER PLANS EXACTLY ONE ROW, which is what stops the claim above from being
+// satisfied by a plan that simply emits everything. A host whose runtime and model are already
+// correct but whose unit drifted owes one row, not five.
 test fn a_unit_only_drift_freezes_exactly_one_row() -> Bool {
   match subject_release() {
     Absent => false
