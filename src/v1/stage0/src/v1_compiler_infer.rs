@@ -6077,6 +6077,10 @@ pub fn infer_expr_body(
                                 Some(s) => s.params.clone(),
                                 None => Rc::new(vec![]),
                             };
+                            let call_sig_split = split_sig_params(
+                                sig_params.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
                             let has_lambda = {
                                 let mut __found = false;
                                 for a in call_args.clone().iter().cloned() {
@@ -6165,12 +6169,8 @@ pub fn infer_expr_body(
                                 })
                             } else {
                                 {
-                                    let sig_split = split_sig_params(
-                                        sig_params.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    let value_params = sig_split.value_params.clone();
-                                    let generic_names = sig_split.generic_names.clone();
+                                    let value_params = call_sig_split.value_params.clone();
+                                    let generic_names = call_sig_split.generic_names.clone();
                                     let final_state = Rc::new(
                                         call_args
                                             .clone()
@@ -6321,12 +6321,8 @@ pub fn infer_expr_body(
                                         ),
                                         None => error_type(),
                                     };
-                                    let value_params_for_check = split_sig_params(
-                                        sig_params.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    )
-                                    .value_params
-                                    .clone();
+                                    let value_params_for_check =
+                                        call_sig_split.value_params.clone();
                                     let arg_shape_diags = direct_call_shape_diags(
                                         func_name.clone(),
                                         sig_params.clone(),
@@ -9411,10 +9407,11 @@ pub fn infer_record_lit_structural(
             None => "".to_string(),
         };
         let si_presence = scope.type_env.clone().source_indices.clone();
+        let presence_variant_owner = variant_owner_node(scope.clone(), tn_str.clone());
         let presence_fields = if (tn_str.clone() == "".to_string()) {
             Rc::new(vec![])
         } else {
-            match variant_owner_node(scope.clone(), tn_str.clone()) {
+            match presence_variant_owner.clone() {
                 Some(variant_owner) => match Rc::new({
                     let mut __result = Vec::new();
                     for v in variant_owner.children.clone().iter().cloned() {
@@ -9438,11 +9435,7 @@ pub fn infer_record_lit_structural(
                     scope.clone(),
                 ) {
                     Some(variant_node) => variant_node.children.clone(),
-                    None => match record_lit_instantiated_fields(
-                        type_name.clone(),
-                        expected.clone(),
-                        scope.clone(),
-                    ) {
+                    None => match instantiated_struct_fields.clone() {
                         Some(inst_fields) => inst_fields.clone(),
                         None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
                             Some(decl) => {
@@ -9461,8 +9454,8 @@ pub fn infer_record_lit_structural(
                 },
             }
         };
-        let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
-            && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
+        let is_zero_field_variant_tag_reference =
+            (((field_inits.clone().len() as i64) == 0) && (presence_variant_owner.clone() != None));
         let presence_name_is_ambiguous =
             (global_bare_is_ambiguous(scope.type_env.clone(), tn_str.clone())
                 && (v1_rt::map_get(&scope.type_env.clone().str_bindings.clone(), tn_str.clone())
@@ -19596,6 +19589,12 @@ pub fn typecheck_module(
             }
             __result
         });
+        let module_type_env_cache = Rc::new(TypeEnvCache {
+            deps_map: env_cache.deps_map.clone(),
+            str_bindings: env_cache.str_bindings.clone(),
+            cycle_set_str: env_cache.cycle_set_str.clone(),
+            variant_locals: ctx.variant_locals.clone(),
+        });
         let typed_base = module_node(
             resolved_module_name.clone(),
             module_imports(resolved.module.clone()),
@@ -19611,22 +19610,12 @@ pub fn typecheck_module(
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
                 type_env: env.clone(),
-                type_env_cache: Rc::new(TypeEnvCache {
-                    deps_map: env_cache.deps_map.clone(),
-                    str_bindings: env_cache.str_bindings.clone(),
-                    cycle_set_str: env_cache.cycle_set_str.clone(),
-                    variant_locals: ctx.variant_locals.clone(),
-                }),
+                type_env_cache: module_type_env_cache.clone(),
                 interface: build_module_interface(
                     resolved_module_name.clone(),
                     typed_module.clone(),
                     env.clone(),
-                    Rc::new(TypeEnvCache {
-                        deps_map: env_cache.deps_map.clone(),
-                        str_bindings: env_cache.str_bindings.clone(),
-                        cycle_set_str: env_cache.cycle_set_str.clone(),
-                        variant_locals: ctx.variant_locals.clone(),
-                    }),
+                    module_type_env_cache.clone(),
                     source_indices.clone(),
                 ),
                 func_env: updated_func_env.clone(),

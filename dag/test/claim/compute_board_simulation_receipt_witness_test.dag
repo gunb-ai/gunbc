@@ -14,6 +14,7 @@ import product.compute_board.analog {
 }
 import product.electrical.connectivity {
   ElectricalNet,
+  component_local_label,
 }
 import product.compute_board.spice_projection {
   SpiceSliceProjected,
@@ -159,7 +160,7 @@ fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet
     concat(acc, [ElectricalNet {
       identity: net.identity,
       members: fold(net.members, init: [], f: fn(macc, m) {
-        if ((m.component as String) == "pg_filt") && ((m.terminal as String) == "1") {
+        if (component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
           macc
         } else {
           concat(macc, [m])
