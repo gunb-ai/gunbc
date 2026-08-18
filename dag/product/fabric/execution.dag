@@ -42,8 +42,10 @@ type Attempt<P> {
 
 type ReservationRef = NonEmptyStr where brand("ReservationRef")
 
+type LeaseKey = NonEmptyStr where brand("LeaseKey")
+
 type LeaseIdentity {
-  lease_key: NonEmptyStr
+  lease_key: LeaseKey
   resource_fingerprint: ContentHash
   generation: Int
 }
