@@ -8,12 +8,46 @@ import v2.std.decl_facts_skeleton {
 import v2.std.decl_index { DeclFact, decl_facts }
 
 // Single authority: specimen rows, duplicate_qn oracle (both roots), dimensionless positive-control deps.
+//
+// `dag/std` is deliberately NOT a root, and its absence is load-bearing rather than an omission.
+// `decl_facts` is a parse-only corpus walk: the pool decides which declarations become facts, and
+// nothing more. The resolved half of a projection — resolved variant name, parent qualified name —
+// is not read from the pool at all; `marshal_data_initializer_projection_for_item` resolves through
+// `typed_module_for_path`, i.e. the prepared scope, which carries std whatever this list says. So a
+// std root bought no resolution and no fact any row looks up: every qualified name the consuming
+// witnesses name is a fixture path or `extdeps.units.dimensionless`, never a std declaration.
+//
+// What it cost was the whole scan. std is 1,298,751 of the 1,311,432 bytes these roots reach (99.0%,
+// 138 of 152 files), and the required floor builds a fresh `InterpContext` per CLAIM, so the scan is
+// paid once per ROW rather than once per module — 28 rows, 28 whole-std parses.
+// A ROOT THAT NO LITERAL NAMES IS NOT AN UNREAD ROOT, and the counterexample is in this very
+// list. A static scan for qualified-name literals reports the duplicate_qn SHADOW root below as
+// unread: no row spells a name under it. It is read. The rows reach it through pool AMBIGUITY --
+// the shadow declares the same qualified name as the primary, and what the witnesses assert is
+// that the lookup returns BOTH candidates -- so the root is named by nothing and load-bearing
+// anyway. Executed rather than reasoned: deleting the shadow root reds
+// decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates and
+// decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique.
+//
+// So a census over pool roots produces CANDIDATES, never a removal list. What decides is the
+// mutation battery, run under BOTH root sets with the red sets compared at IDENTITY grain: a
+// count match is not a match. Removing a root that is merely unnamed makes the rows over it pass
+// vacuously -- cheaper AND unfalsifiable, which is worse than the cost it saved.
+//
+// INERT ROOT, FOUND THEN REMOVED (census 2026-08-18, report-first): dag/extdeps/external_authority
+// contributed ZERO files. The module is the FILE dag/extdeps/external_authority.dag, and
+// corpus_dag_files_for_roots walks a root only `if root_path.is_dir()`, so a root naming a file was
+// skipped in silence -- no diagnostic, no count, no refusal. The row it was meant to serve
+// (decl_facts_reflection_imported_external_authority_positive_control) passes regardless, because
+// the parent qualified name it asserts comes from RESOLUTION through the prepared scope, not from
+// this pool. It was the only such root among the 41 pool-walk root literals in the corpus, and it
+// is gone: it served as the positive control for the zero-contributing-root refusal, red on the
+// gate landing and green on this removal.
 data decl_facts_reflection_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection",
   "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
   "test/fixture_roots/decl_facts_reflection_duplicate_qn/shadow",
   "dag/extdeps/units",
-  "dag/std",
 ]
 
 // Skeleton outer-constructor lexeme witnesses need only parse-tree facts under specimens/;
