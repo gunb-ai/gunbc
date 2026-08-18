@@ -356,3 +356,50 @@ The `Present` rows are the qualification deliberately declined earlier (kernel-o
 pre-cut import owner) -- the refusal was right, and this is what it looks like when it comes due.
 The two `Unit` rows are the recorded 04_infer merge debt. The earlier "src/v1 is clean" claim
 came from a different tool with a different closure and is withdrawn.
+
+## `fold_list` is a source-root gap, and every cheap repair is forbidden (2026-08-18)
+
+Measured, not reasoned: `regen_stage0.rs` line 533 sets
+
+    let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
+
+**`src/v2` is not a regen source root.** `fold_list`'s only declarer is `src/v2/std/algebra.dag`
+(`module v2.std.algebra`). So under regen:
+
+- bare `fold_list` has no declarer in the pool -> `function 'fold_list' not found in scope`
+- `v2.std.algebra.fold_list` has no module `v2` in the pool -> `undefined variable 'v2'`
+
+Both spellings fail, for the same reason. The qualification attempt and its revert were both
+chasing a spelling for a name that is not reachable at all. `dag/extdeps/github/app.dag` uses the
+qualified form without erroring only because it is outside the closure actually compiled.
+
+These files were never in regen's closure before the cut (zero import paths from `src/v1`), so
+the reference was never resolved. Latent defect, newly visible -- the same census the cut opened.
+
+### Why the obvious repairs are refused
+
+**Registering `fold_list` in `v1.compiler.infer_method builtin_function_registry` is forbidden.**
+The v1 seed is frozen X, and DESIGN section 3 is explicit: "a host-builtin registry, an
+escape-hatch arm, a compatibility table inside a frozen X accepts no new rows, because each row
+is a deferred modeling obligation the surface's existence recruited ... and a freeze that still
+accepts rows is not a freeze." The convenience of this repair is exactly what the rule exists to
+refuse; the 2026-08-15 receipt (38 of 125 host builtins accreted into one driver file) is what it
+costs when accepted.
+
+**Declaring `fold_list` in a `dag/` or `src/v1` module is a section 3 fork** -- a second authority
+for a function that already has one.
+
+That leaves three candidates, all design decisions rather than mechanical fixes:
+
+1. **Add `src/v2` to regen's source roots.** Smallest diff, but it changes what regen compiles
+   for every consumer, and `cli_run::regen_source_roots` is a second place asserting the same
+   pair, so the two must move together.
+2. **Move `fold_list`'s authority** into a root regen can see. A relocation, not an addition --
+   no new authority is minted -- but it moves a `src/v2` std surface, which needs its own ruling.
+3. **The `PrimitiveDefinition` identity join** DESIGN's determinism thread already names as the
+   dissolve-on for exactly this class. The modeled answer, and much the largest.
+
+**Operator decision required.** 11 of the 27 rows are this one cause, and the branch cannot reach
+a regen fixed point without choosing. Recorded rather than guessed, because the cheapest option
+here is the one the authority docs forbid, and a session under merge pressure is precisely the
+reader most likely to take it.
