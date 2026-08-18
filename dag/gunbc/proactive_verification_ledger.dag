@@ -113,7 +113,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     id: ^family_equals_classical_not_ingested,
     title: "emit_host_classical_not_ingested family equals_eval agreement",
     execution: ClaimWitness {
-      entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       function: "emit_host_classical_not_ingested_equals_eval_holds"
     },
     dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")

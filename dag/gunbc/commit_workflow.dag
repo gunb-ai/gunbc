@@ -1393,7 +1393,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1402,7 +1402,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1411,7 +1411,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/emit_host_native_only_verdict_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
       check_fns: [
         "emit_host_native_only_verdict_stdout_match_mock_holds",
         "emit_host_native_only_verdict_stdout_mismatch_mock_holds"
@@ -1423,7 +1423,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       check_fns: [
         "ingested_classical_not_resolves_holds",
         "ingested_classical_not_arrow_has_match_holds",
