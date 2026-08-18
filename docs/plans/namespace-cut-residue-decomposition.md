@@ -403,3 +403,41 @@ That leaves three candidates, all design decisions rather than mechanical fixes:
 a regen fixed point without choosing. Recorded rather than guessed, because the cheapest option
 here is the one the authority docs forbid, and a session under merge pressure is precisely the
 reader most likely to take it.
+
+## #8391 closed; its one durable artifact retained here (2026-08-18)
+
+`measure/unique-arm-chain` was a branch-local read-only instrument that counted unique-arm
+bindings failing the chain relation. **It never produced a measurement**: run 1 hit the remote's
+45-minute default timeout with output buffered behind `| tail`, run 2 was OOM-killed after
+reconcile and reported `TOTAL_DISTINCT 0`, which is ignorance and was recorded as ignorance
+rather than as absence.
+
+It is now moot, and not because it failed. The resolver-order correction landed at `f22bac0`
+without it, on the ground that `unique_on_chain_policy_note` already states the rule and the
+unique arm simply discarded the `module_path` it is defined over. The count only ever sized the
+source fallout; it never decided the semantics. Closing rather than repairing.
+
+**The one artifact worth keeping** is its unit test, which is a discriminating control for the
+production predicate `global_bare_module_on_chain` (`v1.compiler.infer_env`, landed `f22bac0`) --
+it pins segment-prefix against text-prefix, the exact confusion that would make the predicate
+silently wrong:
+
+    on_chain("std.content_hash", "std")              == true    // proper ancestor
+    on_chain("std.content_hash", "std.content_hash") == true     // self
+    on_chain("std.content_hash", "std.content")      == false    // TEXT prefix, not segment
+    on_chain("std.content_hash", "stdx")             == false    // text prefix of first segment
+    on_chain("std", "std.content_hash")              == false    // descendant, not ancestor
+    on_chain("v2.std.node", "std.node")              == false    // suffix match, not prefix
+
+**These assertions have no executing home on this branch, and that is stated rather than
+papered over.** The floor's source roots are `dag` + `src/v2`, so a floor witness cannot reach
+`v1.compiler.infer_env`; the v1 Rust suite was deleted by gunbc#8146 and CI no longer runs
+`cargo test`; and a unit test placed in the generated `v1_compiler_infer_env.rs` would be
+destroyed by the next regen. Writing it into any of those would be specification-without-
+execution -- coverage by illusion, which DESIGN section 6 names directly.
+
+**Restoration trigger:** the first of -- (a) `src/v1` enters a witness-executing source-root set,
+(b) the predicate's authority moves to a module the floor's roots already reach, or (c) the v1
+seed regains an executing test home. Whichever lands first, these six assertions are enrolled
+against `global_bare_module_on_chain` at that moment. Until then the predicate is landed and
+UNWITNESSED, and this row is the receipt for that gap.
