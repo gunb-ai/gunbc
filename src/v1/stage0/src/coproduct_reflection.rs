@@ -310,13 +310,14 @@ use std::cell::RefCell;
 use std::collections::HashMap as StdHashMap;
 
 thread_local! {
-    static FLOOR_DECL_PARSE_MEMO: RefCell<Option<(String, StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>)>> =
-        RefCell::new(None);
+    static FLOOR_DECL_PARSE_MEMO: RefCell<
+        Option<StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
+    > = RefCell::new(None);
 }
 
-pub fn register_floor_decl_parse_memo(subject_digest: String) {
+pub fn register_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
-        *cell.borrow_mut() = Some((subject_digest, StdHashMap::new()));
+        *cell.borrow_mut() = Some(StdHashMap::new());
     });
 }
 
@@ -330,7 +331,7 @@ fn floor_decl_parse_memo_lookup(
 ) -> Option<(Vec<ParsedTypeDecl>, usize)> {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let slot = cell.borrow();
-        let Some((_, map)) = slot.as_ref() else {
+        let Some(map) = slot.as_ref() else {
             return None;
         };
         map.get(&(roots.to_vec(), want_kind)).cloned()
@@ -344,7 +345,7 @@ fn floor_decl_parse_memo_store(
 ) {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let mut slot = cell.borrow_mut();
-        if let Some((_, map)) = slot.as_mut() {
+        if let Some(map) = slot.as_mut() {
             map.insert((roots.to_vec(), want_kind), result.clone());
         }
     });

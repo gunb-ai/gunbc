@@ -4271,9 +4271,12 @@ fn eval_pure_named_call(
     let trace_on = eval_recompute_trace_enabled();
     let memo_on = ctx.eval_call_memo.borrow().enabled;
     if !trace_on && !memo_on {
+        let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
-            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+            if ctx.effect_dispatch_count.get() == effects_before {
+                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+            }
         }
         return result;
     }
@@ -4305,7 +4308,9 @@ fn eval_pure_named_call(
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
-        store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+        if ctx.effect_dispatch_count.get() == effects_before {
+            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+        }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
         if let Ok(v) = &result {

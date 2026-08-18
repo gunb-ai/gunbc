@@ -40719,7 +40719,6 @@ thread_local! {
 }
 
 struct FloorPreparedAuthority {
-    subject_digest: String,
     inventory: Vec<PreparedSourceView>,
 }
 
@@ -40735,16 +40734,10 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Register the one prepared subject for the current required-floor run so pool-root parse
 /// builtins and the languages census read the sources preparation already held, instead of
 /// re-acquiring the tree.
-pub fn register_floor_prepared_authority(
-    prepared: &PreparedRepository,
-    inventory: Vec<PreparedSourceView>,
-) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo(prepared.subject_digest.clone());
+pub fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+    crate::coproduct_reflection::register_floor_decl_parse_memo();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
-        *cell.borrow_mut() = Some(FloorPreparedAuthority {
-            subject_digest: prepared.subject_digest.clone(),
-            inventory,
-        });
+        *cell.borrow_mut() = Some(FloorPreparedAuthority { inventory });
     });
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
     crate::v1_interpreter::clear_cross_claim_pure_memos();
@@ -40759,16 +40752,10 @@ pub fn clear_floor_prepared_authority() {
 
 /// Measurement harness only (`floor_prepared_toll_receipt` bin): register inventory bytes
 /// the fold already read, without repeating `prepare_repository_once` resolve.
-pub fn register_floor_prepared_inventory_measurement(
-    subject_digest: String,
-    inventory: Vec<PreparedSourceView>,
-) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo(subject_digest.clone());
+pub fn register_floor_prepared_inventory_measurement(inventory: Vec<PreparedSourceView>) {
+    crate::coproduct_reflection::register_floor_decl_parse_memo();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
-        *cell.borrow_mut() = Some(FloorPreparedAuthority {
-            subject_digest,
-            inventory,
-        });
+        *cell.borrow_mut() = Some(FloorPreparedAuthority { inventory });
     });
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
     crate::v1_interpreter::clear_cross_claim_pure_memos();
@@ -40793,9 +40780,6 @@ pub fn run_floor_prepared_toll_receipt() {
             source: sf.clone(),
         });
     }
-    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        inventory.iter().map(|e| e.source.clone()).collect();
-    let digest = subject_digest_for_closure(&sources);
     let ws = workspace_root();
     let pool_roots: Vec<String> = witness_layer_roots()
         .iter()
@@ -40835,7 +40819,7 @@ pub fn run_floor_prepared_toll_receipt() {
         languages_disk_ms, languages_inventory_ms, item4_reclaimed
     );
 
-    register_floor_prepared_inventory_measurement(digest, inventory);
+    register_floor_prepared_inventory_measurement(inventory);
 
     let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
     let file_path = "src/cuartifact_ok.rs";
@@ -40882,10 +40866,9 @@ pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
 }
 
 fn register_floor_prepared_authority_guard(
-    prepared: &PreparedRepository,
     inventory: Vec<PreparedSourceView>,
 ) -> FloorPreparedAuthorityGuard {
-    register_floor_prepared_authority(prepared, inventory);
+    register_floor_prepared_authority(inventory);
     FloorPreparedAuthorityGuard
 }
 
@@ -41929,8 +41912,7 @@ pub fn run_required_floor(
     let prepare_started = std::time::Instant::now();
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
-    let _floor_prepared_guard =
-        register_floor_prepared_authority_guard(&prepared, prepared_sources);
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
