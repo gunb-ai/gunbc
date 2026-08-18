@@ -2,6 +2,7 @@ module extdeps.ampere.mt_collins_product_brief.platform
 
 import std.types { String, NonEmptyStr, Int }
 import std.nat { Nat }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
 
@@ -27,7 +28,7 @@ type MtCollinsPlatformMechanical {
   ddr4_dimms_total: Nat
   ddr4_dimms_per_socket: Nat
   dimms_per_channel: Nat
-  ddr4_max_data_rate_mts: Int
+  ddr4_max_data_rate: MegatransfersPerSecond
 }
 
 data mt_collins_platform_mechanical: MtCollinsPlatformMechanical = MtCollinsPlatformMechanical {
@@ -36,7 +37,7 @@ data mt_collins_platform_mechanical: MtCollinsPlatformMechanical = MtCollinsPlat
   ddr4_dimms_total: 32,
   ddr4_dimms_per_socket: 16,
   dimms_per_channel: 2,
-  ddr4_max_data_rate_mts: 3200,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
 }
 
 data mt_collins_platform_model_scope: ExternalModelScope = ExternalModelScope {

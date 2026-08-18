@@ -256,6 +256,12 @@ fn bits_per_byte() -> Nat {
 
 type Hertz = Measure<Frequency, One, Nat>
 
+// DDR "MT/s": mega-TRANSFERS per second. Dimensionally a frequency-family rate (1/s at Mega
+// scale), semantically distinct from both Hertz (a clock: DDR moves two transfers per clock,
+// so the marketing figure is never the clock) and DataRate (bits/s: transfers x bus width).
+// The alias carries the transfer semantics; the scale carries the Mega.
+type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
+
 type HardwareThreadCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
@@ -720,6 +726,14 @@ fn bit_width_count(b: BitWidth) -> Nat {
 
 fn hertz(count: Nat) -> Hertz {
   Measure { count: count }
+}
+
+fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
+  Measure { count: count }
+}
+
+fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> Nat {
+  measure_count(r)
 }
 
 fn hertz_count(h: Hertz) -> Nat {

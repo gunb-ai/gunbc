@@ -2,6 +2,7 @@ module extdeps.boards.asrock
 
 import std.types { String, NonEmptyStr, Int }
 import std.nat { Nat }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
@@ -39,7 +40,7 @@ type AsrockAltrad8ud1l2tMechanical {
   processor_support_label: NonEmptyStr
   dimm_slots_total: Nat
   dimms_per_channel: Nat
-  ddr4_max_data_rate_mts: Int
+  ddr4_max_data_rate: MegatransfersPerSecond
   network_label: NonEmptyStr
   citation: NonEmptyStr
 }
@@ -52,7 +53,7 @@ data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAlt
   processor_support_label: "LGA 4926, Ampere Altra / Altra Max",
   dimm_slots_total: 8,
   dimms_per_channel: 1,
-  ddr4_max_data_rate_mts: 3200,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
   network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
   citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
 }
