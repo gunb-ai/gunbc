@@ -32,16 +32,8 @@ fn w_arity_authority_answers_for_both_fixtures() -> Bool {
     && !is_container_type(name: "Int")
 }
 
-data root_d_decomposition_note: String = "DECOMPOSED 2026-08-18, and the reason is polarity rather than cost. These three claims were one conjoined test fn enrolled expected-red. Only the FIRST is red: the positive fixture carries the live E0107 defect. The other two are controls that must be GREEN — the null control keeps the arity-0 wall that must not break, and the authority row asserts std.types answers for both fixtures. Fused under one Bool and enrolled expected-red, a break in either control was UNOBSERVABLE: the row was already red for the defect, so a regression in a green arm changed nothing anyone could see, and the expected-red enrollment was masking two live guarantees rather than covering them. Splitting is therefore a coverage repair (DESIGN 4b: an inflated class never ranks for climbing), not a cost move — total work is unchanged, since the same two compile_dag_rust_emit_check invocations still run. The eponymous name stays on the red arm because the positive fixture IS this witness's subject, which also leaves the floor_expected_red roster identity untouched."
-
 test fn root_d_checkpoint_scalar_declared_arity_witness_holds() -> Bool {
   w_declared_arity_leaf_is_not_a_checkpoint_scalar()
-}
-
-test fn root_d_arity_zero_checkpoint_scalar_still_strips_phantom_arguments() -> Bool {
-  w_arity_zero_checkpoint_scalar_still_strips_phantom_arguments()
-}
-
-test fn root_d_arity_authority_answers_for_both_fixtures() -> Bool {
-  w_arity_authority_answers_for_both_fixtures()
+    && w_arity_zero_checkpoint_scalar_still_strips_phantom_arguments()
+    && w_arity_authority_answers_for_both_fixtures()
 }
