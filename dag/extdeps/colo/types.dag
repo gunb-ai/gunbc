@@ -2,7 +2,7 @@ module extdeps.colo.types
 
 import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyOnce }
+import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -45,10 +45,13 @@ type ColoFacilityRow {
 // Power as a retail colocation offer states it. Watt allocations and breakered feeds are
 // different commercial objects: an allocation is a cap the provider meters or polices, a
 // feed is a circuit whose usable share is set by the continuous-load derating the consumer
-// applies. An offer that states neither is PowerUnread, never a guessed figure.
+// applies. An offer that states neither is PowerUnread, never a guessed figure; an offer
+// stating amps with no voltage keeps its amp reading and carries the voltage as a typed
+// obligation, because multiplying by an assumed voltage would fabricate the wattage.
 type PowerAllocation
   = AllocatedWatts { watts: Nat }
   | FeedAmps { amps: Nat, volts: Nat }
+  | FeedAmpsVoltsUnstated { amps: Nat, voltage_obligation: NonEmptyStr }
   | PowerUnread { obligation: NonEmptyStr }
 
 type TransitAllocation
@@ -97,7 +100,7 @@ type CrossConnectFee {
 
 type RemoteHandsWindowRate {
   window_label: NonEmptyStr
-  per_hour_usd_micro: Nat
+  hourly: MoneyPerHour
   minimum_note: NonEmptyStr
   citation: NonEmptyStr
 }

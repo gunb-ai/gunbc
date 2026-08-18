@@ -2,7 +2,7 @@ module extdeps.colo.halsey_165
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyOnce, money_amount_micro }
+import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour, money_amount_micro }
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
@@ -54,13 +54,13 @@ data halsey_165_cross_connect: CrossConnectFee = CrossConnectFee {
 data halsey_165_remote_hands: List<RemoteHandsWindowRate> = [
   RemoteHandsWindowRate {
     window_label: "Monday-Friday 06:00-18:00",
-    per_hour_usd_micro: 175000000,
+    hourly: MoneyPerHour { amount: money_amount_micro(count: 175000000), currency: Usd },
     minimum_note: "billed at a one hour minimum",
     citation: "165halsey.com remote-hands page, read 2026-08-18",
   },
   RemoteHandsWindowRate {
     window_label: "Monday-Friday 18:00-23:00",
-    per_hour_usd_micro: 250000000,
+    hourly: MoneyPerHour { amount: money_amount_micro(count: 250000000), currency: Usd },
     minimum_note: "billed at a one hour minimum",
     citation: "165halsey.com remote-hands page, read 2026-08-18",
   },
