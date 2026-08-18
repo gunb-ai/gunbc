@@ -105,6 +105,22 @@ type RuntimeMaterializationDefect
   | RuntimeExecutableMissing { expected_relative_path: NonEmptyStr }
   | RuntimeExecutableNotExecutable { expected_relative_path: NonEmptyStr }
 
+// WHAT THIS CARRIER DOES NOT YET DO, named so it is not mistaken for closed.
+//
+// `RuntimeMaterializationComplete` is a PUBLIC CONSTRUCTOR. Any caller can author one carrying any
+// identity, so nothing here makes "complete" a fact EARNED BY EVIDENCE rather than a claim asserted
+// by whoever assembles the value. The arms are honest about what they mean; they are not yet sealed
+// against being written without the observation behind them.
+//
+// That is deliberate rather than overlooked: the filesystem probe that would supply the evidence
+// does not exist yet, so a seal now would have nothing to admit through and would be a wall around
+// an empty room. The obligation is that `Complete` becomes reachable ONLY from a probe result --
+// the same shape as an admission whose sole mint is bound to the fold that establishes it -- and it
+// lands with the probe, not before.
+//
+// Until then this carrier is a vocabulary with correct distinctions, not a guarantee. Stated at the
+// rung it occupies, because a carrier named for a guarantee it does not hold is the inflation that
+// stops a class ever ranking for repair.
 type RuntimeMaterializationObservation
   = RuntimeMaterializationAbsent
   | RuntimeMaterializationIncomplete {
