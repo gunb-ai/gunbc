@@ -44,6 +44,39 @@ import v2.std.text { String }
 // on main or on an earlier head. Each is enrolled at exact qualified-name grain, never by prefix,
 // module, or directory, so enrolling one row can never silently enroll a neighbour.
 //
+// DECLARED RUNG DROP (DESIGN 4b), 2026-08-18, operator-directed, temporary.
+//
+// PREVIOUS RUNG: 469 enrolled identities, every one executing on the required floor each run.
+// TEMPORARY RUNG: 361. One hundred and eight enrollments were removed here, not because any
+// row was observed passing -- the ONLY removal reason this roster otherwise admits -- but
+// because their modules were relocated to long/ homes and no longer execute at all.
+//
+// REASON: 102 witnesses could not finish inside required_floor_claim_budget_ms (1552ms), and
+// reported across two channels that both exit nonzero (budget_refused, stale_quarantine). The
+// floor could not deliver a verdict about the other 9,318 rows while they stood.
+//
+// BOUNDED POPULATION, both halves, because neither is visible to any mechanism in this tree:
+//   108 enrollments removed here, being every identity in the 21 relocated modules.
+//    78 healthy, fast, PASSING witnesses that left the floor as collateral, because a module
+//       is the unit of relocation and they share a file with a slow row. Worst offenders:
+//       roadmap_page_witness 29, live_read_classification 17, add_arrow_eval_by_execution 13.
+// Nothing refuses on their absence. Nothing counts them. That is why they are written here.
+//
+// WHAT THIS IS NOT, stated because the shape is dangerous: this is NOT the self-emptying rule.
+// Every other removal from this roster came from OBSERVING a pass. These rows were removed by
+// relocation, and a roster that silently went 469 -> 361 is indistinguishable, to every
+// mechanism in the tree, from the defect that dropped 197 identities on 2026-08-18 and went
+// unnoticed for an hour. An empty roster now refuses; a shrinking one still does not.
+//
+// RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
+// the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
+// in 70-85ms in isolation, a 12s row in 31ms, and dag_arrow_lambda rebuilds a 6,230-line
+// grammar once per witness for 3-line sources because each claim gets a fresh frame by design.
+// No witness has yet been found that is genuinely slow. When a module's cost is repaired it
+// returns to the floor WHOLE and its healthy siblings return with it, so the collateral
+// dissolves with work already scheduled rather than needing its own cleanup. This declaration
+// is deleted when the relocated population reaches zero.
+
 // The rows are carried in fixed-size chunks and flattened, because one Cons chain 820 deep is a
 // parse-depth hazard, not because the chunk boundaries mean anything. They do not: a chunk is a
 // slice of an alphabetical list and nothing reads it.
