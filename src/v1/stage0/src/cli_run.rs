@@ -39700,6 +39700,14 @@ pub fn run_required_floor(
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
+    // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
+    // buys is exactly one thing: the witnesses CI env cannot gain `_ONLY` by a one-variable
+    // edit or copy-paste; flipping the primary floor into join-only mode now takes a second,
+    // deliberately named variable whose value documents where the mode is allowed to come
+    // from. It is a tripwire against accident, not a wall against intent. The whole gate
+    // dissolves with the `expected_red_roster_join` bin (registered scaffold) when the floor
+    // emits the join report by default.
     const EXPECTED_RED_ROSTER_JOIN_ONLY_BIN: &str = "expected_red_roster_join_bin";
     let roster_join_only_requested = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
         .ok()

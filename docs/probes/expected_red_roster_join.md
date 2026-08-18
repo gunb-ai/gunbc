@@ -53,7 +53,9 @@ Environment:
 - `GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY=1` — evaluate only enrolled identities present in
   the manifest (set by the bin together with `GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER=
   expected_red_roster_join_bin`; refused on the witnesses CI path if `_ONLY` is set without
-  the caller marker)
+  the caller marker. The marker is self-attested — a name we ask for, not authentication:
+  it prevents the CI env gaining `_ONLY` by a one-variable accident, nothing more, and it
+  dissolves with the bin)
 
 **Sequencing:** eight identities that passed on CI run 32103473552 were removed from
 `v2.workflow.floor_expected_red` (2026-08-18). Further pruning waits until host-tool
