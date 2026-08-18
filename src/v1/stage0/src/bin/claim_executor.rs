@@ -2634,6 +2634,7 @@ fn claim_result_for_outcome(
             elapsed_ms,
             budget_ms,
             kind,
+            completion: _,
         } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -4017,6 +4018,7 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion: _,
             } => Some(BudgetRefusal {
                 elapsed_ms,
                 budget_ms,
@@ -4092,6 +4094,7 @@ fn scoped_witness_summary_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion: _,
             } => (
                 "budget-killed",
                 format!(

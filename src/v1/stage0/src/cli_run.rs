@@ -7656,6 +7656,40 @@ pub enum BudgetKind {
     Wall,
 }
 
+/// WHETHER THE NUMBER IS A MEASUREMENT OR A LOWER BOUND — the axis `BudgetKind` does not carry.
+///
+/// `BudgetKind` says which clock was consulted. It does not say whether the witness FINISHED,
+/// and those are different facts with different arithmetic:
+///
+/// - `Interrupted` — an armed deadline fired and the witness was aborted. `elapsed_ms` is
+///   right-censored: the true cost is at least that and is otherwise unknown. A row that would
+///   have taken two seconds and one that would have taken forty report the same number, because
+///   the number is the ceiling plus poll granularity rather than a property of the row.
+/// - `CompletedOverBudget` — the witness ran to completion and passed, and the completion-side
+///   backstop then reclassified it. `elapsed_ms` is exact.
+///
+/// Keeping the two apart is what makes a cost distribution computable at all: a spread taken
+/// across a censoring boundary is an artifact of where the ceiling sits, not a fact about the
+/// witnesses. It is also the condition named in `claim_executor.rs`'s cost-basis seeding guard,
+/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome::TimedOut can
+/// distinguish killed from completed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetCompletion {
+    Interrupted,
+    CompletedOverBudget,
+}
+
+impl BudgetCompletion {
+    /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
+    /// never has to know which mechanism produced it.
+    pub fn elapsed_reading(self) -> &'static str {
+        match self {
+            BudgetCompletion::Interrupted => "at least",
+            BudgetCompletion::CompletedOverBudget => "exactly",
+        }
+    }
+}
+
 impl BudgetKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -7690,6 +7724,7 @@ pub enum ClaimOutcome {
         elapsed_ms: u64,
         budget_ms: u64,
         kind: BudgetKind,
+        completion: BudgetCompletion,
     },
 }
 
@@ -15844,6 +15879,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     elapsed_ms: cpu_ms,
                     budget_ms,
                     kind: BudgetKind::Cpu,
+                    completion: BudgetCompletion::Interrupted,
                 }
             }
             v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
@@ -15851,6 +15887,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     elapsed_ms: wall_ms,
                     budget_ms,
                     kind: BudgetKind::Wall,
+                    completion: BudgetCompletion::Interrupted,
                 }
             }
             other => ClaimOutcome::RuntimeError {
@@ -16019,6 +16056,7 @@ fn budget_completion_outcome(
                 elapsed_ms: (cpu_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Cpu,
+                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -16039,6 +16077,7 @@ fn wall_budget_completion_outcome(
                 elapsed_ms: (wall_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Wall,
+                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -17981,6 +18020,7 @@ pub fn project_witness_cost_receipt(
                     elapsed_ms,
                     budget_ms,
                     kind,
+                    completion: _,
                 } => {
                     // The clock the deadline was enforced on travels WITH the pair, so a
                     // reader of the event can tell a thread-CPU fail-stop from a wall
@@ -23689,12 +23729,13 @@ fn run_discovery_rows(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => summary.failures.push(format!(
-                "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
-                 (elapsed is a ceiling, not a completed duration)",
+                "{} ({}) over its {} budget: cost is {} {}ms against a {}ms budget",
                 row.function,
                 row.entry,
                 kind.label(),
+                completion.elapsed_reading(),
                 elapsed_ms,
                 budget_ms
             )),
@@ -42370,7 +42411,11 @@ pub fn run_required_floor(
                             elapsed_ms,
                             budget_ms,
                             kind,
-                        } => format!("{kind:?} {elapsed_ms}ms against {budget_ms}ms"),
+                            completion,
+                        } => format!(
+                            "{kind:?}, cost {} {elapsed_ms}ms against {budget_ms}ms",
+                            completion.elapsed_reading()
+                        ),
                         other => format!("{other:?}"),
                     };
                     outcome.budget_refused.push(format!(
@@ -42414,9 +42459,11 @@ pub fn run_required_floor(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)",
-                claim.qualified
+                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
+                claim.qualified,
+                completion.elapsed_reading()
             )),
         }
     }
