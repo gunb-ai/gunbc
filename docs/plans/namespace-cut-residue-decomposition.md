@@ -778,3 +778,62 @@ have a single declaring module, but a single declarer is not a licence when
 the correct spelling is unestablished. The 113 ambiguous spans are std/v2
 forks (`Nat`, `UInt32`, `FilePath`, `ProjectionKind`) and are modeling
 decisions per reference context, not a corpus-wide winner per spelling.
+
+## The residue is zero; the next wall is a stack overflow (2026-08-18)
+
+Run 32101079246 on `ebe5bd0d256` is the first measurement this branch has
+obtained since `9d93db04cfe` -- three earlier runs were cancelled by
+superseding pushes, and the pushes were not mine: `gunbc-ci-auto-heal`
+auto-pushes each commit, so the only way to obtain a verdict is to stop
+committing until the run reports.
+
+**The unresolved-type population is cleared.**
+
+```
+[floor-phase] phase=strict-preparation state=started
+compile.frontend  done in 38 seconds
+compile.normalize done in  3 seconds
+```
+
+Zero diagnostics -- not a reduced count. 59,236 at the start of the lane and
+51,664 this morning, now none.
+
+**What replaced it.** Strict preparation then ran 26 further minutes and
+aborted:
+
+```
+[floor-heartbeat] wall_s=1500 phase=strict-preparation rss_kb=4554736 ev_max=0 majflt=0
+thread 'main' (3768257) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+exit code 134
+```
+
+This is NOT the floor's OOM class and not a timeout: RSS 4.5 GB against a
+15 GB cgroup cap, `ev_max=0`, `oom_kill=0`, `majflt=0`, SIGABRT from Rust's
+stack guard. It is recursion depth.
+
+**One structural candidate, located and NOT confirmed.** Across 8,575 type
+declarations there is exactly one *self-shadowing alias* -- an alias whose
+right-hand side ends in the same segment it declares:
+
+```
+src/v2/std/node.dag:16
+    type OccurrenceId = std.occurrence_identity.OccurrenceId
+```
+
+It carries a TEMPORARY COMPATIBILITY note naming
+`std.occurrence_identity` as the sole authority, and it has 20 qualified
+plus 2 bare consumers. It is present on `main` unchanged, which does not
+clear it: on `main` the module imports `std.occurrence_identity`, so the
+right-hand side resolves through the import list. Under flat-namespace
+lookup with imports deleted, the last segment can bind to the alias itself.
+
+**Status: hypothesis, not diagnosis.** No execution links this construct to
+the overflow. The search that found it was grounded -- an alias-cycle walk
+over every type declaration -- but a grounded search returning one candidate
+is not a cause, and the first two runs of that walk reported 185 cycles that
+were all `brand("X")` string literals the extractor mistook for type
+references. `v2.std.node` is load-bearing under DESIGN, so the migration
+that would delete the facade and repoint its 22 consumers onto the single
+authority is correct work under section 3 regardless of the overflow -- but
+it is not to be performed as a guess against an unverified causal claim.
