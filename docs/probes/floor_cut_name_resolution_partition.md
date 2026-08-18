@@ -48,14 +48,33 @@ Run: `docs/probes/run_floor_cut_name_resolution_census.sh`
 | `failure_class` | `call_contract_mismatch` \| `no_such_function` \| `undefined_variable` \| `other` |
 | `reach_vs_binding` | `bare_name_binding` \| `reach_gap` \| `reach_or_binding_unresolved` \| `other` |
 
-## Counts (filled by execution)
+## Counts (main @ 611fd027708, census run 32080685910, 2026-08-18)
+
+Main floor run `32076934126`: **820** enrolled, **795** held, **25** now-passing (build failure by design).
+
+Census (`required_floor_failure_census` on `4137cba`): **808** held rows written (12 additional
+roster rows passed during expected-red-only eval).
 
 ```
-PARTITION_CLASS call_contract_mismatch=…
-PARTITION_CLASS no_such_function=…
-PARTITION_CLASS undefined_variable=…
-PARTITION_CLASS other=…
+PARTITION_CLASS call_contract_mismatch=172
+PARTITION_CLASS no_such_function=151
+PARTITION_CLASS undefined_variable=16
+PARTITION_CLASS other=469
 ```
+
+**Name-resolution hypothesis subset** (three classes above): **339** rows.
+
+| reach_vs_binding | count (name-resolution subset) |
+| --- | --- |
+| `bare_name_binding` | 172 (all call-contract rows; 163 with >1 visible candidate) |
+| `reach_gap` | 167 (all 151 `no_such_function` + 16 `undefined_variable`) |
+| `reach_or_binding_unresolved` | 0 |
+
+The **172 call-contract** rows all carry a selected declarer module and are classified
+`bare_name_binding` — wrong function with matching bare name.
+
+The **151 no_such_function** and **16 undefined_variable** rows are **not** automatically the
+same mechanism; inspect `visible_candidate_set` and `reach_vs_binding` per row in the partition TSV.
 
 ## Disposition notes
 
