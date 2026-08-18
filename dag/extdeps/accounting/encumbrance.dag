@@ -98,6 +98,7 @@ type EncumbranceRefusal<Q, S> =
       ceiling: Measure<Q, S, Nat>,
     }
   | UnknownEncumbrance { reference: NonEmptyStr }
+  | DuplicateReference { reference: NonEmptyStr }
   | StaleGeneration { reference: NonEmptyStr, expected: Int, presented: Int }
   | ExpenditureExceedsEncumbrance {
       reference: NonEmptyStr,
@@ -116,6 +117,37 @@ type EncumbranceOutcome<Q, S> =
 // proceed believing it was covered.
 
 fn reserve_encumbrance<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  generation: Int,
+  maximum_liability: Measure<Q, S, Nat>,
+) -> EncumbranceOutcome<Q, S> {
+  match entry_matching(ledger: ledger, reference: reference) {
+    Cons { head: _, tail: _ } =>
+      EncumbranceRefused { refusal: DuplicateReference { reference: reference } }
+    Empty {} => reserve_fresh_reference(
+      ledger: ledger,
+      reference: reference,
+      generation: generation,
+      maximum_liability: maximum_liability,
+    )
+  }
+}
+
+// The reference is a KEY, and reserving refuses a second entry under one that
+// is already present. Before this refusal existed it was not a key at all, and
+// the consequence was not merely an untidy ledger. Settlement resolves a
+// reference by taking the FIRST match while replacement rewrites EVERY match,
+// so two holds under one reference meant a single settlement of some amount
+// wrote that amount onto both entries - charging the appropriation twice for
+// one commitment, at a total the caller never asked for - and no operation
+// could ever address the second entry on its own to release it.
+//
+// So the wall is not defensive tidiness. It is what makes first-match
+// resolution and rewrite-all-matches the same operation, which is the
+// assumption the two functions below are written against.
+
+fn reserve_fresh_reference<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
   generation: Int,
