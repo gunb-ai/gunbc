@@ -1968,13 +1968,6 @@ pub fn observe_declared_import_closure_symbol_binding(
     )
 }
 
-/// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
-/// `.dag` program to Rust and check that the named emitted file contains every string in
-/// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
-/// (`compile_clean_diagnostic_is_hard` — the same authority as the CI compile-clean gate).
-/// Advisory diagnostics (including `WhereRefinementUnenforced` deferrals) do not fail this
-/// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
-/// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
         std::collections::HashMap<String, bool>,
@@ -1999,6 +1992,13 @@ fn compile_dag_rust_emit_check_memo_key(
     h
 }
 
+/// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
+/// `.dag` program to Rust and check that the named emitted file contains every string in
+/// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
+/// (`compile_clean_diagnostic_is_hard` — the same authority as the CI compile-clean gate).
+/// Advisory diagnostics (including `WhereRefinementUnenforced` deferrals) do not fail this
+/// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
+/// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 pub fn compile_dag_rust_emit_check(
     source: &str,
     file_path: &str,
