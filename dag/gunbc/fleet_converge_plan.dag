@@ -353,10 +353,33 @@ fn observed_baseline_text(
 // authorities at execution time -- and the bundle hash could not detect a plan/apply divergence
 // because the bytes were never in the bundle. Freezing the realized operations closes that: what the
 // plan admitted is exactly what runs.
+// THE OPERATION LIST IS STRUCTURALLY NONEMPTY, head plus tail.
+//
+// It was `operations: List<RemoteOperation>` guarded by an apply-time check reading "there are
+// effects and the aggregate operation list is empty". That check is over AGGREGATES, so it does not
+// catch the case it exists for: one row carrying effects and ZERO operations, sitting beside another
+// row that has operations. The totals are both nonzero, the check passes, and that row's effect is
+// reported applied while nothing ran for it -- a fabricated plausible output at the actuation seam.
+//
+// Head plus tail removes the state instead of catching it (DESIGN section 5, construction over
+// validation): a row with no operations has no constructor, so the aggregate check is not tightened,
+// it is unnecessary. The same shape StagedIntermediates uses, for the same reason.
+//
+// NOT DONE HERE, named so it is not mistaken for done: this makes each ROW nonempty, not each
+// EFFECT attributed to its own operations. A row carrying two effects still cannot say which
+// operation belongs to which. That is the PlannedEffectExecution restructure, and it is a separate
+// change with a wider blast radius.
 type FleetConvergeSparkServingTypedAction {
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
   install_effects: List<ServingInstallEffect>
-  operations: List<RemoteOperation>
+  first_operation: RemoteOperation
+  further_operations: List<RemoteOperation>
+}
+
+fn fleet_converge_spark_serving_row_operations(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<RemoteOperation> {
+  concat([row.first_operation], row.further_operations)
 }
 
 type FleetConvergePlanArtifact {
@@ -444,7 +467,7 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
       " effects=",
       join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
       " ops=",
-      remote_operations_wire(operations: row.operations),
+      remote_operations_wire(operations: fleet_converge_spark_serving_row_operations(row: row)),
     ],
     "",
   )

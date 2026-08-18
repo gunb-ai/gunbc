@@ -505,7 +505,11 @@ fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSp
       ),
     },
     install_effects: [EnableLingerForOwnAccount],
-    operations: ops,
+    first_operation: match ops.first() {
+      Present { value: h } => h
+      Absent => RemoteArgv { argv: ["<unreachable-empty-tamper-fixture>"] }
+    },
+    further_operations: ops.skip(n: 1),
   }
 }
 

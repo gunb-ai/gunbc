@@ -4,6 +4,7 @@ import std.types { String, List, Bool, Int }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   fleet_converge_plan_artifact_bundle_admits,
+  fleet_converge_spark_serving_row_operations,
 }
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
@@ -58,17 +59,12 @@ fn spark_serving_apply_reads_frozen_typed_rows(
       reason: "spark_serving_converge_apply: plan artifact bundle/hash consistency refused — typed rows cannot be smuggled beside an unverified v1 digest",
     }
   } else {
-    let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
-    let frozen_operations = flat_map(artifact.spark_serving_typed_actions, r => r.operations)
-    if length(frozen_effects) > 0 && length(frozen_operations) == 0 {
-      SparkServingFrozenApplyRefused {
-        reason: "spark_serving_converge_apply: frozen rows carry effects but no operations — refusing rather than executing nothing while reporting the effects applied",
-      }
-    } else {
-      SparkServingFrozenApplied {
-        remote_operations: frozen_operations,
-        effect_count: length(frozen_effects),
-      }
+    SparkServingFrozenApplied {
+      remote_operations: flat_map(
+        artifact.spark_serving_typed_actions,
+        r => fleet_converge_spark_serving_row_operations(row: r),
+      ),
+      effect_count: length(flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)),
     }
   }
 }

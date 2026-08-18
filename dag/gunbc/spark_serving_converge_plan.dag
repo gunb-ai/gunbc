@@ -123,12 +123,17 @@ fn fleet_converge_spark_serving_typed_action(
       ) {
         SparkServingInstallRemoteCommandsRefused { reason: _ } => Absent
         SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-          Present {
-            value: FleetConvergeSparkServingTypedAction {
-              action: action,
-              install_effects: effects,
-              operations: ops,
-            },
+          match ops.first() {
+            Absent => Absent
+            Present { value: head } =>
+              Present {
+                value: FleetConvergeSparkServingTypedAction {
+                  action: action,
+                  install_effects: effects,
+                  first_operation: head,
+                  further_operations: ops.skip(n: 1),
+                },
+              }
           }
       }
   }
