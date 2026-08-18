@@ -23,6 +23,13 @@ import std.measure {
 }
 import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
 import std.disposition { Disposition, Terminal }
+import gunbc.witness_row_cost {
+  SharedFillPayer,
+  SharedFillDisposition,
+  shared_fill_disposition,
+  shared_fill_disposition_tag,
+  shared_fill_payer_tag,
+}
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -785,6 +792,94 @@ fn ci_witness_budget_warn_text(
             concat(
               to_string(millisecond_count(m: warn)),
               concat("ms warn (ceiling ", concat(to_string(millisecond_count(m: budget)), "ms)"))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+data ci_shared_fill_row_note: String = "One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports one row\'s wall time: this reports the part of that wall time that was not the row\'s. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+
+fn ci_shared_fill_row_text(
+  cache: String,
+  key: String,
+  fill: Millisecond,
+  payer: SharedFillPayer,
+  consumer_claims: Nat,
+  consumer_modules: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill] cache=",
+    concat(
+      cache,
+      concat(
+        " key=",
+        concat(
+          key,
+          concat(
+            " fill_ms=",
+            concat(
+              to_string(millisecond_count(m: fill)),
+              concat(
+                " paid_by=",
+                concat(
+                  shared_fill_payer_tag(payer: payer),
+                  concat(
+                    " consumer_claims=",
+                    concat(
+                      to_string(consumer_claims),
+                      concat(
+                        " consumer_modules=",
+                        concat(
+                          to_string(consumer_modules),
+                          concat(
+                            " disposition=",
+                            shared_fill_disposition_tag(
+                              disposition: shared_fill_disposition(
+                                payer: payer,
+                                consumer_modules: consumer_modules
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE TOTAL LINE CARRIES BOTH DENOMINATORS AND THE HOLE. shared_fill_ms is the part of fill_ms
+// that removing any one module cannot recover; unattributed_hits is the count of reads served by
+// a fill this ledger did not observe, which is the honest statement that the shared figure is a
+// LOWER bound rather than the whole of the sharing.
+fn ci_shared_fill_total_text(
+  fills: Nat,
+  fill: Millisecond,
+  shared_fill: Millisecond,
+  unattributed_hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill] TOTAL fills=",
+    concat(
+      to_string(fills),
+      concat(
+        " fill_ms=",
+        concat(
+          to_string(millisecond_count(m: fill)),
+          concat(
+            " shared_fill_ms=",
+            concat(
+              to_string(millisecond_count(m: shared_fill)),
+              concat(" unattributed_hits=", to_string(unattributed_hits))
             )
           )
         )

@@ -677,3 +677,63 @@ fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
 }
 
 data gunbc_ci_fast_lane_rule_note: String = "Fast-lane 5-second rule (operator ruling 2026-07-12). RE-HOMED HERE 2026-08-15 from v2.workflow.ci_floor_plan, deleted by the CI wipe, and CORRECTED IN THE SAME MOTION rather than restored verbatim — the original text asserted an enforcement mechanism this cut removed, and re-homing it unchanged would have carried a false claim into a live carrier under a name 25 other rows cite. WHAT SURVIVES: a witness whose OWN eval takes 5 seconds or longer does not run in per-PR discovery — it lives under a long/ test dir (dag/test/claim/long/, src/v2/test/claim/long/), excluded from discovery at dir grain (gunbc.ci_layer_roots long_lane_exclusion_note) and triggered independently (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>). The threshold itself is gunbc_ci_fast_lane_witness_eval_budget above, this module's own row. WHAT DIED, STATED PLAINLY: enforcement. The original read 'Enforcement is by execution, not census: the executor arms a cooperative per-witness eval deadline from the budget row (v1_interpreter EvalBudgetExceeded — a typed FAIL row naming the over-budget witness; the bound unwinds from INSIDE eval because in-process worker threads have no kill authority, the Phase A governor lesson)', and the executor that armed it is deleted. NO CONSUMER ARMS THIS BUDGET TODAY. So the dir policy is a placement convention with no execution behind it, and an over-budget witness in per-PR discovery now runs to completion instead of failing red in seconds with its name in the log. THE RISK THAT RE-OPENS, kept because it is the receipt that justified the deadline and it is exactly what is unguarded again: an unbounded eval previously burned the 270-minute step cap in billed silence (run 29183446733: 243 of 270 minutes after the last progress line, zero witnesses completed). RUNG: this class drops from mechanically preventable to unguarded for the duration of the cut, declared here rather than left to be rediscovered by a runner that hangs. RESTORATION TRIGGER: the re-added floor arms a per-witness eval deadline from this row again, at which point this paragraph deletes and the enforcement sentence returns. Dissolve-on (unchanged, and it outlives the restoration): per-witness declared cost envelopes (the witness-cost-locality admission law) replace the blanket lane budget with declared rows."
+
+// ── THE SHARED FILL: who paid for a computation, and who benefited ───────────────────────────
+//
+// witness_decomposition_does_not_reduce_entry_cost_note above rules that per-witness eval and
+// per-entry resolve are different terms. This is the same distinction one layer down, and it
+// reaches INSIDE the eval column the note treats as the row's own: a witness that is the first
+// to reach a process-global corpus computation is charged its entire fill, and every later
+// witness reaching the same computation is charged nothing. So the eval figure is not always a
+// property of the row it names, and the population that reads highest is partly a list of who
+// ran first.
+data witness_shared_fill_note: String = "A SHARED FILL IS PAID ONCE AND READ FREE, SO THE ROW CHARGED FOR IT IS NOT THE ROW THAT COSTS IT. Measured on gunbc#8455: two claims in one witness file, 35ms apart, calling the same projection, cost 12197ms and 31ms — 393x for one call, because the first paid an O(corpus) parse pass that the second read out of a process-global cache. The population behind it is the seed's corpus-scan caches (reference edges, module path index, module graph facts, and the corpus census reports), each keyed on its declared roots and filled at most once per process. WHY THIS IS A MEASUREMENT DEFECT AND NOT A COST DEFECT: nothing is computed twice — the caches are correct and the sharing is the saving. What is wrong is the attribution, and it is wrong in the direction that matters, because the floor's ceiling refuses per row. A refusal therefore names the first toucher, whose own cost may be milliseconds, while the computation it was refused for stays on the floor. TWO CONSEQUENCES BIND ANY PARING DECISION. Splitting such a row cannot help: the charge moves to whichever fragment runs first, which is witness_decomposition_does_not_reduce_entry_cost_note observed rather than predicted. And REMOVING such a row does not remove its cost either — the next claim to touch the same fill pays the same seconds, so a quarantine that reads the per-row number can trade a named refusal for an unnamed one in a module that was fast before. THE QUANTITY A REMOVAL DECISION NEEDS is therefore marginal, not attributed: removing a module saves its rows' exclusive time plus the fills whose consumers all live inside it, and saves nothing of a fill any other module also reads. shared_fill_disposition is that classification; the seed's cli_run shared_fill ledger is its producer, and it reports every fill's payer and consumer breadth so the marginal figure is derivable rather than assumed."
+
+type SharedFillPayer
+  = SharedFillPaidByClaim { qualified: NonEmptyStr }
+  | SharedFillPaidOutsideFold
+
+// THE THREE STATES ARE THREE REMEDIES, which is why this is not a Bool beside a payer.
+// Outside-fold cost belongs to preparation and no witness can be pared to recover it; an
+// exclusive fill is genuinely removable with its module; a shared fill survives the removal of
+// any single consumer. Collapsing the first into either of the others is the state-space
+// conflation DESIGN §5 names — preparation cost wearing a witness's name is exactly how a
+// removal comes to be justified by a saving it cannot deliver.
+type SharedFillDisposition
+  = SharedFillOutsideFold
+  | SharedFillExclusiveToOneModule
+  | SharedFillSharedAcrossModules
+
+// `consumer_modules` counts DISTINCT modules that touched this fill, payer included. One means
+// the fill lives and dies with that module; more means it does not. Zero is only reachable for a
+// fill paid outside the fold, and is answered by the payer arm before the count is consulted, so
+// no arm has to invent a meaning for "nobody touched a computation that happened".
+fn shared_fill_disposition(
+  payer: SharedFillPayer,
+  consumer_modules: Nat,
+) -> SharedFillDisposition {
+  match payer {
+    SharedFillPaidOutsideFold => SharedFillOutsideFold
+    SharedFillPaidByClaim { qualified: _ } =>
+      if consumer_modules > 1 {
+        SharedFillSharedAcrossModules
+      } else {
+        SharedFillExclusiveToOneModule
+      }
+  }
+}
+
+fn shared_fill_disposition_tag(disposition: SharedFillDisposition) -> String {
+  match disposition {
+    SharedFillOutsideFold => "outside-fold"
+    SharedFillExclusiveToOneModule => "exclusive"
+    SharedFillSharedAcrossModules => "shared"
+  }
+}
+
+fn shared_fill_payer_tag(payer: SharedFillPayer) -> String {
+  match payer {
+    SharedFillPaidOutsideFold => "<outside-fold>"
+    SharedFillPaidByClaim { qualified: q } => q
+  }
+}
