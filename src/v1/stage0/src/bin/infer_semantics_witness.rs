@@ -1115,6 +1115,77 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
     );
 }
 
+fn qualified_coproduct_variant_leaf(qualified_name: &str) -> Rc<Node> {
+    leaf_node(qualified_name.to_string())
+}
+
+fn sample_qualified_coproduct() -> Rc<Node> {
+    sum_node(
+        "ProbeRefusal",
+        vec![
+            qualified_coproduct_variant_leaf("fixture.probe.Alpha"),
+            qualified_coproduct_variant_leaf("fixture.probe.Beta"),
+        ],
+        Cardinality::Required,
+    )
+}
+
+fn coproduct_exhaustiveness_qualified_declared_names_accept_bare_arms() {
+    let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
+        sample_qualified_coproduct(),
+        Rc::new(vec![variant_arm("Alpha"), variant_arm("Beta")]),
+        empty_type_env(),
+        zero_span(),
+        "test".to_string(),
+    );
+
+    assert!(
+        diags.is_empty(),
+        "bare pattern arms should exhaust qualified declared variants, got {:?}",
+        diags
+    );
+}
+
+fn coproduct_exhaustiveness_missing_arm_names_only_gap() {
+    let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
+        sample_qualified_coproduct(),
+        Rc::new(vec![variant_arm("Alpha")]),
+        empty_type_env(),
+        zero_span(),
+        "test".to_string(),
+    );
+
+    assert_eq!(diags.len(), 1);
+    match diags[0].diagnostic.as_ref() {
+        CompilerDiagnostic::NonExhaustiveMatch { missing, .. } => {
+            assert_eq!(missing.len(), 1, "missing roster must name only the gap");
+            assert_eq!(
+                missing[0], "Beta",
+                "missing must name the bare uncovered variant"
+            );
+        }
+        other => panic!("expected NonExhaustiveMatch, got {:?}", other),
+    }
+}
+
+fn coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible() {
+    use v1_compiler::v1_std_core::{qualified_last_segment, type_name_compatible};
+
+    let admission = "product.compute_board.admission.DuplicateComponentIdentity".to_string();
+    let witness =
+        "test.claim.compute_board_admission_witness.DuplicateComponentIdentity".to_string();
+
+    assert!(
+        !type_name_compatible(admission.clone(), witness.clone()),
+        "both-qualified different containment paths must not pass type_name_compatible"
+    );
+    assert_eq!(
+        qualified_last_segment(admission.clone()),
+        qualified_last_segment(witness.clone()),
+        "runtime coproduct arms still share the bare variant identity"
+    );
+}
+
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
@@ -1803,6 +1874,18 @@ fn main() -> ExitCode {
         (
             "optional_match_exhaustiveness_accepts_present_and_absent",
             optional_match_exhaustiveness_accepts_present_and_absent,
+        ),
+        (
+            "coproduct_exhaustiveness_qualified_declared_names_accept_bare_arms",
+            coproduct_exhaustiveness_qualified_declared_names_accept_bare_arms,
+        ),
+        (
+            "coproduct_exhaustiveness_missing_arm_names_only_gap",
+            coproduct_exhaustiveness_missing_arm_names_only_gap,
+        ),
+        (
+            "coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible",
+            coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible,
         ),
         (
             "resolve_node_uses_node_name_for_lookup",
