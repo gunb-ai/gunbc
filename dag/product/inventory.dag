@@ -1,0 +1,891 @@
+module product.inventory
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
+import std.currency { CurrencyCode }
+import std.minted_identity {
+  MintedId,
+  MintedIdAllocation,
+  MintedIdAllocator,
+  mint_id,
+  minted_id_eq,
+  minted_id_ordinal,
+}
+import product.placement_supply { PhysicalAssetIdentity, ProcurementReceiptIdentity }
+
+// INVENTORY-0: the generic product-layer authority for procurement lots and the append-only
+// event ledger over them. It answers, for one lot of fungible stock: how much was acquired, what
+// it cost to land, where every acquired unit currently sits, and whether a requested consumption
+// is admissible. It answers NOTHING about which lots a particular operator owns — this module is
+// deliberately row-free, and concrete lot rows are a separate downstream fact.
+//
+// Reuse, never fork (DESIGN section 3): ProcurementReceiptIdentity and PhysicalAssetIdentity are
+// imported from product.placement_supply, which already models the physical placement seam this
+// module hands stock to on installation; catalog rows are cited by std.decl_ref DeclarationRef,
+// which is also how std.pareto keys identity, so no eq or display is re-minted here; money is
+// std.measure MoneyOnce; lot identity is std.minted_identity MintedId over this module's own
+// subject marker.
+//
+// Grain (DESIGN section 2, deep): fungible stock lives at LOT grain. A PhysicalAssetIdentity
+// appears only where an individual unit genuinely becomes distinguishable — installation, where
+// the unit acquires a placement and a serial. Carrying an asset identity per unit before that
+// would be inventing a distinction the world does not yet make.
+
+type InventoryLotSubject
+
+type InventoryLotIdentity = MintedId<InventoryLotSubject>
+
+type InventoryLotAllocator = MintedIdAllocator<InventoryLotSubject>
+
+type InventoryLotAllocation = MintedIdAllocation<InventoryLotSubject>
+
+fn inventory_lot_allocator_initial() -> InventoryLotAllocator {
+  MintedIdAllocator { next_ordinal: 0 }
+}
+
+fn mint_inventory_lot_identity(alloc: InventoryLotAllocator) -> InventoryLotAllocation {
+  mint_id(alloc: alloc)
+}
+
+fn inventory_lot_identity_eq(left: InventoryLotIdentity, right: InventoryLotIdentity) -> Bool {
+  minted_id_eq(left: left, right: right)
+}
+
+data lot_identity_is_not_a_label_note: String = "A lot identity is ALLOCATOR-MINTED and carries no text. There is deliberately no fn from a display label, a vendor line-item string, a catalog part number, or a file path to an InventoryLotIdentity — the conversion does not exist to be called, so identity-from-label is unwritable rather than discouraged (DESIGN section 4b: construction over validation). Two lots bought from the same vendor on the same receipt with byte-identical descriptions are two lots, and relabelling a lot leaves its identity untouched. The reason is the one std.minted_identity states: a label-derived key turns a relabel into a delete-plus-create that only a similarity heuristic can re-pair, and DESIGN section 4 rules a heuristic never necessary in a closed system. Display text belongs in a mutable VALUE field beside the identity; see ProcurementLot.display_label."
+
+// --- catalog identity: an exact row, or a typed obligation to go read one ------------------
+
+data catalog_identity_unread_note: String = "A lot's catalog identity is EITHER an exact cited catalog row OR a typed, unread obligation — and the two are different states with different remedies, never one field with a hopeful value in it. A vendor listing that says 'Xeon Gold, 32C' names a FAMILY and licenses no property of any particular catalog row: base clock, TDP, socket, memory channels and errata are exactly the facts an unverified shorthand must not inherit. So CatalogRowUnread carries what was actually observed plus what must be done to close it, and lot_catalog_exact_row has NO arm returning a DeclarationRef for it: a consumer that needs the exact row gets Absent and must refuse or observe, which is the DESIGN section 5 shape — a failure arm refuses, it does not widen to a plausible-looking row. The read obligation is the located next action, so an unread lot is countable rather than silently equivalent to a read one."
+
+type LotCatalogIdentity
+  = CatalogRowExact { row: DeclarationRef }
+  | CatalogRowUnread { observed_family: NonEmptyStr, read_obligation: NonEmptyStr }
+
+fn lot_catalog_exact_row(catalog: LotCatalogIdentity) -> DeclarationRef? {
+  match catalog {
+    CatalogRowExact { row: r } => Present { value: r }
+    CatalogRowUnread { observed_family: _, read_obligation: _ } => none
+  }
+}
+
+fn lot_catalog_is_read(catalog: LotCatalogIdentity) -> Bool {
+  match lot_catalog_exact_row(catalog: catalog) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn lot_catalog_read_obligation(catalog: LotCatalogIdentity) -> NonEmptyStr? {
+  match catalog {
+    CatalogRowExact { row: _ } => none
+    CatalogRowUnread { observed_family: _, read_obligation: o } => Present { value: o }
+  }
+}
+
+fn lot_catalog_same_exact_row(left: LotCatalogIdentity, right: LotCatalogIdentity) -> Bool {
+  match lot_catalog_exact_row(catalog: left) {
+    Absent => false
+    Present { value: a } =>
+      match lot_catalog_exact_row(catalog: right) {
+        Absent => false
+        Present { value: b } => declaration_ref_eq(a: a, b: b)
+      }
+  }
+}
+
+// --- procurement -----------------------------------------------------------------------------
+
+type ProcurementReceipt {
+  identity: ProcurementReceiptIdentity
+  vendor: DeclarationRef
+}
+
+data landed_cost_is_aggregate_note: String = "Landed cost is stored ONCE, as an aggregate at LOT grain, and there is no per-unit field. Two reasons, and both are structural rather than stylistic. First, division does not close at money-micro grain: 100 units landing at 1,000,003 micros has no exact per-unit quotient, so a stored per-unit average is a fabricated number that no longer sums back to what was paid — DESIGN section 5's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual units is a POLICY (specific identification, average, FIFO, LIFO), and a policy has to be named by whoever applies it; baking one silently into a field would make the model answer a question nobody asked it. So this module carries the fact — what the lot cost to land — and any per-unit figure is a derived projection that names its policy at the point of derivation. lot_landed_cost_micros is the only reader, and it takes no event list, which is what makes the historical basis structurally immune to consumption."
+
+type ProcurementLot {
+  identity: InventoryLotIdentity
+  receipt: ProcurementReceiptIdentity
+  catalog: LotCatalogIdentity
+  display_label: NonEmptyStr
+  quantity_acquired: Nat
+  landed_cost: MoneyOnce
+}
+
+fn lot_landed_cost_micros(lot: ProcurementLot) -> Nat {
+  money_once_micros(q: lot.landed_cost)
+}
+
+fn lot_landed_cost_currency(lot: ProcurementLot) -> CurrencyCode {
+  lot.landed_cost.currency
+}
+
+type LandedCostSum
+  = LandedCostTotal { total: MoneyOnce }
+  | LandedCostSumRefused { cause: NonEmptyStr }
+
+fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
+  fold(lots, init: LandedCostSumRefused { cause: "no_lots" as NonEmptyStr }, f: fn(acc, lot) {
+    match acc {
+      LandedCostSumRefused { cause: c } =>
+        if (c as String) == "no_lots" {
+          LandedCostTotal { total: lot.landed_cost }
+        } else {
+          LandedCostSumRefused { cause: c }
+        }
+      LandedCostTotal { total: t } =>
+        if t.currency == lot.landed_cost.currency {
+          LandedCostTotal {
+            total: MoneyOnce {
+              amount: money_amount_micro(count: money_once_micros(q: t) + lot_landed_cost_micros(lot: lot)),
+              currency: t.currency,
+            },
+          }
+        } else {
+          LandedCostSumRefused { cause: "currency_mismatch_across_lots" as NonEmptyStr }
+        }
+    }
+  })
+}
+
+// --- stock positions -------------------------------------------------------------------------
+
+data stock_position_partition_note: String = "StockPosition is a PARTITION of the acquired quantity, not a set of overlapping tallies: at every point in the ledger each acquired unit sits in exactly one position, so the seven counts always sum to quantity_acquired. That is why every event is expressed as a TRANSFER between two positions rather than as an increment of one bucket — an increment can invent stock, a transfer cannot, and the reconciliation wall then holds by construction rather than by a check that runs afterwards (DESIGN section 4b: construction over validation). The nine buckets the balance REPORTS are derived aggregates over this partition; none of them is authored and none of them is stored."
+
+type StockPosition
+  = AwaitingReceipt
+  | Unqualified
+  | Quarantined
+  | Available
+  | Reserved
+  | Installed
+  | Departed
+
+fn stock_position_key(position: StockPosition) -> Int {
+  match position {
+    AwaitingReceipt => 0
+    Unqualified => 1
+    Quarantined => 2
+    Available => 3
+    Reserved => 4
+    Installed => 5
+    Departed => 6
+  }
+}
+
+fn stock_position_eq(left: StockPosition, right: StockPosition) -> Bool {
+  stock_position_key(position: left) == stock_position_key(position: right)
+}
+
+fn stock_position_label(position: StockPosition) -> NonEmptyStr {
+  match position {
+    AwaitingReceipt => "awaiting_receipt" as NonEmptyStr
+    Unqualified => "unqualified" as NonEmptyStr
+    Quarantined => "quarantined" as NonEmptyStr
+    Available => "available" as NonEmptyStr
+    Reserved => "reserved" as NonEmptyStr
+    Installed => "installed" as NonEmptyStr
+    Departed => "departed" as NonEmptyStr
+  }
+}
+
+type StockDistribution {
+  awaiting_receipt: Nat
+  unqualified: Nat
+  quarantined: Nat
+  available: Nat
+  reserved: Nat
+  installed: Nat
+  departed: Nat
+}
+
+fn empty_stock_distribution() -> StockDistribution {
+  StockDistribution {
+    awaiting_receipt: 0,
+    unqualified: 0,
+    quarantined: 0,
+    available: 0,
+    reserved: 0,
+    installed: 0,
+    departed: 0,
+  }
+}
+
+fn stock_at(distribution: StockDistribution, position: StockPosition) -> Nat {
+  match position {
+    AwaitingReceipt => distribution.awaiting_receipt
+    Unqualified => distribution.unqualified
+    Quarantined => distribution.quarantined
+    Available => distribution.available
+    Reserved => distribution.reserved
+    Installed => distribution.installed
+    Departed => distribution.departed
+  }
+}
+
+fn stock_with(
+  distribution: StockDistribution,
+  position: StockPosition,
+  quantity: Nat,
+) -> StockDistribution {
+  match position {
+    AwaitingReceipt => StockDistribution {
+      awaiting_receipt: quantity,
+      unqualified: distribution.unqualified,
+      quarantined: distribution.quarantined,
+      available: distribution.available,
+      reserved: distribution.reserved,
+      installed: distribution.installed,
+      departed: distribution.departed,
+    }
+    Unqualified => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: quantity,
+      quarantined: distribution.quarantined,
+      available: distribution.available,
+      reserved: distribution.reserved,
+      installed: distribution.installed,
+      departed: distribution.departed,
+    }
+    Quarantined => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: distribution.unqualified,
+      quarantined: quantity,
+      available: distribution.available,
+      reserved: distribution.reserved,
+      installed: distribution.installed,
+      departed: distribution.departed,
+    }
+    Available => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: distribution.unqualified,
+      quarantined: distribution.quarantined,
+      available: quantity,
+      reserved: distribution.reserved,
+      installed: distribution.installed,
+      departed: distribution.departed,
+    }
+    Reserved => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: distribution.unqualified,
+      quarantined: distribution.quarantined,
+      available: distribution.available,
+      reserved: quantity,
+      installed: distribution.installed,
+      departed: distribution.departed,
+    }
+    Installed => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: distribution.unqualified,
+      quarantined: distribution.quarantined,
+      available: distribution.available,
+      reserved: distribution.reserved,
+      installed: quantity,
+      departed: distribution.departed,
+    }
+    Departed => StockDistribution {
+      awaiting_receipt: distribution.awaiting_receipt,
+      unqualified: distribution.unqualified,
+      quarantined: distribution.quarantined,
+      available: distribution.available,
+      reserved: distribution.reserved,
+      installed: distribution.installed,
+      departed: quantity,
+    }
+  }
+}
+
+fn stock_distribution_total(distribution: StockDistribution) -> Nat {
+  distribution.awaiting_receipt
+    + distribution.unqualified
+    + distribution.quarantined
+    + distribution.available
+    + distribution.reserved
+    + distribution.installed
+    + distribution.departed
+}
+
+// --- reservations ------------------------------------------------------------------------------
+
+data reservation_holder_grain_note: String = "Reservations are tracked PER HOLDER, not as one Nat. A single reserved total would let a release name any holder at all — including one that never reserved — and still balance, so the ledger would happily hand one claimant's stock to another and report nothing wrong. Holder rows make an unknown-holder release a typed refusal (ReservationHolderUnknown) and an over-release a typed refusal (ReservationOverRelease), which is what the DESIGN section 5 factory model asks for: the line stops, and the stop names which holder and how much."
+
+type ReservationRow {
+  holder: NonEmptyStr
+  quantity: Nat
+}
+
+fn reservation_quantity_for(rows: List<ReservationRow>, holder: NonEmptyStr) -> Nat {
+  fold(rows, init: 0, f: fn(acc, row) {
+    if (row.holder as String) == (holder as String) { acc + row.quantity } else { acc }
+  })
+}
+
+fn reservation_rows_total(rows: List<ReservationRow>) -> Nat {
+  fold(rows, init: 0, f: fn(acc, row) { acc + row.quantity })
+}
+
+fn reservation_rows_with_delta(
+  rows: List<ReservationRow>,
+  holder: NonEmptyStr,
+  added: Nat,
+  removed: Nat,
+) -> List<ReservationRow> {
+  let existing = reservation_quantity_for(rows: rows, holder: holder)
+  let others = filter(rows, r => (r.holder as String) != (holder as String))
+  let updated = existing + added - removed
+  if updated > 0 {
+    append(others, [ReservationRow { holder: holder, quantity: updated }])
+  } else {
+    others
+  }
+}
+
+// --- the append-only event ledger ---------------------------------------------------------------
+
+data ledger_is_append_only_note: String = "The ledger is a LIST OF EVENTS and the balance is a fold over it — there is no mutable balance anywhere in this module, and no fn takes a balance and writes one back. That is what append-only means here structurally rather than by convention: the only way to change what the balance says is to append another event, so every state the inventory has ever been in remains derivable from the same list, and a correction is a compensating event with its own row rather than an edit that erases what it corrects. Consumption events therefore cannot reach the ProcurementLot record at all, which is why the historical landed basis is safe from them by construction."
+
+data explicit_origin_note: String = "Events that could plausibly draw from more than one position carry an EXPLICIT origin rather than letting the fold pick one. Installing can consume a holder's reservation or free available stock; a failure can be found on the shelf, in quarantine, or in a running machine. Choosing for the author would be a heuristic standing where a fact was owed (DESIGN section 4: in a closed system a heuristic is never necessary — the richer source exists, and here the richer source is simply asking the event to say). So InstallOrigin and DepartureOrigin are closed coproducts, and an origin the transition does not admit is a typed refusal, not a silent substitution."
+
+type InstallOrigin
+  = InstallFromReservation { holder: NonEmptyStr }
+  | InstallFromAvailable
+
+type DepartureOrigin
+  = DepartFromAvailable
+  | DepartFromQuarantined
+  | DepartFromUnqualified
+  | DepartFromInstalled
+
+fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
+  match origin {
+    DepartFromAvailable => Available
+    DepartFromQuarantined => Quarantined
+    DepartFromUnqualified => Unqualified
+    DepartFromInstalled => Installed
+  }
+}
+
+type InventoryEvent
+  = LotAcquired { lot: InventoryLotIdentity }
+  | LotReceived { lot: InventoryLotIdentity, quantity: Nat }
+  | QuantityQualified { lot: InventoryLotIdentity, quantity: Nat }
+  | QuantityQuarantined { lot: InventoryLotIdentity, quantity: Nat }
+  | QuantityReserved { lot: InventoryLotIdentity, quantity: Nat, holder: NonEmptyStr }
+  | ReservationReleased { lot: InventoryLotIdentity, quantity: Nat, holder: NonEmptyStr }
+  | QuantityInstalled {
+      lot: InventoryLotIdentity,
+      quantity: Nat,
+      origin: InstallOrigin,
+      assets: List<PhysicalAssetIdentity>,
+    }
+  | QuantityRemoved { lot: InventoryLotIdentity, quantity: Nat }
+  | QuantityFailed { lot: InventoryLotIdentity, quantity: Nat, origin: DepartureOrigin }
+  | QuantitySold { lot: InventoryLotIdentity, quantity: Nat, origin: DepartureOrigin }
+  | QuantityDisposed { lot: InventoryLotIdentity, quantity: Nat, origin: DepartureOrigin }
+
+data acquired_quantity_has_one_authority_note: String = "LotAcquired carries NO quantity: the quantity acquired is a field of the ProcurementLot, and restating it on the event would be a second representation of one fact that could disagree with the first (DESIGN sections 2 and 3). The fold reads it from the lot, so there is nothing to reconcile."
+
+fn inventory_event_lot(event: InventoryEvent) -> InventoryLotIdentity {
+  match event {
+    LotAcquired { lot: l } => l
+    LotReceived { lot: l, quantity: _ } => l
+    QuantityQualified { lot: l, quantity: _ } => l
+    QuantityQuarantined { lot: l, quantity: _ } => l
+    QuantityReserved { lot: l, quantity: _, holder: _ } => l
+    ReservationReleased { lot: l, quantity: _, holder: _ } => l
+    QuantityInstalled { lot: l, quantity: _, origin: _, assets: _ } => l
+    QuantityRemoved { lot: l, quantity: _ } => l
+    QuantityFailed { lot: l, quantity: _, origin: _ } => l
+    QuantitySold { lot: l, quantity: _, origin: _ } => l
+    QuantityDisposed { lot: l, quantity: _, origin: _ } => l
+  }
+}
+
+fn inventory_event_label(event: InventoryEvent) -> NonEmptyStr {
+  match event {
+    LotAcquired { lot: _ } => "LotAcquired" as NonEmptyStr
+    LotReceived { lot: _, quantity: _ } => "LotReceived" as NonEmptyStr
+    QuantityQualified { lot: _, quantity: _ } => "QuantityQualified" as NonEmptyStr
+    QuantityQuarantined { lot: _, quantity: _ } => "QuantityQuarantined" as NonEmptyStr
+    QuantityReserved { lot: _, quantity: _, holder: _ } => "QuantityReserved" as NonEmptyStr
+    ReservationReleased { lot: _, quantity: _, holder: _ } => "ReservationReleased" as NonEmptyStr
+    QuantityInstalled { lot: _, quantity: _, origin: _, assets: _ } => "QuantityInstalled" as NonEmptyStr
+    QuantityRemoved { lot: _, quantity: _ } => "QuantityRemoved" as NonEmptyStr
+    QuantityFailed { lot: _, quantity: _, origin: _ } => "QuantityFailed" as NonEmptyStr
+    QuantitySold { lot: _, quantity: _, origin: _ } => "QuantitySold" as NonEmptyStr
+    QuantityDisposed { lot: _, quantity: _, origin: _ } => "QuantityDisposed" as NonEmptyStr
+  }
+}
+
+// --- the fold state and its refusals ------------------------------------------------------------
+
+type LedgerState {
+  acquired: Bool
+  distribution: StockDistribution
+  reservations: List<ReservationRow>
+  events_applied: Nat
+}
+
+fn initial_ledger_state() -> LedgerState {
+  LedgerState {
+    acquired: false,
+    distribution: empty_stock_distribution(),
+    reservations: [],
+    events_applied: 0,
+  }
+}
+
+data refusal_is_located_note: String = "Every refusal names WHAT was refused, WHERE, and by HOW MUCH: the event's ordinal in the ledger, its constructor label, the position that could not supply the stock, the quantity requested and the quantity actually held. That is the DESIGN section 5 bar — a typed, LOCATED diagnostic, countable and prioritizable — as against a Boolean false or a saturating transfer that quietly takes what it can. Saturation in particular is the absorbing fallback this module must not contain: taking min(requested, held) never fails, so an over-request would have a frequency of zero by construction and the deficit that produced it would never rank for fixing."
+
+type LedgerRefusalCause
+  = EventLotMismatch
+  | EventBeforeAcquisition
+  | LotAlreadyAcquired
+  | ZeroQuantityEvent
+  | InsufficientStock { position: StockPosition, requested: Nat, held: Nat }
+  | ReservationHolderUnknown { holder: NonEmptyStr }
+  | ReservationOverRelease { holder: NonEmptyStr, requested: Nat, held: Nat }
+  | MoreAssetsThanUnits { assets: Nat, quantity: Nat }
+
+type LedgerStep
+  = LedgerAdvanced { state: LedgerState }
+  | LedgerRefused {
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr,
+    }
+
+fn ledger_refusal_cause_label(cause: LedgerRefusalCause) -> NonEmptyStr {
+  match cause {
+    EventLotMismatch => "event_lot_mismatch" as NonEmptyStr
+    EventBeforeAcquisition => "event_before_acquisition" as NonEmptyStr
+    LotAlreadyAcquired => "lot_already_acquired" as NonEmptyStr
+    ZeroQuantityEvent => "zero_quantity_event" as NonEmptyStr
+    InsufficientStock { position: _, requested: _, held: _ } => "insufficient_stock" as NonEmptyStr
+    ReservationHolderUnknown { holder: _ } => "reservation_holder_unknown" as NonEmptyStr
+    ReservationOverRelease { holder: _, requested: _, held: _ } => "reservation_over_release" as NonEmptyStr
+    MoreAssetsThanUnits { assets: _, quantity: _ } => "more_assets_than_units" as NonEmptyStr
+  }
+}
+
+data transfer_is_the_only_mutation_note: String = "transfer_stock is the ONLY function in this module that changes a StockDistribution, and it moves a quantity from one position to another in a single step. Because it never creates and never destroys, the partition total is invariant under it, so 'no event sequence yields a negative balance' and 'all buckets reconcile to the acquired total' are the same one property of this function rather than two checks over the result. Its refusal arm is a refusal, not a clamp."
+
+fn transfer_stock(
+  distribution: StockDistribution,
+  from: StockPosition,
+  to: StockPosition,
+  quantity: Nat,
+) -> StockDistribution? {
+  let held = stock_at(distribution: distribution, position: from)
+  if quantity > held {
+    none
+  } else {
+    let drained = stock_with(distribution: distribution, position: from, quantity: held - quantity)
+    let target_held = stock_at(distribution: drained, position: to)
+    Present { value: stock_with(distribution: drained, position: to, quantity: target_held + quantity) }
+  }
+}
+
+fn advance(state: LedgerState, distribution: StockDistribution) -> LedgerState {
+  LedgerState {
+    acquired: state.acquired,
+    distribution: distribution,
+    reservations: state.reservations,
+    events_applied: state.events_applied + 1,
+  }
+}
+
+fn refuse_step(
+  cause: LedgerRefusalCause,
+  ordinal: Nat,
+  event: InventoryEvent,
+) -> LedgerStep {
+  LedgerRefused {
+    cause: cause,
+    event_ordinal: ordinal,
+    event_label: inventory_event_label(event: event),
+  }
+}
+
+fn transfer_step(
+  state: LedgerState,
+  from: StockPosition,
+  to: StockPosition,
+  quantity: Nat,
+  ordinal: Nat,
+  event: InventoryEvent,
+) -> LedgerStep {
+  match transfer_stock(distribution: state.distribution, from: from, to: to, quantity: quantity) {
+    Absent =>
+      refuse_step(
+        cause: InsufficientStock {
+          position: from,
+          requested: quantity,
+          held: stock_at(distribution: state.distribution, position: from),
+        },
+        ordinal: ordinal,
+        event: event,
+      )
+    Present { value: moved } => LedgerAdvanced { state: advance(state: state, distribution: moved) }
+  }
+}
+
+fn apply_inventory_event(
+  lot: ProcurementLot,
+  state: LedgerState,
+  event: InventoryEvent,
+  ordinal: Nat,
+) -> LedgerStep {
+  if !inventory_lot_identity_eq(left: inventory_event_lot(event: event), right: lot.identity) {
+    refuse_step(cause: EventLotMismatch, ordinal: ordinal, event: event)
+  } else {
+    match event {
+      LotAcquired { lot: _ } =>
+        if state.acquired {
+          refuse_step(cause: LotAlreadyAcquired, ordinal: ordinal, event: event)
+        } else {
+          LedgerAdvanced {
+            state: LedgerState {
+              acquired: true,
+              distribution: stock_with(
+                distribution: state.distribution,
+                position: AwaitingReceipt,
+                quantity: lot.quantity_acquired,
+              ),
+              reservations: state.reservations,
+              events_applied: state.events_applied + 1,
+            },
+          }
+        }
+      LotReceived { lot: _, quantity: q } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: AwaitingReceipt, to: Unqualified,
+        )
+      QuantityQualified { lot: _, quantity: q } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: Unqualified, to: Available,
+        )
+      QuantityQuarantined { lot: _, quantity: q } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: Unqualified, to: Quarantined,
+        )
+      QuantityReserved { lot: _, quantity: q, holder: h } =>
+        if !state.acquired {
+          refuse_step(cause: EventBeforeAcquisition, ordinal: ordinal, event: event)
+        } else if q == 0 {
+          refuse_step(cause: ZeroQuantityEvent, ordinal: ordinal, event: event)
+        } else {
+          match transfer_stock(
+            distribution: state.distribution, from: Available, to: Reserved, quantity: q,
+          ) {
+            Absent =>
+              refuse_step(
+                cause: InsufficientStock {
+                  position: Available,
+                  requested: q,
+                  held: stock_at(distribution: state.distribution, position: Available),
+                },
+                ordinal: ordinal,
+                event: event,
+              )
+            Present { value: moved } =>
+              LedgerAdvanced {
+                state: LedgerState {
+                  acquired: state.acquired,
+                  distribution: moved,
+                  reservations: reservation_rows_with_delta(
+                    rows: state.reservations, holder: h, added: q, removed: 0,
+                  ),
+                  events_applied: state.events_applied + 1,
+                },
+              }
+          }
+        }
+      ReservationReleased { lot: _, quantity: q, holder: h } =>
+        release_reservation(
+          state: state, event: event, ordinal: ordinal,
+          quantity: q, holder: h, to: Available,
+        )
+      QuantityInstalled { lot: _, quantity: q, origin: o, assets: a } =>
+        if !state.acquired {
+          refuse_step(cause: EventBeforeAcquisition, ordinal: ordinal, event: event)
+        } else if q == 0 {
+          refuse_step(cause: ZeroQuantityEvent, ordinal: ordinal, event: event)
+        } else if list_length(items: a) > q {
+          refuse_step(
+            cause: MoreAssetsThanUnits { assets: list_length(items: a), quantity: q },
+            ordinal: ordinal,
+            event: event,
+          )
+        } else {
+          match o {
+            InstallFromAvailable =>
+              transfer_step(
+                state: state, from: Available, to: Installed,
+                quantity: q, ordinal: ordinal, event: event,
+              )
+            InstallFromReservation { holder: h } =>
+              release_reservation(
+                state: state, event: event, ordinal: ordinal,
+                quantity: q, holder: h, to: Installed,
+              )
+          }
+        }
+      QuantityRemoved { lot: _, quantity: q } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: Installed, to: Available,
+        )
+      QuantityFailed { lot: _, quantity: q, origin: o } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: departure_origin_position(origin: o), to: Departed,
+        )
+      QuantitySold { lot: _, quantity: q, origin: o } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: departure_origin_position(origin: o), to: Departed,
+        )
+      QuantityDisposed { lot: _, quantity: q, origin: o } =>
+        guarded_transfer(
+          lot: lot, state: state, event: event, ordinal: ordinal,
+          quantity: q, from: departure_origin_position(origin: o), to: Departed,
+        )
+    }
+  }
+}
+
+fn guarded_transfer(
+  lot: ProcurementLot,
+  state: LedgerState,
+  event: InventoryEvent,
+  ordinal: Nat,
+  quantity: Nat,
+  from: StockPosition,
+  to: StockPosition,
+) -> LedgerStep {
+  if !state.acquired {
+    refuse_step(cause: EventBeforeAcquisition, ordinal: ordinal, event: event)
+  } else if quantity == 0 {
+    refuse_step(cause: ZeroQuantityEvent, ordinal: ordinal, event: event)
+  } else {
+    transfer_step(
+      state: state, from: from, to: to, quantity: quantity, ordinal: ordinal, event: event,
+    )
+  }
+}
+
+fn release_reservation(
+  state: LedgerState,
+  event: InventoryEvent,
+  ordinal: Nat,
+  quantity: Nat,
+  holder: NonEmptyStr,
+  to: StockPosition,
+) -> LedgerStep {
+  if !state.acquired {
+    refuse_step(cause: EventBeforeAcquisition, ordinal: ordinal, event: event)
+  } else if quantity == 0 {
+    refuse_step(cause: ZeroQuantityEvent, ordinal: ordinal, event: event)
+  } else {
+    let held = reservation_quantity_for(rows: state.reservations, holder: holder)
+    if held == 0 {
+      refuse_step(cause: ReservationHolderUnknown { holder: holder }, ordinal: ordinal, event: event)
+    } else if quantity > held {
+      refuse_step(
+        cause: ReservationOverRelease { holder: holder, requested: quantity, held: held },
+        ordinal: ordinal,
+        event: event,
+      )
+    } else {
+      match transfer_stock(
+        distribution: state.distribution, from: Reserved, to: to, quantity: quantity,
+      ) {
+        Absent =>
+          refuse_step(
+            cause: InsufficientStock {
+              position: Reserved,
+              requested: quantity,
+              held: stock_at(distribution: state.distribution, position: Reserved),
+            },
+            ordinal: ordinal,
+            event: event,
+          )
+        Present { value: moved } =>
+          LedgerAdvanced {
+            state: LedgerState {
+              acquired: state.acquired,
+              distribution: moved,
+              reservations: reservation_rows_with_delta(
+                rows: state.reservations, holder: holder, added: 0, removed: quantity,
+              ),
+              events_applied: state.events_applied + 1,
+            },
+          }
+      }
+    }
+  }
+}
+
+// --- the one fold, and the derived balance -------------------------------------------------------
+
+type LedgerFold
+  = LedgerSettled { state: LedgerState }
+  | LedgerFoldRefused {
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr,
+    }
+
+fn fold_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> LedgerFold {
+  let seeded = LedgerSettled { state: initial_ledger_state() }
+  fold(events, init: seeded, f: fn(acc, event) {
+    match acc {
+      LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
+        LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l }
+      LedgerSettled { state: s } =>
+        match apply_inventory_event(lot: lot, state: s, event: event, ordinal: s.events_applied) {
+          LedgerAdvanced { state: next } => LedgerSettled { state: next }
+          LedgerRefused { cause: c, event_ordinal: o, event_label: l } =>
+            LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l }
+        }
+    }
+  })
+}
+
+data balance_is_derived_note: String = "InventoryBalance is DERIVED by one fold and never authored: there is no constructor for it outside derive_inventory_balance, no field of ProcurementLot holds one, and no event carries one. Its nine buckets are three different kinds of reading over the same partition and it is worth saying which is which, because a reader who takes them all for disjoint tallies will double count. owned, received and qualified are AGGREGATES over several positions; unqualified, quarantined, available, reserved and installed each report exactly one position; departed reports the terminal position. The disjoint seven are what sum to acquired — reconciles_to_acquired asserts precisely that, and the aggregates are derived from the same seven rather than accumulated separately, so they cannot drift from them."
+
+type InventoryBalance {
+  acquired: Nat
+  owned: Nat
+  received: Nat
+  unqualified: Nat
+  qualified: Nat
+  available: Nat
+  reserved: Nat
+  installed: Nat
+  quarantined: Nat
+  departed: Nat
+}
+
+type InventoryBalanceProjection
+  = BalanceDerived { balance: InventoryBalance }
+  | BalanceRefused {
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr,
+    }
+
+fn derive_inventory_balance(
+  lot: ProcurementLot,
+  events: List<InventoryEvent>,
+) -> InventoryBalanceProjection {
+  match fold_inventory_ledger(lot: lot, events: events) {
+    LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
+      BalanceRefused { cause: c, event_ordinal: o, event_label: l }
+    LedgerSettled { state: s } => {
+      let d = s.distribution
+      BalanceDerived {
+        balance: InventoryBalance {
+          acquired: stock_distribution_total(distribution: d),
+          owned: stock_distribution_total(distribution: d) - d.departed,
+          received: stock_distribution_total(distribution: d) - d.awaiting_receipt,
+          unqualified: d.unqualified,
+          qualified: d.available + d.reserved + d.installed,
+          available: d.available,
+          reserved: d.reserved,
+          installed: d.installed,
+          quarantined: d.quarantined,
+          departed: d.departed,
+        },
+      }
+    }
+  }
+}
+
+fn balance_reconciles_to_acquired(balance: InventoryBalance) -> Bool {
+  balance.acquired
+    == (balance.acquired - balance.received)
+      + balance.unqualified
+      + balance.quarantined
+      + balance.available
+      + balance.reserved
+      + balance.installed
+      + balance.departed
+}
+
+fn balance_owned_plus_departed_is_acquired(balance: InventoryBalance) -> Bool {
+  balance.owned + balance.departed == balance.acquired
+}
+
+// --- admissibility of a consumption request ---------------------------------------------------
+
+type ConsumptionRequest {
+  lot: InventoryLotIdentity
+  quantity: Nat
+  holder: NonEmptyStr
+}
+
+type ConsumptionAdmissibility
+  = ConsumptionAdmissible { available_after: Nat }
+  | ConsumptionRefused { cause: LedgerRefusalCause, requested: Nat, available: Nat }
+
+data over_request_refuses_note: String = "An over-request REFUSES with the requested and available quantities beside each other; it does not return the largest admissible amount. Partial fulfilment would be the DESIGN section 5 absorbing fallback executed on the answer lattice — 'you asked for 40 and I gave you 12' never fails, so the shortfall's frequency is zero by construction and the stockout it represents never surfaces as a fact anyone can count. The caller that genuinely wants a partial draw asks for the smaller quantity, which is a decision it makes and a number it states."
+
+fn admit_consumption(
+  lot: ProcurementLot,
+  events: List<InventoryEvent>,
+  request: ConsumptionRequest,
+) -> ConsumptionAdmissibility {
+  match derive_inventory_balance(lot: lot, events: events) {
+    BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
+      ConsumptionRefused { cause: c, requested: request.quantity, available: 0 }
+    BalanceDerived { balance: b } =>
+      if !inventory_lot_identity_eq(left: request.lot, right: lot.identity) {
+        ConsumptionRefused { cause: EventLotMismatch, requested: request.quantity, available: b.available }
+      } else if request.quantity == 0 {
+        ConsumptionRefused { cause: ZeroQuantityEvent, requested: 0, available: b.available }
+      } else if request.quantity > b.available {
+        ConsumptionRefused {
+          cause: InsufficientStock {
+            position: Available,
+            requested: request.quantity,
+            held: b.available,
+          },
+          requested: request.quantity,
+          available: b.available,
+        }
+      } else {
+        ConsumptionAdmissible { available_after: b.available - request.quantity }
+      }
+  }
+}
+
+// --- two projections, one fact: basis versus incremental cash ------------------------------------
+
+data basis_and_cash_are_two_projections_note: String = "Landed basis and incremental purchase cash are two READINGS of the same fact, and neither is stored as a running figure. The basis is what the lot cost to land and it is read from the ProcurementLot alone — lot_landed_cost_micros takes no event list, so no sequence of consumption events can reach it; rewriting history is not merely forbidden here, it is unwritable. Incremental purchase cash is what a ledger CAUSED to be spent, and only LotAcquired contributes: consuming stock already owned reports zero, because the money left the building when the lot was acquired and spending it twice is exactly the error this split exists to prevent. Appending consumption events to a ledger therefore leaves both readings unchanged — the same value from the same fact, read two ways."
+
+fn ledger_incremental_purchase_cash_micros(
+  lot: ProcurementLot,
+  events: List<InventoryEvent>,
+) -> Nat {
+  fold(events, init: 0, f: fn(acc, event) {
+    match event {
+      LotAcquired { lot: _ } => acc + lot_landed_cost_micros(lot: lot)
+      LotReceived { lot: _, quantity: _ } => acc
+      QuantityQualified { lot: _, quantity: _ } => acc
+      QuantityQuarantined { lot: _, quantity: _ } => acc
+      QuantityReserved { lot: _, quantity: _, holder: _ } => acc
+      ReservationReleased { lot: _, quantity: _, holder: _ } => acc
+      QuantityInstalled { lot: _, quantity: _, origin: _, assets: _ } => acc
+      QuantityRemoved { lot: _, quantity: _ } => acc
+      QuantityFailed { lot: _, quantity: _, origin: _ } => acc
+      QuantitySold { lot: _, quantity: _, origin: _ } => acc
+      QuantityDisposed { lot: _, quantity: _, origin: _ } => acc
+    }
+  })
+}
