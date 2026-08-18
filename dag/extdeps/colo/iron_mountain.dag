@@ -2,7 +2,7 @@ module extdeps.colo.iron_mountain
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressStanding, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types { ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }

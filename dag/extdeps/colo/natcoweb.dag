@@ -6,7 +6,7 @@ import std.measure { MoneyPerMonth, MoneyPerHour, money_amount_micro, ampere, ba
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressStanding, AddressUnread,
+  ColoFacilityRow, AddressUnread,
   RetailPlanRow, PowerAllocation, FeedAmpsVoltsUnstated,
   TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
   SetupCharge, SetupWaived, RetailRateStanding, RatesPublished, RemoteHandsWindowRate,

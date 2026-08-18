@@ -6,7 +6,7 @@ import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour, money_amount_micro 
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressStanding, AddressListed,
+  ColoFacilityRow, AddressListed,
   RetailRateStanding, RatesQuoteOnly, CrossConnectFee, RemoteHandsWindowRate,
 }
 

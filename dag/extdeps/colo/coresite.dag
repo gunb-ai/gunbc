@@ -2,7 +2,7 @@ module extdeps.colo.coresite
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressStanding, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
