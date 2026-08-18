@@ -54,13 +54,14 @@ test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool {
   count(committed_generated_artifact_paths()) > 0
     && all_generated_projection_paths_have_merge_rows()
     && expected_gitattributes_has_merge_row_for(path: ".gitattributes")
-    && expected_gitattributes_has_merge_row_for(path: "src/v1/stage0/src/std_algebra.rs")
+    && expected_gitattributes_has_merge_row_for(path: "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
 }
 
-test fn witness_projection_population_contains_stage0_rust() -> Bool {
+test fn witness_projection_population_contains_dispatch_generated() -> Bool {
   match deterministic_generated_projection_paths() {
     GeneratedProjectionPathsRefused { cause: _ } => false
-    GeneratedProjectionPathsAccepted { paths } => paths |> any(path => path == "src/v1/stage0/src/std_algebra.rs")
+    GeneratedProjectionPathsAccepted { paths } =>
+      paths |> any(path => path == "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
   }
 }
 
