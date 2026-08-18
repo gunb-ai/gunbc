@@ -1991,6 +1991,19 @@ type CallFormalApplication {
 
 data call_application_plan_note: String = "Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3). direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were line-for-line duplicates of the same per-formal prologue: param_node_type_expr, substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional actual search. Both run over the SAME value_params, typed_args and call_subst at the one direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and it measured as the ENTIRE cost of the conformance seam: on gunbc.host_effect_realize the two timed peels inside direct_call_arg_mismatch_diags accounted for that function to within instrument overhead (62719ms + 62804ms against 125438ms over 330 calls), while the timer around direct_call_arg_type_mismatch never entered the top fourteen operations and substitute_generics already short-circuits an empty substitution. That module holds 63% of all corpus type inference. Building the binding ONCE and passing it to both consumers is the deduplication, not a cache: no map is introduced, so nothing here becomes an order-exposing operation in the v2.std.determinism denominator. Behavior is identical because every recomputed term is a pure function of arguments both callers already share."
 
+// The narrow seam the pure-memo realization contract names. It exists so the
+// memo's population is EXACTLY the measured direct-call formal population and
+// nothing else: peel_nominal_alias_identity has 15 call sites in this module,
+// and memoizing the general operation would change allocation sharing at every
+// one of them and could absorb the second peel in the record-literal path,
+// whose input is an already-peeled node and whose double application is
+// measurably NOT idempotent (21 counterexamples over 600,000+ calls, six of
+// them structural). Uncached, this wrapper trivially denotes the operation it
+// forwards to; that is the whole point of routing through it.
+fn peel_direct_call_formal(formal_subst: Node, env: TypeEnv, module_name: String) -> Node {
+  peel_nominal_alias_identity(n: formal_subst, env: env, module_name: module_name)
+}
+
 fn build_call_application_plan(
   value_params: List<Node>,
   typed_args: List<Node>,
@@ -2009,7 +2022,7 @@ fn build_call_application_plan(
         index: pair.first,
         param_name: param_name,
         formal_subst: formal_subst,
-        formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
+        formal: peel_direct_call_formal(formal_subst: formal_subst, env: type_env, module_name: module_name),
         matched_arg: match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
           Present { value: named_ta } => Present { value: named_ta }
           Absent => typed_args |> skip(pair.first) |> first

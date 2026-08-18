@@ -5746,7 +5746,7 @@ fn rust_pure_memo_subject_matches(module_path: String, name: String) -> Bool {
 }
 
 fn rust_pure_memo_inner_name(name: String) -> String {
-  concat(name, "__unmemoized")
+  concat(name, "_uncached")
 }
 
 // Emits the memoized wrapper for a contract subject. The shape assumption is
@@ -5770,7 +5770,7 @@ fn rust_pure_memo_shape_refusal(name: String) -> String {
 // whole construction exists to forbid -- so it refuses at compile time
 // (DESIGN section 5: a failure arm refuses, never widens).
 fn rust_pure_memo_wrapper(
-  name: String, value_params: List<Node>, params_str: String, ret_str: String,
+  name: String, value_params: List<Node>, inferred: Node, params_str: String, ret_str: String,
   generic_param_names: List<String>, shared_types: Set<String>, emit_info: EmitGraphInfo, env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
@@ -5782,7 +5782,7 @@ fn rust_pure_memo_wrapper(
         Present { value: p1 } => match value_params |> skip(2) |> first {
           Present { value: p2 } =>
             rust_pure_memo_wrapper_body(
-              name: name, p0: p0, p1: p1, p2: p2, params_str: params_str, ret_str: ret_str,
+              name: name, p0: p0, p1: p1, p2: p2, inferred: inferred, params_str: params_str, ret_str: ret_str,
               shared_types: shared_types, emit_info: emit_info, env: env, source_indices: source_indices)
           Absent => rust_pure_memo_shape_refusal(name: name)
         }
@@ -5794,30 +5794,32 @@ fn rust_pure_memo_wrapper(
 }
 
 fn rust_pure_memo_wrapper_body(
-  name: String, p0: Node, p1: Node, p2: Node, params_str: String, ret_str: String,
+  name: String, p0: Node, p1: Node, p2: Node, inferred: Node, params_str: String, ret_str: String,
   shared_types: Set<String>, emit_info: EmitGraphInfo, env: TypeEnv,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   let n0 = p0.name
   let n1 = p1.name
   let n2 = p2.name
-  let ty0 = emit_inferred(inferred: param_node_type_expr(n: p0), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-  let ty1 = emit_inferred(inferred: param_node_type_expr(n: p1), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_key = emit_inferred(inferred: param_node_type_expr(n: p0), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_env = emit_inferred(inferred: param_node_type_expr(n: p1), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_val = emit_inferred(inferred: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
   concat(
     rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
     "    thread_local! {\n",
-    "        static PURE_MEMO: std::cell::RefCell<v1_rt::ScopedPtrMemo<", ty0, ", ", ty1, ">> =\n",
-    "            std::cell::RefCell::new(v1_rt::ScopedPtrMemo::new());\n",
+    "        static PURE_MEMO: std::cell::RefCell<v1_rt::ScopedMemo<", ty_key, ", ", ty_val, ", ", ty_env, ">> =\n",
+    "            std::cell::RefCell::new(v1_rt::ScopedMemo::new());\n",
     "    }\n",
-    "    let memo_key = v1_rt::rc_ptr_id(&", n0, ");\n",
-    "    let memo_hit = PURE_MEMO.with(|cell| {\n",
+    "    let (memo_generation, memo_hit) = PURE_MEMO.with(|cell| {\n",
     "        let mut memo = cell.borrow_mut();\n",
-    "        memo.enter_scope(v1_rt::rc_ptr_id(&", n1, "), &", n1, ", &", n2, ");\n",
-    "        memo.lookup(memo_key)\n",
+    "        let generation = memo.enter_scope(&", n1, ", &", n2, ");\n",
+    "        (generation, memo.lookup(&", n0, "))\n",
     "    });\n",
     "    if let Some(hit) = memo_hit { return hit; }\n",
+    "    // No borrow is held across this call: the uncached operation re-enters\n",
+    "    // compiler machinery, and it may rebind the scope while it runs.\n",
     "    let memo_value = ", rust_pure_memo_inner_name(name: name), "(", n0, ".clone(), ", n1, ".clone(), ", n2, ".clone());\n",
-    "    PURE_MEMO.with(|cell| cell.borrow_mut().insert(memo_key, ", n0, ", memo_value.clone()));\n",
+    "    PURE_MEMO.with(|cell| cell.borrow_mut().insert_if_current(memo_generation, ", n0, ", memo_value.clone()));\n",
     "    memo_value\n",
     "}\n\n")
 }
@@ -5897,7 +5899,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     emit_fn_def_non_tco(name: emit_name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
   }
   if is_pure_memo_subject {
-    concat(core_def, rust_pure_memo_wrapper(name: name, value_params: value_params, params_str: params_str, ret_str: ret_str, generic_param_names: generic_param_names, shared_types: shared_types, emit_info: emit_info, env: scope.type_env, source_indices: si))
+    concat(core_def, rust_pure_memo_wrapper(name: name, value_params: value_params, inferred: inferred, params_str: params_str, ret_str: ret_str, generic_param_names: generic_param_names, shared_types: shared_types, emit_info: emit_info, env: scope.type_env, source_indices: si))
   } else {
     core_def
   }
