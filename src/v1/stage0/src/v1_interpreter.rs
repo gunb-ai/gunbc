@@ -350,10 +350,13 @@ fn record_pattern_type_name_matches(
     match parent_enum {
         Some(parent) => {
             record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
-                || record_nominal_is_bare_declared_variant_of_coproduct(ctx, resolved, parent)
-                || coproduct_arm_name_matches(resolved.clone(), pattern_name.to_string())
+                || record_nominal_is_bare_declared_variant_of_coproduct(
+                    ctx,
+                    resolved.clone(),
+                    parent,
+                )
         }
-        None => coproduct_arm_name_matches(resolved.clone(), pattern_name.to_string()),
+        None => true,
     }
 }
 
