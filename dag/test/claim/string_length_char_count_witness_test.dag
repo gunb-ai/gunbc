@@ -1,18 +1,31 @@
 module test.claim.string_length_char_count_witness
 
-// CONTRACT: `.length()`, `.count()` and `.size()` on a String report the
-// CHARACTER (codepoint) count, never the UTF-8 BYTE count. All three spellings
-// are one arm -- `method_call.length { "length" | "count" | "size" }` in
-// `v1_interpreter.rs`, registered as three authored spellings in
-// `gunbc.v1_interpreter_primitive_surface` -- so they share a single
-// implementation and a single regression exposure, and this witness covers all
-// three rather than the two an earlier revision of this header claimed.
+// CONTRACT: `.length()` and `.count()` on a String report the CHARACTER
+// (codepoint) count, never the UTF-8 BYTE count. The discriminating risk is a
+// fast-path arm that reads a byte length: a naive `Value::Str(s) => Some(s.len())`
+// (Rust byte length) would answer 3 for the single-codepoint CJK string below,
+// not 1. Any future O(1) fast path -- an ASCII-flag read included -- must keep
+// answering the character count on multibyte input, and these cases go red if
+// it does not.
 //
-// The discriminating risk is a fast-path arm that reads a byte length: a naive
-// `Value::Str(s) => Some(s.len())` (Rust byte length) would answer 3 for the
-// single-codepoint CJK string below, not 1. Any future O(1) fast path -- an
-// ASCII-flag read included -- must keep answering the character count on
-// multibyte input, and these cases go red if it does not.
+// WHY `.size()` IS NOT COVERED HERE, measured rather than assumed. `size` is a
+// registered-but-UNREACHABLE spelling: the interpreter admits it at runtime
+// (`method_call.length { "length" | "count" | "size" }` in `v1_interpreter.rs`)
+// and `gunbc.v1_interpreter_primitive_surface` declares it as a third authored
+// spelling, but the typechecker's method-existence authority
+// (`v1_compiler_infer_method.rs` `builtin_function_registry`) seeds `count` and
+// inserts `length` and never inserts `size`. So `"x".size()` refuses at compile
+// time -- `method 'size' not found on receiver type 'Primitive(String)'` -- and
+// no `.dag` source can reach the runtime arm through it. Adding a `.size()` case
+// here does not extend coverage; it reds the build, which is how this was found
+// (CI on this PR, not by reading the surface).
+//
+// That fork is a real defect and is NOT this witness's to fix: three names for
+// one concept is nicknaming (DESIGN §2/§3), so the likely correct repair is to
+// DELETE `size` from the interpreter arm and the primitive surface rather than
+// to widen the typechecker to admit it. Either direction changes a load-bearing
+// file and needs its own change. Until one lands, this witness covers exactly
+// the two spellings that are reachable.
 
 test fn ascii_string_length_is_char_count() -> Bool {
   "hello".length() == 5
@@ -44,15 +57,4 @@ test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool {
 
 test fn multibyte_string_count_matches_length() -> Bool {
   "\u{4e2d}\u{6587}".count() == 2
-}
-
-// `.size()` is the third authored spelling of the same arm. It carries the same
-// byte-vs-character exposure, so it gets the same discriminating multibyte input
-// rather than an ASCII-only case that a byte-length arm would also pass.
-test fn multibyte_string_size_is_char_count() -> Bool {
-  "\u{4e2d}\u{6587}".size() == 2
-}
-
-test fn mixed_ascii_and_multibyte_size_counts_chars_not_bytes() -> Bool {
-  "na\u{ef}ve".size() == 5
 }
