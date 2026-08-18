@@ -985,3 +985,43 @@ one. Given this lane's record, assume the instrument until shown otherwise.
 
 The `List` fork itself is unchanged and remains a modeling decision:
 `dag/std/types.dag:105` and `src/v2/std/collection.dag:16`.
+
+## The 51,672 -> 38,562 gap reconciles: qualification is iterative, not one-shot
+
+CI at `7a99449` reproduces the local run EXACTLY -- 48,512 error rows in both,
+same cycle diagnostic, same site, zero crashes -- so the `ulimit -s 2048`
+local instrument is validated against the real thing and a round can be
+measured in ~4 minutes instead of ~30.
+
+The set diff over `(file, name)` pairs:
+
+```
+BEFORE (9d93db0)  51,672 rows   16,079 pairs
+AFTER  (7a99449)  38,562 rows   10,728 pairs
+    resolved      10,728 pairs
+    NEW            5,377 pairs
+    persisted      5,351 pairs
+```
+
+`16,079 - 10,728 + 5,377 = 10,728`. Round 2 resolved 67% of the pairs it
+could see; the shortfall against its 39,277 applied edits is 5,377 newly
+visible pairs, not failed work.
+
+**A hypothesis formed and refuted in one measurement.** The natural reading
+was pool-membership collateral: qualifying `Uri` in one file removes the
+accidental pool entry that was keeping bare `Uri` alive in another, the Class
+B mechanism this document already records. It is wrong here. Of the 5,377 new
+pairs, **5,374 are in files Round 2 itself edited** and only 3 are in
+untouched files, across 2 files total. So this is not collateral damage; it is
+unmasking WITHIN each edited file -- the compiler now advances further into
+the same file and reports references it never reached before.
+
+That follows from the method rather than contradicting it: a span-driven
+qualifier only edits what the compiler REPORTED, and the compiler reports only
+what it reaches. Every fixed reference lets it reach more of the same file.
+
+**So the work is inherently iterative and the rate is measurable.** One round
+took 16,079 pairs to 10,728, a 33% reduction. Convergence is repeated rounds
+against a re-measured stream, not a bigger single pass -- and with the local
+instrument each round costs minutes, so rounds can be run to a fixed point
+before anything is pushed.
