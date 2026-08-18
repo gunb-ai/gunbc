@@ -813,15 +813,26 @@ fn v1_type_expr_head_is_known(
   is_container_type(name: name) || map_get(type_decl_items, name) != none
 }
 
+fn v1_item_generic_param_name_set(
+  item: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Set<String> {
+  item.params |> fold(init: empty_set(), f: (acc, p) =>
+    set_insert(acc, generic_param_name_at(n: p, source_indices: source_indices))
+  )
+}
+
 fn v1_type_expr_clone_undecided_head(
   type_expr: Node,
   type_decl_items: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, NewlineIndex>,
+  item_generic_params: Set<String>
 ) -> String {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
   if (type_expr.children |> count) == 0 {
     ""
-  } else if v1_type_expr_head_is_known(name: name, type_decl_items: type_decl_items) {
+  } else if v1_type_expr_head_is_known(name: name, type_decl_items: type_decl_items)
+    || set_contains(item_generic_params, name) {
     type_expr.children |> fold(init: "", f: (acc, c) =>
       if acc != "" {
         acc
@@ -829,7 +840,8 @@ fn v1_type_expr_clone_undecided_head(
         v1_type_expr_clone_undecided_head(
           type_expr: child_type_node(ch: c),
           type_decl_items: type_decl_items,
-          source_indices: source_indices
+          source_indices: source_indices,
+          item_generic_params: item_generic_params
         )
       }
     )
@@ -1079,6 +1091,7 @@ fn v1_item_clone_undecided_head(
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
+  let item_generic_params = v1_item_generic_param_name_set(item: item, source_indices: source_indices)
   v1_item_field_type_exprs(item: item) |> fold(init: "", f: (acc, te) =>
     if acc != "" {
       acc
@@ -1086,7 +1099,8 @@ fn v1_item_clone_undecided_head(
       v1_type_expr_clone_undecided_head(
         type_expr: te,
         type_decl_items: type_decl_items,
-        source_indices: source_indices
+        source_indices: source_indices,
+        item_generic_params: item_generic_params
       )
     }
   )

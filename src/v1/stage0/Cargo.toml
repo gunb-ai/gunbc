@@ -91,7 +91,11 @@ path = "src/bin/json_parse_scaling_probe.rs"
 
 # Isolated char_at scaling receipt: position x string-length, uncontaminated by the
 # JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
-# 2026-08-17). DISSOLUTION: delete alongside json_parse_scaling_probe.rs.
+# 2026-08-17). SCAFFOLD -- disposition authority is
+# `char_at_scaling_probe_disposition` in dag/gunbc/char_at_scaling_probe_support.dag.
+# DISSOLUTION: its OWN trigger (`char_at_scaling_probe_dissolution`), NOT alongside
+# json_parse_scaling_probe.rs -- the two probes measure different primitives and can
+# have independently different lifetimes (DESIGN section 5, same-unit rule).
 [[bin]]
 name = "char_at_scaling_probe"
 path = "src/bin/char_at_scaling_probe.rs"
@@ -273,15 +277,6 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
-
 [[bin]]
 name = "floor_prepared_toll_receipt"
 path = "src/bin/floor_prepared_toll_receipt.rs"
-
-# Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
-# GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
-# dissolve-on: REST transport folds into extdeps.github.checks/pulls interpreter bridge;
-# receipt: `rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER src/v1/stage0` until deletion.
-[[bin]]
-name = "ci_control_plane"
-path = "src/bin/ci_control_plane.rs"
