@@ -2010,9 +2010,11 @@ pub fn compile_dag_rust_emit_check(
     {
         return hit;
     }
-    eprintln!(
-        "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
-    );
+    if crate::v1_interpreter::eval_recompute_trace_enabled() {
+        eprintln!(
+            "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
+        );
+    }
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
