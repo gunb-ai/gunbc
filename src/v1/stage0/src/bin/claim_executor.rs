@@ -11311,6 +11311,15 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
 /// names BudgetExceeded{wall,budget} vs WitnessRed{claims} vs Infra{spawn/toolchain/eviction}
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
+// STALE SIGNAL, NOT MERELY DEAD CODE. These substrings matched a budget refusal back when a
+// raised one reached the claim seam as a `RuntimeError` carrying the refusal as prose. It now
+// arrives as `ClaimOutcome::TimedOut` with the pair typed, so nothing renders this text on the
+// required-floor path any more. That matters more for the RESTORE than for today: this function
+// sits past the required-floor early return, on the falsifier lane whose workflows the floor cut
+// deleted, and a dead `.contains` does not fail loudly when a lane comes back — it matches
+// nothing and reports NO budget findings, which says "there are none" where it should say "I
+// cannot tell". Whoever re-adds this lane reads the variant, not the prose; the classification
+// is deletion population otherwise.
 fn falsifier_failure_mode(details: &[String]) -> &'static str {
     if details.iter().any(|d| {
         d.contains("BudgetExceeded{")

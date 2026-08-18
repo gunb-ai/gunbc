@@ -42338,6 +42338,14 @@ pub fn run_required_floor(
         }
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red {
+            // ONE DISPATCH. Every arm does its own work here rather than classifying once and
+            // re-deriving the answer below: two dispatches over one value agree only as long
+            // as nobody adds a variant, and the second test is always the narrower one, so the
+            // new variant reaches the fallthrough and is silently held. That is precisely the
+            // absorption this join exists to remove, and it would read as correct in review
+            // because the helper LOOKS like it classifies. With one match the compiler makes
+            // the next variant get classified here or not compile, and the caller's sum check
+            // is then checking three counters produced by one mechanism rather than two.
             match expected_red_arm(&result) {
                 ExpectedRedArm::NowPassing => {
                     known_red_now_passing += 1;
@@ -42348,42 +42356,44 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
-                ExpectedRedArm::BudgetRefused => {}
-                ExpectedRedArm::Held => {}
+                // A BUDGET REFUSAL IS NOT AN ENROLLED FAILURE, and conflating the two is what
+                // let the most expensive row in the corpus hide behind its own enrollment.
+                // Enrollment records that this branch expects the claim to FAIL — a statement
+                // about the witness's verdict. A budget refusal is not a verdict: it is an
+                // interruption plus a measured lower bound on cost, so the enrolled claim was
+                // never decided at all. Holding it reports agreement about a failure that
+                // nobody observed.
+                ExpectedRedArm::BudgetRefused => {
+                    known_red_budget_refused += 1;
+                    let detail = match &result {
+                        ClaimOutcome::TimedOut {
+                            elapsed_ms,
+                            budget_ms,
+                            kind,
+                        } => format!("{kind:?} {elapsed_ms}ms against {budget_ms}ms"),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.budget_refused.push(format!(
+                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
+                         {}. Enrollment asserts an expected verdict and a budget refusal \
+                         produces none, so the enrolled claim went undecided. Reduce the row's \
+                         cost, or move it to a lane that declares its own ceiling — removing it \
+                         from the roster would not help, because it is not passing either.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled, and
+                // agreement about a failure is not the same fact as a passing witness. Folding
+                // it into `passed` would make the headline number rise as debt is ADDED, which
+                // is the direction that flatters, and would leave no count that falls when the
+                // debt is repaid. The identity accounting (planned = executed = receipted) is
+                // unaffected because it counts receipts, not verdicts.
+                ExpectedRedArm::Held => {
+                    known_red_held += 1;
+                    continue;
+                }
             }
-        }
-        if expected_red {
-            // A BUDGET REFUSAL IS NOT AN ENROLLED FAILURE, and conflating the two is what let
-            // the most expensive row in the corpus hide behind its own enrollment. Enrollment
-            // records that this branch expects the claim to FAIL — a statement about the
-            // witness's verdict. A budget refusal is not a verdict: it is an interruption plus
-            // a measured lower bound on cost, so the enrolled claim was never decided at all.
-            // Holding it reports agreement about a failure that nobody observed.
-            if let ClaimOutcome::TimedOut {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } = &result
-            {
-                known_red_budget_refused += 1;
-                outcome.budget_refused.push(format!(
-                    "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: {:?} \
-                     {}ms against {}ms. Enrollment asserts an expected verdict and a budget \
-                     refusal produces none, so the enrolled claim went undecided. Reduce the \
-                     row's cost, or move it to a lane that declares its own ceiling — removing \
-                     it from the roster would not help, because it is not passing either.",
-                    claim.qualified, kind, elapsed_ms, budget_ms
-                ));
-                continue;
-            }
-            known_red_held += 1;
-            // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled,
-            // and agreement about a failure is not the same fact as a passing witness. Folding
-            // it into `passed` would make the headline number rise as debt is ADDED, which is
-            // the direction that flatters, and would leave no count that falls when the debt is
-            // repaid. The identity accounting (planned = executed = receipted) is unaffected
-            // because it counts receipts, not verdicts.
-            continue;
         }
         match result {
             ClaimOutcome::Pass => outcome.passed += 1,
