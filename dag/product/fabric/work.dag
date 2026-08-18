@@ -9,10 +9,28 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 // here can name a repository, a pull request, a branch or a commit, because those
 // are facts about who asked and where to report, which live on Demand.
 
-data work_provider_neutrality_note: String = "No field on Work or WorkContract may carry a provider identifier. This is not a naming preference: it is what makes a second SCM binding a new authority plus a new binding rather than an edit to the core. Two bindings that normalize to the same source manifest, program, runtime closure, effect contract and output contract produce the SAME Work, so one execution serves demands arriving from different providers. They produce DIFFERENT Work when the declared inputs genuinely differ - one testing a pull-request head and another a synthesized merge tree, history or merge base consumed as input, submodule or large-file materialization differing, available effects differing, or provenance itself declared as an input. The decision is made by the declared inputs, never by a global rule that repository always matters or that tree bytes are always sufficient."
-
-data source_manifest_note: String = "Source identity is a canonical MANIFEST, not a bare tree digest. It covers path, content digest, file mode where semantically relevant, symlink target, submodule object identity and large-file object identity wherever those are consumed by the contract. A Git tree object id is a valid BINDING-level source identity and may be sufficient for a first Git-based implementation; it is not the universal fabric source type, because a fabric that assumes Git tree semantics has assumed an SCM. The binding produces two separate facts - a source content manifest and a provenance receipt - and Work always consumes the manifest, consuming provenance only where provenance is a declared input."
-
+// No field on Work or WorkContract may carry a provider identifier. This is
+// not a naming preference: it is what makes a second SCM binding a new
+// authority plus a new binding rather than an edit to the core. Two bindings
+// that normalize to the same source manifest, program, runtime closure, effect
+// contract and output contract produce the SAME Work, so one execution serves
+// demands arriving from different providers. They produce DIFFERENT Work when
+// the declared inputs genuinely differ - one testing a pull-request head and
+// another a synthesized merge tree, history or merge base consumed as input,
+// submodule or large-file materialization differing, available effects
+// differing, or provenance itself declared as an input. The decision is made
+// by the declared inputs, never by a global rule that repository always
+// matters or that tree bytes are always sufficient.
+// Source identity is a canonical MANIFEST, not a bare tree digest. It covers
+// path, content digest, file mode where semantically relevant, symlink target,
+// submodule object identity and large-file object identity wherever those are
+// consumed by the contract. A Git tree object id is a valid BINDING-level
+// source identity and may be sufficient for a first Git-based implementation;
+// it is not the universal fabric source type, because a fabric that assumes
+// Git tree semantics has assumed an SCM. The binding produces two separate
+// facts - a source content manifest and a provenance receipt - and Work always
+// consumes the manifest, consuming provenance only where provenance is a
+// declared input.
 type ProgramRef = NonEmptyStr where brand("ProgramRef")
 
 type StepGraphRef = NonEmptyStr where brand("StepGraphRef")
@@ -30,8 +48,22 @@ type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
 // carried on the contract and the fabric refuses to claim checkpointing it cannot
 // honor.
 
-data resumability_tier_note: String = "Three tiers, ordered by what the step declares rather than by how it is implemented. ReceiptSatisfiable: inputs declared and outputs are content-addressed artifacts, so an accepted receipt whose outputs remain materializable lets the step be skipped entirely. IdempotentUnderKey: the step has external effects but re-running under the same idempotency key is safe, so it is never skippable by content yet is safely repeatable. OpaqueEffects: effects are undeclared, so the step is not resumable at all and its only sound treatment is rerun from a clean boundary. An arbitrary shell step in a foreign CI workflow is OpaqueEffects unless its contract says otherwise, and that is the honest degradation: the fabric runs it and declines to promise resume, rather than inventing a checkpoint where no state was captured. A long compiler invocation is ONE step at ReceiptSatisfiable grain - twenty minutes into it there is no accepted receipt, so interruption reruns it; a mutable build directory or a compiler cache is a materialization provider that may accelerate the rerun, never proof the step completed."
-
+// Three tiers, ordered by what the step declares rather than by how it is
+// implemented. ReceiptSatisfiable: inputs declared and outputs are content-
+// addressed artifacts, so an accepted receipt whose outputs remain
+// materializable lets the step be skipped entirely. IdempotentUnderKey: the
+// step has external effects but re-running under the same idempotency key is
+// safe, so it is never skippable by content yet is safely repeatable.
+// OpaqueEffects: effects are undeclared, so the step is not resumable at all
+// and its only sound treatment is rerun from a clean boundary. An arbitrary
+// shell step in a foreign CI workflow is OpaqueEffects unless its contract
+// says otherwise, and that is the honest degradation: the fabric runs it and
+// declines to promise resume, rather than inventing a checkpoint where no
+// state was captured. A long compiler invocation is ONE step at
+// ReceiptSatisfiable grain - twenty minutes into it there is no accepted
+// receipt, so interruption reruns it; a mutable build directory or a compiler
+// cache is a materialization provider that may accelerate the rerun, never
+// proof the step completed.
 type ResumabilityTier
   = ReceiptSatisfiable
   | IdempotentUnderKey { idempotency_key: ContentHash }
@@ -69,16 +101,18 @@ type Work<P> {
   steps: List<WorkStep>
 }
 
-data work_key_exclusion_note: String = "The work key is derived from the semantic contract alone. Excluded, each for the same reason - it changes how work is scheduled or attempted, never what answer the work promises: priority, queue position, chosen host, cache presence, attempt number, resource prediction, monetary quote, budget account, reservation price. Including any of them forks one computation into many identities and destroys the deduplication the key exists to provide. Conversely a property that can change the ANSWER - toolchain, architecture, available effects - belongs in the runtime closure or effect contract and therefore DOES participate. The test is not whether a fact is important; it is whether two runs differing only in that fact could legitimately produce different output."
-
+// The work key is derived from the semantic contract alone. Excluded, each for
+// the same reason - it changes how work is scheduled or attempted, never what
+// answer the work promises: priority, queue position, chosen host, cache
+// presence, attempt number, resource prediction, monetary quote, budget
+// account, reservation price. Including any of them forks one computation into
+// many identities and destroys the deduplication the key exists to provide.
+// Conversely a property that can change the ANSWER - toolchain, architecture,
+// available effects - belongs in the runtime closure or effect contract and
+// therefore DOES participate. The test is not whether a fact is important; it
+// is whether two runs differing only in that fact could legitimately produce
+// different output.
 fn work_contract_source(contract: WorkContract) -> SourceManifestRef {
   contract.source
 }
 
-fn work_step_is_receipt_satisfiable(step: WorkStep) -> Bool {
-  match step.resumability {
-    ReceiptSatisfiable => true
-    IdempotentUnderKey { idempotency_key: _ } => false
-    OpaqueEffects { reason: _ } => false
-  }
-}

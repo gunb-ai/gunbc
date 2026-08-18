@@ -1,7 +1,7 @@
 module product.fabric.execution
 
 import std.types { NonEmptyStr, String, Timestamp, List, Int, Bool }
-import std.measure { MoneyAmountMicro }
+import std.measure { MoneyAmountMicro, Second }
 import std.content_hash { ContentHash }
 import product.fabric.identity {
   FabricIdentity, AttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey,
@@ -12,8 +12,17 @@ import product.fabric.supply { MonetaryQuote }
 // An Attempt is one concrete try at a Work. Retries create attempts; they never
 // create new Work and never mutate a failed attempt back into a pending one.
 
-data attempt_lineage_note: String = "Lineage is a typed reason rather than a counter, because the three reasons an attempt exists have different authorization, different accounting and different reuse rules, and a retry_count answers none of them. InitialAttempt is the first try for a demand. InfrastructureRetry names the prior attempt AND the receipt that classified the loss, so an attempt can never claim infrastructure loss without evidence of it - the failure mode that makes a real compile error retry forever is a classifier that discards the termination reason. RequestedReexecution is a demand-driven rerun, which is policy rather than infrastructure. An attempt carries no host and no mutable status: the host lives on the Grant, and the position in the run is DERIVED from accepted receipts, never stored."
-
+// Lineage is a typed reason rather than a counter, because the three reasons
+// an attempt exists have different authorization, different accounting and
+// different reuse rules, and a retry_count answers none of them.
+// InitialAttempt is the first try for a demand. InfrastructureRetry names the
+// prior attempt AND the receipt that classified the loss, so an attempt can
+// never claim infrastructure loss without evidence of it - the failure mode
+// that makes a real compile error retry forever is a classifier that discards
+// the termination reason. RequestedReexecution is a demand-driven rerun, which
+// is policy rather than infrastructure. An attempt carries no host and no
+// mutable status: the host lives on the Grant, and the position in the run is
+// DERIVED from accepted receipts, never stored.
 type AttemptLineage<P>
   = InitialAttempt { initiating_demand: FabricIdentity<P, DemandKey> }
   | InfrastructureRetry {
@@ -41,13 +50,27 @@ type LeaseIdentity {
   generation: Int
 }
 
-data lease_identity_note: String = "resource_fingerprint names the EXACT reserved claim, not the host. Naming the host is the defect that makes two admitted slices of one machine indistinguishable at the fence, so a stale holder of one slice can invalidate a live holder of another. Ownership and generation fencing come from std.temporal_effect HeldLease; what that carrier does NOT supply is time - it has no timestamp and no expiry, and its stale arm is a supplied observation rather than a verdict derived from a deadline. Lease liveness is therefore new modeling that lands with the reservation ledger, and it is stated here so no reader concludes from the presence of a generation that expiry is already solved."
-
+// resource_fingerprint names the EXACT reserved claim, not the host. Naming
+// the host is the defect that makes two admitted slices of one machine
+// indistinguishable at the fence, so a stale holder of one slice can
+// invalidate a live holder of another. Ownership and generation fencing come
+// from std.temporal_effect HeldLease; what that carrier does NOT supply is
+// time - it has no timestamp and no expiry, and its stale arm is a supplied
+// observation rather than a verdict derived from a deadline. Lease liveness is
+// therefore new modeling that lands with the reservation ledger, and it is
+// stated here so no reader concludes from the presence of a generation that
+// expiry is already solved.
 // The Grant is an authorization decision, not a bespoke fold. It projects into
 // std.access, whose AccessDecision is the only allow/deny result in the system.
 
-data grant_is_an_access_decision_note: String = "There is deliberately no FabricGrantDecision of Allowed and Denied. std.access is the one authorization kernel, its decision type is the only allow/deny result, and every denial already carries a typed cause at structured request coordinates. Minting a parallel decision sum here would be the second authority DESIGN forbids, and it would immediately diverge: one of the two would gain a refusal cause the other lacked. The positive Grant carrier below records what an admitted request produced; it is not a second verdict."
-
+// There is deliberately no FabricGrantDecision of Allowed and Denied.
+// std.access is the one authorization kernel, its decision type is the only
+// allow/deny result, and every denial already carries a typed cause at
+// structured request coordinates. Minting a parallel decision sum here would
+// be the second authority DESIGN forbids, and it would immediately diverge:
+// one of the two would gain a refusal cause the other lacked. The positive
+// Grant carrier below records what an admitted request produced; it is not a
+// second verdict.
 type FabricGrantAction =
   | ExecuteAttempt
 
@@ -83,8 +106,13 @@ type Grant<P> {
   money_reservation: ReservationRef
 }
 
-data atomic_dual_reservation_note: String = "Every reservation a grant requires is applied tentatively and committed only if EVERY ledger admits. Resource admitted with money refused must commit no resource reservation, and money admitted with resource refused must commit no money reservation; both are one canonical state transition. A partial commit is the state that leaks capacity or budget with no grant to account for it, and it is unreachable only if the join is atomic rather than sequential."
-
+// Every reservation a grant requires is applied tentatively and committed only
+// if EVERY ledger admits. Resource admitted with money refused must commit no
+// resource reservation, and money admitted with resource refused must commit
+// no money reservation; both are one canonical state transition. A partial
+// commit is the state that leaks capacity or budget with no grant to account
+// for it, and it is unreachable only if the join is atomic rather than
+// sequential.
 // Receipts are what was materialized, executed and settled. Acceptance is gated
 // on the lease generation still being canonical.
 
@@ -93,7 +121,7 @@ type ReceiptPayload
   | ExecutionReceipt {
       step_id: NonEmptyStr,
       outputs: ContentHash,
-      billable_seconds: Int,
+      billable: Second,
       completed_at: Timestamp,
     }
   | SettlementReceipt {
@@ -109,8 +137,17 @@ type Receipt<P> {
   payload: ReceiptPayload
 }
 
-data settlement_note: String = "Elapsed execution time is NOT by itself authoritative spend, which is why the execution receipt carries billable seconds as an OBSERVATION and the settlement receipt carries the settled amount as a separate fact. The supplier binding owns the billing rule - when billing starts, the quantum and rounding, minimum charge, fixed and setup charges, caps, and when billing stops - because those differ per supplier and are already visible in the cited rows: hourly rates alongside monthly caps and setup fees. Settlement therefore derives from quote plus billable-usage evidence plus release evidence, and MISSING RELEASE EVIDENCE HOLDS THE RESERVATION rather than assuming the supplier stopped charging. Assuming release is the arm that quietly under-reserves against a machine still billing."
-
+// Elapsed execution time is NOT by itself authoritative spend, which is why
+// the execution receipt carries billable seconds as an OBSERVATION and the
+// settlement receipt carries the settled amount as a separate fact. The
+// supplier binding owns the billing rule - when billing starts, the quantum
+// and rounding, minimum charge, fixed and setup charges, caps, and when
+// billing stops - because those differ per supplier and are already visible in
+// the cited rows: hourly rates alongside monthly caps and setup fees.
+// Settlement therefore derives from quote plus billable-usage evidence plus
+// release evidence, and MISSING RELEASE EVIDENCE HOLDS THE RESERVATION rather
+// than assuming the supplier stopped charging. Assuming release is the arm
+// that quietly under-reserves against a machine still billing.
 fn receipt_lease_generation<P>(r: Receipt<P>) -> Int {
   r.lease.generation
 }

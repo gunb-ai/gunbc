@@ -1,14 +1,14 @@
 module test.claim.fabric_terminal_contract_witness
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, Int }
-import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, hardware_thread_count }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.currency { CurrencyCode, Usd }
 import product.compute_fabric { Shape, HardRequirements }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, AttemptKey, OfferKey, GrantKey, ReceiptKey }
 import product.fabric.work {
   Work, WorkContract, ExecutionRequirements, WorkStep, ResumabilityTier,
-  ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, work_step_is_receipt_satisfiable,
+  ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
 }
 import product.fabric.demand {
   Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work,
@@ -240,7 +240,7 @@ data stale_receipt: Receipt<NonEmptyStr> = Receipt {
   payload: ExecutionReceipt {
     step_id: "floor",
     outputs: content_hash_of_value(value: "outputs-1"),
-    billable_seconds: 3600,
+    billable: second(count: 3600),
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
@@ -252,20 +252,35 @@ test fn receipt_carries_the_generation_it_was_produced_under() -> Bool {
 }
 
 // Resumability is declared per step, so a step with opaque effects cannot be
-// mistaken for a checkpointable one.
+// mistaken for a checkpointable one. The three tiers are discriminated
+// SEPARATELY rather than folded to a Bool: "may this be replayed" has three
+// answers, and idempotent-under-key differs from opaque-effects in what the
+// fabric is permitted to do, so a projection that answered false for both
+// would erase the distinction this type exists to carry.
+
+fn resumability_tier_of(step: WorkStep) -> NonEmptyStr {
+  match step.resumability {
+    ReceiptSatisfiable => "receipt-satisfiable"
+    IdempotentUnderKey { idempotency_key: _ } => "idempotent-under-key"
+    OpaqueEffects { reason: _ } => "opaque-effects"
+  }
+}
 
 test fn resumability_is_declared_not_assumed() -> Bool {
-  work_step_is_receipt_satisfiable(step: WorkStep { step_id: "build", resumability: ReceiptSatisfiable })
-    && !work_step_is_receipt_satisfiable(
-      step: WorkStep {
-        step_id: "deploy",
-        resumability: IdempotentUnderKey { idempotency_key: content_hash_of_value(value: "deploy-1") },
-      }
-    )
-    && !work_step_is_receipt_satisfiable(
-      step: WorkStep {
-        step_id: "arbitrary-shell",
-        resumability: OpaqueEffects { reason: "foreign workflow step declares no effects" },
-      }
-    )
+  let satisfiable = resumability_tier_of(step: WorkStep {
+    step_id: "build",
+    resumability: ReceiptSatisfiable,
+  })
+  let idempotent = resumability_tier_of(step: WorkStep {
+    step_id: "deploy",
+    resumability: IdempotentUnderKey { idempotency_key: content_hash_of_value(value: "deploy-1") },
+  })
+  let opaque = resumability_tier_of(step: WorkStep {
+    step_id: "arbitrary-shell",
+    resumability: OpaqueEffects { reason: "foreign workflow step declares no effects" },
+  })
+  satisfiable == "receipt-satisfiable"
+    && idempotent == "idempotent-under-key"
+    && opaque == "opaque-effects"
+    && idempotent != opaque
 }
