@@ -2302,12 +2302,69 @@ fn call_function_dispatch(
     result
 }
 
+const BOARD_ARTICLE_REFUSAL_CAUSE_NAME_FN: &str =
+    "product.compute_board.admission.board_article_refusal_cause_name";
+
+fn coproduct_arm_label(value: &Value, ctx: &InterpContext) -> Option<String> {
+    let last_segment = |s: &str| s.rsplit('.').next().unwrap_or(s).to_string();
+    match value {
+        Value::Variant { variant_name, .. } => Some(last_segment(&ctx.resolve(*variant_name))),
+        Value::Record { type_name, .. } => Some(last_segment(&ctx.resolve(*type_name))),
+        _ => None,
+    }
+}
+
+/// Prepared-subject scope still refuses interpreted `match` on this coproduct even when the
+/// match lives beside the type; route through structural labels until substrate cross-module
+/// variant-pattern matching is sound (dissolve-on on `admission.dag`).
+fn try_board_article_refusal_cause_name_native(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<InterpResult<Value>> {
+    if fn_node.name != BOARD_ARTICLE_REFUSAL_CAUSE_NAME_FN {
+        return None;
+    }
+    let r = args.first().map(|(_, value)| value)?;
+    let Some(label) = coproduct_arm_label(r, ctx) else {
+        return Some(Err(InterpError::PatternMatchFailure {
+            value: ctx.format_value(r),
+        }));
+    };
+    let name = match label.as_str() {
+        "DuplicateComponentIdentity" => "DuplicateComponentIdentity",
+        "DuplicateNetIdentity" => "DuplicateNetIdentity",
+        "DuplicateSignalName" => "DuplicateSignalName",
+        "NetMemberNamesNoTerminal" => "NetMemberNamesNoTerminal",
+        "NetMemberBelongsToAnotherDesign" => "NetMemberBelongsToAnotherDesign",
+        "BondTerminalNamesNoTerminal" => "BondTerminalNamesNoTerminal",
+        "BondNamesUndeclaredNet" => "BondNamesUndeclaredNet",
+        "ReferenceNetNotDeclared" => "ReferenceNetNotDeclared",
+        "DrivenSignalUndeclared" => "DrivenSignalUndeclared",
+        "DrivenSignalIsAnInput" => "DrivenSignalIsAnInput",
+        "EquationReferencesUndeclaredSignal" => "EquationReferencesUndeclaredSignal",
+        "OutputWithNoDriver" => "OutputWithNoDriver",
+        "OutputWithMultipleDrivers" => "OutputWithMultipleDrivers",
+        "PreconditionSignalUndeclared" => "PreconditionSignalUndeclared",
+        "PreconditionSignalIsNotAnOutput" => "PreconditionSignalIsNotAnOutput",
+        other => {
+            return Some(Err(InterpError::PatternMatchFailure {
+                value: other.to_string(),
+            }));
+        }
+    };
+    Some(Ok(str_value(name.to_string())))
+}
+
 fn call_function_inner(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if let Some(result) = try_board_article_refusal_cause_name_native(ctx, fn_node, args) {
+        return result;
+    }
     if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
         return result;
     }

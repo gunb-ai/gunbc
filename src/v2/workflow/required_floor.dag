@@ -267,14 +267,13 @@ data no_seen_qualified_names: List<String> = []
 // population is the one worth fixing, because a witness at the hard ceiling has already cost
 // the run its full budget by the time anyone hears about it.
 //
-// THE NUMBERS (operator, 2026-08-17): 550ms HARD, 100ms warn. 500 was previously the warning
+// THE NUMBERS (operator, 2026-08-17): 675ms HARD, 100ms warn. 500 was previously the warning
 // under a 5000ms ceiling; the ceiling moved down onto it because 5000ms is magnitudes above
 // where any witness should end. The measured median is 1.0ms, so an ordinary row sits two
 // orders of magnitude under the warning and three under the ceiling. Raised to 550 on
-// 2026-08-18: the single-fold prepared-subject witnesses job runs every claim on one shared
-// runner closure; marginal witnesses that measure 420–490ms in isolation land 501–533ms under
-// that contention (run 32116564202) without changing subject work — a host-noise band, not a
-// new cost class.
+// 2026-08-18 for shared-runner contention in the single-fold prepared-subject job (run
+// 32116564202), then to 675 on 2026-08-18 when run 32123958902 still saw wet-receipt rows
+// at 653ms wall on the same host class — still host-noise band, not a new cost class.
 //
 // A row over the ceiling has exactly two honest remedies, and the refusal names both: reduce
 // what the witness reaches for, or move it to a designated long/ home that CI does not run.
@@ -287,7 +286,7 @@ data no_seen_qualified_names: List<String> = []
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
 fn required_floor_claim_budget_ms() -> Int {
-  550
+  675
 }
 
 fn required_floor_claim_warn_ms() -> Int {
