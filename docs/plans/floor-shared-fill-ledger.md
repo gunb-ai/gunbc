@@ -129,6 +129,39 @@ Three fills totalling ~108s inclusive are `outside-fold` — a 55392ms `module_g
 35060ms `module_path_index`, a 17646ms `reference_edges`, all paid before any claim ran. That
 cost belongs to preparation. A quarantine of every witness on the floor would not move it.
 
+### Second receipt — run 32196069889, 9001 claims, 8 fills: the relocation, at identity grain
+
+The first receipt reported consumer *counts*. This one names them, and it caught the same fill
+changing hands.
+
+```
+run 32192150969   cache=module_path_index key=<root>/dag + <root>/src/v2   fill_ms=51508
+                  paid_by  dissolution_census_witness_test.unbound_dissolution_empty_literal_refuses
+                  read by  139 claims across 29 modules      disposition=shared
+
+run 32196069889   cache=module_path_index key=<root>/dag + <root>/src/v2   fill_ms=45075
+                  paid_by  emitter_nested_refinement_cast_witness_test
+                             .single_refinement_carrier_emits_no_unsupported_cast
+                  read by  94 claims across 20 modules       disposition=shared
+```
+
+Same cache, same key, the `paid_by` field changing hands after #8457 quarantined the first payer.
+The second payer is **main's only failing witness**, measured at exactly 45784ms — of which
+45075ms is this fill. **98.5% of the entire remaining red is one build that 20 modules read.**
+
+Evaluation order is alphabetical and the riders are named, so the prediction is checkable rather
+than rhetorical: quarantining this payer hands ~45s to `emitter_optional_payload_cast_witness_test`
+next. That would be the fourth hop of a chain that has already run three times
+(`dissolution_census` → `emitted_lib_rs` → this row).
+
+It remains the **only** `shared` fill — 8 fills this run, one with more than one consuming module.
+The fix is `gunbc#8470`, which pays this index during preparation; the post-condition that makes it
+self-verifying is that this row reappears as `paid_by=<outside-fold> disposition=outside-fold`.
+
+The nesting correction is visible here too: `module_graph_facts key=dag` reports
+`fill_ms=2990 inclusive_ms=55048` — 52s of it was the path-index and reference-edge scans it
+triggered, which the first receipt's total counted twice.
+
 ### The prediction, confirmed on an experiment nobody had to build
 
 When #8457 quarantined 102 over-budget witnesses, this model predicted the cost would not leave
