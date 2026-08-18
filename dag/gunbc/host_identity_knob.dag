@@ -14,7 +14,7 @@ type HostIdentityKnobValue {
   hostname_short: String
 }
 
-type HostIdentityLeafVerdict = KeyedLeafVerdict<HostIdentityKnobValue>
+type HostIdentityLeafVerdict = std.change.KeyedLeafVerdict<HostIdentityKnobValue>
 
 fn host_identity_knob_key(host: product.placement_supply.HostIdentity) -> HostIdentityKnobKey {
   HostIdentityKnobKey { host: host, field: HostnameShort }

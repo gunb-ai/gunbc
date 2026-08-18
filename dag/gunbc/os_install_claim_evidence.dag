@@ -1,11 +1,11 @@
 module gunbc.os_install_claim_evidence
 
 
-type OsInstallEvidenceClaim = Claim<HostIdentity, HostIdentity, OsInstallRuntimeDiagnosticVerdict, OsInstallPreflightVerdict, RunKey>
+type OsInstallEvidenceClaim = std.claim_evidence.Claim<product.placement_supply.HostIdentity, product.placement_supply.HostIdentity, gunbc.os_install_deduction.OsInstallRuntimeDiagnosticVerdict, gunbc.os_install_deduction.OsInstallPreflightVerdict, std.types.RunKey>
 
-type OsInstallEvidenceLink = EvidenceLink<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, KvmObservedScreen, ReadBackProbe>
+type OsInstallEvidenceLink = std.claim_evidence.EvidenceLink<gunbc.os_install_deduction.KvmOperatorAttestation, OsInstallEvidenceClaim, std.types.NonEmptyStr, gunbc.os_install_deduction.KvmObservedScreen, gunbc.readback_independence.ReadBackProbe>
 
-type OsInstallEvidenceInference = EvidenceInference<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, KvmObservedScreen, ReadBackProbe>
+type OsInstallEvidenceInference = std.claim_evidence.EvidenceInference<gunbc.os_install_deduction.KvmOperatorAttestation, OsInstallEvidenceClaim, std.types.NonEmptyStr, gunbc.os_install_deduction.KvmObservedScreen, gunbc.readback_independence.ReadBackProbe>
 
 data os_install_kvm_observation_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "operator-attested KVM screen",

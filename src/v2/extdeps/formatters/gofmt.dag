@@ -5,7 +5,7 @@ type GofmtConfig {}
 
 data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
-type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>
+type GofmtConfigPatch = v2.std.patch.ConfigPatchRecord<GofmtConfig>
 
 fn gofmt_layer(base: GofmtConfig, patch: GofmtConfigPatch) -> GofmtConfig {
   config_patch_layer(base: base, patch: patch)

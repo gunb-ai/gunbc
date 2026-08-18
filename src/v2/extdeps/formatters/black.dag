@@ -72,7 +72,7 @@ data black_defaults: BlackConfig = BlackConfig {
   force_exclude: "",
 }
 
-type BlackConfigPatch = ConfigPatchRecord<BlackConfig>
+type BlackConfigPatch = v2.std.patch.ConfigPatchRecord<BlackConfig>
 
 fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
   config_patch_layer(base: base, patch: patch)

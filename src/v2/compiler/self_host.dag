@@ -63,11 +63,11 @@ type BootstrapRoundtripEqual {
   expected_stage: CoreNode
 }
 
-type StageEmissionEquality = Witness<StructurallyEqual>
+type StageEmissionEquality = v2.std.witness.Witness<StructurallyEqual>
 
-type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
+type BootstrapRoundtripCheck = v2.std.witness.Witness<BootstrapRoundtripEqual>
 
-type FixedPointCheck = Witness<SelfHostFixpointEqual>
+type FixedPointCheck = v2.std.witness.Witness<SelfHostFixpointEqual>
 
 type PromotionWitness {
   candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck

@@ -87,7 +87,7 @@ type LlmAttemptReceipt {
 }
 
 // Throughput is an exact fraction over the SAME FieldOfFractions of Nat authority gunbc.econ.acquisition ConversionRate consumes -- output tokens over elapsed nanoseconds -- and nothing divides until a consumer explicitly asks for the floor projection. Storing tokens-per-second as a scalar would bake one rounding into the authority and make a cross-host comparison depend on when the division happened. The floor projection below is a DECLARED lossy view and is total by typed refusal: it returns none on a zero denominator rather than dividing, because the record stays publicly constructible even though every derivation that PRODUCES one refuses a zero window first.
-type TokenThroughput = FieldOfFractions<std.nat.Nat>
+type TokenThroughput = std.algebra.FieldOfFractions<std.nat.Nat>
 
 type ThroughputRefusalCause
   = ThroughputUsageUnobserved
@@ -173,7 +173,7 @@ type GoodputRefusalCause
   = EmptyAttemptRoster
   | ZeroObservationWindow
 
-type AcceptedGoodput = FieldOfFractions<std.nat.Nat>
+type AcceptedGoodput = std.algebra.FieldOfFractions<std.nat.Nat>
 
 type AcceptedGoodputResult
   = AcceptedGoodputDerived { goodput: AcceptedGoodput }
@@ -201,7 +201,7 @@ fn derive_accepted_goodput(
 
 data llm_escalation_fraction_note: String = "Frontier escalation fraction is derived over the same roster as an exact fraction, so it joins the substrate identity above: the pair of them is what distinguishes 'the local model got better' from 'the work got easier'. Refuses on an empty roster rather than reporting zero escalations out of zero attempts, which reads as a perfect local tier."
 
-type EscalationFraction = FieldOfFractions<std.nat.Nat>
+type EscalationFraction = std.algebra.FieldOfFractions<std.nat.Nat>
 
 type EscalationFractionResult
   = EscalationFractionDerived { fraction: EscalationFraction }

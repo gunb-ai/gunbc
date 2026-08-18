@@ -298,7 +298,7 @@ fn npm_decode_integrity(wire: String) -> NpmIntegrityDecode {
 
 data npm_package_lock_parse_note: String = "FORWARD READ of package-lock.json v3 via parse_json. Produces a path-keyed roster of NpmLockNodeDecode outcomes and a PackageLockGraph with EMPTY edges — exact consumer→dependency endpoints require an npm-owned realization (npm_resolved_graph_boundary_note). Do not invent edges by name matching. Package name absent on a node is derived from the lock path key after the last node_modules/ segment (npm docs)."
 
-type NpmPackageLockGraph = PackageLockGraph<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
+type NpmPackageLockGraph = extdeps.package.PackageLockGraph<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
 
 type NpmPackageLockParse
   = NpmPackageLockParsed {
