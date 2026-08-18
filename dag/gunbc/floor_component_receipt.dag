@@ -102,6 +102,27 @@ fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) 
   }
 }
 
+// GROWTH ON A DOOMED SURFACE — read the parameter count as the tell, not as the design.
+//
+// This function reconstructs an outcome from a TAG plus the fields the tag lost. That is a lossy
+// projection followed by re-supply, and it is structurally the same defect the frontier note
+// describes one layer down: ClaimOutcome::RuntimeError flattened the typed budget pair into a
+// formatted String, so the executor could not fill TimedOut's fields without re-parsing its own
+// prose. The String form was deleted at the seam (2026-08-18); the tag form is the residue of
+// the same shape.
+//
+// It carries the same trap at every axis. The note already names it for the first pair —
+// fabricating 0 for budget and elapsed to reach the more specific arm is the fabricated
+// plausible output DESIGN §5 forbids — and a completion parameter has exactly that trap one
+// axis over, because a caller that does not hold the fact will pass whichever value compiles
+// and CompletedOverBudget is the one that reads as normal.
+//
+// `basis` became a parameter because the tag never carried it. `completion` would be the
+// SECOND axis threaded around the same tag, and two is the count at which "this is how the
+// function works" starts being mistaken for a design. The terminal shape is the transport
+// carrying the typed outcome across the seam, at which point this function has nothing to
+// reconstruct and is deleted — so a THIRD discriminating axis triggers that deletion, not a
+// third parameter. Paying once rather than per axis forever (§3).
 fn floor_component_outcome_of_tag(
   tag: NonEmptyStr,
   detail: NonEmptyStr,
