@@ -9,7 +9,7 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
@@ -75,7 +75,27 @@ import std.types { List, String, Int }
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
+// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling
+// 2026-08-17: every push to main must finish; only pull-request runs may be superseded.
+// The predecessor collapsed both axes into one group keyed on `github.ref` with an
+// unconditional `true`, so consecutive pushes to main landed in the single group
+// `witness-floor-refs/heads/main` and each new push killed the previous commit's run --
+// main's floor coverage was decided by push arrival, which is exactly the empty-observation
+// narrow section 5 forbids: a cancelled run reports no verdict, and no verdict was being
+// read as nothing to report.
+//
+// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels
+// PENDING runs in a group regardless of that flag -- it only ever protects a run that has
+// already started -- so a main run queued behind a busy fleet could still be superseded
+// before it ever executed. The group must therefore be unique per main run, which
+// `github.run_id` gives, and the flag must additionally be false there so the two
+// mechanisms agree rather than one relying on the other.
+//
+// The cost is that N concurrent main runs may execute where one used to. That is the
+// intended trade -- coverage of every landed commit, at fleet occupancy -- and it is the
+// reason the dep-info race under `target/` is worth identifying before this is widened
+// further.
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
@@ -233,7 +253,11 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
       group: witness_floor_concurrency_group,
-      cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+      cancel_in_progress: Present {
+        value: CancelInProgressExpression {
+          expression: "${{ github.event_name == 'pull_request' }}"
+        }
+      },
       explicit_single: none
     }
   },
