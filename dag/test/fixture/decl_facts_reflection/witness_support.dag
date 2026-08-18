@@ -13,7 +13,6 @@ data decl_facts_reflection_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
   "test/fixture_roots/decl_facts_reflection_duplicate_qn/shadow",
   "dag/extdeps/units",
-  "dag/extdeps/external_authority",
   "dag/std",
 ]
 
