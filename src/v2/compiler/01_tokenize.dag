@@ -258,7 +258,7 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
                   match string_head(s: rest) {
                     CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
                     CharFound { value: c } =>
-                      match char_in_class(c: c, class: IdentContinueChar) {
+                      match v2.compiler.tokenize.char_in_class(c: c, class: IdentContinueChar) {
                         true => LexMatchRejected
                         false => LexMatchAccepted { remaining: rest, lexeme: lex }
                       }
@@ -271,7 +271,7 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
         LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { c == expected }, source: s) } }
       },
       char_class: fn(class) {
-        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { char_in_class(c: c, class: class) }, source: s) } }
+        LexMatchThunk { apply: fn(s) { lex_match_char_pred(pred: fn(c) { v2.compiler.tokenize.char_in_class(c: c, class: class) }, source: s) } }
       },
       sequence: fn(left_r, right_r) {
         LexMatchThunk { apply: fn(s) {
