@@ -147,7 +147,9 @@ pub use crate::v1_compiler_infer_types::{
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
+use crate::v1_std_core::CallSemantics::{
+    FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentDuplicate, CallArgumentNameUnknown,
@@ -6470,8 +6472,12 @@ pub fn infer_expr_body(
                                                 scope.type_env.clone().source_indices.clone(),
                                             )
                                         };
-                                    let is_known_method =
-                                        (method_resolution.result_type.clone() != None);
+                                    let callee_is_body_binding = v1_rt::map_has(
+                                        &scope.body_locals.clone(),
+                                        func_name.clone(),
+                                    );
+                                    let is_known_method = (!callee_is_body_binding.clone()
+                                        && (method_resolution.result_type.clone() != None));
                                     if (is_known_method.clone()
                                         && ((typed_args.clone().len() as i64) > 0))
                                     {
@@ -6687,7 +6693,9 @@ pub fn infer_expr_body(
                                             })
                                         }
                                     } else {
-                                        if (func_name.clone() == "empty_map".to_string()) {
+                                        if (!callee_is_body_binding.clone()
+                                            && (func_name.clone() == "empty_map".to_string()))
+                                        {
                                             {
                                                 let bare_m = bare_map_node();
                                                 match expected.clone() {
@@ -6751,7 +6759,9 @@ match bare_m.clone() {
 }
                                             }
                                         } else {
-                                            if (func_name.clone() == "empty_set".to_string()) {
+                                            if (!callee_is_body_binding.clone()
+                                                && (func_name.clone() == "empty_set".to_string()))
+                                            {
                                                 {
                                                     let bare_s = bare_set_node();
                                                     match expected.clone() {
@@ -6815,8 +6825,9 @@ match bare_s.clone() {
 }
                                                 }
                                             } else {
-                                                if (infer_builtin_call_type(func_name.clone())
-                                                    != None)
+                                                if (!callee_is_body_binding.clone()
+                                                    && (infer_builtin_call_type(func_name.clone())
+                                                        != None))
                                                 {
                                                     {
                                                         let tier2b =
@@ -6893,7 +6904,11 @@ match bare_s.clone() {
 };
                                                                 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
-    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    call_semantics: Some(if callee_is_body_binding.clone() {
+                                                    CallSemantics::FunctionValueCallSemantics
+                                                } else {
+                                                    CallSemantics::PlainCallSemantics
+                                                }),
     descent_evidence: None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),

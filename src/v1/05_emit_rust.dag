@@ -14,7 +14,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, MethodSemantics,
+  MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
@@ -5817,11 +5817,42 @@ fn return_type_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bo
   is_unit_like(n: n) && name == "Unit"
 }
 
+// A DAG fn whose DECLARED return type is an arrow returns a callable VALUE; Rust renders that
+// type through callable_type_template as Rc<dyn Fn(..) -> ..>, so a bare closure in return
+// position is an unsized-coercion type error (E0308) rather than a value of the declared type.
+// The decision is structural — declared return connective is Arrow AND the returned expression
+// is a lambda — never a scan of the rendered string; the realization itself is a target row
+// (callable_value_wrap_template), so a target without one is unaffected by construction.
+fn rust_declared_return_is_callable(emit_info: EmitGraphInfo) -> Bool {
+  match emit_info.fn_return_type {
+    Present { value: ret } => ret.connective == Arrow
+    Absent => false
+  }
+}
+
+fn rust_callable_return_wrap(body_str: String, texpr: Node, emit_info: EmitGraphInfo) -> String {
+  let is_lambda_body = match texpr.expr_data {
+    ExprLambda => true
+    _ => false
+  }
+  let wrap_template = language_spec(target: Rust).callable_value_wrap_template
+  if is_lambda_body && rust_declared_return_is_callable(emit_info: emit_info) {
+    match wrap_template {
+      Present { value: t } => apply_type_template1(template: t, arg0: body_str)
+      Absent => body_str
+    }
+  } else { body_str }
+}
+
 fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if return_is_unit {
     emit_rust_unit_discarding_stmt(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else {
-    emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    rust_callable_return_wrap(
+      body_str: emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+      texpr: texpr,
+      emit_info: emit_info
+    )
   }
 }
 
@@ -7207,11 +7238,18 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
   }
 }
 
+fn call_semantics_is_function_value(cs: CallSemantics?) -> Bool {
+  match cs {
+    Present { value: FunctionValueCallSemantics } => true
+    _ => false
+  }
+}
+
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices)
-      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
   }
 }
@@ -7482,7 +7520,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
   }
 }
 
-fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let call_str = if func == "empty_map" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
@@ -7501,10 +7539,10 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
       _ => "v1_rt::rc_empty_set::<_>()"
     }
   } else {
-    emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+  if callee_is_function_value == false && rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
     rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
@@ -7527,7 +7565,22 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
   }
 }
 
-fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+// APPLYING A FUNCTION VALUE IS NOT A NAME-KEYED DECISION. Every tier below -- the get/with/
+// to_string/discriminant special forms, the rt bridge table, the registry callee lookup -- keys
+// on the authored spelling, so a parameter or let named like a builtin was rendered as that
+// builtin. Where the two arities happened to agree it emitted a call to a DIFFERENT function
+// with no diagnostic at all; the measured specimen (fixtures/builtin_shadow) returned the
+// builtin's answer for a program whose own function was never called. 04_infer decides the
+// question once, where scope is known, and records it as FunctionValueCallSemantics.
+fn emit_typed_function_value_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+  concat(emit_ident(name: func, target: Rust), "(", arg_strs |> join(separator: ", "), ")")
+}
+
+fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  if callee_is_function_value {
+    return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
     let get_list = get_args |> first
@@ -7618,8 +7671,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let ordered_args = order_typed_call_args(args: args, func: func, scope: collection_scope)
   let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = map_contains_key(rt_functions(), func)
-  let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
+  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
+  let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
@@ -9256,9 +9309,9 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
-      let call_str = emit_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      let call_str = emit_typed_call(func: f, args: frame.expr.children, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }
