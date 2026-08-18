@@ -6768,11 +6768,12 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
-                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
-            } else {
-                None
-            };
+            // The import era's binding classifier is retired with the era; this
+            // receipt reports the definer it can still observe and says nothing
+            // about how the name bound, rather than fabricating a source.
+            // Mirrors the same retirement at declared_import_closure_binding.
+            let binding_source: Option<UnlistedImportBindingSource> = None;
+            let _ = consumer_module;
             (
                 (*sym).to_string(),
                 CrossModuleBindingReceipt {
