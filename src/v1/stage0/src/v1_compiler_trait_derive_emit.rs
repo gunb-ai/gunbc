@@ -375,6 +375,41 @@ pub fn v1_map_key_fixpoint_loop(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HandRustMapKeyRequirement {
+    pub type_name: String,
+    pub consumer: String,
+}
+
+pub fn hand_rust_map_key_requirements() -> Rc<Vec<Rc<HandRustMapKeyRequirement>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<HandRustMapKeyRequirement>>> = {
+            serde_json::from_value(serde_json::json!([{"type_name": "ItemKind", "consumer": "src/v1/stage0/src/coproduct_reflection.rs -- StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)> memoizes declaration parsing by (module path, item kind)"}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<HandRustMapKeyRequirement>>>| c.clone())
+}
+
+pub fn hand_rust_map_key_requirement_itemkind_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("the coproduct_reflection.rs memo stops keying by ItemKind, or that hand-written file is deleted with the v1 seed. The ItemKind row is then removed from hand_rust_map_key_requirements and the fixpoint answers alone. Removing it while the consumer still keys by ItemKind does not fail quietly: the emitted crate loses Eq + Hash on ItemKind and fails to build, which is the negative control this requirement ships with.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn hand_rust_map_key_required_names() -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in hand_rust_map_key_requirements().iter().cloned() {
+            __result.push(r.type_name.clone());
+        }
+        __result
+    })
+}
+
 pub fn v1_map_key_required_type_names(
     seed_type_exprs: Rc<Vec<Rc<Node>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
@@ -403,8 +438,18 @@ pub fn v1_map_key_required_type_names(
                     )
             },
         );
-        v1_map_key_fixpoint_loop(
+        let seeded_with_hand_rust = hand_rust_map_key_required_names().iter().cloned().fold(
             seeded.clone(),
+            |inner: Rc<MapKeyRequirementRound>, key_name: String| {
+                if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
+                    v1_map_key_round_add(inner.clone(), key_name.clone())
+                } else {
+                    inner.clone()
+                }
+            },
+        );
+        v1_map_key_fixpoint_loop(
+            seeded_with_hand_rust.clone(),
             declared_type_names.clone(),
             type_decl_items.clone(),
             ((declared_type_names.clone().len() as i64) + 1),
