@@ -66,18 +66,18 @@ data shell_site: CensusedEmitSite = CensusedEmitSite {
 }
 
 data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "render_witness_claim_result_text_mirror" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  marker: "render_witness_claim_result_text_mirror" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_witness_claim_result_text (seed mirror render_witness_claim_result_text_mirror; Bazel-shaped per-witness claim result; module_path subject)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_witness_claim_result_text (seed mirror render_witness_claim_result_text_mirror; Bazel-shaped per-witness claim result; module_path subject)" as std.types.NonEmptyStr
   }
 }
 
 data witness_budget_warn_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[floor-witness-slow]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  marker: "[floor-witness-slow]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_witness_budget_warn_text (seed mirror render_witness_budget_warn_text_mirror; per-witness warn-tier budget line)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_witness_budget_warn_text (seed mirror render_witness_budget_warn_text_mirror; per-witness warn-tier budget line)" as std.types.NonEmptyStr
   }
 }
 

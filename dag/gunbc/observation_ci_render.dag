@@ -612,7 +612,7 @@ data ci_witness_claim_result_note: String = "Bazel-shaped claim-result lines for
 
 data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens, and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt remains a separate projection (ci_witness_budget_warn_text). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
 
-data ci_witness_claim_column_width: Nat = 60
+data ci_witness_claim_column_width: std.nat.Nat = 60
 
 fn ci_witness_package_from_entry_path(path: String) -> String {
   if path.ends_with(suffix: ".dag") {
@@ -642,14 +642,14 @@ fn ci_witness_outcome_token(passed: Bool) -> String {
   }
 }
 
-fn ci_witness_claim_suffix(passed: Bool, wall: Nanosecond) -> String {
+fn ci_witness_claim_suffix(passed: Bool, wall: std.measure.Nanosecond) -> String {
   concat(
     ci_witness_outcome_token(passed: passed),
     concat(" in ", ci_human_elapsed(d: wall))
   )
 }
 
-fn ci_witness_pad_to_column(label: String, width: Nat) -> String {
+fn ci_witness_pad_to_column(label: String, width: std.nat.Nat) -> String {
   let len = string_length(s: label)
   if len >= width {
     label
@@ -664,7 +664,7 @@ fn ci_witness_claim_result_text(
   subject: String,
   function: String,
   passed: Bool,
-  wall: Nanosecond,
+  wall: std.measure.Nanosecond,
 ) -> String {
   let label = ci_witness_bazel_target_label(subject: subject, function: function)
   let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
@@ -675,9 +675,9 @@ data ci_witness_budget_warn_note: String = "Per-witness budget warning for the f
 
 fn ci_witness_budget_warn_text(
   qualified: String,
-  wall: Millisecond,
-  warn: Millisecond,
-  budget: Millisecond,
+  wall: std.measure.Millisecond,
+  warn: std.measure.Millisecond,
+  budget: std.measure.Millisecond,
 ) -> String {
   concat(
     "[floor-witness-slow] ",

@@ -1,7 +1,7 @@
 module test.claim.observation_emit_census_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. Migrated sites keep their marker strings so the roster cannot go stale, and each has a RED that the raw byte shape is gone from the seed."
 
