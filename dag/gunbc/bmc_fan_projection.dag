@@ -54,10 +54,10 @@ type BmcFanConfigReadbackSubject {
 }
 
 type BmcFanDurabilityAdmission =
-  StateDurabilityAdmission<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
+  std.state_durability.StateDurabilityAdmission<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanDurabilityEvidence =
-  StateDurabilityEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
+  std.state_durability.StateDurabilityEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanPolicyProjectionCapability {
   board: extdeps.boards.types.BaseboardModel

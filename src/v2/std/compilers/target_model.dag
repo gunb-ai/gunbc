@@ -9394,7 +9394,7 @@ type TargetDeriveSupplementalGenericBoundRequirementAuthority {
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementSet =
-  Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
+  std.types.Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundRequirementAuthority>
 
 type TargetRepresentationParameterSlot {}
 

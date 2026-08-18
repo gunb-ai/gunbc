@@ -295,7 +295,7 @@ type SparkCloudGrant {
 // profile supplies the request shape and std.access the decision, so nothing about admission is
 // re-invented here -- the profile is a type application, not a parallel access system.
 type SparkCloudRequest =
-  EffectRequest<FleetCloudPrincipalKey, SecretManagerOperation, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding>
+  EffectRequest<FleetCloudPrincipalKey, SecretManagerOperation, std.types.NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding>
 
 fn spark_cloud_request(
   grant: SparkCloudGrant,

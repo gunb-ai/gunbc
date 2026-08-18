@@ -46,16 +46,16 @@ type RoomDimensionAxis
 // inference rule that produced it, freshness, fidelity, and probe independence — the facts a bare
 // string silently omitted while looking equally authoritative.
 type RoomDimensionEvidence =
-  EvidenceLink<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+  std.claim_evidence.EvidenceLink<std.types.NonEmptyStr, std.types.NonEmptyStr, std.types.NonEmptyStr, std.types.NonEmptyStr, std.types.NonEmptyStr>
 
 type RoomDimensionStanding =
-  SpatialKnowledge<Millimeter, LengthInterval, RoomDimensionEvidence, InferenceRuleId, SurveyObligationId>
+  std.spatial_knowledge.SpatialKnowledge<std.measure.Millimeter, LengthInterval, RoomDimensionEvidence, std.claim_evidence.InferenceRuleId, SurveyObligationId>
 
 type RoomDimensionAdmission =
-  SpatialAdmission<Millimeter, LengthInterval, InferenceRuleId, SurveyObligationId>
+  std.spatial_knowledge.SpatialAdmission<std.measure.Millimeter, LengthInterval, std.claim_evidence.InferenceRuleId, SurveyObligationId>
 
 type RoomDimensionRendering =
-  SpatialRenderProjection<Millimeter, LengthInterval, SurveyObligationId>
+  std.spatial_knowledge.SpatialRenderProjection<std.measure.Millimeter, LengthInterval, SurveyObligationId>
 
 // A dimension fact is never loose: it names the room it belongs to and the axis it measures, so a
 // refusal receipt can say WHICH dimension of WHICH room was insufficient.
