@@ -711,3 +711,70 @@ Same shape as the byte-versus-character offset defect earlier: an instrument rep
 own bug as a property of the data, with a plausible story attached. Three times now on this
 branch a measurement has had to be audited before its result could be used, which is itself
 the finding -- an instrument's output is evidence about the instrument until proven otherwise.
+
+## The unresolved-type census closes (2026-08-18)
+
+Every row of the required-floor stream at `9d93db0` now lands in exactly one
+bucket, and the partition sums:
+
+```
+raw rows "error: unresolved type"        51664
+  duplicate spans                          110
+  DISTINCT spans                         51554
+    already qualified and failing          175   fixed
+    bare                                 51379
+      unique-owner type                  39284   Round 2
+      variant constructor                11836
+      kernel primitive                     120
+      ambiguous (std/v2 fork)              113
+      generic binder / absent               26
+      --- subtotal                       51379
+```
+
+**Four denominators, four jobs.** Rows rank fan-out; distinct spans are the
+edit volume; `(name, file)` pairs are the migration work units; names are the
+semantic decisions. `Table4PinRow` is the case that makes the distinction
+concrete -- 4,931 rows, 2 files, ONE declaration choice. Reporting the row
+count as the size of the work overstates it by three orders of magnitude on
+that name alone.
+
+**The declaration index took three attempts, and the failures are the
+content.** A top-level scan for `type|data|fn|func` found 1,473 names with no
+declarer and 11,935 rows -- read naively, a large unexplained population. It
+was the instrument. Variants are declared in coproduct bodies, so the first
+correction parsed `type X { ... | ... }`; that found ZERO, because the actual
+form is `type X\n  = A\n  | B { ... }`. The second correction parsed the `=`
+form and closed all but 24 names. The last 24 included `EqualsClaim` and
+`CompilesClaim`, whose coproduct is declared as
+
+```
+type TestClaim
+
+  = CompilesClaim {
+```
+
+-- a BLANK LINE between the head and the alternatives, which ended the
+declaration for a line-scanning parser. Tolerating a blank line whose next
+non-blank content begins with `=` or `|` closes it to 26 spans across 10
+names, and those are generic binders (`R`, `E`, `P`, `O`, `K`, `A`, `F`) plus
+three residual names.
+
+So the honest sequence is: 11,935 rows looked like an unmodelled population
+three times, and was an unmodelled PARSER three times. No claim about the
+corpus should have been made from any of the first three readings.
+
+**What the 175 bought.** They were invisible because the span regex captured
+names as `\w+`, dropping every name containing a dot -- exactly the
+references already qualified and still failing. They are the executed
+confirmation of two rules Round 2 had applied on judgment: 165 over-qualified
+kernel primitives and 9 over-qualified variant constructors, each failing
+BECAUSE it was qualified. The exclusion list was right, and the census gap
+was concealing its evidence.
+
+**Where automation stops.** The 11,836 variant spans are NOT the same work as
+the unique-owner lane. A variant is reached through its coproduct, and the
+175 prove that qualifying one breaks it; 1,394 of the 1,463 variant names
+have a single declaring module, but a single declarer is not a licence when
+the correct spelling is unestablished. The 113 ambiguous spans are std/v2
+forks (`Nat`, `UInt32`, `FilePath`, `ProjectionKind`) and are modeling
+decisions per reference context, not a corpus-wide winner per spelling.
