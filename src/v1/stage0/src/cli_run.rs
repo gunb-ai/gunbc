@@ -15953,7 +15953,8 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator ruling 2026-08-17 (500ms hard cutoff, 100ms warn). A Fail/RuntimeError stays itself: those are already loud, and
+/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
@@ -20319,7 +20320,8 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17: 500ms hard cutoff, 100ms warn). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
+    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).

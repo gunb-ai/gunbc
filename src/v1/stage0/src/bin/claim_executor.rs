@@ -3852,7 +3852,9 @@ struct DiscoveryBatchBudgets {
 
 /// Budgets are scoped by LANE, never by witness kind.
 ///
-/// The fast-lane eval budget (operator ruling 2026-08-17: 500ms hard cutoff, 100ms warn) governs the per-PR discovery corpus and its
+/// The fast-lane eval budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12;
+/// the live ceiling is `v2.workflow.required_floor` `required_floor_claim_budget_ms` /
+/// `required_floor_claim_warn_ms` — never transcribed here) governs the per-PR discovery corpus and its
 /// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
 /// Hermetic batch that carries its own lane roster draws that lane's dated ceiling instead:
 /// selecting on `is_hermetic()` alone armed the 5s per-PR budget on the substrate long lane,
