@@ -51,15 +51,20 @@ import gunbc.spark_serving_observed_members {
 }
 import gunbc.spark_serving_observe {
   spark_serving_observe_host_via_locus,
-  spark_serving_observe_user_unit,
   spark_serving_observe_user_unit_pair,
   spark_serving_observe_runtime_materialization,
   spark_serving_observed_members_for_unit,
 }
-import gunbc.remote_operation { RemoteOperationSucceeded, RemoteOperationRefused, remote_operation_count }
+import gunbc.remote_operation {
+  RemoteStepStanding,
+  remote_operation_count,
+  remote_step_standing_wire,
+}
 import gunbc.spark_serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
   spark_serving_exec_frozen_typed_rows,
+  spark_serving_step_sequence_failed,
+  spark_serving_step_sequence_wire,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
   SparkServingFrozenRemoteExecApplied,
@@ -268,11 +273,15 @@ fn spark_serving_converge_slice_exec_verdict(
     ) {
       SparkServingFrozenRemoteExecRefused { reason: why } =>
         join(["wet-apply-refused ", why], "")
-      SparkServingFrozenRemoteExecApplied { exec_outcome } =>
-        match exec_outcome {
-          RemoteOperationRefused { reason: why } =>
-            join(["wet-apply-exec-refused ", why], "")
-          RemoteOperationSucceeded { label: _ } =>
+      SparkServingFrozenRemoteExecConvergedNoop =>
+        spark_serving_slice_verdict_noop_converged
+      SparkServingFrozenRemoteExecApplied { standings } =>
+        if spark_serving_step_sequence_failed(standings: standings) {
+          join([
+            "wet-apply-exec-refused ",
+            spark_serving_step_sequence_wire(standings: standings),
+          ], "")
+        } else {
               match spark_serving_probe_linger(transport: transport) {
                 TypedArgvExecRefused { reason: why } =>
                   join(["wet-applied-readback-refused ", why], "")
@@ -398,14 +407,14 @@ fn spark_serving_converge_slice_wet_host_report(
                           apply_command_count: 0,
                           verdict: join(["apply-refused ", why], ""),
                         )
-                      SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
+                      SparkServingFrozenApplied { remote_steps: steps, effect_count: n } =>
                         spark_serving_converge_slice_host_line(
                           host: host,
                           endpoint: endpoint,
                           observed_linger: LingerObserved { enabled: linger_enabled },
                           typed_row_count: length(artifact.spark_serving_typed_actions),
                           apply_effect_count: n,
-                          apply_command_count: remote_operation_count(operations: ops),
+                          apply_command_count: remote_operation_count(operations: map(steps, st => st.operation)),
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
                               context: context,

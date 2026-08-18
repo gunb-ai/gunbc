@@ -69,7 +69,8 @@ import gunbc.spark_serving_membership {
   spark_serving_member_key,
 }
 import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
-import gunbc.remote_operation { RemoteOperation, remote_operation_label, remote_operations_wire }
+import gunbc.remote_operation {
+  PlannedRemoteStep, RemoteOperation, remote_operation_label, remote_operations_wire }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -385,12 +386,12 @@ fn observed_baseline_text(
 // executions, so the two cannot disagree.
 type PlannedEffectExecution {
   effect: ServingInstallEffect
-  first_operation: RemoteOperation
-  further_operations: List<RemoteOperation>
+  first_step: PlannedRemoteStep
+  further_steps: List<PlannedRemoteStep>
 }
 
-fn planned_effect_execution_operations(x: PlannedEffectExecution) -> List<RemoteOperation> {
-  concat([x.first_operation], x.further_operations)
+fn planned_effect_execution_steps(x: PlannedEffectExecution) -> List<PlannedRemoteStep> {
+  concat([x.first_step], x.further_steps)
 }
 
 // The row is nonempty in EXECUTIONS now rather than in operations, and each execution is nonempty in
@@ -416,13 +417,21 @@ fn fleet_converge_spark_serving_row_effects(
   map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
 }
 
+fn fleet_converge_spark_serving_row_steps(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedRemoteStep> {
+  flat_map(
+    fleet_converge_spark_serving_row_executions(row: row),
+    x => planned_effect_execution_steps(x: x),
+  )
+}
+
+// The bare operations, for the consumers that hash or count them. Deliberately DERIVED from the
+// steps rather than stored, so the identities and the operations cannot describe different work.
 fn fleet_converge_spark_serving_row_operations(
   row: FleetConvergeSparkServingTypedAction,
 ) -> List<RemoteOperation> {
-  flat_map(
-    fleet_converge_spark_serving_row_executions(row: row),
-    x => planned_effect_execution_operations(x: x),
-  )
+  map(fleet_converge_spark_serving_row_steps(row: row), st => st.operation)
 }
 
 type FleetConvergePlanArtifact {

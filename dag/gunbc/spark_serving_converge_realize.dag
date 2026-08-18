@@ -19,7 +19,7 @@ import gunbc.spark_serving_realization {
 }
 import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
-import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv }
+import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
@@ -43,14 +43,30 @@ data spark_serving_converge_realize_authority_note: String = "Seam 2 realization
 // Ordering is load-bearing for these effects (write the unit file, reload the manager, enable the
 // unit), and a fused argv erases it.
 type SparkServingInstallRemoteCommandsVerdict =
-    SparkServingInstallRemoteCommandsPresent { operations: List<RemoteOperation> }
+    SparkServingInstallRemoteCommandsPresent { steps: List<PlannedRemoteStep> }
   | SparkServingInstallRemoteCommandsRefused { reason: String }
 
-fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingInstallRemoteCommandsVerdict {
+// A STEP IS NAMED WHERE IT IS BUILT, because that is the only place its meaning is known. Deriving
+// an identity later from a list position would name it by where it happens to sit, so inserting a
+// step would silently rename every step after it -- and a receipt that says "step 4 failed" is a
+// position, not a fact.
+fn spark_serving_step(identity: NonEmptyStr, operation: RemoteOperation) -> PlannedRemoteStep {
+  PlannedRemoteStep { identity: identity, operation: operation }
+}
+
+fn spark_serving_admit_portable_remote_argv(
+  identity: NonEmptyStr,
+  raws: List<String>,
+) -> SparkServingInstallRemoteCommandsVerdict {
   match portable_remote_words(raws: raws) {
     Present { value: words } =>
       SparkServingInstallRemoteCommandsPresent {
-        operations: [RemoteArgv { argv: portable_remote_words_strings(words: words) }],
+        steps: [
+          spark_serving_step(
+            identity: identity,
+            operation: RemoteArgv { argv: portable_remote_words_strings(words: words) },
+          ),
+        ],
       }
     Absent =>
       SparkServingInstallRemoteCommandsRefused {
@@ -61,6 +77,7 @@ fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingI
 
 fn spark_serving_enable_linger_remote_argv(login: NonEmptyStr) -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
+    identity: "enable-linger" as NonEmptyStr,
     raws: ["sudo", "-n", "loginctl", "enable-linger", login as String],
   )
 }
@@ -71,7 +88,10 @@ fn spark_serving_enable_linger_remote_argv(login: NonEmptyStr) -> SparkServingIn
 // acting. The unit basename comes from gunbc.spark_serving_unit_identity, the same authority the
 // observe probe reads, so the unit enabled and the unit observed cannot drift apart.
 fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
-  spark_serving_admit_portable_remote_argv(raws: ["systemctl", "--user", "daemon-reload"])
+  spark_serving_admit_portable_remote_argv(
+    identity: "daemon-reload" as NonEmptyStr,
+    raws: ["systemctl", "--user", "daemon-reload"],
+  )
 }
 
 // enable --now, matching the fleet_converge_timer precedent: the frozen effect order places
@@ -79,6 +99,7 @@ fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteC
 // unit must be started here rather than left enabled-but-inactive for a later effect to start.
 fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
+    identity: "enable-user-unit" as NonEmptyStr,
     raws: ["systemctl", "--user", "enable", "--now", spark_serving_unit_name],
   )
 }
@@ -132,9 +153,15 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
           }
         Present { value: words } =>
           SparkServingInstallRemoteCommandsPresent {
-            operations: [
-              RemoteArgv { argv: portable_remote_words_strings(words: words) },
-              RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+            steps: [
+              spark_serving_step(
+                identity: "ensure-user-unit-dir" as NonEmptyStr,
+                operation: RemoteArgv { argv: portable_remote_words_strings(words: words) },
+              ),
+              spark_serving_step(
+                identity: "write-user-unit-file" as NonEmptyStr,
+                operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+              ),
             ],
           }
       }
@@ -195,20 +222,20 @@ fn realize_spark_serving_install_effect_commands(
 ) -> SparkServingInstallRemoteCommandsVerdict {
   fold(
     effects,
-    init: SparkServingInstallRemoteCommandsPresent { operations: [] },
+    init: SparkServingInstallRemoteCommandsPresent { steps: [] },
     f: fn(acc, effect) {
       match acc {
         SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
-        SparkServingInstallRemoteCommandsPresent { operations: prior } =>
+        SparkServingInstallRemoteCommandsPresent { steps: prior } =>
           match realize_spark_serving_install_effect_command(
             effect: effect,
             executor_login: executor_login,
           ) {
             SparkServingInstallRemoteCommandsRefused { reason: why } =>
               SparkServingInstallRemoteCommandsRefused { reason: why }
-            SparkServingInstallRemoteCommandsPresent { operations: next } =>
+            SparkServingInstallRemoteCommandsPresent { steps: next } =>
               SparkServingInstallRemoteCommandsPresent {
-                operations: concat(prior, next),
+                steps: concat(prior, next),
               }
           }
       }
@@ -219,7 +246,7 @@ fn realize_spark_serving_install_effect_commands(
 fn spark_serving_install_remote_commands_refused(v: SparkServingInstallRemoteCommandsVerdict) -> Bool {
   match v {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }
 }
 
@@ -235,9 +262,9 @@ fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: expected } =>
+    SparkServingInstallRemoteCommandsPresent { steps: expected } =>
       if expected.length() == 1 {
-        match remote_operation_argv(operation: expected.first()) {
+        match remote_operation_argv(operation: expected.first().operation) {
           Present { value: words } => join(argv, "\0") == join(words, "\0")
           Absent => false
         }

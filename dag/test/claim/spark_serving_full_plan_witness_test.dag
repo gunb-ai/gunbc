@@ -5,6 +5,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationComplete,
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationObservationRefused,
   RuntimeMaterializationIncomplete,
   RuntimeMaterializationAbsent,
   RuntimeMaterializationObservationRefused,
@@ -94,13 +96,23 @@ fn complete_required_runtime() -> RuntimeMaterializationObservation {
   }
 }
 
+// THE RUNTIME IS STATED, NEVER DEFAULTED. An earlier revision of this helper supplied
+// `complete_required_runtime()` for every fixture, which silently asserted that a BARE host already
+// had its runtime materialized -- so `a_bare_host_plans_all_five_members_not_only_linger` planned
+// four and the fixture, not the production code, was wrong. A default here re-fuses the very
+// subjects the projection separates, so every caller says which runtime it means.
 fn project(
   obs: SparkServingObservation,
+  runtime: RuntimeMaterializationObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(observation: obs, runtime: complete_required_runtime(), unit: unit, enablement: enablement, linger: linger)
+  spark_serving_observed_members(observation: obs, runtime: runtime, unit: unit, enablement: enablement, linger: linger)
+}
+
+fn bare_runtime() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationAbsent
 }
 
 fn observed_count(p: SparkServingObservedMemberProjection) -> Int {
@@ -120,6 +132,7 @@ fn plan_writes(p: SparkServingFullMembershipPlan) -> Int {
 
 fn full_plan_writes(
   obs: SparkServingObservation,
+  runtime: RuntimeMaterializationObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
@@ -131,7 +144,7 @@ fn full_plan_writes(
         p: spark_serving_full_membership_plan(
           occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: project(obs: obs, unit: unit, enablement: enablement, linger: linger),
+          projection: project(obs: obs, runtime: runtime, unit: unit, enablement: enablement, linger: linger),
         ),
       )
   }
@@ -139,6 +152,7 @@ fn full_plan_writes(
 
 fn full_plan_refuses(
   obs: SparkServingObservation,
+  runtime: RuntimeMaterializationObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
@@ -149,7 +163,7 @@ fn full_plan_refuses(
       match spark_serving_full_membership_plan(
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: project(obs: obs, unit: unit, enablement: enablement, linger: linger),
+        projection: project(obs: obs, runtime: runtime, unit: unit, enablement: enablement, linger: linger),
       ) {
         SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
         SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
@@ -177,6 +191,7 @@ test fn the_declared_desired_population_is_five_members() -> Bool {
 test fn a_bare_host_plans_all_five_members_not_only_linger() -> Bool {
   full_plan_writes(
     obs: SparkServingAbsent { host: subject_host },
+    runtime: bare_runtime(),
     unit: UserUnitStateAbsent,
     enablement: UserUnitEnablementNotFound,
     linger: LingerObservedDisabled,
@@ -199,18 +214,19 @@ test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
 // one. So the observed population is exactly that single enablement member: runtime, model and unit
 // content are genuinely absent, and linger is observed disabled and therefore carries nothing.
 test fn a_bare_host_observes_only_its_unit_registration() -> Bool {
-  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedDisabled)) == 1
+  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, runtime: bare_runtime(), unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedDisabled)) == 1
 }
 
 // Linger is observed independently, so it is carried even when serving is absent.
 test fn linger_is_carried_on_a_bare_host_when_it_is_enabled() -> Bool {
-  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled)) == 2
+  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, runtime: bare_runtime(), unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled)) == 2
 }
 
 // With linger already enabled a bare host needs three writes, not four.
 test fn a_bare_host_with_linger_already_enabled_plans_four() -> Bool {
   full_plan_writes(
     obs: SparkServingAbsent { host: subject_host },
+    runtime: bare_runtime(),
     unit: UserUnitStateAbsent,
     enablement: UserUnitEnablementNotFound,
     linger: LingerObservedEnabled,
@@ -224,18 +240,20 @@ test fn a_bare_host_with_linger_already_enabled_plans_four() -> Bool {
 test fn a_refused_observation_refuses_the_projection() -> Bool {
   match project(
     obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
+    runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
     unit: UserUnitStateUnobserved,
     enablement: UserUnitEnablementUnobserved,
     linger: LingerUnobservedState,
   ) {
     SparkServingObservedMembersRefused { cause: _ } => true
-    SparkServingObservedMembers { members: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => false
+    SparkServingObservedMembers { members: _, runtime_observed: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => false
   }
 }
 
 test fn a_refused_observation_refuses_the_plan_rather_than_planning_four_writes() -> Bool {
   full_plan_refuses(
     obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
+    runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
     unit: UserUnitStateUnobserved,
     enablement: UserUnitEnablementUnobserved,
     linger: LingerUnobservedState,
@@ -246,13 +264,14 @@ test fn a_refused_observation_refuses_the_plan_rather_than_planning_four_writes(
 test fn the_projection_refusal_names_the_host() -> Bool {
   match project(
     obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
+    runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
     unit: UserUnitStateUnobserved,
     enablement: UserUnitEnablementUnobserved,
     linger: LingerUnobservedState,
   ) {
     SparkServingObservedMembersRefused { cause: c } =>
       string_contains(c, "srv6") && string_contains(c, "ssh unreachable")
-    SparkServingObservedMembers { members: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => false
+    SparkServingObservedMembers { members: _, runtime_observed: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => false
   }
 }
 
@@ -262,13 +281,13 @@ test fn the_projection_refusal_names_the_host() -> Bool {
 // two must remain distinguishable because only one of them supports an empty replan.
 test fn an_unobserved_unit_does_not_support_an_empty_replan() -> Bool {
   !spark_serving_projection_supports_empty_replan(
-    projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerObservedEnabled),
+    projection: project(obs: SparkServingAbsent { host: subject_host }, runtime: bare_runtime(), unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerObservedEnabled),
   )
 }
 
 test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
   spark_serving_projection_supports_empty_replan(
-    projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled),
+    projection: project(obs: SparkServingAbsent { host: subject_host }, runtime: bare_runtime(), unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled),
   )
 }
 
@@ -276,6 +295,7 @@ test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
   !spark_serving_projection_supports_empty_replan(
     projection: project(
       obs: SparkServingObservationRefused { host: subject_host, cause: "x" as NonEmptyStr },
+      runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
       unit: UserUnitStateUnobserved,
       enablement: UserUnitEnablementUnobserved,
       linger: LingerUnobservedState,
@@ -432,6 +452,7 @@ test fn a_bare_host_refuses_because_two_effects_are_still_unrealized() -> Bool {
         host: subject_host,
         projection: project(
           obs: SparkServingAbsent { host: subject_host },
+          runtime: bare_runtime(),
           unit: UserUnitStateAbsent,
           enablement: UserUnitEnablementNotFound,
           linger: LingerObservedEnabled,
@@ -454,6 +475,7 @@ test fn a_unit_only_drift_freezes_exactly_one_row() -> Bool {
           host: subject_host,
           projection: project(
         obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            runtime: complete_required_runtime(),
             unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
             enablement: UserUnitEnabled,
             linger: LingerObservedEnabled,
@@ -483,6 +505,7 @@ test fn an_unobserved_unit_refuses_the_artifact_rather_than_planning_a_write() -
       host: subject_host,
       projection: project(
         obs: SparkServingAbsent { host: subject_host },
+        runtime: bare_runtime(),
         unit: UserUnitStateUnobserved,
         enablement: UserUnitEnablementUnobserved,
         linger: LingerObservedEnabled,
@@ -501,6 +524,7 @@ test fn a_refused_observation_refuses_the_artifact_with_its_own_cause() -> Bool 
       host: subject_host,
       projection: project(
         obs: SparkServingObservationRefused { host: subject_host, cause: "probe leg unreachable" as NonEmptyStr },
+        runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
         unit: UserUnitStateUnobserved,
         enablement: UserUnitEnablementUnobserved,
         linger: LingerUnobservedState,
@@ -519,6 +543,7 @@ test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
       host: "srv1" as HostIdentity,
       projection: project(
         obs: SparkServingAbsent { host: "srv1" as HostIdentity },
+        runtime: bare_runtime(),
         unit: UserUnitStateAbsent,
         enablement: UserUnitEnablementNotFound,
         linger: LingerObservedEnabled,
@@ -534,19 +559,19 @@ test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
   let unobserved = artifact_refusal_cause(
     v: artifact_verdict(
       host: subject_host,
-      projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerObservedEnabled),
+      projection: project(obs: SparkServingAbsent { host: subject_host }, runtime: bare_runtime(), unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerObservedEnabled),
     ),
   )
   let unreached = artifact_refusal_cause(
     v: artifact_verdict(
       host: subject_host,
-      projection: project(obs: SparkServingObservationRefused { host: subject_host, cause: "probe leg unreachable" as NonEmptyStr }, unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerUnobservedState),
+      projection: project(obs: SparkServingObservationRefused { host: subject_host, cause: "probe leg unreachable" as NonEmptyStr }, runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr }, unit: UserUnitStateUnobserved, enablement: UserUnitEnablementUnobserved, linger: LingerUnobservedState),
     ),
   )
   let wrong_host = artifact_refusal_cause(
     v: artifact_verdict(
       host: "srv1" as HostIdentity,
-      projection: project(obs: SparkServingAbsent { host: "srv1" as HostIdentity }, unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled),
+      projection: project(obs: SparkServingAbsent { host: "srv1" as HostIdentity }, runtime: bare_runtime(), unit: UserUnitStateAbsent, enablement: UserUnitEnablementNotFound, linger: LingerObservedEnabled),
     ),
   )
   unobserved != unreached && unreached != wrong_host && unobserved != wrong_host
@@ -566,6 +591,7 @@ test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect()
             host: subject_host,
             projection: project(
         obs: SparkServingObserved { host: subject_host, loaded_release: r },
+              runtime: complete_required_runtime(),
               unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
               enablement: UserUnitEnabled,
               linger: LingerUnobservedState,
@@ -588,6 +614,7 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
           host: subject_host,
           projection: project(
         obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            runtime: complete_required_runtime(),
             unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitEnabled,
             linger: LingerObservedDisabled,
@@ -619,6 +646,7 @@ test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
     Present { value: r } =>
       match project(
         obs: SparkServingObserved { host: subject_host, loaded_release: r },
+        runtime: complete_required_runtime(),
         unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
         enablement: UserUnitEnablementUnobserved,
         linger: LingerObservedEnabled,
@@ -638,6 +666,7 @@ test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
     Present { value: r } =>
       match project(
         obs: SparkServingObserved { host: subject_host, loaded_release: r },
+        runtime: complete_required_runtime(),
         unit: UserUnitStateUnobserved,
         enablement: UserUnitEnabled,
         linger: LingerObservedEnabled,
@@ -662,6 +691,7 @@ test fn a_correct_but_disabled_unit_plans_exactly_one_member() -> Bool {
           serving_release: r,
           projection: project(
             obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            runtime: complete_required_runtime(),
             unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitDisabled,
             linger: LingerObservedEnabled,
@@ -689,6 +719,7 @@ test fn an_unobserved_enablement_refuses_the_artifact_rather_than_enabling() -> 
             host: subject_host,
             projection: project(
               obs: SparkServingObserved { host: subject_host, loaded_release: r },
+              runtime: complete_required_runtime(),
               unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
               enablement: UserUnitEnablementUnobserved,
               linger: LingerObservedEnabled,
@@ -711,6 +742,7 @@ test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bo
           host: subject_host,
           projection: project(
             obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            runtime: complete_required_runtime(),
             unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitDisabled,
             linger: LingerObservedEnabled,

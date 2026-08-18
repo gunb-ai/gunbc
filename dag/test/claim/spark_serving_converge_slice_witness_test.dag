@@ -13,6 +13,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
   PlannedEffectExecution,
+  PlannedRemoteStep,
   fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_plan_artifact_hash,
   fleet_converge_plan_artifact_bundle_admits,
@@ -120,9 +121,9 @@ test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     _ => false
   }
 }
@@ -138,10 +139,10 @@ test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool
     effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && remote_operations_argv_only(operations: ops).first().length() == 5
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
+        && remote_operations_argv_only(operations: map(sts, st => st.operation)).first().length() == 5
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -151,9 +152,9 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
     effects: [EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -164,7 +165,7 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
     executor_login: spark_serving_automation_principal_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }
 }
 
@@ -285,11 +286,11 @@ test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool 
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
+            SparkServingFrozenApplied { remote_steps: sts, effect_count: n } =>
               n == 1
-                && remote_operations_argv_only(operations: ops).length() == 1
+                && remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
                 && spark_serving_enable_linger_argv_matches_expected(
-                  argv: remote_operations_argv_only(operations: ops).first(),
+                  argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first(),
                 )
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
@@ -318,8 +319,8 @@ test fn linger_slice_apply_noop_when_converged() -> Bool {
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
-              n == 0 && remote_operation_count(operations: ops) == 0
+            SparkServingFrozenApplied { remote_steps: sts, effect_count: n } =>
+              n == 0 && remote_operation_count(operations: map(sts, st => st.operation)) == 0
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
@@ -461,10 +462,10 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
 // effect does not call for, so absence of sudo is asserted rather than assumed.
 test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
   match spark_serving_reload_user_manager_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -474,11 +475,11 @@ test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
 // which is the single-authority failure this grounding exists to prevent.
 test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
   match spark_serving_enable_user_unit_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0")
           == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -491,10 +492,10 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
     effects: [ReloadUserManager, EnableUserUnit],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && join(remote_operations_argv_only(operations: ops)[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && join(remote_operations_argv_only(operations: ops)[1], "\0")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[1], "\0")
           == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
@@ -524,11 +525,17 @@ fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSp
     },
     first_execution: PlannedEffectExecution {
       effect: EnableLingerForOwnAccount,
-      first_operation: match ops.first() {
-        Present { value: h } => h
-        Absent => RemoteArgv { argv: ["unreachable-empty-tamper-fixture"] }
+      first_step: PlannedRemoteStep {
+        identity: "tamper-head" as NonEmptyStr,
+        operation: match ops.first() {
+          Present { value: h } => h
+          Absent => RemoteArgv { argv: ["unreachable-empty-tamper-fixture"] }
+        },
       },
-      further_operations: ops.skip(n: 1),
+      further_steps: map(
+        ops.skip(n: 1),
+        op => PlannedRemoteStep { identity: "tamper-tail" as NonEmptyStr, operation: op },
+      ),
     },
     further_executions: [],
   }

@@ -863,29 +863,6 @@ fn spark_serving_observe_runtime_materialization(
   }
 }
 
-fn spark_serving_observe_user_unit(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> SparkServingObservedUnitState {
-  match spark_serving_probe_leg(
-    context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
-  ) {
-    Absent => UserUnitStateUnobserved
-    Present { value: read } =>
-      match spark_serving_probe_leg(
-        context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
-      ) {
-        Absent => UserUnitStateUnobserved
-        Present { value: enabled } =>
-          classify_observed_user_unit(
-            read_succeeded: read.success,
-            read_stdout: read.stdout,
-            file_absent: cat_reported_missing_file(result: read),
-          )
-      }
-  }
-}
-
 
 // ONE OBSERVATION IN, ONE PROJECTION OUT.
 //

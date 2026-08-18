@@ -4,7 +4,7 @@ import std.types { String, List, Bool, Int }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   fleet_converge_plan_artifact_bundle_admits,
-  fleet_converge_spark_serving_row_operations,
+  fleet_converge_spark_serving_row_steps,
   fleet_converge_spark_serving_row_effects,
 }
 import gunbc.typed_argv_exec {
@@ -24,9 +24,16 @@ import gunbc.remote_operation {
   RemoteOperation,
   RemoteArgv,
   RemoteFileBytes,
-  RemoteOperationOutcome,
-  RemoteOperationSucceeded,
-  RemoteOperationRefused,
+  RemoteOperationExecution,
+  RemoteArgvExecution,
+  RemoteFileExecution,
+  RemoteStepStanding,
+  RemoteStepCompleted,
+  RemoteStepFailed,
+  RemoteStepUnattempted,
+  PlannedRemoteStep,
+  remote_execution_permits_continuation,
+  remote_step_standing_wire,
 }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
@@ -36,14 +43,15 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 
-data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and are mapped into one RemoteOperationOutcome vocabulary rather than coercing a file convergence into an argv result, which would require inventing an exit code and stdout it never had."
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and KEEP them: RemoteOperationExecution carries TypedArgvExecOutcome on the argv arm and TypedRemoteFileConvergence on the file arm, because an argv exit code and a four-step read-back-verified convergence are not the same evidence and one success word reported them at one rung. Neither arm means the resource converged -- exit zero says the invoked program reported completion, and resource convergence is established only by the resource's own observer and the empty replan. Progression between steps uses remote_execution_permits_continuation, named for progression rather than convergence. Each step carries a PlannedRemoteStep identity assigned where it is built, and the sequence records RemoteStepStanding per step -- completed, failed, or unattempted -- so a halt names which step stopped and which tail was never reached, instead of collapsing to one reason string."
 
 type SparkServingFrozenApplyResult =
-    SparkServingFrozenApplied { remote_operations: List<RemoteOperation>, effect_count: Int }
+    SparkServingFrozenApplied { remote_steps: List<PlannedRemoteStep>, effect_count: Int }
   | SparkServingFrozenApplyRefused { reason: String }
 
 type SparkServingFrozenRemoteExecResult =
-    SparkServingFrozenRemoteExecApplied { exec_outcome: RemoteOperationOutcome }
+    SparkServingFrozenRemoteExecApplied { standings: List<RemoteStepStanding> }
+  | SparkServingFrozenRemoteExecConvergedNoop
   | SparkServingFrozenRemoteExecRefused { reason: String }
 
 // APPLY EXECUTES THE FROZEN OPERATIONS. It no longer calls the realizer: the plan already did, at
@@ -61,9 +69,9 @@ fn spark_serving_apply_reads_frozen_typed_rows(
     }
   } else {
     SparkServingFrozenApplied {
-      remote_operations: flat_map(
+      remote_steps: flat_map(
         artifact.spark_serving_typed_actions,
-        r => fleet_converge_spark_serving_row_operations(row: r),
+        r => fleet_converge_spark_serving_row_steps(row: r),
       ),
       effect_count: length(flat_map(artifact.spark_serving_typed_actions, r => fleet_converge_spark_serving_row_effects(row: r))),
     }
@@ -91,25 +99,16 @@ fn spark_serving_exec_frozen_typed_rows(
   ) {
     SparkServingFrozenApplyRefused { reason: why } =>
       SparkServingFrozenRemoteExecRefused { reason: why }
-    SparkServingFrozenApplied { remote_operations: operations, effect_count: n } =>
+    SparkServingFrozenApplied { remote_steps: steps, effect_count: n } =>
       if n == 0 {
-        SparkServingFrozenRemoteExecApplied {
-          exec_outcome: RemoteOperationRefused {
-            reason: "spark_serving_converge_apply: converged plan — zero frozen install effects, remote exec is noop",
-          },
-        }
-      } else if operations.length() == 0 {
-        SparkServingFrozenRemoteExecApplied {
-          exec_outcome: RemoteOperationRefused {
-            reason: "spark_serving_converge_apply: frozen effects realized to zero operations — refusing rather than reporting a noop as applied",
-          },
+        SparkServingFrozenRemoteExecConvergedNoop
+      } else if steps.length() == 0 {
+        SparkServingFrozenRemoteExecRefused {
+          reason: "spark_serving_converge_apply: frozen effects realized to zero steps — refusing rather than reporting a noop as applied",
         }
       } else {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: spark_serving_run_operation_sequence(
-            operations: operations,
-            transport: transport,
-          ),
+          standings: spark_serving_run_step_sequence(steps: steps, transport: transport),
         }
       }
   }
@@ -131,108 +130,128 @@ fn spark_serving_exec_frozen_typed_rows(
 func spark_serving_run_operation(
   operation: RemoteOperation,
   transport: HostEffectTransport,
-) -> RemoteOperationOutcome
+) -> RemoteOperationExecution
   uses net: Network
 {
   match operation {
     RemoteArgv { argv: argv } =>
-      match run_typed_argv_transport(argv: argv, transport: transport) {
-        TypedArgvExecRefused { reason: why } => RemoteOperationRefused { reason: why }
-        TypedArgvExecConverged { result: r } =>
-          if r.success {
-            RemoteOperationSucceeded { label: join(argv, " ") }
-          } else {
-            RemoteOperationRefused {
-              reason: join([
-                "argv exit=", to_string(r.exit_code), " stderr=", r.stderr,
-              ], ""),
-            }
-          }
+      RemoteArgvExecution {
+        outcome: run_typed_argv_transport(argv: argv, transport: transport),
       }
     RemoteFileBytes { write: w, mode: m } =>
       match transport {
         FleetSsh { target: t, context: ctx } =>
-          match converge_typed_remote_file(
-            target: t,
-            context: ctx,
-            admission: TypedRemoteFileWriteAdmitted { write: w },
-            mode: m,
-          ) {
-            TypedRemoteFileConvergenceRefused { step: step, reason: why } =>
-              RemoteOperationRefused {
-                reason: join(["file-write refused at ", step, ": ", why], ""),
-              }
-            TypedRemoteFileConverged { path: p, mode: _ } =>
-              RemoteOperationSucceeded {
-                label: join(["write-file ", p as String], ""),
-              }
+          RemoteFileExecution {
+            outcome: converge_typed_remote_file(
+              target: t,
+              context: ctx,
+              admission: TypedRemoteFileWriteAdmitted { write: w },
+              mode: m,
+            ),
           }
         LocalShell =>
-          RemoteOperationRefused {
-            reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
+            },
           }
         SshShell { ssh_host: h } =>
-          RemoteOperationRefused {
-            reason: join([
-              "file write requires an anchored FleetSsh transport; SshShell(", h as String,
-              ") carries no verified credential or known-hosts anchor",
-            ], ""),
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: join([
+                "file write requires an anchored FleetSsh transport; SshShell(", h as String,
+                ") carries no verified credential or known-hosts anchor",
+              ], ""),
+            },
           }
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-          RemoteOperationRefused {
-            reason: "file write requires an anchored FleetSsh transport; EmitArtifactThenThinRun is not a live session",
+          RemoteFileExecution {
+            outcome: TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; EmitArtifactThenThinRun is not a live session",
+            },
           }
       }
   }
 }
 
-// ORDERED, HALT ON FIRST FAILURE. These effects are sequential -- a unit file must exist before the
-// manager reloads, and the manager must have reloaded before the unit enables -- so running the tail
-// after a failed head would actuate against a state the plan never described. The accumulator is a
-// coproduct rather than a sentinel outcome, because "nothing has run yet" and "something ran and
-// refused" are different states and a reason string cannot be trusted to distinguish them.
-type SparkServingSequenceAcc =
-    SparkServingSequenceNotStarted
-  | SparkServingSequenceOutcome { outcome: RemoteOperationOutcome }
+// ORDERED, HALT ON FIRST FAILURE, AND THE TAIL IS RECORDED RATHER THAN DROPPED.
+//
+// These effects are sequential -- a unit file must exist before the manager reloads, and the manager
+// must have reloaded before the unit enables -- so running the tail after a failed head would actuate
+// against a state the plan never described.
+//
+// What changed is what the halt LEAVES BEHIND. The fold used to collapse to one outcome, so every
+// step after the failure was indistinguishable from one that ran, and every step before it was
+// forgotten. Now each step lands as its own standing and the tail is explicitly `Unattempted`, which
+// is what lets a receipt say "these ran, this one failed, these were never reached" instead of one
+// reason string a reader has to interpret.
+//
+// `halted` is carried rather than re-derived by scanning the accumulated standings for a failure:
+// the scan would have to decide what an empty list means, and "nothing ran yet" and "everything ran
+// and none failed" are different states that a length check cannot separate.
+type SparkServingSequenceAcc {
+  standings: List<RemoteStepStanding>
+  halted: Bool
+}
 
 func spark_serving_sequence_step(
   acc: SparkServingSequenceAcc,
-  operation: RemoteOperation,
+  step: PlannedRemoteStep,
   transport: HostEffectTransport,
 ) -> SparkServingSequenceAcc
   uses net: Network
 {
-  match acc {
-    SparkServingSequenceNotStarted =>
-      SparkServingSequenceOutcome {
-        outcome: spark_serving_run_operation(operation: operation, transport: transport),
+  if acc.halted {
+    SparkServingSequenceAcc {
+      standings: concat(acc.standings, [RemoteStepUnattempted { identity: step.identity }]),
+      halted: true,
+    }
+  } else {
+    let execution = spark_serving_run_operation(operation: step.operation, transport: transport)
+    if remote_execution_permits_continuation(execution: execution) {
+      SparkServingSequenceAcc {
+        standings: concat(acc.standings, [
+          RemoteStepCompleted { identity: step.identity, execution: execution },
+        ]),
+        halted: false,
       }
-    SparkServingSequenceOutcome { outcome: prior } =>
-      match prior {
-        RemoteOperationRefused { reason: _ } => acc
-        RemoteOperationSucceeded { label: _ } =>
-          SparkServingSequenceOutcome {
-            outcome: spark_serving_run_operation(operation: operation, transport: transport),
-          }
+    } else {
+      SparkServingSequenceAcc {
+        standings: concat(acc.standings, [
+          RemoteStepFailed { identity: step.identity, execution: execution },
+        ]),
+        halted: true,
       }
+    }
   }
 }
 
-func spark_serving_run_operation_sequence(
-  operations: List<RemoteOperation>,
+func spark_serving_run_step_sequence(
+  steps: List<PlannedRemoteStep>,
   transport: HostEffectTransport,
-) -> RemoteOperationOutcome
+) -> List<RemoteStepStanding>
   uses net: Network
 {
-  match fold(
-    operations,
-    init: SparkServingSequenceNotStarted,
-    f: fn(acc, op) { spark_serving_sequence_step(acc: acc, operation: op, transport: transport) },
-  ) {
-    SparkServingSequenceNotStarted =>
-      RemoteOperationRefused {
-        reason: "spark_serving_converge_apply: empty operation sequence executed nothing",
-      }
-    SparkServingSequenceOutcome { outcome: o } => o
-  }
+  fold(
+    steps,
+    init: SparkServingSequenceAcc { standings: [], halted: false },
+    f: fn(acc, st) { spark_serving_sequence_step(acc: acc, step: st, transport: transport) },
+  ).standings
+}
+
+fn spark_serving_step_sequence_failed(standings: List<RemoteStepStanding>) -> Bool {
+  fold(standings, init: false, f: fn(acc, st) {
+    match st {
+      RemoteStepFailed { identity: _, execution: _ } => true
+      RemoteStepCompleted { identity: _, execution: _ } => acc
+      RemoteStepUnattempted { identity: _ } => acc
+    }
+  })
+}
+
+fn spark_serving_step_sequence_wire(standings: List<RemoteStepStanding>) -> String {
+  join(map(standings, st => remote_step_standing_wire(standing: st)), " ")
 }

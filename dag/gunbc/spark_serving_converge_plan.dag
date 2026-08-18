@@ -158,16 +158,16 @@ fn spark_serving_planned_effect_executions(
           executor_login: spark_serving_automation_principal_login(),
         ) {
           SparkServingInstallRemoteCommandsRefused { reason: _ } => none
-          SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-            match ops.first() {
+          SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+            match steps.first() {
               Absent => none
               Present { value: head } =>
                 Present {
                   value: concat(prior, [
                     PlannedEffectExecution {
                       effect: effect,
-                      first_operation: head,
-                      further_operations: ops.skip(n: 1),
+                      first_step: head,
+                      further_steps: steps.skip(n: 1),
                     },
                   ]),
                 }
