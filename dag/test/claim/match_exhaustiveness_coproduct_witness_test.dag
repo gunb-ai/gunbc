@@ -1,16 +1,7 @@
 module test.claim.match_exhaustiveness_coproduct_witness
 
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_rows_of_class,
-  census_total_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data match_exhaustiveness_coproduct_witness_note: String = "Paired control for v1 coproduct match exhaustiveness via compile_dag_diagnostic_census. An exhaustive Trio match must observe zero NonExhaustiveMatch rows; a match omitting Blue must refuse with exactly one counted NonExhaustiveMatch diagnostic — not merely 'refuses', which would pass today when the checker lists the full declared roster. Precision of the missing variant list is pinned in infer_semantics_witness (check_match_exhaustiveness missing.len == 1)."
 
