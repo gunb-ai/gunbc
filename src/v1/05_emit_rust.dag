@@ -53,7 +53,6 @@ import v1.compiler.languages {
   sharing_for_target,
   is_string_like
 }
-import v1.compiler.realization_contract { PureMemoRealizationContract, pure_memo_realization_contracts }
 import v1.compiler.runtime_rust { rust_runtime_source }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
@@ -94,6 +93,7 @@ import v1.compiler.infer_service {
 }
 import v1.compiler.infer {
   InferScope,
+  PureMemoRealizationContract, pure_memo_realization_contracts,
   build_params_scope, extend_scope,
   build_emit_graph_info,
   declared_return_type_node,

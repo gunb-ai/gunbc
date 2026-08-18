@@ -1,5 +1,6 @@
 module v1.compiler.infer
 import std.types { SourceSpan, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -1990,6 +1991,40 @@ type CallFormalApplication {
 }
 
 data call_application_plan_note: String = "Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3). direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were line-for-line duplicates of the same per-formal prologue: param_node_type_expr, substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional actual search. Both run over the SAME value_params, typed_args and call_subst at the one direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and it measured as the ENTIRE cost of the conformance seam: on gunbc.host_effect_realize the two timed peels inside direct_call_arg_mismatch_diags accounted for that function to within instrument overhead (62719ms + 62804ms against 125438ms over 330 calls), while the timer around direct_call_arg_type_mismatch never entered the top fourteen operations and substitute_generics already short-circuits an empty substitution. That module holds 63% of all corpus type inference. Building the binding ONCE and passing it to both consumers is the deduplication, not a cache: no map is introduced, so nothing here becomes an order-exposing operation in the v2.std.determinism denominator. Behavior is identical because every recomputed term is a pure function of arguments both callers already share."
+
+// A v1-private compiler-realization declaration. Deliberately NOT v2's
+// std.realization: importing it into the v1 seed risks a bootstrap inversion,
+// and this row dissolves with v1 rather than outliving it.
+
+type RealizationScope = | TypecheckModuleScope
+
+type MemoHitAdmission = | RealizationProvesExactInputs
+
+type MemoMissBehavior = | EvaluateSubjectNormally
+
+type RealizationRetention = | ReleasedAtScopeExit
+
+type PureMemoRealizationContract {
+  subject: DeclarationRef
+  scope: RealizationScope
+  hit_admission: MemoHitAdmission
+  miss_behavior: MemoMissBehavior
+  retention: RealizationRetention
+}
+
+data pure_memo_realization_contracts: List<PureMemoRealizationContract> = [
+  PureMemoRealizationContract {
+    subject: decl_ref(module_path: "v1.compiler.infer", decl_name: "peel_direct_call_formal"),
+    scope: TypecheckModuleScope,
+    hit_admission: RealizationProvesExactInputs,
+    miss_behavior: EvaluateSubjectNormally,
+    retention: ReleasedAtScopeExit
+  }
+]
+
+data pure_memo_realization_contract_subject_note: String = "WHY THE SUBJECT IS A NARROW WRAPPER RATHER THAN peel_nominal_alias_identity ITSELF. The measured repetition is at ONE seam, the direct-call formal canonicalization inside build_call_application_plan, but that operation has 15 call sites in v1.compiler.infer. Naming the general operation would memoize all fifteen: it would change allocation sharing everywhere the operation is reached, and it would sit underneath the record-literal path whose SECOND peel takes an already-peeled node -- an application measurably not idempotent, at 21 counterexamples over 600,000+ calls with six of them structural. So the contract names peel_direct_call_formal, a pure wrapper that forwards unchanged. Uncached it trivially denotes the operation it wraps, the memo population is exactly the measured population, and the dissolution surface is one call seam rather than a general v1 canonicalization cache. A general memoize-any-function registry is deliberately absent: in a semantics-frozen seed that registry is itself a growth surface, and the contract is one exact subject, closed."
+
+data pure_memo_realization_contract_note: String = "WHAT THIS DECLARES, AND WHAT IT DELIBERATELY DOES NOT (operator ruling 2026-08-18). The contract states one thing: the subject denotes the SAME Node whether it is evaluated directly or through a memoized realization. That is the whole semantic content. It does not say how a realization proves that the input is unchanged, because that is a realization's business and differs per target: the Rust seed proves it with pointer identity over a retained strong reference, another target might use an intern identity or an object handle, and a target that simply evaluates every call is equally conforming. A conforming realization that never hits is CORRECT, merely slower, which is the property that makes this admissible at all.\n\nWHY THERE IS NO KEY, NO HIT/MISS VARIANT, AND NO THREADED STATE HERE. Writing the key into the model would assert that allocation identity IS semantic identity, which is false and is exactly the unsound-key class this repository has already been bitten by. Putting MemoHit or MemoMiss into a semantic result would make cache occupancy observable, at which point the realization is no longer transparent and correctness starts depending on cache availability. Threading a cache through the pure function to mirror one realization's implementation would import that realization's decomposition into the model, which is the fork this construction exists to avoid. Model and realization cannot answer the same modeled input differently; the pointer is implementation evidence that two runtime values are the same immutable object, not a meaning.\n\nWHY THIS IS ADMITTED under gunbc.v1_maintenance_standing: it adds no syntax, no type-system judgment, no newly accepted program, no compatibility obligation, no fallback arm and no persistent public surface. It is a behavior-preserving operational realization of a compiler-internal pure computation, against a measured repeated-work population on a live production compiler, and it dissolves when v1 leaves the production typecheck path.\n\nTHE BOUNDARY THE IMPLEMENTATION MUST RESPECT: regeneration must reproduce the optimization. A hand-written patch to a generated v1_compiler_*.rs would be erased by regen and is authority drift, so the realization lives in the emitter (v1 05_emit_rust) and the emitted runtime support (v1 runtime_rust), both of which regen produces from this authority."
 
 // The narrow seam the pure-memo realization contract names. It exists so the
 // memo's population is EXACTLY the measured direct-call formal population and
