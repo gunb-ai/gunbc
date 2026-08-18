@@ -2634,22 +2634,37 @@ fn claim_result_for_outcome(
             elapsed_ms,
             budget_ms,
             kind,
-            completion: _,
+            completion,
         } => ClaimResult {
             function,
             entry: entry.clone(),
             ok: false,
-            // The detail still names the budget in prose for the human reading a log, but
-            // `budget_refusal` beside it is what classification reads — so the mode no
-            // longer depends on this wording. "ceiling" is deliberate: the row was killed
-            // AT the budget, so elapsed bounds the cost, it does not measure it.
-            detail: format!(
-                "killed at its {} budget: {}ms elapsed > {}ms budget (elapsed is a ceiling, \
-                 not a completed duration)",
-                kind.label(),
-                elapsed_ms,
-                budget_ms
-            ),
+            // The detail names the budget in prose for the human reading a log; `budget_refusal`
+            // beside it is what classification reads, so the mode does not depend on this
+            // wording. What the wording MUST get right is whether the number is a bound or a
+            // measurement, and it used to say "killed ... elapsed is a ceiling" unconditionally.
+            // That is true of an interrupted row and FALSE of a completed one: a
+            // `CompletedOverBudget` row ran to completion, passed, and has an exact elapsed, so
+            // asserting it was killed and censored is a fabricated fact in a durable receipt.
+            // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
+            // survived — a considered-looking justification for a claim that only held on one
+            // arm.
+            detail: match completion {
+                v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
+                    "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                     (interrupted, so elapsed bounds the cost and does not measure it)",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+                v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
+                    "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
+                     (ran to completion and passed, then was reclassified on cost)",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+            },
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,

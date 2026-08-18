@@ -16030,15 +16030,38 @@ enum ExpectedRedArm {
     Held,
     /// Enrolled and passed. The debt was repaid and the roster is stale — reds the build.
     NowPassing,
-    /// Enrolled and budget-refused. NOT agreement: a budget refusal is an interruption and a
-    /// lower bound on cost, never a verdict, so the enrolled claim was never decided.
+    /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
+    /// cost, never a verdict, so the enrolled claim was never decided.
     BudgetRefused,
+    /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
+    ///
+    /// This arm exists because the row is true on two axes at once and the other three arms
+    /// each force a choice between them. Semantically the claim WAS decided and it passed, so
+    /// the roster row is stale and must be removed. On cost it is over budget with an EXACT
+    /// elapsed, so a real cost debt remains. Reporting it as `BudgetRefused` says the claim
+    /// went undecided, which is false — that is "a budget outcome is never stale", the same
+    /// absorption as "a budget outcome is always held" one arm over, and it hides precisely the
+    /// signal the roster exists to surface: that the debt was repaid. Reporting it as
+    /// `NowPassing` would drop the cost fact instead. So it reports BOTH, and the reader gets
+    /// two remedies rather than whichever one the code happened to pick.
+    ///
+    /// Reachability is not incidental: `budget_completion_outcome` and its wall sibling rewrite
+    /// only `ClaimOutcome::Pass`, so `CompletedOverBudget` cannot occur for a failing witness.
+    /// The arm therefore means "passed, then reclassified on cost", not merely "completed".
+    PassedOverBudget,
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::TimedOut { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::TimedOut {
+            completion: BudgetCompletion::Interrupted,
+            ..
+        } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::TimedOut {
+            completion: BudgetCompletion::CompletedOverBudget,
+            ..
+        } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
             ExpectedRedArm::Held
         }
@@ -42217,6 +42240,7 @@ pub fn run_required_floor(
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
+    let mut known_red_passed_over_budget: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -42434,6 +42458,37 @@ pub fn run_required_floor(
                 // is the direction that flatters, and would leave no count that falls when the
                 // debt is repaid. The identity accounting (planned = executed = receipted) is
                 // unaffected because it counts receipts, not verdicts.
+                // BOTH REMEDIES, because the row is true on both axes. The semantic half goes
+                // to stale_quarantine (the claim passed, so the roster row must come out) and
+                // the cost half to budget_refused (an exact overrun that still has to be paid
+                // down). Choosing one would silently drop the other, and the one the code used
+                // to drop was the repaid-debt signal the roster exists to surface.
+                ExpectedRedArm::PassedOverBudget => {
+                    known_red_passed_over_budget += 1;
+                    let cost = match &result {
+                        ClaimOutcome::TimedOut {
+                            elapsed_ms,
+                            budget_ms,
+                            kind,
+                            ..
+                        } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.stale_quarantine.push(format!(
+                        "{} is enrolled as expected-red and PASSED (then exceeded its budget: \
+                         {}) — remove it from v2.workflow.floor_expected_red; the cost debt is \
+                         reported separately and is not a reason to keep the row",
+                        claim.qualified, cost
+                    ));
+                    outcome.budget_refused.push(format!(
+                        "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
+                         not a bound — the witness ran to completion — so the cost is known and \
+                         actionable. Reduce it, or move the row to a lane declaring its own \
+                         ceiling.",
+                        claim.qualified, cost
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -42524,8 +42579,12 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
-         identity(ies) were BUDGET-REFUSED and so went undecided",
-        known_red_held, known_red_now_passing, known_red_budget_refused
+         identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
+         budget (stale roster row AND a real cost debt)",
+        known_red_held,
+        known_red_now_passing,
+        known_red_budget_refused,
+        known_red_passed_over_budget
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -42588,16 +42647,20 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held + known_red_now_passing + known_red_budget_refused
+    if known_red_held
+        + known_red_now_passing
+        + known_red_budget_refused
+        + known_red_passed_over_budget
         != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} roster={} — every enrolled identity must be exactly one of \
-             held, now-passing or budget-refused",
+             budget_refused={} passed_over_budget={} roster={} — every enrolled identity must \
+             be exactly one of held, now-passing, budget-refused or passed-over-budget",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
+            known_red_passed_over_budget,
             expected_red_roster.len()
         ));
     }
