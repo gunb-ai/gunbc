@@ -3683,7 +3683,13 @@ fn match_pattern(
                 }
                 Value::Record { type_name, fields } => {
                     if *type_name != ctx.sym(name) {
-                        return None;
+                        // Qualified PATTERN spellings carry the containment path; record
+                        // values are stamped with the bare constructor name — mirror the
+                        // Variant arm's last-segment fallback (compute_board admission).
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        if *type_name != ctx.sym(pat_last) {
+                            return None;
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
