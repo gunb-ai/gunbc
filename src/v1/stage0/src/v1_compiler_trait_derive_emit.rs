@@ -5,6 +5,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits,
 };
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -287,6 +288,15 @@ pub fn v1_map_key_round_add(
     }
 }
 
+pub fn map_key_alias_hop_gap_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MEASURED GAP, ATTEMPTED AND REVERTED -- the propagation edge is real, and a correct fix needs an authority this module cannot reach. Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn v1_map_key_propagate_round(
     round: Rc<MapKeyRequirementRound>,
     declared_type_names: Rc<Vec<String>>,
@@ -365,41 +375,6 @@ pub fn v1_map_key_fixpoint_loop(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct HandRustMapKeyRequirement {
-    pub type_name: String,
-    pub consumer: String,
-}
-
-pub fn hand_rust_map_key_requirements() -> Rc<Vec<Rc<HandRustMapKeyRequirement>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<HandRustMapKeyRequirement>>> = {
-            serde_json::from_value(serde_json::json!([{"type_name": "ItemKind", "consumer": "src/v1/stage0/src/coproduct_reflection.rs -- StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)> memoizes declaration parsing by (module path, item kind)"}]))
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<HandRustMapKeyRequirement>>>| c.clone())
-}
-
-pub fn hand_rust_map_key_requirement_itemkind_dissolve_on() -> Rc<DissolutionCondition> {
-    thread_local! {
-        static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("the coproduct_reflection.rs memo stops keying by ItemKind, or that hand-written file is deleted with the v1 seed. The ItemKind row is then removed from hand_rust_map_key_requirements and the fixpoint answers alone. Removing it while the consumer still keys by ItemKind does not fail quietly: the emitted crate loses Eq + Hash on ItemKind and fails to build, which is the negative control this requirement ships with.".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
-}
-
-pub fn hand_rust_map_key_required_names() -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for r in hand_rust_map_key_requirements().iter().cloned() {
-            __result.push(r.type_name.clone());
-        }
-        __result
-    })
-}
-
 pub fn v1_map_key_required_type_names(
     seed_type_exprs: Rc<Vec<Rc<Node>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
@@ -428,18 +403,8 @@ pub fn v1_map_key_required_type_names(
                     )
             },
         );
-        let seeded_with_hand_rust = hand_rust_map_key_required_names().iter().cloned().fold(
-            seeded.clone(),
-            |inner: Rc<MapKeyRequirementRound>, key_name: String| {
-                if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
-                    v1_map_key_round_add(inner.clone(), key_name.clone())
-                } else {
-                    inner.clone()
-                }
-            },
-        );
         v1_map_key_fixpoint_loop(
-            seeded_with_hand_rust.clone(),
+            seeded.clone(),
             declared_type_names.clone(),
             type_decl_items.clone(),
             ((declared_type_names.clone().len() as i64) + 1),
