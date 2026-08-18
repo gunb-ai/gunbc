@@ -50,7 +50,7 @@ pub fn residue_table_present_string_bypasses_identity() -> bool {
         != None)
 }
 
-pub fn residue_table_present_hash_bypasses_identity() -> bool {
+pub fn hash_spelling_receives_no_realization_and_renders_structurally() -> bool {
     (rust_scalar_checkpoint_render_base("Hash".to_string(), "src/v2/std/node.dag".to_string())
-        != None)
+        == None)
 }
