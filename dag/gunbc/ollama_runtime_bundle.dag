@@ -1,6 +1,6 @@
 module gunbc.ollama_runtime_bundle
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List, Bool }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
@@ -78,5 +78,78 @@ fn ollama_runtime_materialization_identity_for_observed_release(
       } else {
         none
       }
+  }
+}
+
+// WHAT A RUNTIME OBSERVATION CAN HONESTLY SAY.
+//
+// A CORRECT PATH NAME IS NOT PROOF OF A CORRECT RUNTIME. The root is content-addressed by the
+// materialization identity, so its NAME is derivable from the release alone -- which means a
+// directory bearing the right name proves only that something once decided to create it. Whether
+// the executable is there, and whether it is the one the identity names, are separate facts.
+//
+// `Incomplete` is therefore its own arm and not a variant of the other two, which is the whole
+// point of the carrier. Folding it into `Absent` would say nothing is installed when a partial tree
+// is sitting there, and the remedy differs -- materialize versus repair. Folding it into
+// `ObservationRefused` would be worse: the corruption was SUCCESSFULLY OBSERVED, and calling a
+// established fact an inability to establish it is the collapse this lane keeps finding one layer
+// down each time. Refusal is reserved for genuinely not knowing -- an unreadable root, a denied
+// permission, a probe that never answered.
+//
+// Note what is NOT here: nothing about a running process. `/api/version` reports what a live server
+// exposes, which is a fact about a process rather than about an installation, and a runtime can be
+// perfectly materialized while nothing is running. Keeping that out is what lets a host mid-install
+// be observed at all -- the property whose absence made every partial state unhealable.
+type RuntimeMaterializationDefect
+  = RuntimeRootPresentButEmpty
+  | RuntimeExecutableMissing { expected_relative_path: NonEmptyStr }
+  | RuntimeExecutableNotExecutable { expected_relative_path: NonEmptyStr }
+
+type RuntimeMaterializationObservation
+  = RuntimeMaterializationAbsent
+  | RuntimeMaterializationIncomplete {
+      identity: Fnv1a64Structural
+      first_defect: RuntimeMaterializationDefect
+      further_defects: List<RuntimeMaterializationDefect>
+    }
+  | RuntimeMaterializationComplete { identity: Fnv1a64Structural }
+  | RuntimeMaterializationObservationRefused { cause: NonEmptyStr }
+
+// An incomplete materialization carries at least one defect BY CONSTRUCTION. "Incomplete with
+// nothing wrong" is not a state, and an empty defect list would report exactly that while reading
+// as a real observation -- the same head-plus-tail move the frozen operation rows use.
+fn runtime_materialization_defects(
+  observation: RuntimeMaterializationObservation,
+) -> List<RuntimeMaterializationDefect> {
+  match observation {
+    RuntimeMaterializationIncomplete { identity: _, first_defect: d, further_defects: rest } =>
+      concat([d], rest)
+    RuntimeMaterializationAbsent => []
+    RuntimeMaterializationComplete { identity: _ } => []
+    RuntimeMaterializationObservationRefused { cause: _ } => []
+  }
+}
+
+// ONLY A COMPLETE MATERIALIZATION CONTRIBUTES AN OBSERVED MEMBER. Absent and incomplete both mean
+// the desired identity is not present at that address, so reconcile plans the work; refusal means
+// nobody knows, and an unknown must not project a value. That the first three answer differently to
+// the PLAN while sharing "no member" is exactly why they are distinct arms rather than one absence.
+fn runtime_materialization_observed_identity(
+  observation: RuntimeMaterializationObservation,
+) -> Fnv1a64Structural? {
+  match observation {
+    RuntimeMaterializationComplete { identity: id } => Present { value: id }
+    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => none
+    RuntimeMaterializationAbsent => none
+    RuntimeMaterializationObservationRefused { cause: _ } => none
+  }
+}
+
+fn runtime_materialization_was_observed(observation: RuntimeMaterializationObservation) -> Bool {
+  match observation {
+    RuntimeMaterializationComplete { identity: _ } => true
+    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
+    RuntimeMaterializationAbsent => true
+    RuntimeMaterializationObservationRefused { cause: _ } => false
   }
 }
