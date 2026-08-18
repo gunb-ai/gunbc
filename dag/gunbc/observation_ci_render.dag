@@ -800,12 +800,13 @@ fn ci_witness_budget_warn_text(
   )
 }
 
-data ci_shared_fill_row_note: String = "One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+data ci_shared_fill_row_note: String = "fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these caches compose: building the module graph builds the reference edges and the path index on its way, so a sum over inclusive figures counts each inner scan once per enclosing scan. Measured on the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is carried beside it because it is what names the caller that caused the inner scans. One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
 
 fn ci_shared_fill_row_text(
   cache: String,
   key: String,
   fill: Millisecond,
+  inclusive: Millisecond,
   payer: SharedFillPayer,
   consumer_claims: Nat,
   consumer_modules: Nat,
@@ -822,6 +823,10 @@ fn ci_shared_fill_row_text(
             " fill_ms=",
             concat(
               to_string(millisecond_count(m: fill)),
+              concat(
+                " inclusive_ms=",
+              concat(
+                to_string(millisecond_count(m: inclusive)),
               concat(
                 " paid_by=",
                 concat(
@@ -848,6 +853,8 @@ fn ci_shared_fill_row_text(
                     )
                   )
                 )
+              )
+              )
               )
             )
           )

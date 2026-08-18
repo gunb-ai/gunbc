@@ -1497,6 +1497,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
             shared_fill::record_hit("module_path_index", &key);
             return index.clone();
         }
+        shared_fill::begin_fill();
         let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
         shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
@@ -6031,6 +6032,7 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
             shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
+        shared_fill::begin_fill();
         let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
         shared_fill::record_fill(
@@ -29642,6 +29644,7 @@ pub fn reference_resolution_facts(
     // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
     // from here so the claim that happens to reach it first is not read as the claim that costs
     // it; see `shared_fill` for why the per-row number alone cannot answer that.
+    shared_fill::begin_fill();
     let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
@@ -33081,6 +33084,7 @@ fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
         shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
+    shared_fill::begin_fill();
     let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
     shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);

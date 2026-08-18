@@ -719,11 +719,12 @@ test fn w_shared_fill_row_line_holds() -> Bool {
   ci_shared_fill_row_text(
     cache: "reference_edges",
     key: "dag+src/v2",
-    fill: millisecond(count: 12197),
+    fill: millisecond(count: 695),
+    inclusive: millisecond(count: 17890),
     payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
     consumer_claims: 3,
     consumer_modules: 2
-  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=12197 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared"
+  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared"
 }
 
 test fn w_shared_fill_total_line_holds() -> Bool {

@@ -88,6 +88,65 @@ so each is paying its own way. The eight `effect_reach_test` rows clustered at 1
 therefore a prior *against* shared fill in that module, and the ledger will say so directly rather
 than by inference.
 
-## Receipt
+## Receipt — run 32192150969, 9425 claims, one fold
 
-<!-- RECEIPT: filled from this branch's `witnesses` run once the fold reports. -->
+19 fills. The run is main's inherited red (`failed=0 stale_quarantine=5 budget_refused=102`),
+not this diff's; the ledger reported from a complete fold.
+
+**Read `fill_ms` as SELF time.** The first receipt exposed a defect in this instrument and it is
+fixed in the same PR: these caches compose, so an outer fill's wall contains its inner fills'.
+A 17890ms `module_graph_facts` fill contained a 12054ms `module_path_index` fill and a 5141ms
+`reference_edges` fill — ~695ms of its own. The first receipt's `TOTAL fill_ms=302362` was an
+inclusive sum and over-counts; the corrected total over self time is **~180s**, and the
+per-fill payer/consumer/disposition columns were never affected.
+
+### The finding: one row's entire cost is a fill 29 other modules read
+
+```
+cache=module_path_index  key=dag+src/v2   fill_ms=51508
+  paid_by  test.claim.dissolution_census_witness_test.unbound_dissolution_empty_literal_refuses
+  read by  139 claims across 29 modules            disposition=shared
+```
+
+That payer is one of the five rows in the corpus with an *exact* cost: **51620ms**. The fill is
+51508ms of it. So **99.8% of that witness's measured cost is a computation 29 other modules
+consume**, and it is the only `shared` fill in the run. Removing the witness recovers ~112ms and
+hands 51.5s to whichever of the other 29 modules runs first. This is the paring question answered
+at identity grain, on the row where it matters most.
+
+### And the opposite finding, which matters just as much
+
+The 86741ms row — `extdeps_scope_placement_gate_loudness_witness`
+`red_seed_runner_failure_detail_projects_located_receipt`, the most expensive exact row in the
+corpus — paid a 29017ms `module_graph_facts` fill and a 24965ms `reference_edges` fill, **both
+`exclusive`**: no other module reads either. Its cost is genuinely its own, and it is a real
+paring target. Two rows adjacent on a slow list, opposite answers; nothing in the per-row wall
+time distinguishes them.
+
+### Preparation's share, which no paring can recover
+
+Three fills totalling ~108s inclusive are `outside-fold` — a 55392ms `module_graph_facts`, a
+35060ms `module_path_index`, a 17646ms `reference_edges`, all paid before any claim ran. That
+cost belongs to preparation. A quarantine of every witness on the floor would not move it.
+
+### The prediction, confirmed on an experiment nobody had to build
+
+When #8457 quarantined 102 over-budget witnesses, this model predicted the cost would not leave
+with them — the next module to touch the same fill would pay it. Main before (run 32177951514)
+against main after (run 32193032348), **one module, one run, one tree**:
+
+```
+single_refinement_carrier_emits_no_unsupported_cast    746ms -> 45941ms   61.6x
+nested_refinement_carrier_deficit_remains_observable   728ms ->   763ms   flat
+```
+
+Nothing about either row changed; 38 modules were removed from the fold ahead of them. If the
+45.9s were the row's own work it would have been 45.9s before. If it were a general slowdown the
+sibling would have moved too. It is the first-touch signature exactly: the fill that row now pays
+was previously paid by one of the quarantined 102, and the sibling still rides it free in both
+eras. **Quarantining a first toucher relocates the bill; it does not retire it.** (Measured by
+tidy-lark-471. It landed in the failures channel rather than the refused one, which is why a scan
+for new refusals read the run as refuting the prediction.)
+
+`unattributed_hits=1`: one read was served by a fill this ledger did not observe, so the shared
+figure is a lower bound. One is small; it is reported rather than rounded away.

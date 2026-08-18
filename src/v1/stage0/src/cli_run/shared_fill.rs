@@ -40,7 +40,16 @@ struct Fill {
     /// Declared input the cache is keyed on, so two fills of one cache under different roots
     /// are two rows rather than one averaged one.
     key: String,
-    nanos: u64,
+    /// Wall from entering the fill to leaving it, INCLUDING any fill it triggered underneath.
+    inclusive_nanos: u64,
+    /// Inclusive minus the fills nested inside it. These caches compose — building the module
+    /// graph builds the reference edges and the path index on its way — so summing inclusive
+    /// figures counts the inner scans once per enclosing scan. Measured on the first floor
+    /// receipt: a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms
+    /// reference-edge fill, leaving ~695ms of its own. The total is therefore summed over SELF,
+    /// and the inclusive figure is carried beside it because it is what names the caller that
+    /// caused the inner scans.
+    self_nanos: u64,
     /// `None` when the fill happened outside the claim fold — during preparation, discovery or
     /// a gate. That is a real and separate state from "some claim paid it": preparation cost is
     /// not any witness's, and collapsing the two would let the fold's own overhead read as a
@@ -63,6 +72,36 @@ thread_local! {
     static LEDGER: RefCell<Ledger> = RefCell::new(Ledger::default());
     /// The claim the fold is currently evaluating, or `None` outside the fold.
     static CURRENT_CLAIM: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// One accumulator per fill currently in flight, innermost last. Each holds the inclusive
+    /// time of the fills that completed inside it.
+    static FILL_CHILD_NANOS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Enter a fill. Every `begin_fill` is answered by exactly one `record_fill` or `abandon_fill`,
+/// or the nesting accounting drifts silently — which is why the abandon arm exists rather than
+/// letting the un-built branch of `once` simply return.
+pub(crate) fn begin_fill() {
+    FILL_CHILD_NANOS.with(|s| s.borrow_mut().push(0));
+}
+
+/// Leave a fill that did not happen after all (another thread initialized the cell first).
+pub(crate) fn abandon_fill() {
+    FILL_CHILD_NANOS.with(|s| {
+        s.borrow_mut().pop();
+    });
+}
+
+/// Close the innermost fill: take its children's total, and hand its own inclusive time up to
+/// its parent so the parent can subtract it in turn.
+fn close_fill(inclusive: u64) -> u64 {
+    FILL_CHILD_NANOS.with(|s| {
+        let mut stack = s.borrow_mut();
+        let children = stack.pop().unwrap_or(0);
+        if let Some(parent) = stack.last_mut() {
+            *parent = parent.saturating_add(inclusive);
+        }
+        inclusive.saturating_sub(children)
+    })
 }
 
 /// Name the claim now executing. Called once per claim by the required-floor fold; cleared when
@@ -78,10 +117,12 @@ fn current_claim() -> Option<String> {
 /// Record a fill that has just been computed.
 pub(crate) fn record_fill(cache: &'static str, key: &str, nanos: u64) {
     let filler = current_claim();
+    let self_nanos = close_fill(nanos);
     LEDGER.with(|l| {
         l.borrow_mut().caches.entry(cache).or_default().push(Fill {
             key: key.to_string(),
-            nanos,
+            inclusive_nanos: nanos,
+            self_nanos,
             filler,
             consumers: BTreeSet::new(),
         })
@@ -128,6 +169,7 @@ pub(crate) fn once<T>(
         return value;
     }
     let built = Cell::new(false);
+    begin_fill();
     let start = Instant::now();
     let value = cell.get_or_init(|| {
         built.set(true);
@@ -136,6 +178,7 @@ pub(crate) fn once<T>(
     if built.get() {
         record_fill(cache, key, start.elapsed().as_nanos() as u64);
     } else {
+        abandon_fill();
         record_hit(cache, key);
     }
     value
@@ -155,13 +198,15 @@ pub(crate) fn render_shared_fill_row_text_mirror(
     cache: &str,
     key: &str,
     fill_ms: u128,
+    inclusive_ms: u128,
     paid_by: Option<&str>,
     consumer_claims: usize,
     consumer_modules: usize,
 ) -> String {
     format!(
-        "[floor-shared-fill] cache={cache} key={key} fill_ms={fill_ms} paid_by={} \
-         consumer_claims={consumer_claims} consumer_modules={consumer_modules} disposition={}",
+        "[floor-shared-fill] cache={cache} key={key} fill_ms={fill_ms} \
+         inclusive_ms={inclusive_ms} paid_by={} consumer_claims={consumer_claims} \
+         consumer_modules={consumer_modules} disposition={}",
         paid_by.unwrap_or("<outside-fold>"),
         shared_fill_disposition_tag(paid_by.is_some(), consumer_modules),
     )
@@ -210,7 +255,7 @@ pub(crate) fn report() -> String {
         for (cache, fills) in &ledger.caches {
             for fill in fills {
                 fills_total += 1;
-                total_nanos += fill.nanos;
+                total_nanos += fill.self_nanos;
                 let modules: BTreeSet<&str> = fill
                     .filler
                     .iter()
@@ -218,12 +263,13 @@ pub(crate) fn report() -> String {
                     .chain(fill.consumers.iter().map(|c| module_of(c)))
                     .collect();
                 if fill.filler.is_some() && modules.len() > 1 {
-                    shared_nanos += fill.nanos;
+                    shared_nanos += fill.self_nanos;
                 }
                 out.push_str(&render_shared_fill_row_text_mirror(
                     cache,
                     &fill.key,
-                    u128::from(fill.nanos / 1_000_000),
+                    u128::from(fill.self_nanos / 1_000_000),
+                    u128::from(fill.inclusive_nanos / 1_000_000),
                     fill.filler.as_deref(),
                     fill.consumers.len(),
                     modules.len(),
@@ -248,6 +294,7 @@ mod tests {
 
     fn reset() {
         LEDGER.with(|l| *l.borrow_mut() = Ledger::default());
+        FILL_CHILD_NANOS.with(|s| s.borrow_mut().clear());
         set_current_claim(None);
     }
 
@@ -261,14 +308,15 @@ mod tests {
             render_shared_fill_row_text_mirror(
                 "reference_edges",
                 "dag+src/v2",
-                12197,
+                695,
+                17890,
                 Some("test.claim.foo.w_bar"),
                 3,
                 2,
             ),
-            "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=12197 \
-             paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 \
-             disposition=shared"
+            "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 \
+             inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 \
+             consumer_modules=2 disposition=shared"
         );
         assert_eq!(
             render_shared_fill_total_text_mirror(9, 60000, 42000, 0),
@@ -281,6 +329,7 @@ mod tests {
     fn a_fill_read_by_a_second_module_is_shared_not_exclusive() {
         reset();
         set_current_claim(Some("test.claim.a.w_one"));
+        begin_fill();
         record_fill("c", "k", 5_000_000_000);
         set_current_claim(Some("test.claim.b.w_two"));
         record_hit("c", "k");
@@ -300,6 +349,7 @@ mod tests {
     fn a_fill_only_its_own_module_reads_is_exclusive() {
         reset();
         set_current_claim(Some("test.claim.a.w_one"));
+        begin_fill();
         record_fill("c", "k", 1_000_000);
         set_current_claim(Some("test.claim.a.w_two"));
         record_hit("c", "k");
@@ -311,10 +361,40 @@ mod tests {
         );
     }
 
+    /// THE DEFECT THE FIRST FLOOR RECEIPT EXPOSED. These caches compose, so an outer fill's
+    /// wall contains its inner fills' wall. Summing inclusive figures counted the module graph's
+    /// nested path-index and reference-edge scans twice. The total must be over SELF, and the
+    /// inner fill must keep its own figure — it is the one that names the real scan.
+    #[test]
+    fn a_nested_fill_is_not_counted_twice_in_the_total() {
+        reset();
+        set_current_claim(Some("test.claim.a.w_one"));
+        begin_fill(); // outer: module-graph-shaped
+        begin_fill(); // inner: path-index-shaped, entirely inside the outer
+        record_fill("inner", "k", 12_000_000_000);
+        record_fill("outer", "k", 17_000_000_000);
+        set_current_claim(None);
+        let text = report();
+        assert!(
+            text.contains("cache=inner key=k fill_ms=12000 inclusive_ms=12000"),
+            "the inner scan keeps its own figure: {text}"
+        );
+        assert!(
+            text.contains("cache=outer key=k fill_ms=5000 inclusive_ms=17000"),
+            "the outer fill's own work is its wall minus what it triggered: {text}"
+        );
+        assert!(
+            text.contains("fill_ms=17000 shared_fill_ms=0"),
+            "the total is 17s of real scanning, not the 29s an inclusive sum would report: \
+             {text}"
+        );
+    }
+
     #[test]
     fn a_fill_outside_the_fold_is_not_charged_to_any_witness() {
         reset();
         set_current_claim(None);
+        begin_fill();
         record_fill("c", "k", 9_000_000);
         let text = report();
         assert!(
