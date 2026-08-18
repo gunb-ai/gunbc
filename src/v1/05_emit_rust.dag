@@ -5823,6 +5823,16 @@ fn return_type_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bo
 // The decision is structural — declared return connective is Arrow AND the returned expression
 // is a lambda — never a scan of the rendered string; the realization itself is a target row
 // (callable_value_wrap_template), so a target without one is unaffected by construction.
+// MEASURED RESIDUE, NOT A CLOSED CLASS (review 53557, confirmed by execution 2026-08-18): the wrap
+// below fires only when the RETURNED EXPRESSION ITSELF is a lambda. A declared arrow return whose
+// lambda sits in a tail position -- an if arm, a match arm, or the body after a let -- still emits
+// a bare closure under Rc<dyn Fn..>. All three forms were compiled and inspected: pick / pick_match
+// / pick_let each emitted `|n| ...` with no wrap and no diagnostic. Closing it is a tail-position
+// walk (wrap each tail leaf, not the whole rendered expression -- `Rc::new(move if c {..})` is not
+// Rust), which is emission-shape work rather than a wider predicate here. Until that lands the
+// class is NARROWED, not unwritable, and the honest arm for the residue is a located refusal: a
+// bare closure at a declared-arrow return can never compile, so refusing it breaks nothing that
+// currently works.
 fn rust_declared_return_is_callable(emit_info: EmitGraphInfo) -> Bool {
   match emit_info.fn_return_type {
     Present { value: ret } => ret.connective == Arrow

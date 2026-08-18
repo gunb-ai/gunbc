@@ -221,3 +221,36 @@ symptom. The subject is the depth-2 arm, and the repair is that a value whose ba
 match the refined type's base must **refuse** at the literal site rather than report the predicate
 unenforced. Left routed, not fixed here — this section is the receipt that decides which lane owns it.
 
+## 9. Root 2's residue, measured rather than argued (review 53557)
+
+The review observed that `rust_callable_return_wrap` fires only when the returned expression is
+itself a lambda, so a declared arrow return whose lambda sits in a tail position is untouched.
+Confirmed by compiling all three forms:
+
+```rust
+pub fn pick(flag: bool) -> Rc<dyn Fn(i64) -> i64> {
+    if flag.clone() { |n| (n.clone() + 1) } else { |n| (n.clone() + 2) }   // bare, unwrapped
+}
+pub fn pick_match(flag: bool) -> Rc<dyn Fn(i64) -> i64> {
+    match flag.clone() { true => |n| ..., false => |n| ... }                // bare, unwrapped
+}
+pub fn pick_let(flag: bool) -> Rc<dyn Fn(i64) -> i64> {
+    { let f = |n| ...; f }                                                 // bare, unwrapped
+}
+```
+
+Emitted with **0 diagnostics** in all three cases. So the class is **narrowed, not closed**, and
+this PR's §4 wording ("both conditions are structural") describes what the wrap decides, not a
+guarantee that every arrow return is covered.
+
+**Why the obvious widening is wrong:** the wrap applies to a rendered string, and
+`Rc::new(move if c { .. } else { .. })` is not Rust. Closing the class is a tail-position walk that
+wraps each tail *leaf*, which is emission-shape work.
+
+**Trigger, and the honest arm in the meantime:** a bare closure at a declared-arrow return can
+never compile, so the residue's correct treatment is a **located refusal** rather than silent
+emission of invalid Rust — refusing it cannot break anything that currently works. Neither the walk
+nor the refusal lands here: both are emitter-shape changes, and a corpus census belongs with them.
+Recorded in `05_emit_rust.dag` beside the function so the next reader meets the residue where the
+decision is made, not only in this receipt.
+
