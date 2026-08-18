@@ -484,3 +484,62 @@ an uncensored completion rather than an interrupt-point value, repeated runs on
 the SAME subject, and an order perturbation showing whether the charge moves to a
 different first toucher. The reversal control used earlier in this document is
 that third item; the second is the one this lane has never actually performed.
+
+## The error bar on a single floor observation, measured
+
+The lane had never measured the same subject twice. A GitHub re-run replays the
+pinned merge ref, so re-running one completed run yields two observations of one
+world — every row measured twice. Run 32182126916, attempts 1 and 2.
+
+**Same world, verified rather than assumed:** identical subject digest
+`b0eb3f2be1a200e0` and identical counters on both attempts (planned 9420,
+executed 9420, passed 8951, failed 0, budget_refused 102). *(Capture the log
+BEFORE triggering the re-run: GitHub serves only the latest attempt and the
+earlier archive is unrecoverable. This pair exists only because attempt 1 had
+been downloaded hours earlier for an unrelated check.)*
+
+**Paired per-identity delta**, on the 673 rows uncensored in both attempts —
+marginal distributions are not used, because opposing moves cancel and two
+histograms can look identical while every row moved:
+
+```
+median |delta|   3.8%
+p95    |delta|  12.7%
+p99    |delta|  16.4%
+largest moves   -5% on the 93.8s row, +12% on the 16.6s row
+```
+
+So a single floor observation carries a real error bar: about 4% typically and
+over 12% at the tail, on an identical subject.
+
+**Crossings of the 1552ms ceiling: zero.** Spread and crossings are different
+facts and only the second is the enforcement question — a 200ms move on a 400ms
+row is irrelevant, the same move at 1500ms flips a build. Across 673 genuine
+rows measured twice, none changed sides.
+
+**But that is not because the instrument is precise — it is because the danger
+band is nearly empty.** Only **4** genuine rows sit within the p95 flip-radius
+(191ms) of the ceiling, and the closest is:
+
+```
+margin 29ms (1.9%)   1523 -> 1517   where_refinement_cast_literal_oci_other_digest_algorithm_accepts
+```
+
+That row's margin is **below the median noise** of 3.8%, so it is the corpus's
+one materially flip-prone identity. It is also, independently, the exact row
+sharp-raven-273 observed at 1505ms and then 1274ms on a re-run of one frozen ref
+in the 1500ms-ceiling era — a 15.4% move, near this distribution's p99. Their
+flip is therefore the predicted behaviour of the closest-to-threshold row, not an
+anomaly, and two lanes located the same identity by different routes.
+
+**What this settles.** The ceiling is enforceable as a per-run threshold on
+today's population: enforcement risk is concentrated in a handful of rows rather
+than diffuse across the corpus. It is not safe in general — any row that comes to
+rest within ~200ms of the ceiling inherits a pass/fail that is partly a property
+of the runner, and a single-run quarantine decision inherits it too.
+
+**Caveat that changes the reading, and it nearly went unstated.** The rows
+*closest* to the ceiling overall sit at 1553ms and did not move at all between
+attempts — they are poll-pinned censored values, not measurements, so they cannot
+cross by construction. Including them makes the instrument look far steadier than
+it is. Every figure above excludes them.
