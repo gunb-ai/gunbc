@@ -385,3 +385,50 @@ can be made on facts rather than on the row's size.
 So the corpus's one row whose cost survived every screen is, on inspection, also
 not a witness-decomposition subject. Its expense is a fixture-authoring choice
 with a localised cause and a plausibly cheap fix.
+
+## Reconciled against the floor-path fill ledger (gunbc#8464)
+
+The shared-fill ledger instruments corpus caches on the floor path and reports,
+per fill, what it cost, who paid it, and who read it. Its run 32192150969
+(9425 claims, 19 fills) settles two of this document's rows at identity grain,
+and one of them corrects a claim made here.
+
+**First-touch, confirmed on the production path.** `unbound_dissolution_empty_literal_refuses`
+— one of the six runaways — paid a 51508ms `module_path_index` fill that **139
+claims across 29 modules** then read. That is 99.8% of the row's measured cost
+belonging to a computation twenty-nine other modules consume, observed on the
+floor rather than inferred from a sandbox. It is the g2 pair's shape at corpus
+scale, and it is the run's only shared fill.
+
+**But the 71-second row is the opposite, and that refines what this document
+said about it.** It paid a 29017ms `module_graph_facts` fill and a 24965ms
+`reference_edges` fill, and **both are exclusive** — no other module reads
+either. So its cost is genuinely its own, and the earlier framing here, "a cheap
+witness billed for the context it runs in", is not quite right.
+
+The two measurements reconcile once the variable is named. Isolated in a
+67-module closure the row costs 70-85ms; on the floor's 2376-module subject it
+costs 71s. Nothing about the witness changed — it asks for whole-corpus facts,
+so its bill is a function of how much corpus there is. It is neither a cheap row
+wearing someone else's cost nor an expensive assertion: it is a witness whose
+subject IS the corpus, measured small in isolation and large on the floor. The
+isolation run did not catch this because shrinking the corpus is precisely what
+makes such a row look cheap.
+
+That distinction is what decides the remedy, and it inverts between the two rows:
+
+- the 51.5s `module_path_index` payer must NOT be quarantined — moving it
+  recovers ~112ms and hands 51.5s to whichever of the other 29 modules runs
+  first. The fix is to hoist that fill into preparation, where its consumers
+  already are in spirit and where it stops being any witness's bill.
+- the 71s row's fills are wanted by nothing else, so moving or reducing it
+  recovers the whole amount.
+
+Per-row wall time does not distinguish these two cases. Nothing in this
+document's census does either — which is the strongest argument for the ledger
+being the instrument the population needed, and the honest limit of a census
+built from timings alone.
+
+**And a floor of ~108s no paring can reach:** three fills — a 55392ms module
+graph, a 35060ms path index, a 17646ms reference-edge scan — are paid before any
+claim runs. Quarantining every witness on the floor would not move them.
