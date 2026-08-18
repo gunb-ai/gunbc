@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Int, Timestamp }
 import std.measure { MoneyAmountMicro, Currency, Micro }
 import std.currency { CurrencyCode }
 import product.fabric.demand { BudgetAccountId }
+import product.fabric.execution { ReservationRef }
 import extdeps.accounting.encumbrance {
   EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
   LedgerAdvanced, EncumbranceRefused,
@@ -53,15 +54,26 @@ type MoneyAccount {
 // below would be checking nothing. The caller says what it means, and the
 // account says whether that is what it holds.
 
+// The reference is product.fabric.execution's ReservationRef. An ExecutionGrant
+// already carries money_reservation at that type and SettlementReceipt already
+// names it, so these requests are the two operations that ACT on the thing the
+// grant is holding -- taking an unbranded string here would mean the one type
+// in the flow that cannot be confused with another key space is dropped
+// precisely at the boundary where the grant hands over.
+//
+// The generic kernel below still takes NonEmptyStr, and that is correct rather
+// than a leak: an encumbrance kernel that knew about fabric reservations would
+// not be quantity-generic. The branding lives at the fabric API boundary and
+// projects inward, which is the direction that keeps both true.
 type MoneyReservationRequest {
-  reference: NonEmptyStr
+  reference: ReservationRef
   generation: Int
   maximum_liability: MoneyAmountMicro
   currency: CurrencyCode
 }
 
 type MoneySettlementRequest {
-  reference: NonEmptyStr
+  reference: ReservationRef
   generation: Int
   actual_spend: MoneyAmountMicro
   currency: CurrencyCode
@@ -150,7 +162,7 @@ fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcom
 
 fn release_money(
   a: MoneyAccount,
-  reference: NonEmptyStr,
+  reference: ReservationRef,
   generation: Int,
   reason: NonEmptyStr,
   released_at: Timestamp,
