@@ -3683,20 +3683,7 @@ fn match_pattern(
                 }
                 Value::Record { type_name, fields } => {
                     if *type_name != ctx.sym(name) {
-                        // Record-shaped coproduct payloads (constructed without a
-                        // parent_enum at the literal site) reconcile like variants:
-                        // qualified pattern arms carry the containment path while
-                        // runtime type_name stays bare. Scope the leaf fallback to
-                        // coproduct matches only — parent_enum is stamped by infer
-                        // on match arms over a sum type, so unqualified Record
-                        // patterns never widen across unrelated types.
-                        if parent_enum.is_none() {
-                            return None;
-                        }
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *type_name != ctx.sym(pat_last) {
-                            return None;
-                        }
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
