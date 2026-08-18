@@ -39,7 +39,7 @@ fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
   acc.result
 }
 
-fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+fn collect_type_node_import_surface_names(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
@@ -56,7 +56,7 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, v
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
+  type_decl_items: Map<String, v1.std.core.Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -77,12 +77,12 @@ type EmitGraphInfo {
 
   fn_generic_param_names: List<String>
   fn_type_env: v1.compiler.infer_env.TypeEnv
-  fn_return_type: Node?
+  fn_return_type: v1.std.core.Node?
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
+  type_decl_items: Map<String, v1.std.core.Node>
 }
 
 data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
@@ -134,7 +134,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
   }
 }
 
-fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> EmitGraphInfo {
+fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: v1.std.core.Node?) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -170,11 +170,11 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
   map_get(emit_info.type_summaries, type_name)
 }
 
-fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> Node? {
+fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> v1.std.core.Node? {
   map_get(emit_info.type_decl_items, type_name)
 }
 
-fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn emit_graph_records_type_decl(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match build_type_summary(item: item, source_indices: source_indices) {
     Present { value: _ } => true
     Absent =>
@@ -237,18 +237,18 @@ fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: S
   ) |> first
 }
 
-fn field_value_shape_from_type_node(type_node: Node) -> v1.std.core.FieldValueShape {
+fn field_value_shape_from_type_node(type_node: v1.std.core.Node) -> v1.std.core.FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
   let is_optional = normed.return_cardinality == CardOptional
   if is_optional { OptionalValue }
   else { PlainValue }
 }
 
-fn is_tuple_type(n: Node) -> Bool {
+fn is_tuple_type(n: v1.std.core.Node) -> Bool {
   n.connective == Conj && n.ident_span == none && n.children |> count == 2
 }
 
-fn build_struct_field_summaries(parent: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
+fn build_struct_field_summaries(parent: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let is_pair = is_tuple_type(n: parent)
   fold(parent.children |> enumerate, init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
@@ -266,7 +266,7 @@ fn build_struct_field_summaries(parent: Node, source_indices: Map<String, v1.std
   )
 }
 
-fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
+fn find_first_enum_field_node(variants: List<v1.std.core.Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   match variants |> first {
     Present { value: variant } =>
       match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
@@ -277,13 +277,13 @@ fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_i
   }
 }
 
-fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn enum_field_present_in_all_variants(variants: List<v1.std.core.Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   variants |> all(variant =>
     has_child_named(n: variant, name: field_name, source_indices: source_indices)
   )
 }
 
-fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn enum_field_type_consistent(variants: List<v1.std.core.Node>, field_name: String, expected: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   variants |> all(variant =>
     match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
       Present { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_indices: source_indices)
@@ -292,7 +292,7 @@ fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected
   )
 }
 
-fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
+fn build_enum_field_summaries(variants: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let first_field_names = match variants |> first {
     Present { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_indices: source_indices, node: f))
     Absent => []
@@ -319,7 +319,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   )
 }
 
-fn build_field_type_map(children: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FieldTypeMapBuild {
+fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FieldTypeMapBuild {
   fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
@@ -339,7 +339,7 @@ fn build_field_type_map(children: List<Node>, source_indices: Map<String, v1.std
   )
 }
 
-fn build_type_summary(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TypeSummary? {
+fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TypeSummary? {
   if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
@@ -416,7 +416,7 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
   )
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> EmitInfoBuildState {
+fn add_emit_item_summary(state: EmitInfoBuildState, item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> EmitInfoBuildState {
   let decl_name = authored_name_at(source_indices: source_indices, node: item)
   let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
     EmitInfoBuildState {

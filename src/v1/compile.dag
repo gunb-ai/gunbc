@@ -178,7 +178,7 @@ fn json_optional_string(value: String?) -> String {
 }
 
 
-fn dag_node_missing_ref_error(node: Node) -> v1.std.core.ErrorNode {
+fn dag_node_missing_ref_error(node: v1.std.core.Node) -> v1.std.core.ErrorNode {
   make_error_node(
     diagnostic: v1.std.core.InternalError {
       message: concat("dag artifact: node missing from nodes table (key=", dag_node_key(node: node), ")"),
@@ -188,14 +188,14 @@ fn dag_node_missing_ref_error(node: Node) -> v1.std.core.ErrorNode {
   )
 }
 
-fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
+fn dag_emit_check_ref_target(node: v1.std.core.Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Present { value: _ } => []
     Absent => [dag_node_missing_ref_error(node: node)]
   }
 }
 
-fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
+fn dag_emit_check_optional_ref_target(value: v1.std.core.Node?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match value {
     Present { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
     Absent => []
@@ -209,7 +209,7 @@ fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<Strin
   }
 }
 
-fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
+fn dag_emit_check_node_refs(node: v1.std.core.Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   concat(
     if is_import_statement_node(n: node) {
       []
@@ -230,11 +230,11 @@ fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<
   )
 }
 
-fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
+fn dag_emit_ref_errors(order: List<v1.std.core.Node>, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   order |> flat_map(n => dag_emit_check_node_refs(node: n, key_to_id: key_to_id))
 }
 
-fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
+fn build_dag_key_to_id(order: List<v1.std.core.Node>) -> Map<String, String> {
   order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(value: pair.first)))
   )
@@ -244,14 +244,14 @@ fn dag_graph_source_indices(typed: v1.compiler.infer_items.ResolvedGraph) -> Map
   typed.modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
-fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
+fn serialize_node_ref(node: v1.std.core.Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
     Absent => "{\"$ref\": null}"
   }
 }
 
-fn json_optional_node_ref(value: Node?, key_to_id: Map<String, String>) -> String {
+fn json_optional_node_ref(value: v1.std.core.Node?, key_to_id: Map<String, String>) -> String {
   match value {
     Present { value: inner } => serialize_node_ref(node: inner, key_to_id: key_to_id)
     Absent => "null"
@@ -355,7 +355,7 @@ fn serialize_span(span: SourceSpan) -> String {
   concat("{\"start\": ", to_string(value: span.start), ", \"end\": ", to_string(value: span.end), "}")
 }
 
-fn serialize_import_node(imp: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn serialize_import_node(imp: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let names_json = if import_is_all(n: imp) {
     "{\"kind\": \"ImportAll\"}"
   } else {
@@ -394,7 +394,7 @@ fn serialize_literal(value: std.syntax.LiteralValue) -> String {
   }
 }
 
-fn serialize_field_binding(binding: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn serialize_field_binding(binding: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   concat(
     "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_indices: source_indices)),
     ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices),
@@ -417,14 +417,14 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1
   }
 }
 
-fn serialize_named_arg(arg: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_named_arg(arg: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_match_arm(arm: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_match_arm(arm: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
     ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
@@ -432,7 +432,7 @@ fn serialize_match_arm(arm: Node, source_indices: Map<String, v1.std.core.Newlin
     "}")
 }
 
-fn serialize_field_init(field_init: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_field_init(field_init: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
@@ -549,7 +549,7 @@ fn serialize_descent_evidence(de: List<std.induction.SubValueRelation>?) -> Stri
   }
 }
 
-fn serialize_expr_data(expr_node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   let ch = expr_node.children
   let name = authored_name_at(source_indices: source_indices, node: expr_node)
   match expr_node.expr_data {
@@ -700,7 +700,7 @@ fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, St
   }
 }
 
-fn serialize_resource_use(resource_use: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_resource_use(resource_use: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
     ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
@@ -708,7 +708,7 @@ fn serialize_resource_use(resource_use: Node, source_indices: Map<String, v1.std
     "}")
 }
 
-fn serialize_field(field: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_field(field: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
@@ -719,7 +719,7 @@ fn serialize_field(field: Node, source_indices: Map<String, v1.std.core.NewlineI
     "}")
 }
 
-fn serialize_param(param: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_param(param: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: param_node_type_expr(n: param), key_to_id: key_to_id),
@@ -728,13 +728,13 @@ fn serialize_param(param: Node, source_indices: Map<String, v1.std.core.NewlineI
     "}")
 }
 
-fn is_import_statement_node(n: Node) -> Bool {
+fn is_import_statement_node(n: v1.std.core.Node) -> Bool {
   import_is_all(n: n) || (
     (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData
       && (n.params |> count) == 0)
 }
 
-fn serialize_node_params_json(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_node_params_json(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   if is_module_shell_node(n: node) {
     "[]"
   } else {
@@ -742,7 +742,7 @@ fn serialize_node_params_json(node: Node, source_indices: Map<String, v1.std.cor
   }
 }
 
-fn serialize_module_imports_json(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn serialize_module_imports_json(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let imports = module_imports(n: node)
   if imports |> count == 0 {
     "[]"
@@ -753,7 +753,7 @@ fn serialize_module_imports_json(node: Node, source_indices: Map<String, v1.std.
   }
 }
 
-fn serialize_node_record(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_node_record(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
@@ -789,7 +789,7 @@ fn serialize_typed_module(module: v1.compiler.infer_items.TypedModule, key_to_id
     "}")
 }
 
-fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_dag_nodes_table(order: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   order |> enumerate |> map(pair =>
     concat(
       json_quote(s: concat("n", to_string(value: pair.first))),
@@ -1013,7 +1013,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 }
 
 type CensusFillParse {
-  modules: List<Node>,
+  modules: List<v1.std.core.Node>,
   newline_indices: List<v1.std.core.NewlineIndex>,
   diagnostics: List<v1.std.core.ErrorNode>
   occurrence_transport: std.occurrence_identity.OccurrenceTransport

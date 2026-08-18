@@ -29,28 +29,28 @@ fn parse_module_source_ok(source: String, file: String) -> Bool {
   parsed.result.error == none
 }
 
-fn block_statement_nodes(body: Node) -> List<Node> {
+fn block_statement_nodes(body: v1.std.core.Node) -> List<v1.std.core.Node> {
   match body.expr_data {
     ExprBlock => body.children
     _ => [body]
   }
 }
 
-fn fn_item_body_stmts(item: Node) -> List<Node>? {
+fn fn_item_body_stmts(item: v1.std.core.Node) -> List<v1.std.core.Node>? {
   match item.body {
     Present { value: body } => Present { value: block_statement_nodes(body: body) }
     Absent => none
   }
 }
 
-fn module_fn_item(module: Node, name: String) -> Node? {
+fn module_fn_item(module: v1.std.core.Node, name: String) -> v1.std.core.Node? {
   match module_items(n: module) |> filter(item => item.name == name) |> first {
     Present { value: item } => Present { value: item }
     Absent => none
   }
 }
 
-fn let_init_is_var_named(let_expr: Node, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn let_init_is_var_named(let_expr: v1.std.core.Node, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match let_expr.expr_data {
     ExprLet =>
       let val = let_value(texpr: let_expr)
@@ -63,7 +63,7 @@ fn let_init_is_var_named(let_expr: Node, name: String, source_indices: Map<Strin
   }
 }
 
-fn stmt_is_unary_neg_call_to(stmt: Node, callee: String) -> Bool {
+fn stmt_is_unary_neg_call_to(stmt: v1.std.core.Node, callee: String) -> Bool {
   match stmt.expr_data {
     ExprUnaryOp { op: Neg } =>
       match stmt.children |> first {

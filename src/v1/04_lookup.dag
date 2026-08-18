@@ -18,11 +18,11 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type KnownMethodResolution {
   semantics: MethodSemantics?
-  result_type: Node?
+  result_type: v1.std.core.Node?
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
-fn lookup_in_scope(locals: Map<String, v1.compiler.infer_env.TypeBinding>, name: String) -> Node? {
+fn lookup_in_scope(locals: Map<String, v1.compiler.infer_env.TypeBinding>, name: String) -> v1.std.core.Node? {
   match map_get(locals, name) {
     Present { value: binding } => Present { value: binding.resolved }
     Absent => Absent
@@ -47,7 +47,7 @@ fn func_sig_if_resolved(lookup: v1.compiler.infer_sigs.FuncSigLookup) -> v1.comp
 
 type BorrowedCensusDecl {
   owner_module_path: String
-  node: Node
+  node: v1.std.core.Node
 }
 
 fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> BorrowedCensusDecl? {
@@ -129,7 +129,7 @@ type DeclarationLookupFailure
   = DeclarationNotIndexedAtQualifiedName { qualified_name: String }
 
 type ConstructorDeclarationLookup
-  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: Node }
+  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: v1.std.core.Node }
   | NotAdmissionBearingReference {}
   | AdmissionBearingDeclarationUnavailable { identity: ExactDeclarationIdentity, cause: DeclarationLookupFailure }
 
@@ -232,7 +232,7 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
   }
 }
 
-fn global_bare_callable_node(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> Node? {
+fn global_bare_callable_node(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.std.core.Node? {
   if algebra_method_template_name(name: name) {
     return none
   }
@@ -244,7 +244,7 @@ fn global_bare_callable_node(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
   }
 }
 
-fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
+fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner = with_required_cardinality(n: n)
@@ -288,7 +288,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
   }
 }
 
-fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
+fn lookup_coproduct_common_field_node(variants: List<v1.std.core.Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   let found_in_all = variants |> all(v =>
     has_child_named(n: v, name: field_name, source_indices: source_indices)
   )
@@ -306,11 +306,11 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
   }
 }
 
-fn resolve_scrutinee_type_node(env: v1.compiler.infer_env.TypeEnv, n: Node) -> Node {
+fn resolve_scrutinee_type_node(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node) -> v1.std.core.Node {
   resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
 }
 
-fn resolve_method_receiver_type(receiver_type: Node, env: v1.compiler.infer_env.TypeEnv) -> Node {
+fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let raw_name = authored_name_at(source_indices: env.source_indices, node: receiver_type)
   if receiver_type.connective == Conj || is_declared_container_alias_spelling(name: raw_name) {
     receiver_type
@@ -325,7 +325,7 @@ fn resolve_method_receiver_type(receiver_type: Node, env: v1.compiler.infer_env.
   }
 }
 
-fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
+fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node, seen: Map<String, Bool>) -> v1.std.core.Node {
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
@@ -364,7 +364,7 @@ fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: Node,
   } else { normed }
 }
 
-fn map_value_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) -> Node? {
+fn map_value_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
@@ -378,7 +378,7 @@ fn map_value_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) ->
   }
 }
 
-fn map_key_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) -> Node? {
+fn map_key_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
@@ -392,7 +392,7 @@ fn map_key_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) -> N
   }
 }
 
-fn set_element_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) -> Node? {
+fn set_element_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let set_type = normalize_access_type_node(n: resolved)
@@ -406,7 +406,7 @@ fn set_element_type_in_env(type_node: Node, env: v1.compiler.infer_env.TypeEnv) 
   }
 }
 
-fn field_summary_for_type(base_type: Node, env: v1.compiler.infer_env.TypeEnv, field: String) -> v1.std.core.FieldSummary? {
+fn field_summary_for_type(base_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, field: String) -> v1.std.core.FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
   let normed_opt = normed.return_cardinality == CardOptional
@@ -438,8 +438,8 @@ fn field_summary_for_type(base_type: Node, env: v1.compiler.infer_env.TypeEnv, f
 }
 
 type MethodFieldResult {
-  field_node: Node
-  result_type: Node
+  field_node: v1.std.core.Node
+  result_type: v1.std.core.Node
   size_effect: std.algebra.CollectionSizeEffect?
   cost_shape: std.algebra.CostShape?
   algebra_template: std.algebra.AlgebraFieldTemplate?
@@ -450,7 +450,7 @@ type StructuralMethodLookup {
   kernel_diagnostics: List<v1.std.core.ErrorNode>
 }
 
-fn product_field_result_type(field: Node) -> Node? {
+fn product_field_result_type(field: v1.std.core.Node) -> v1.std.core.Node? {
   match field.inferred {
     Present { value: Resolved { node: rt } } =>
       if rt.params |> count > 0 {
@@ -465,7 +465,7 @@ fn product_field_result_type(field: Node) -> Node? {
   }
 }
 
-fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
+fn map_lookup_result_type(product: v1.std.core.Node, field: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   if authored_name_at(source_indices: source_indices, node: product) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
@@ -481,7 +481,7 @@ fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String
   }
 }
 
-fn lookup_field_in_product(product: Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> MethodFieldResult? {
+fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> MethodFieldResult? {
   let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Present { value: field } =>
@@ -498,7 +498,7 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
   }
 }
 
-fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> StructuralMethodLookup {
+fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> StructuralMethodLookup {
   let is_product = receiver_type.connective == Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
@@ -530,7 +530,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
   }
 }
 
-fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.core.Node, method_name: String, fold_accumulator_type: v1.std.core.Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
 
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {

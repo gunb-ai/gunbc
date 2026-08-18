@@ -36,12 +36,12 @@ fn v1_trait_derive_refuse(message: String) -> String {
   concat("compile_error!(\"", message, "\");")
 }
 
-fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
+fn v1_coproduct_all_variants_nullary(children: List<v1.std.core.Node>) -> Bool {
   children |> all(v => v.children |> count == 0)
 }
 
 fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
-  children: List<Node>,
+  children: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   if v1_coproduct_all_variants_nullary(children: children) {
@@ -51,12 +51,12 @@ fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
   }
 }
 
-fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn rust_nominal_identity_carrier_shape_eligible(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) == "Symbol"
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
 }
 
-fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   if (children |> count) != 1 {
     false
   } else {
@@ -69,7 +69,7 @@ fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_i
 }
 
 fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
-  children: List<Node>,
+  children: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
@@ -112,7 +112,7 @@ fn v1_with_map_key_requirement(
   }
 }
 
-fn v1_type_expr_is_keyed_map(type_expr: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
     Present { value: algebra } => algebra == "PartialFunction"
     Absent => false
@@ -120,7 +120,7 @@ fn v1_type_expr_is_keyed_map(type_expr: Node, source_indices: Map<String, v1.std
 }
 
 fn v1_map_key_head_names_in_type_expr(
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
   let own = if v1_type_expr_is_keyed_map(type_expr: type_expr, source_indices: source_indices) {
@@ -142,7 +142,7 @@ fn v1_map_key_head_names_in_type_expr(
 }
 
 fn v1_type_expr_head_names(
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
   concat(
@@ -171,7 +171,7 @@ data map_key_alias_hop_gap_note: String = "MEASURED GAP, ATTEMPTED AND REVERTED 
 fn v1_map_key_propagate_round(
   round: MapKeyRequirementRound,
   declared_type_names: List<String>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> MapKeyRequirementRound {
   declared_type_names |> fold(init: round, f: (acc, type_name) =>
@@ -193,7 +193,7 @@ fn v1_map_key_propagate_round(
   )
 }
 
-fn map_has_declared_type(type_decl_items: Map<String, Node>, name: String) -> Bool {
+fn map_has_declared_type(type_decl_items: Map<String, v1.std.core.Node>, name: String) -> Bool {
   match map_get(type_decl_items, name) {
     Present { value: _ } => true
     Absent => false
@@ -203,7 +203,7 @@ fn map_has_declared_type(type_decl_items: Map<String, Node>, name: String) -> Bo
 fn v1_map_key_fixpoint_loop(
   round: MapKeyRequirementRound,
   declared_type_names: List<String>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   remaining: Int,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Set<String> {
@@ -231,8 +231,8 @@ fn v1_map_key_fixpoint_loop(
 }
 
 fn v1_map_key_required_type_names(
-  seed_type_exprs: List<Node>,
-  type_decl_items: Map<String, Node>,
+  seed_type_exprs: List<v1.std.core.Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Set<String> {
   let declared_type_names = map_keys(type_decl_items)
@@ -255,7 +255,7 @@ fn v1_map_key_required_type_names(
 
 fn v1_emit_struct_derives(
   name: String,
-  children: List<Node>,
+  children: List<v1.std.core.Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
@@ -285,7 +285,7 @@ fn v1_emit_struct_derives(
 }
 
 fn v1_emit_enum_derives(
-  children: List<Node>,
+  children: List<v1.std.core.Node>,
   map_key_required: Bool,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> String {
@@ -312,7 +312,7 @@ fn v1_emit_enum_derives(
 
 fn v1_type_expr_contains_param_name(
   param_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
@@ -330,9 +330,9 @@ fn v1_type_expr_contains_param_name(
 
 fn v1_generic_param_used_as_collection_element(
   param_name: String,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
@@ -352,7 +352,7 @@ fn v1_generic_param_used_as_collection_element(
 
 fn v1_generic_param_used_as_bare_value_param_type(
   param_name: String,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
@@ -365,9 +365,9 @@ fn v1_generic_param_used_as_bare_value_param_type(
 
 fn v1_generic_param_used_in_value_param_type_surface(
   param_name: String,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
@@ -383,7 +383,7 @@ fn v1_generic_param_used_in_value_param_type_surface(
 
 fn v1_item_phantom_only_param_names(
   item_name: String,
-  item: Node,
+  item: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
@@ -401,11 +401,11 @@ fn v1_phantom_only_param_names_contains(names: List<String>, param_name: String)
 
 fn v1_declared_type_app_mentions_param_non_phantom_loop(
   param_name: String,
-  decl_params: List<Node>,
-  type_args: List<Node>,
+  decl_params: List<v1.std.core.Node>,
+  type_args: List<v1.std.core.Node>,
   phantom_slot_names: List<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
@@ -448,10 +448,10 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
 fn v1_declared_type_app_mentions_param_non_phantom(
   param_name: String,
   decl_name: String,
-  decl: Node,
-  type_args: List<Node>,
+  decl: v1.std.core.Node,
+  type_args: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   v1_declared_type_app_mentions_param_non_phantom_loop(
@@ -472,9 +472,9 @@ fn v1_declared_type_app_mentions_param_non_phantom(
 
 fn v1_type_expr_mentions_param_non_phantom(
   param_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
@@ -521,10 +521,10 @@ fn v1_type_expr_mentions_param_non_phantom(
 
 fn v1_fn_phantom_only_generic_param_names(
   generic_param_names: List<String>,
-  value_params: List<Node>,
-  ret: Node,
+  value_params: List<v1.std.core.Node>,
+  ret: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
   generic_param_names |> filter(p =>
@@ -549,7 +549,7 @@ fn v1_fn_phantom_only_generic_param_names(
 
 fn v1_type_expr_mentions_type_head(
   type_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if authored_name_at(source_indices: source_indices, node: type_expr) == type_name {
@@ -567,8 +567,8 @@ fn v1_type_expr_mentions_type_head(
 
 fn v1_fn_generic_clone_bound_via_referenced_decl(
   param_name: String,
-  value_params: List<Node>,
-  type_decl_items: Map<String, Node>,
+  value_params: List<v1.std.core.Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   clone_bounds: Map<String, Set<String>>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
@@ -602,7 +602,7 @@ fn v1_fn_generic_clone_bound_via_referenced_decl(
 
 fn v1_fn_generic_clone_bound_via_bounded_container_element(
   param_name: String,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   clone_bounds: Map<String, Set<String>>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
@@ -624,9 +624,9 @@ fn v1_type_param_needs_clone_bound(
   return_is_bare_generic: Bool,
   ret_name: String,
   body_is_param_ref: Bool,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
@@ -638,9 +638,9 @@ fn v1_type_param_needs_clone_bound(
 
 fn v1_fn_param_type_needs_clone_bound(
   param_name: String,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
@@ -678,13 +678,13 @@ fn v1_fn_param_type_needs_clone_bound(
 
 fn v1_generic_params_needing_clone_bound(
   generic_param_names: List<String>,
-  value_params: List<Node>,
+  value_params: List<v1.std.core.Node>,
   return_is_bare_generic: Bool,
   ret_name: String,
   body_is_param_ref: Bool,
-  ret: Node,
+  ret: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
   let phantom_only = v1_fn_phantom_only_generic_param_names(
@@ -731,7 +731,7 @@ fn v1_generic_params_needing_clone_bound(
 
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   param_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
@@ -747,7 +747,7 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 
 fn v1_item_type_param_needs_clone_bound_struct(
   param_name: String,
-  field_type_exprs: List<Node>,
+  field_type_exprs: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   field_type_exprs |> any(te =>
@@ -759,7 +759,7 @@ fn v1_item_type_param_needs_clone_bound_struct(
   )
 }
 
-fn v1_wf_child_type_node(ch: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node {
+fn v1_wf_child_type_node(ch: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   let resolved = child_type_node(ch: ch)
   if authored_name_at(source_indices: source_indices, node: resolved) != "" {
     resolved
@@ -768,7 +768,7 @@ fn v1_wf_child_type_node(ch: Node, source_indices: Map<String, v1.std.core.Newli
   }
 }
 
-fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: type_expr) == param_name
     && type_expr.connective == NoConnective
     && (type_expr.children |> count) == 0
@@ -776,13 +776,13 @@ fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indice
 
 fn v1_type_expr_head_is_known(
   name: String,
-  type_decl_items: Map<String, Node>
+  type_decl_items: Map<String, v1.std.core.Node>
 ) -> Bool {
   is_container_type(name: name) || map_get(type_decl_items, name) != none
 }
 
 fn v1_item_generic_param_name_set(
-  item: Node,
+  item: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Set<String> {
   item.params |> fold(init: empty_set(), f: (acc, p) =>
@@ -791,8 +791,8 @@ fn v1_item_generic_param_name_set(
 }
 
 fn v1_type_expr_clone_undecided_head(
-  type_expr: Node,
-  type_decl_items: Map<String, Node>,
+  type_expr: v1.std.core.Node,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>,
   item_generic_params: Set<String>
 ) -> String {
@@ -820,9 +820,9 @@ fn v1_type_expr_clone_undecided_head(
 
 fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
@@ -858,11 +858,11 @@ fn v1_type_expr_clone_impl_needs_param(
 
 fn v1_declared_type_app_clone_impl_needs_param_loop(
   param_name: String,
-  decl_params: List<Node>,
-  type_args: List<Node>,
+  decl_params: List<v1.std.core.Node>,
+  type_args: List<v1.std.core.Node>,
   phantom_slot_names: List<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
@@ -905,10 +905,10 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
 fn v1_declared_type_app_clone_impl_needs_param(
   param_name: String,
   decl_name: String,
-  decl: Node,
-  type_args: List<Node>,
+  decl: v1.std.core.Node,
+  type_args: List<v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   v1_declared_type_app_clone_impl_needs_param_loop(
@@ -929,11 +929,11 @@ fn v1_declared_type_app_clone_impl_needs_param(
 
 fn v1_declared_arg_positions_need_clone_param(
   param_name: String,
-  decl_params: List<Node>,
-  type_args: List<Node>,
+  decl_params: List<v1.std.core.Node>,
+  type_args: List<v1.std.core.Node>,
   bound_params: Set<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
@@ -965,9 +965,9 @@ fn v1_declared_arg_positions_need_clone_param(
 
 fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
-  type_expr: Node,
+  type_expr: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
@@ -1003,7 +1003,7 @@ fn v1_type_expr_wf_needs_clone_param(
   }
 }
 
-fn v1_item_field_type_exprs(item: Node) -> List<Node> {
+fn v1_item_field_type_exprs(item: v1.std.core.Node) -> List<v1.std.core.Node> {
   if is_coproduct_type(n: item) {
     item.children |> flat_map(variant => variant.children |> map(f => child_type_node(ch: f)))
   } else {
@@ -1013,9 +1013,9 @@ fn v1_item_field_type_exprs(item: Node) -> List<Node> {
 
 fn v1_item_param_wf_needs_clone(
   param_name: String,
-  item: Node,
+  item: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   v1_item_field_type_exprs(item: item) |> any(te =>
@@ -1031,10 +1031,10 @@ fn v1_item_param_wf_needs_clone(
 
 fn v1_fn_param_wf_needs_clone(
   param_name: String,
-  value_params: List<Node>,
-  ret: Node,
+  value_params: List<v1.std.core.Node>,
+  ret: v1.std.core.Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
@@ -1055,8 +1055,8 @@ fn v1_fn_param_wf_needs_clone(
 }
 
 fn v1_item_clone_undecided_head(
-  item: Node,
-  type_decl_items: Map<String, Node>,
+  item: v1.std.core.Node,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let item_generic_params = v1_item_generic_param_name_set(item: item, source_indices: source_indices)
@@ -1101,8 +1101,8 @@ fn v1_clone_bound_round_add(
 fn v1_clone_bound_round_for_item(
   round: CloneBoundRound,
   type_name: String,
-  item: Node,
-  type_decl_items: Map<String, Node>,
+  item: v1.std.core.Node,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
   item.params |> fold(init: round, f: (acc, p) =>
@@ -1124,7 +1124,7 @@ fn v1_clone_bound_round_for_item(
 fn v1_clone_bound_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
-  item: Node,
+  item: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
   if is_coproduct_type(n: item) {
@@ -1148,7 +1148,7 @@ fn v1_clone_bound_seed_for_item(
 
 fn v1_clone_bound_fixpoint_loop(
   generic_type_names: List<String>,
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   bounds: Map<String, Set<String>>,
   remaining: Int,
   source_indices: Map<String, v1.std.core.NewlineIndex>
@@ -1183,7 +1183,7 @@ fn v1_clone_bound_fixpoint_loop(
   }
 }
 
-fn v1_generic_declared_type_names(type_decl_items: Map<String, Node>) -> List<String> {
+fn v1_generic_declared_type_names(type_decl_items: Map<String, v1.std.core.Node>) -> List<String> {
   map_keys(type_decl_items) |> filter(n =>
     match map_get(type_decl_items, n) {
       Present { value: item } => (item.params |> count) > 0
@@ -1193,7 +1193,7 @@ fn v1_generic_declared_type_names(type_decl_items: Map<String, Node>) -> List<St
 }
 
 fn v1_clone_bounded_type_params(
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Map<String, Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
@@ -1233,7 +1233,7 @@ NOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has n
 fn v1_clone_impl_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
-  item: Node,
+  item: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
   let field_type_exprs = v1_item_field_type_exprs(item: item)
@@ -1252,7 +1252,7 @@ fn v1_clone_impl_seed_for_item(
 }
 
 fn v1_clone_impl_required_type_params(
-  type_decl_items: Map<String, Node>,
+  type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Map<String, Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
@@ -1289,7 +1289,7 @@ fn v1_item_clone_bounded_param_names(
 }
 
 fn v1_emit_type_params_with_clone_bounds(
-  params: List<Node>,
+  params: List<v1.std.core.Node>,
   clone_param_names: List<String>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> String {
@@ -1311,7 +1311,7 @@ fn v1_emit_type_params_with_clone_bounds(
 fn v1_emit_struct_from_capability_table(
   module_path: String,
   name: String,
-  children: List<Node>,
+  children: List<v1.std.core.Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,

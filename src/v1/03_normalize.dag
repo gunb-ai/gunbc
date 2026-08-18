@@ -9,7 +9,7 @@ type NormalizeResult {
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
-fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
+fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
   let nname = authored_name_at(source_indices: source_indices, node: n)

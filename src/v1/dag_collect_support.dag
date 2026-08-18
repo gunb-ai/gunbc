@@ -7,13 +7,13 @@ module v1.compiler.dag_collect_support
 type DagCollectSlot {
   key: String
   fp: String
-  node: Node
+  node: v1.std.core.Node
   seq: Int
 }
 
 type DagCollectAcc {
   seen: Map<String, String>
-  order: List<Node>
+  order: List<v1.std.core.Node>
   collision_errors: List<v1.std.core.ErrorNode>
 }
 
@@ -94,7 +94,7 @@ fn child_subtree_hash(connective: v1.std.core.Connective, digests: List<String>)
   }
 }
 
-fn dag_node_surface_leaf_mix(node: Node) -> String {
+fn dag_node_surface_leaf_mix(node: v1.std.core.Node) -> String {
   atom_identity_hash(concat(
     node.name, "|",
     connective_name(value: node.connective), "|",
@@ -135,7 +135,7 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
   }
 }
 
-fn dag_node_surface_fingerprint_rec(node: Node) -> String {
+fn dag_node_surface_fingerprint_rec(node: v1.std.core.Node) -> String {
   let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
   let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
   let with_children = hash_combine(dag_node_surface_leaf_mix(node: node), child_subtree_hash(connective: node.connective, digests: child_hashes))
@@ -143,7 +143,7 @@ fn dag_node_surface_fingerprint_rec(node: Node) -> String {
   hash_combine(with_params, match_pattern_fingerprint_rec(pattern: node.match_pattern))
 }
 
-fn dag_node_surface_fingerprint(node: Node) -> String {
+fn dag_node_surface_fingerprint(node: v1.std.core.Node) -> String {
   dag_node_surface_fingerprint_rec(node: node)
 }
 
@@ -151,7 +151,7 @@ fn dag_collect_fp_memo_reset() -> Bool {
   true
 }
 
-fn dag_node_surface_fingerprint_memo(node: Node) -> String {
+fn dag_node_surface_fingerprint_memo(node: v1.std.core.Node) -> String {
   dag_node_surface_fingerprint(node: node)
 }
 

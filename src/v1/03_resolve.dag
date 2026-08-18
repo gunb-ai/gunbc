@@ -10,12 +10,12 @@ type ModuleGraph {
 }
 
 type ModuleOccurrenceInput {
-  module: Node
+  module: v1.std.core.Node
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
 }
 
 fn module_occurrence_input(
-  module: Node,
+  module: v1.std.core.Node,
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
 ) -> ModuleOccurrenceInput {
   ModuleOccurrenceInput {
@@ -24,7 +24,7 @@ fn module_occurrence_input(
   }
 }
 
-fn module_occurrence_input_node(input: ModuleOccurrenceInput) -> Node {
+fn module_occurrence_input_node(input: ModuleOccurrenceInput) -> v1.std.core.Node {
   input.module
 }
 
@@ -35,7 +35,7 @@ fn module_occurrence_input_transport(
 }
 
 type ResolvedModule {
-  module: Node
+  module: v1.std.core.Node
   dep_order: Int
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
 }
@@ -103,7 +103,7 @@ fn resolve_modules_with_occurrence_transport(
 }
 
 fn resolve_modules(
-  modules: List<Node>,
+  modules: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> ModuleGraph {
   resolve_modules_with_occurrence_transport(
@@ -124,22 +124,22 @@ fn resolve_modules(
   )
 }
 
-fn find_module(module_index: Map<String, Node>, path: String) -> Node? {
+fn find_module(module_index: Map<String, v1.std.core.Node>, path: String) -> v1.std.core.Node? {
   map_get(module_index, path)
 }
 
-fn get_exported_names(module: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+fn get_exported_names(module: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let item_names = module_items(n: module) |> map(item => get_item_name(item: item, source_indices: source_indices))
   let variant_names = module_items(n: module)
     |> flat_map(item => get_variant_names(item: item, source_indices: source_indices))
   concat(item_names, variant_names, map_keys(kernel_type_set))
 }
 
-fn get_item_name(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn get_item_name(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   authored_name_at(source_indices: source_indices, node: item)
 }
 
-fn get_variant_names(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+fn get_variant_names(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let is_coproduct = item.connective == Disj
   if is_coproduct { item.children |> map(c => authored_name_at(source_indices: source_indices, node: c)) }
   else { [] }
@@ -150,7 +150,7 @@ type DuplicateCheckState {
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
-fn check_duplicate_modules(modules: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
+fn check_duplicate_modules(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
   let result = modules |> fold(init: DuplicateCheckState {
     seen_names: empty_map(),
     diagnostics: []
@@ -182,7 +182,7 @@ fn topo_sort_key(name: String) -> String {
   if name == "std.types" { "" } else { name }
 }
 
-fn topological_sort(modules: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TopoResult {
+fn topological_sort(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TopoResult {
 
   let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
   TopoResult {

@@ -92,11 +92,11 @@ fn caret_token_stream_only_eof_remains(stream: v1.compiler.parse.TokenStream) ->
   all(remaining, t => t.shape == ShEof)
 }
 
-fn caret_expr_is_symbol_literal(expr: Node) -> Bool {
+fn caret_expr_is_symbol_literal(expr: v1.std.core.Node) -> Bool {
   expr_data_variant(data: expr.expr_data) == "ExprLiteral"
 }
 
-fn caret_expr_is_discriminant_call(expr: Node) -> Bool {
+fn caret_expr_is_discriminant_call(expr: v1.std.core.Node) -> Bool {
   expr_data_variant(data: expr.expr_data) == "ExprCall"
     && expr_call_func_at(texpr: expr, source_indices: empty_map()) == "discriminant"
 }

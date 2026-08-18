@@ -12,16 +12,16 @@ type UniqueAccum {
 
 type OpEntry {
   name: String
-  outputs: List<Node>
-  params: List<Node>
+  outputs: List<v1.std.core.Node>
+  params: List<v1.std.core.Node>
 }
 
 type ServiceMethodResult {
-  result_type: Node
-  op_params: List<Node>
+  result_type: v1.std.core.Node
+  op_params: List<v1.std.core.Node>
 }
 
-fn is_typed_service_call_receiver(receiver: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn is_typed_service_call_receiver(receiver: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
       let f = field_access_field_at(texpr: receiver, source_indices: source_indices)
@@ -39,7 +39,7 @@ fn is_typed_service_call_receiver(receiver: Node, source_indices: Map<String, v1
   }
 }
 
-fn extract_typed_service_name(receiver: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+fn extract_typed_service_name(receiver: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
       let f = field_access_field_at(texpr: receiver, source_indices: source_indices)
@@ -54,12 +54,12 @@ fn extract_typed_service_name(receiver: Node, source_indices: Map<String, v1.std
   }
 }
 
-fn collect_typed_service_calls(texpr: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+fn collect_typed_service_calls(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] }, source_indices: source_indices)
   result.result
 }
 
-fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
+fn collect_typed_service_calls_into(texpr: v1.std.core.Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
   let this_acc = match texpr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
       let r = method_receiver(texpr: texpr)
@@ -79,7 +79,7 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
   result
 }
 
-fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
+fn collect_called_func_names_into(texpr: v1.std.core.Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -93,7 +93,7 @@ fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum, source_indices:
   result
 }
 
-fn collect_called_func_names(texpr: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
+fn collect_called_func_names(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] }, source_indices: source_indices)
   result.result
 }
@@ -119,7 +119,7 @@ type ModuleCallees {
   items: List<ItemCallees>
 }
 
-fn item_callees_for(m: v1.compiler.infer_items.TypedModule, item: Node) -> ItemCallees {
+fn item_callees_for(m: v1.compiler.infer_items.TypedModule, item: v1.std.core.Node) -> ItemCallees {
   let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
   let has_no_body = item.body == none
   if has_no_body {
@@ -196,7 +196,7 @@ fn expand_transitive_services(modules: List<v1.compiler.infer_items.TypedModule>
   expand_transitive_services_loop(module_callees: build_module_callees(modules: modules), registry: registry, remaining_passes: remaining_passes)
 }
 
-fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
+fn check_service_field_access_node(base_type: v1.std.core.Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   if base_type.connective == NoConnective && base_type.children |> count == 0 {
     let path = concat(authored_name_at(source_indices: source_indices, node: base_type), ".", field)
     match map_get(service_registry, path) {
@@ -206,7 +206,7 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
   } else { none }
 }
 
-fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ServiceMethodResult? {
+fn check_service_method_call_node(receiver_type: v1.std.core.Node, method: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ServiceMethodResult? {
   if receiver_type.connective == NoConnective && receiver_type.children |> count == 0 {
     match map_get(service_registry, authored_name_at(source_indices: source_indices, node: receiver_type)) {
       Present { value: ops } =>
@@ -233,6 +233,6 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
   } else { none }
 }
 
-fn service_op_entry(child: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> OpEntry {
+fn service_op_entry(child: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> OpEntry {
   OpEntry { name: authored_name_at(source_indices: source_indices, node: child), outputs: inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params }
 }

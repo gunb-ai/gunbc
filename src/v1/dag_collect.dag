@@ -4,18 +4,18 @@ module v1.compiler.dag_collect
 
 
 
-fn is_import_slot_node(n: Node) -> Bool {
+fn is_import_slot_node(n: v1.std.core.Node) -> Bool {
   import_is_all(n: n) || (
     n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
 }
 
-fn is_module_shell_node(n: Node) -> Bool {
+fn is_module_shell_node(n: v1.std.core.Node) -> Bool {
   n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
     && n.transport == none && n.uses |> count == 0
     && n.params |> all(p => is_import_slot_node(n: p))
 }
 
-fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
+fn dag_node_is_resolved_identity_shell(node: v1.std.core.Node) -> Bool {
   match node.expr_data {
     NoExprData =>
       match node.inferred {
@@ -28,7 +28,7 @@ fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   }
 }
 
-fn dag_node_collection_anchor(node: Node) -> Node {
+fn dag_node_collection_anchor(node: v1.std.core.Node) -> v1.std.core.Node {
   if dag_node_is_resolved_identity_shell(node: node) {
     match node.inferred {
       Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
@@ -39,7 +39,7 @@ fn dag_node_collection_anchor(node: Node) -> Node {
   }
 }
 
-fn dag_node_key(node: Node) -> String {
+fn dag_node_key(node: v1.std.core.Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
   if anchor.span.start == 0 && anchor.span.end == 0 {
     concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
@@ -53,15 +53,15 @@ fn dag_node_key(node: Node) -> String {
   }
 }
 
-fn dag_node_fingerprint(node: Node) -> String {
+fn dag_node_fingerprint(node: v1.std.core.Node) -> String {
   dag_node_surface_fingerprint_memo(node: dag_node_collection_anchor(node: node))
 }
 
-fn dag_collect_nodes_list(nodes: List<Node>, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_nodes_list(nodes: List<v1.std.core.Node>, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
   nodes |> fold(init: slots, f: (s, n) => dag_collect_insert_slots(node: n, slots: s, collision_errors: collision_errors))
 }
 
-fn dag_collect_optional_node(value: Node?, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_optional_node(value: v1.std.core.Node?, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
   match value {
     Present { value: inner } => dag_collect_insert_slots(node: inner, slots: slots, collision_errors: collision_errors)
     Absent => slots
@@ -90,7 +90,7 @@ fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, v1.compi
   }
 }
 
-fn dag_collect_node_tree(node: Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_node_tree(node: v1.std.core.Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
     slots
@@ -106,7 +106,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, v1.compiler.dag_collect_
   dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
-fn dag_collect_insert_slots(node: Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
+fn dag_collect_insert_slots(node: v1.std.core.Node, slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> Map<String, v1.compiler.dag_collect_support.DagCollectSlot> {
   let anchor = dag_node_collection_anchor(node: node)
   let key = dag_node_key(node: anchor)
   match map_get(slots, key) {

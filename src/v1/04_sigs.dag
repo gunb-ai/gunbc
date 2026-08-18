@@ -7,8 +7,8 @@ module v1.compiler.infer_sigs
 
 type ResolvedFuncSig {
   name: String
-  params: List<Node>
-  inferred: Node
+  params: List<v1.std.core.Node>
+  inferred: v1.std.core.Node
   is_async: Bool
   output_provenance: List<Map<String, std.induction.SubValueRelation>>
   variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
@@ -153,7 +153,7 @@ fn none_resolved_sig() -> ResolvedFuncSig? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
       collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
@@ -163,7 +163,7 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>,
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -291,7 +291,7 @@ fn topo_resolve_loop(
 fn resolve_func_sigs(
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
     parent_envs: List<ResolvedFuncEnv>,
-    items: List<Node>,
+    items: List<v1.std.core.Node>,
     module_name: String,
     source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> ResolveFuncSigsResult {
