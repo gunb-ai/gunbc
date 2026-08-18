@@ -39688,6 +39688,46 @@ pub fn run_required_floor(
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
+    //
+    // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
+    // `build_module_path_index_from_witness_roots`, which walks and PARSES every module under
+    // the default source roots. It is thread-local cached, so exactly one claim per process
+    // pays the build and every later one hits the cache. That claim is then billed ~45s
+    // against a 1552ms per-claim ceiling and reports as a budget failure, while its identical
+    // siblings run in ~760ms.
+    //
+    // MEASURED, three runs, same rows, evaluation order alphabetical and stable throughout:
+    //
+    //   run                     emitted_lib_rs...omits    emitter_nested...single
+    //   pre-quarantine              739ms                     761ms
+    //   32189985063               42647ms  <- billed           687ms
+    //   32193032348 (main)        quarantined                45941ms  <- billed
+    //
+    // The bill is POSITIONAL, not a property of any witness: quarantining the victim hands it
+    // to the next module in evaluation order. Three modules were quarantined down this chain
+    // (dissolution_census 55.5s, emitted_lib_rs 42.6s, and the 83.0s
+    // extdeps_scope_placement_gate row) before the pattern was read correctly -- each read as
+    // a slow test, all three were the same one-time build landing on whoever touched it first.
+    //
+    // Paying it in preparation is where the cost BELONGS: it is a fact of the subject, not of
+    // any claim, and the floor's whole design is one preparation serving every claim. Total
+    // run wall is unchanged -- the same work happens once either way; what changes is that no
+    // claim is charged for building the subject it was handed.
+    //
+    // dissolve-on: the index derives from the prepared inventory instead of a second disk
+    // walk. The bytes are already in hand -- the emit memo is keyed on
+    // `floor_inventory_content_digest` precisely because that index reads the same files --
+    // and `languages_decl_records_from_inventory` is the existing precedent for the
+    // inventory-sourced form of a census that used to scan. When that lands this warm call is
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let index_warm_started = std::time::Instant::now();
+    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    eprintln!(
+        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
+        index_warm_started.elapsed().as_millis(),
+        warmed_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
