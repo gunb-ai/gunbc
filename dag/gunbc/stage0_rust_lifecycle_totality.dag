@@ -234,7 +234,7 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
   }
 }
 
-fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   let classified = derived_file_grain_classified_repo_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
