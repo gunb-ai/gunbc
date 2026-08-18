@@ -301,7 +301,19 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: FastLaneEvalBudget,
     reason: "Exact-cap boundary witness for 07_target_carriers closure (#8210): discriminates complete vs elided transport at manifest_inline_list_max. Per-PR consumer is run_closure_boundary_overlay_claims on source_root_ingest_gate.",
     dissolution: unbound_dissolution(description: "boundary witness re-enrolls on per-PR discovery without transport overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
-  )
+  ),
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
+      function: "infer_transform_add_vertical_witness_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: FalsifierSubstrateLongLane,
+    budget: SubstrateLongLaneEvalBudget,
+    expected: ExpectWitnessHolds,
+    reason: "First Transform derivation discriminating receipt (#8395): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Measured ~12274ms thread-CPU locally vs 5001ms fast-lane abort on PR CI discovery (BudgetExceeded) — cost is the production frontend+infer crossing. Fast per-PR control: infer_transform_non_add_remains_frontier_holds (subtract dispatch gate). Owner: v2-inferred-tree-completeness.",
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
+  }
 ]
 
 fn explicit_witness_admission_matches(

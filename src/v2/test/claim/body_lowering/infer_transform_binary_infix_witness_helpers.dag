@@ -30,7 +30,7 @@ import v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers {
   wave1_gate1_normalized_add_module
 }
 
-data infer_transform_binary_infix_witness_helpers_note: String = "Shared helpers for Transform binary-infix derivation witnesses. add_probe normalize→resolve→infer exceeds per-PR 5s fast-lane eval budget — the discriminating add vertical lives in long/infer_transform_binary_infix_witness_test.dag; fast-lane keeps subtract frontier control only."
+data infer_transform_binary_infix_witness_helpers_note: String = "Shared helpers for Transform binary-infix derivation witnesses. add_probe normalize→resolve→infer exceeds per-PR 5s fast-lane eval budget — discriminating add vertical enrolled on FalsifierSubstrateLongLane (long/infer_transform_binary_infix_witness_test.dag + gunbc.explicit_witness_admission). Fast per-PR subtract frontier control in body_lowering/infer_transform_binary_infix_witness_test.dag."
 
 fn infer_transform_subtract_fixture() -> Node {
   lower_binary_infix(

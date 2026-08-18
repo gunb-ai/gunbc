@@ -12,7 +12,7 @@ import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers 
 }
 import v2.std.witness { Holds, Violates }
 
-data infer_transform_binary_infix_witness_note: String = "v2-inferred-tree-completeness fast-lane witnesses: subtract binary infix stays Accepted + GroundingNotDerived (dispatch gate control). Add vertical normalize→resolve→infer exceeds per-PR 5s eval budget — discriminating add-body-derives / arrow-frontier pair lives in long/infer_transform_binary_infix_witness_test.dag."
+data infer_transform_binary_infix_witness_note: String = "v2-inferred-tree-completeness fast-lane witness: subtract binary infix stays Accepted + GroundingNotDerived (dispatch gate control — non-add must not route through await_transform_row). Add vertical discriminating receipt enrolled on FalsifierSubstrateLongLane (long/infer_transform_binary_infix_witness_test.dag + gunbc.explicit_witness_admission)."
 
 test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
   let body = infer_transform_subtract_fixture()

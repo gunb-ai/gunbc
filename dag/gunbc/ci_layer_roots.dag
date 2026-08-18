@@ -1617,6 +1617,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
   },
   SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
+    function: "infer_transform_add_vertical_witness_holds",
+    reason: "First Transform derivation discriminating receipt (#8395): add_probe normalize→resolve→infer exceeds per-PR 5s fast-lane eval budget (5001ms thread-CPU abort on PR CI discovery batch 3; ~12274ms measured locally). One infer pass asserts Transform body DerivedGrounding and Arrow GroundingNotDerived. Fast per-PR subtract dispatch-gate control stays in body_lowering/infer_transform_binary_infix_witness_test.dag. Paired with gunbc.explicit_witness_admission row (FalsifierSubstrateLongLane, SubstrateLongLaneEvalBudget).",
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
+  },
+  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/body_lowering/atom_body_discriminator_witness_test.dag",
     function: "atom_body_discriminator_single_pass_receipt_holds",
     reason: "~18661ms thread-CPU measured locally (2026-08-14; wall=18704ms) — 3.7× over the 5s fast-lane budget. The 5001ms figure is only where a --eval-budget-ms 5000 probe aborted (EvalBudgetExceeded), not completed witness cost. One tokenize→parse→normalize over the four-declaration atom-body discriminator module, then declaration/parameter_count/ArrowBodyForm production rows plus both RED mirror directions on the same normalized tree. The cost is the production frontend crossing — not a second pass and not a synthetic node_synthetic fixture.",

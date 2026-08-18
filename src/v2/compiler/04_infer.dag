@@ -1181,7 +1181,7 @@ fn infer_loop_iteration(
   }
 }
 
-data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. dissolve-on: general operator/operand typing table subsumes this rule."
+data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating add vertical witness enrolled on FalsifierSubstrateLongLane (gunbc.explicit_witness_admission + falsifier_substrate_long_lane_rows infer_transform_add_vertical_witness_holds); fast per-PR subtract dispatch control in body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general operator/operand typing table subsumes this rule."
 
 fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
   match op_node.kind {
