@@ -355,12 +355,10 @@ fn inventory_entry_under_abs_roots(
     abs_roots: &[String],
     ws: &std::path::Path,
 ) -> bool {
-    let normalized = rel_path.replace('\\', "/");
-    let abs = ws.join(&normalized);
-    let abs_str = abs.to_string_lossy();
+    let abs = ws.join(rel_path.replace('\\', "/"));
     abs_roots.iter().any(|root| {
-        let root_norm = root.replace('\\', "/");
-        abs_str.starts_with(root_norm.as_str())
+        let root_path = std::path::Path::new(root);
+        abs == *root_path || abs.starts_with(root_path)
     })
 }
 
@@ -1791,6 +1789,23 @@ mod parse_only_uppercase_variant_regression_tests {
         assert!(
             production.contains("should_emit_nullary_variant_value_atom"),
             "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
+        );
+    }
+}
+
+#[cfg(test)]
+mod inventory_root_prefix_tests {
+    use super::inventory_entry_under_abs_roots;
+    use std::path::Path;
+
+    #[test]
+    fn sibling_directory_sharing_a_prefix_is_not_under_the_root() {
+        let ws = Path::new("/repo");
+        let roots = vec!["/repo/dag".to_string()];
+        assert!(inventory_entry_under_abs_roots("dag/mod.dag", &roots, ws));
+        assert!(
+            !inventory_entry_under_abs_roots("dag_something/foo.dag", &roots, ws),
+            "a sibling whose name merely starts with the root basename must not be counted"
         );
     }
 }

@@ -1024,24 +1024,37 @@ struct PureCallMemo {
 
 #[derive(Default)]
 struct PrepareGrammarCrossClaimMemo {
-    map: HashMap<u64, Value>,
+    map: HashMap<(usize, u64), Value>,
 }
 
 thread_local! {
     static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
         RefCell::new(PrepareGrammarCrossClaimMemo::default());
-    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<String, Value>> =
+    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<usize, Value>> =
         RefCell::new(HashMap::new());
+    static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
 }
 
 pub fn clear_cross_claim_pure_memos() {
     PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
         .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
     ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow_mut().clear());
+    CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
+}
+
+fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
+    CROSS_CLAIM_FN_KEEPALIVE.with(|k| {
+        let mut keepalive = k.borrow_mut();
+        let ptr = Rc::as_ptr(fn_node) as usize;
+        if !keepalive.iter().any(|n| Rc::as_ptr(n) as usize == ptr) {
+            keepalive.push(fn_node.clone());
+        }
+    });
 }
 
 fn try_cross_claim_pure_memo(
     ctx: &InterpContext,
+    fn_node: &Rc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<Value> {
@@ -1052,17 +1065,19 @@ fn try_cross_claim_pure_memo(
             EvalRecomputeArgKey::ContentHash(h) => h,
             _ => return None,
         };
-        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
-            .with(|m| m.borrow().map.get(&content_hash).cloned());
+        let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
+        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
     }
     if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
-        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(func_name).cloned());
+        let ptr = Rc::as_ptr(fn_node) as usize;
+        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(&ptr).cloned());
     }
     None
 }
 
 fn store_cross_claim_pure_memo(
     ctx: &InterpContext,
+    fn_node: &Rc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
     result: &Value,
@@ -1071,15 +1086,21 @@ fn store_cross_claim_pure_memo(
         let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
         if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
             if let EvalRecomputeArgKey::ContentHash(h) = key {
-                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
-                    .with(|m| m.borrow_mut().map.insert(h, result.clone()));
+                keep_cross_claim_fn(fn_node);
+                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
+                    m.borrow_mut()
+                        .map
+                        .insert((Rc::as_ptr(fn_node) as usize, h), result.clone())
+                });
             }
         }
         return;
     }
     if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
+        keep_cross_claim_fn(fn_node);
         ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| {
-            m.borrow_mut().insert(func_name.to_string(), result.clone());
+            m.borrow_mut()
+                .insert(Rc::as_ptr(fn_node) as usize, result.clone());
         });
     }
 }
@@ -4238,7 +4259,7 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(v) = try_cross_claim_pure_memo(ctx, func_name, args) {
+    if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
         return Ok(v);
     }
     let trace_on = eval_recompute_trace_enabled();
@@ -4246,7 +4267,7 @@ fn eval_pure_named_call(
     if !trace_on && !memo_on {
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
-            store_cross_claim_pure_memo(ctx, func_name, args, v);
+            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
         }
         return result;
     }
@@ -4278,7 +4299,7 @@ fn eval_pure_named_call(
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
-        store_cross_claim_pure_memo(ctx, func_name, args, v);
+        store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
         if let Ok(v) = &result {
