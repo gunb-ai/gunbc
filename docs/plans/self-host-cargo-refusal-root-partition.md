@@ -2449,6 +2449,6 @@ mismatches like `Witness<ExitOk>` vs `Witness<Rc<Outcome<…>>>`.
 
 Full receipt:
 [`docs/probes/e0308_root_partition_2026-08-18.md`](../probes/e0308_root_partition_2026-08-18.md).
-Classifier: `docs/probes/e0308_root_partition_classify.py` · repro:
-`docs/probes/run_e0308_partition.sh` · per-site TSV:
-`docs/probes/e0308_partition_2026-08-18/sites_classified.tsv`.
+Per-site TSV:
+[`docs/probes/e0308_partition_2026-08-18/sites_classified.tsv`](../probes/e0308_partition_2026-08-18/sites_classified.tsv).
+Measurement route and entry set are in the receipt's Method table.

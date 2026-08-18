@@ -13,11 +13,10 @@ percentages; this receipt is E0308-only at site grain.
 | date | 2026-08-18 |
 | git_sha | `4e427773b78f04704dc9425a7acebdf719651da0` |
 | route | `gunbc compile --source-root dag --source-root src/v2 --entry <mod> --target rust --dependency-pool-index primary-precedence` → `cssl_assemble` → `cargo build --release --lib` |
-| contract | `CSSL_STD_SEED_LINK=1`, empty shim (per `curated_cargo_probe_one.sh`) |
-| modules | M=11 (`partition §11.14`) |
+| contract | `CSSL_STD_SEED_LINK=1`, empty shim (per `curated_cargo_probe_one.sh` invocation contract) |
+| entry modules | `05_emit`, `06_translate`, `04_infer`, `03_ingest`, `emit_host`, `01_tokenize`, `materialization_carriers`, `emit_module`, `03_normalize`, `program_partition`, `05_eval` (`src/v2/compiler/<name>.dag`) |
 | unit of count | one distinct `(file, line, col, E0308, expected/found pair)` |
-| classifier | `docs/probes/e0308_root_partition_classify.py` |
-| repro | `docs/probes/run_e0308_partition.sh` |
+| root assignment | mechanism names from partition §11.3/§11.4, keyed on the expected/found pair |
 
 `frontier_probe_survey` was not used.
 
@@ -85,11 +84,12 @@ The dispatch title's **~40–47%** holds on the shared floor modules; larger clo
 
 ## Artifacts
 
-- Per-site TSV: [`e0308_partition_2026-08-18/sites_classified.tsv`](e0308_partition_2026-08-18/sites_classified.tsv)
-- Classifier: [`e0308_root_partition_classify.py`](e0308_root_partition_classify.py)
-- Run script: [`run_e0308_partition.sh`](run_e0308_partition.sh)
+- Per-site TSV (banked evidence): [`e0308_partition_2026-08-18/sites_classified.tsv`](e0308_partition_2026-08-18/sites_classified.tsv)
 
-Raw cargo logs are scratch-only (dated snapshot attractor); re-derive via the run script.
+To repeat this measurement: use the **Method** table above — same `gunbc compile` route,
+`CSSL_STD_SEED_LINK=1`, empty shim, M=11 entry set, and deduplicate E0308 diagnostics to
+distinct `(file, line, col, expected/found pair)` sites before assigning mechanism roots per §11.
+Raw cargo logs were scratch-only at measurement time and are not retained in tree.
 
 ## Recommendation
 

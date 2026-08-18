@@ -75,4 +75,4 @@
 2. Root assignment follows partition §11.3/§11.4 mechanism names.
 3. One site may map to one root; pair diversity within a root is expected.
 
-Repro: `docs/probes/run_e0308_partition.sh`
+Repeat measurement: see [`e0308_root_partition_2026-08-18.md`](e0308_root_partition_2026-08-18.md) Method table.
