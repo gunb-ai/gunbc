@@ -1177,15 +1177,12 @@ struct PrepareGrammarCrossClaimMemo {
 thread_local! {
     static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
         RefCell::new(PrepareGrammarCrossClaimMemo::default());
-    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<usize, Value>> =
-        RefCell::new(HashMap::new());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
 }
 
 pub fn clear_cross_claim_pure_memos() {
     PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
         .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
-    ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow_mut().clear());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
 }
 
@@ -1221,10 +1218,6 @@ fn try_cross_claim_pure_memo(
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
         return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
     }
-    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
-        let ptr = Rc::as_ptr(fn_node) as usize;
-        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(&ptr).cloned());
-    }
     None
 }
 
@@ -1247,14 +1240,6 @@ fn store_cross_claim_pure_memo(
                 });
             }
         }
-        return;
-    }
-    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
-        keep_cross_claim_fn(fn_node);
-        ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| {
-            m.borrow_mut()
-                .insert(Rc::as_ptr(fn_node) as usize, result.clone());
-        });
     }
 }
 
