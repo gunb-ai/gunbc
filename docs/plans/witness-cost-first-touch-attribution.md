@@ -552,7 +552,20 @@ poll-pinned 1553ms band inside a paired distribution. Each one flatters: it
 makes the instrument look steadier, or the population smaller, than it is. So
 this is a standing step rather than a thing to remember when suspicious:
 **before computing any statistic over floor timings, drop every right-censored
-value and say how many were dropped.** An interrupt is not a measurement, and a
+value, say how many were dropped, and name the channel each value came from.**
+The channel is part of the datum because the three are not equally trustworthy
+and no field distinguishes them once the number is extracted:
+
+```
+BUDGET-REFUSED      an interrupt      -> right-censored, no upper bound
+cost is at least    an interrupt      -> right-censored, lower bound only
+cost is exactly     a completion      -> a measurement
+[floor-witness-slow] elapsed          -> a measurement (fires at the 100ms warn)
+a poll-pinned 1553ms with 1ms margin  -> neither; it cannot move by construction
+```
+
+(the channel refinement is sharp-raven-273's, and it is the right generalization:
+"how many were dropped" hides that the dropped rows failed in different ways) An interrupt is not a measurement, and a
 pinned value cannot move by construction, so neither can answer a question about
 movement in either direction — they are unmeasured, which is a third state from
 pass and fail.
