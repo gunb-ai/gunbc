@@ -184,29 +184,18 @@ fn accum_refusal(acc: PairAccum, axis: SelectionAxis) -> PairAccum {
 }
 
 fn accum_both_read(acc: PairAccum, axis: SelectionAxis, a_value: Int, b_value: Int) -> PairAccum {
-  let cmp = axis_comparison_int(goal: axis.goal, a: a_value, b: b_value)
-  PairAccum {
-    refused_axes: acc.refused_axes,
-    a_worse_somewhere: acc.a_worse_somewhere || accum_cmp_is_worse(cmp: cmp),
-    winning_axes: if accum_cmp_is_better(cmp: cmp) {
-      concat(acc.winning_axes, one_axis_name(name: axis.name))
-    } else { acc.winning_axes },
-  }
-}
-
-fn accum_cmp_is_better(cmp: AxisComparison) -> Bool {
-  match cmp {
-    Better => true,
-    Same => false,
-    Worse => false,
-  }
-}
-
-fn accum_cmp_is_worse(cmp: AxisComparison) -> Bool {
-  match cmp {
-    Worse => true,
-    Same => false,
-    Better => false,
+  match axis_comparison_int(goal: axis.goal, a: a_value, b: b_value) {
+    Better => PairAccum {
+      refused_axes: acc.refused_axes,
+      a_worse_somewhere: acc.a_worse_somewhere,
+      winning_axes: concat(acc.winning_axes, one_axis_name(name: axis.name)),
+    },
+    Worse => PairAccum {
+      refused_axes: acc.refused_axes,
+      a_worse_somewhere: true,
+      winning_axes: acc.winning_axes,
+    },
+    Same => acc,
   }
 }
 
@@ -293,10 +282,3 @@ fn pareto_label(s: ParetoStanding) -> NonEmptyStr {
   }
 }
 
-fn standing_is_dominated(s: ParetoStanding) -> Bool {
-  match s {
-    DominatedBy { candidate, axes } => true,
-    ProvisionallyNonDominated { sensitivities } => false,
-    IncomparablePendingEvidence { missing } => false,
-  }
-}

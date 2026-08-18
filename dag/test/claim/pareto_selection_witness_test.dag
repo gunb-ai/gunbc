@@ -7,7 +7,7 @@ import std.pareto {
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding,
   ProvisionallyNonDominated, DominatedBy, IncomparablePendingEvidence,
   PairStanding, PairDominates, PairNoDominance, PairRefused,
-  compare_pair, pair_dominates, entry_standing, pareto_label, standing_is_dominated,
+  compare_pair, pair_dominates, entry_standing, pareto_label,
 }
 
 // SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
@@ -111,7 +111,7 @@ test fn witness_tradeoff_pair_both_survive() -> Bool {
     DominatedBy { candidate, axes } => false,
     IncomparablePendingEvidence { missing } => false,
   }
-  standing_is_dominated(s: cheap) == false && standing_is_dominated(s: strong) == false
+  witness_not_dominated(s: cheap) && witness_not_dominated(s: strong)
     && cheap_carries_sensitivities
 }
 
@@ -125,7 +125,7 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
     ProvisionallyNonDominated { sensitivities } => false,
     DominatedBy { candidate, axes } => false,
   }
-  let cheap_unmoved = standing_is_dominated(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)) == false
+  let cheap_unmoved = witness_not_dominated(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities))
   pending_incomparable && cheap_unmoved && pareto_label(s: pending) == "not computable"
 }
 
@@ -159,6 +159,14 @@ test fn witness_axis_orientation_is_consulted() -> Bool {
   pair_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
     && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
     && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only) == false
+}
+
+fn witness_not_dominated(s: ParetoStanding) -> Bool {
+  match s {
+    DominatedBy { candidate, axes } => false,
+    ProvisionallyNonDominated { sensitivities } => true,
+    IncomparablePendingEvidence { missing } => false,
+  }
 }
 
 fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
