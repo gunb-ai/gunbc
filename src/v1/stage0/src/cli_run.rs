@@ -40759,9 +40759,9 @@ impl Drop for FloorPreparedAuthorityGuard {
     }
 }
 
-/// Register the one prepared subject for the current required-floor run so pool-root parse
-/// builtins and the languages census read the sources preparation already held, instead of
-/// re-acquiring the tree.
+/// Register prepared source bytes for pool-root parse builtins and the languages census.
+/// Callers: `run_required_floor` after `prepare_repository_once`, and the
+/// `floor_prepared_toll_receipt` harness (which never resolves — it registers an index it already read).
 pub fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::coproduct_reflection::register_floor_decl_parse_memo();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
@@ -40775,17 +40775,6 @@ pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
     crate::coproduct_reflection::clear_floor_decl_parse_memo();
-    crate::v1_interpreter::clear_cross_claim_pure_memos();
-}
-
-/// Measurement harness only (`floor_prepared_toll_receipt` bin): register inventory bytes
-/// the fold already read, without repeating `prepare_repository_once` resolve.
-pub fn register_floor_prepared_inventory_measurement(inventory: Vec<PreparedSourceView>) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo();
-    FLOOR_PREPARED_AUTHORITY.with(|cell| {
-        *cell.borrow_mut() = Some(FloorPreparedAuthority { inventory });
-    });
-    FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
@@ -40847,7 +40836,7 @@ pub fn run_floor_prepared_toll_receipt() {
         languages_disk_ms, languages_inventory_ms, item4_reclaimed
     );
 
-    register_floor_prepared_inventory_measurement(inventory);
+    register_floor_prepared_authority(inventory);
 
     let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
     let file_path = "src/cuartifact_ok.rs";
