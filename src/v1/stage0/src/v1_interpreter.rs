@@ -3662,10 +3662,18 @@ fn match_pattern(
                     if *variant_name != ctx.sym(name) {
                         // Qualified PATTERN spellings (module.Variant) carry the containment
                         // path; variant identity is the bare arm name, normalized at value
-                        // construction — so only the pattern side needs the last segment.
+                        // construction — compare last segments on both sides when either may
+                        // carry a qualified spelling (prepared-subject scope).
                         let pat_last = name.rsplit('.').next().unwrap_or(name);
                         if *variant_name != ctx.sym(pat_last) {
-                            return None;
+                            let var_resolved = ctx.resolve(*variant_name);
+                            let var_last = var_resolved
+                                .rsplit('.')
+                                .next()
+                                .unwrap_or(var_resolved.as_str());
+                            if var_last != pat_last {
+                                return None;
+                            }
                         }
                     }
                     let mut bindings = HashMap::new();
@@ -3683,7 +3691,19 @@ fn match_pattern(
                 }
                 Value::Record { type_name, fields } => {
                     if *type_name != ctx.sym(name) {
-                        return None;
+                        // Mirror the Variant arm: record-literal coproduct payloads may carry a
+                        // qualified type_name while patterns spell the bare arm name.
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        if *type_name != ctx.sym(pat_last) {
+                            let type_resolved = ctx.resolve(*type_name);
+                            let type_last = type_resolved
+                                .rsplit('.')
+                                .next()
+                                .unwrap_or(type_resolved.as_str());
+                            if type_last != pat_last {
+                                return None;
+                            }
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
