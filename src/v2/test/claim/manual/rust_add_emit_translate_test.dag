@@ -35,14 +35,14 @@ data rust_add_missing_translation_rules_target: v2.std.compilers.target_model.Ta
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   target_serialize_source_from_model(
     target: rust_add_missing_translation_rules_target,
     emitted: rust_add_emitted_root
   )
 }
 
-data rust_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
+data rust_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
 
 test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
@@ -232,7 +232,7 @@ data rust_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.
   }
 }
 
-fn anchor_rust_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_rust_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
 }
 
@@ -243,7 +243,7 @@ fn anchor_rust_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.co
   )
 }
 
-data rust_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
+data rust_add_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_rust_add_emit_accepts()
 
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {

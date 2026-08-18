@@ -75,7 +75,7 @@ data witness_other_sha256_hex: std.types.NonEmptyStr = "cafebabecafebabecafebabe
 
 data witness_other_sha256_digest: std.content_hash.Sha256Digest = std.content_hash.Sha256Digest { hex: witness_other_sha256_hex }
 
-data witness_citation_pin: Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_citation_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
   source: witness_subject_ref,
   access_route: witness_authority.uri,
   byte_domain: RawResponseBody,
@@ -83,7 +83,7 @@ data witness_citation_pin: Pin<std.citation.CitedRepresentationIdentity> = citat
   expected_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_mirror_route_pin: Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_mirror_route_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
   source: witness_subject_ref,
   access_route: witness_mirror_access_route,
   byte_domain: RawResponseBody,
@@ -91,7 +91,7 @@ data witness_mirror_route_pin: Pin<std.citation.CitedRepresentationIdentity> = c
   expected_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_other_source_pin: Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_other_source_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
   source: witness_other_subject_ref,
   access_route: witness_other_authority.uri,
   byte_domain: RawResponseBody,
@@ -128,7 +128,7 @@ data witness_text_quote: std.citation.CitationSelector = std.citation.TextQuoteS
   suffix: none,
 })
 
-data witness_citation_target: CitationTarget<std.citation.CitationSelector> = citation_target(
+data witness_citation_target: std.citation.CitationTarget<std.citation.CitationSelector> = citation_target(
   expected_pin: witness_citation_pin,
   selector: witness_text_quote,
 )
@@ -145,7 +145,7 @@ data witness_false_web_annotation_fragment_selector: std.citation.CitationSelect
   value: witness_pdf_fragment_wire,
 })
 
-data witness_citation_recorded_fact: RecordedFact<CitationRecordedFact<std.citation.CitationSelector>> = citation_recorded_fact(
+data witness_citation_recorded_fact: std.claim_evidence.RecordedFact<CitationRecordedFact<std.citation.CitationSelector>> = citation_recorded_fact(
   id: "cit0-fixture-fact" as std.claim_evidence.RecordedFactId,
   cited: witness_citation_target,
 )

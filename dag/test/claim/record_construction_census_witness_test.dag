@@ -19,7 +19,7 @@ fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) ->
   spelling == (target as String) || ends_with(spelling, "." + (target as String))
 }
 
-fn census_construction_fold(n: Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
+fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
   fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -40,7 +40,7 @@ fn census_construction_fold(n: Node, target: v2.std.node.Symbol) -> CensusConstr
   )
 }
 
-fn census_construction_count(n: Node, target: v2.std.node.Symbol) -> Int {
+fn census_construction_count(n: v2.std.node.Node, target: v2.std.node.Symbol) -> Int {
   census_construction_fold(n: n, target: target).constructions
 }
 

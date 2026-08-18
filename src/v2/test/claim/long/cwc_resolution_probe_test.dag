@@ -40,7 +40,7 @@ test fn cwc_norm_three_variant_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_three)
 }
 
-fn cwc_tree_has_disj(n: Node) -> Bool {
+fn cwc_tree_has_disj(n: v2.std.node.Node) -> Bool {
   fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -61,7 +61,7 @@ fn cwc_tree_has_disj(n: Node) -> Bool {
   )
 }
 
-fn cwc_disj_arm_count(n: Node) -> Int {
+fn cwc_disj_arm_count(n: v2.std.node.Node) -> Int {
   fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {

@@ -43,7 +43,7 @@ fn ts_import_pipeline_target(third_seg: v2.std.node.Symbol, third_spell: String)
   }
 }
 
-fn ts_import_pipeline_find_import_node_children(tree: Node) -> Optional<Node> {
+fn ts_import_pipeline_find_import_node_children(tree: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   fold(tree.children, init: optional_absent(), f: fn(acc, edge) {
     match acc {
       Present { value: _ } => acc
@@ -52,7 +52,7 @@ fn ts_import_pipeline_find_import_node_children(tree: Node) -> Optional<Node> {
   })
 }
 
-fn ts_import_pipeline_find_import_node(tree: Node) -> Optional<Node> {
+fn ts_import_pipeline_find_import_node(tree: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: tree) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl {
@@ -64,7 +64,7 @@ fn ts_import_pipeline_find_import_node(tree: Node) -> Optional<Node> {
   }
 }
 
-fn ts_import_pipeline_parse_import_node(source: String) -> v2.std.diagnostic.Outcome<Node> {
+fn ts_import_pipeline_parse_import_node(source: String) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(

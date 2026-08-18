@@ -36,7 +36,7 @@ data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<
 
 data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
 
-fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
+fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -176,7 +176,7 @@ fn no_edges() -> List<v2.std.node.Edge> {
   std.algebra.Empty
 }
 
-fn opaque_head_node() -> Node {
+fn opaque_head_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
@@ -206,7 +206,7 @@ fn rebuilt_edge(e: v2.std.node.Edge) -> v2.std.node.Edge {
   }
 }
 
-fn break_mystery_head(n: Node) -> Node {
+fn break_mystery_head(n: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: n.kind,
     children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {

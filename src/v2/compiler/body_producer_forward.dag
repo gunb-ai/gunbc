@@ -76,18 +76,18 @@ fn body_producer_forward_is_behavior_surface_identity(surface_identity: v2.std.n
   body_producer_forward_is_registered_surface_identity(surface_identity: surface_identity)
 }
 
-fn body_producer_forward_grammar_rules() -> Node {
+fn body_producer_forward_grammar_rules() -> v2.std.node.Node {
   dag_translation_rules_node()
 }
 
-fn body_producer_forward_select_row(surface_identity: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Node> {
+fn body_producer_forward_select_row(surface_identity: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   grammar_relation_row_forward_production_selection(
     rules: body_producer_forward_grammar_rules(),
     surface_identity: surface_identity
   )
 }
 
-fn body_producer_forward_is_core_substrate(node: Node) -> Bool {
+fn body_producer_forward_is_core_substrate(node: v2.std.node.Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: Arrow } => true
@@ -95,7 +95,7 @@ fn body_producer_forward_is_core_substrate(node: Node) -> Bool {
   }
 }
 
-fn body_producer_forward_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+fn body_producer_forward_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
@@ -103,14 +103,14 @@ fn body_producer_forward_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.s
   }
 }
 
-fn body_producer_forward_row_for_behavior_identity(surface_identity: v2.std.node.Symbol) -> Optional<Node> {
+fn body_producer_forward_row_for_behavior_identity(surface_identity: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match body_producer_forward_select_row(surface_identity: surface_identity) {
     Accepted { value: row, diagnostics: _ } => optional_present(value: row)
     Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-fn body_producer_forward_row_selected_optional(shell: Node) -> Optional<Node> {
+fn body_producer_forward_row_selected_optional(shell: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: shell) {
     Present { value: surface_identity } =>
       if body_producer_forward_is_behavior_surface_identity(surface_identity: surface_identity) {
@@ -122,7 +122,7 @@ fn body_producer_forward_row_selected_optional(shell: Node) -> Optional<Node> {
   }
 }
 
-fn body_producer_forward_row_obligation_witness_shell(surface_identity: v2.std.node.Symbol) -> Node {
+fn body_producer_forward_row_obligation_witness_shell(surface_identity: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface_identity } },
     children: []

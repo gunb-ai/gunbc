@@ -39,7 +39,7 @@ fn gcloud_access_ensure_classification(
       Present { value: _ } =>
         std.upsert_decision.UpsertClassification {
           verdict: Absent,
-          decision: Apply {
+          decision: std.upsert_decision.Apply {
             plan: GoogleCloudInteractiveAuthenticationRequired {},
           },
         }

@@ -62,11 +62,11 @@ data bash_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer
   }
 }
 
-fn anchor_bash_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_bash_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: bash_emit_inferred_tree, target: bash_target_model())
 }
 
-data bash_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_bash_emit_accepts()
+data bash_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_emit_accepts()
 
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
@@ -92,14 +92,14 @@ data bash_missing_rules_target: v2.std.compilers.target_model.TargetModel = v2.s
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_bash_serialize_rejects_missing_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_bash_serialize_rejects_missing_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   target_serialize_source_from_model(
     target: bash_missing_rules_target,
     emitted: bash_emitted_command
   )
 }
 
-data bash_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_bash_serialize_rejects_missing_rules()
+data bash_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_serialize_rejects_missing_rules()
 
 test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
@@ -115,11 +115,11 @@ data bash_bound_words_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.co
   }
 }
 
-fn anchor_bash_bound_words_emit() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_bash_bound_words_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
 }
 
-data bash_bound_words_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_bash_bound_words_emit()
+data bash_bound_words_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_bound_words_emit()
 
 test fn bash_emit_bound_words_holds() -> Bool {
   match bash_bound_words_emit_receipt {
@@ -136,11 +136,11 @@ data bash_embedded_quote_emit_inferred_tree: v2.compiler.infer.InferredTree = v2
   }
 }
 
-fn anchor_bash_embedded_quote_emit() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_bash_embedded_quote_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: bash_embedded_quote_emit_inferred_tree, target: bash_embedded_quote_target_model())
 }
 
-data bash_embedded_quote_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_bash_embedded_quote_emit()
+data bash_embedded_quote_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_embedded_quote_emit()
 
 test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
@@ -157,14 +157,14 @@ data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.infer.Inferred
   }
 }
 
-fn anchor_bash_source_root_ingest_gate_emit() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_bash_source_root_ingest_gate_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: bash_source_root_ingest_gate_emit_inferred_tree,
     target: bash_source_root_ingest_gate_target_model()
   )
 }
 
-data bash_source_root_ingest_gate_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_bash_source_root_ingest_gate_emit()
+data bash_source_root_ingest_gate_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_source_root_ingest_gate_emit()
 
 test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
   match bash_source_root_ingest_gate_emit_receipt {

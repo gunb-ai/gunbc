@@ -98,7 +98,7 @@ fn reference_snoc_refusal(
   list_snoc_item(xs: acc, item: refusal)
 }
 
-fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Node> {
+fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex),
@@ -114,8 +114,8 @@ fn reference_deps_ingest_source_text(source_text: String, file: v2.std.node.Symb
 }
 
 fn reference_qn_from_qualified_name_production_strict(
-  production_node: Node,
-  module_root: Node
+  production_node: v2.std.node.Node,
+  module_root: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_production_captured_child_optional(node: production_node) {
     Absent =>
@@ -133,7 +133,7 @@ fn reference_qn_from_qualified_name_production_strict(
   }
 }
 
-fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
+fn reference_qn_from_import_decl_strict(node: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(
     root: node,
     emitted: ^dag_surface_qualified_name
@@ -167,7 +167,7 @@ fn reference_collect_qn_site_step(
 
 fn reference_sites_collect_edges(
   edges: List<v2.std.node.Edge>,
-  module_root: Node,
+  module_root: v2.std.node.Node,
   module_qn: v2.std.qualified_name.QualifiedName,
   acc: List<v2.std.qualified_name.QualifiedName>
 ) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
@@ -193,8 +193,8 @@ fn reference_sites_collect_edges(
 }
 
 fn reference_sites_collect_node(
-  node: Node,
-  module_root: Node,
+  node: v2.std.node.Node,
+  module_root: v2.std.node.Node,
   module_qn: v2.std.qualified_name.QualifiedName,
   acc: List<v2.std.qualified_name.QualifiedName>
 ) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
@@ -251,7 +251,7 @@ fn reference_sites_collect_node(
   }
 }
 
-fn reference_sites_from_parsed_module(module_root: Node) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
+fn reference_sites_from_parsed_module(module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
   match qualified_name_from_module_node(root: module_root) {
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: module_qn, diagnostics: _ } =>
@@ -397,7 +397,7 @@ fn reference_corpus_paths_live(
 
 fn reference_file_census_parsed(
   rel_path: String,
-  module_root: Node,
+  module_root: v2.std.node.Node,
   declared: List<v2.lens.module_graph.ModuleDeclarationFact>,
   module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {

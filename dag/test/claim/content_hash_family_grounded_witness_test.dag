@@ -14,7 +14,7 @@ fn witness_oci_sha256_row() -> extdeps.container.oci.digest.OciContentDigest {
     digest: std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex },
   )
 }
-data tool_pin_fixture: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
+data tool_pin_fixture: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: extdeps.tools.CliTool {
     name: "cargo",
     min_version: Absent,

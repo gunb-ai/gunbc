@@ -47,7 +47,7 @@ fn connective_spec_fact(c: v2.std.node.Connective, named_facts: v2.std.nat.Nat) 
   }
 }
 
-fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
+fn carrier_spec_fact(carrier: v2.std.node.Node) -> SourceSpecReadFact {
   match carrier.kind {
     ComputationNode { behavior: _ } => NotATypeCarrier
     TypeNode { connective: c } =>
@@ -56,7 +56,7 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
 }
 data hollow_alias_gate_cost_note: String = "Node-local predicate (DESIGN 6 bare-minimum-cost): carrier_spec_fact reads only the node's direct children (named_fact_count is O(degree), not a subtree walk). Enrollment is the per-subtree-node roster in validate_then_compile (run_required_lens_gates_on_subtree visits each node exactly once); a rooted whole-tree walk inside the gate would stack with that fold and be O(n^2). Witness accumulation on the roster fold uses prepend+reverse, not append-in-step."
 
-fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
+fn fact_density_hollow_alias_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>
       outcome_rejected(

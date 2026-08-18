@@ -18,14 +18,14 @@ data jq_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   installable_via: [SourceApt],
 }
 
-data authored_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
+data authored_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: cargo_tool,
   version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
   selection: ExactPin,
 }
 
-data tracked_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
+data tracked_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: jq_tool,
   version: "1.7.1" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
@@ -216,14 +216,14 @@ data action_ref_other_identity: std.content_hash.ContentHash = content_hash_of_v
 
 data action_ref_synthetic_identity_note: String = "The two identities above are OBVIOUSLY synthetic and deliberately so, in the same style as cargo_identity at the top of this module. Writing a real 40-hex commit SHA here and calling it actions/upload-artifact@v2 would fabricate an upstream fact inside a fail-closed carrier — the failure admit_legacy_cli_tool's own note forbids — and it would ALSO create a second authority for that SHA the day the lane pins the action for real. What this witness proves is structural (the dimension admits the subject, and refuses on mismatch); it makes no claim about upstream truth, so a value that could never be mistaken for a real digest is the honest fixture."
 
-data checkout_pin: Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
+data checkout_pin: extdeps.pin.Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
   subject: checkout_action,
   version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_pinned_identity,
   selection: ExactPin,
 }
 
-data checkout_pin_disagreeing: Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
+data checkout_pin_disagreeing: extdeps.pin.Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
   subject: checkout_action,
   version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_other_identity,

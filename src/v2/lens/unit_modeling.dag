@@ -78,11 +78,11 @@ fn name_is_exempt(name: v2.std.node.Symbol) -> Bool {
   }
 }
 
-fn type_is_flat_scalar(target: Node) -> Bool {
+fn type_is_flat_scalar(target: v2.std.node.Node) -> Bool {
   edge_field_type_name(target: target) == ^dag_binding_type_int
 }
 
-fn field_unit_violation(carrier: Node, edge: v2.std.node.Edge) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn field_unit_violation(carrier: v2.std.node.Node, edge: v2.std.node.Edge) -> Optional<v2.std.diagnostic.Diagnostic> {
   match edge.label {
     Named { name: nm } =>
       if type_is_flat_scalar(target: edge.target) {
@@ -98,7 +98,7 @@ fn field_unit_violation(carrier: Node, edge: v2.std.node.Edge) -> Optional<v2.st
   }
 }
 
-fn carrier_first_unit_violation(carrier: Node) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn carrier_first_unit_violation(carrier: v2.std.node.Node) -> Optional<v2.std.diagnostic.Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
       fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
@@ -108,7 +108,7 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<v2.std.diagnostic.Dia
   }
 }
 
-fn unit_modeling_diagnostic(carrier: Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+fn unit_modeling_diagnostic(carrier: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   if field_name_has_known_carrier(name: name) {
     v2.std.diagnostic.Diagnostic {
       reason: ^unit_modeling_flat_scalar_unit_leaf_fixable,
@@ -126,7 +126,7 @@ fn unit_modeling_diagnostic(carrier: Node, name: v2.std.node.Symbol) -> v2.std.d
 
 data unit_modeling_gate_cost_note: String = "Node-local predicate on the per-subtree-node roster (same grain as fact_density): carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)."
 
-fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
+fn unit_modeling_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
   match carrier_first_unit_violation(carrier: node) {
     Present { value: d } => outcome_rejected(d)
     Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })

@@ -60,7 +60,7 @@ data cost_coverage_file_anchor: v2.std.node.Symbol = ^cost_coverage_file_anchor
 
 data cost_coverage_reject_probe: v2.std.node.Symbol = ^cost_coverage_reject_probe
 
-fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
+fn cost_coverage_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   let acc1 = if dag_node_is_fn_decl(node: root) {
     list_append(left: acc, right: [root])
   } else {
@@ -71,7 +71,7 @@ fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
   })
 }
 
-fn cost_coverage_fn_body_from_decl(fn_decl: Node) -> Optional<Node> {
+fn cost_coverage_fn_body_from_decl(fn_decl: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_subtree_find_production_captured(
     root: fn_decl,
     emitted: ^dag_surface_fn_body
@@ -81,7 +81,7 @@ fn cost_coverage_fn_body_from_decl(fn_decl: Node) -> Optional<Node> {
   }
 }
 
-fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
+fn cost_coverage_fn_verdict_from_body(body: v2.std.node.Node) -> CostCoverageFnVerdict {
   match judge_subject_node(n: body) {
     BodyUnavailable =>
       FnBodyParseTreeOpaque
@@ -132,7 +132,7 @@ fn cost_coverage_fn_receipt_step(
   acc: List<CostCoverageFnReceipt>,
   rel_path: String,
   fn_index: Int,
-  fn_decl: Node
+  fn_decl: v2.std.node.Node
 ) -> List<CostCoverageFnReceipt> {
   match cost_coverage_fn_body_from_decl(fn_decl: fn_decl) {
     Absent =>
@@ -162,7 +162,7 @@ fn cost_coverage_fn_receipt_step(
 
 fn cost_coverage_fn_receipts_for_module(
   rel_path: String,
-  module_root: Node
+  module_root: v2.std.node.Node
 ) -> List<CostCoverageFnReceipt> {
   let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: Empty)
   fold_list(
@@ -207,7 +207,7 @@ fn cost_coverage_empty_file_counts() -> CostCoverageFileReceipt {
 
 fn cost_coverage_file_receipt_from_module(
   rel_path: String,
-  module_root: Node
+  module_root: v2.std.node.Node
 ) -> CostCoverageFileReceipt {
   let fn_rows = cost_coverage_fn_receipts_for_module(rel_path: rel_path, module_root: module_root)
   let attempted = length(xs: fn_rows)

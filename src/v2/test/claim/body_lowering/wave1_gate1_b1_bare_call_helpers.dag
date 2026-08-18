@@ -39,7 +39,7 @@ fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
   }
 }
 
-fn wave1_gate1_b1_normalized_module(source: String) -> Optional<Node> {
+fn wave1_gate1_b1_normalized_module(source: String) -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(text: source, file: ^wave1_gate1_b1_probe_file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -55,7 +55,7 @@ fn wave1_gate1_b1_normalized_module(source: String) -> Optional<Node> {
   }
 }
 
-fn wave1_gate1_b1_arrow_named_body_optional(arrow: Node) -> Optional<Node> {
+fn wave1_gate1_b1_arrow_named_body_optional(arrow: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   fold(arrow.children, init: Absent, f: fn(acc, body_edge) {
     match acc {
       Present { value: _ } => acc
@@ -68,7 +68,7 @@ fn wave1_gate1_b1_arrow_named_body_optional(arrow: Node) -> Optional<Node> {
   })
 }
 
-fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Optional<Node> {
+fn wave1_gate1_b1_find_named_fn_arrow_body(root: v2.std.node.Node, fn_lexeme: String) -> Optional<v2.std.node.Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: Absent, f: fn(acc, edge) {

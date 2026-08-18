@@ -114,7 +114,7 @@ fn anchor_english_emit_add_accepts() -> v2.std.diagnostic.Outcome<extdeps.commun
   emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model)
 }
 
-data english_emit_add_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_english_emit_add_accepts()
+data english_emit_add_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_english_emit_add_accepts()
 
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {

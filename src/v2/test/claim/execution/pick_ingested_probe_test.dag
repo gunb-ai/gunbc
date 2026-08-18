@@ -1,7 +1,7 @@
 module v2.test.execution.pick_ingested_probe
 
 
-fn pick_probe_find_arrow(root: Node) -> Node {
+fn pick_probe_find_arrow(root: v2.std.node.Node) -> v2.std.node.Node {
   match root.kind {
     TypeNode { connective: Arrow } => root
     _ =>
@@ -14,7 +14,7 @@ fn pick_probe_find_arrow(root: Node) -> Node {
   }
 }
 
-fn pick_probe_deep_unwrap(node: Node) -> Node {
+fn pick_probe_deep_unwrap(node: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_captured_child_optional(node: node) {
     Present { value: captured } => pick_probe_deep_unwrap(node: captured)
     Absent =>
@@ -25,7 +25,7 @@ fn pick_probe_deep_unwrap(node: Node) -> Node {
   }
 }
 
-fn pick_probe_int_literal_in_node_optional(node: Node) -> Optional<Node> {
+fn pick_probe_int_literal_in_node_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   let unwrapped = pick_probe_deep_unwrap(node: node)
   if dag_node_is_int_literal_atom(node: unwrapped) {
     optional_present(value: unwrapped)
@@ -39,14 +39,14 @@ fn pick_probe_int_literal_in_node_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn pick_probe_int_literal_has_magnitude_child_holds(literal: Node) -> Bool {
+fn pick_probe_int_literal_has_magnitude_child_holds(literal: v2.std.node.Node) -> Bool {
   match dag_int_literal_magnitude_node_optional(node: literal) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn pick_probe_arm_int_literal_has_magnitude_child_holds(body: Node, arm_index: Int) -> Bool {
+fn pick_probe_arm_int_literal_has_magnitude_child_holds(body: v2.std.node.Node, arm_index: Int) -> Bool {
   match list_at_optional(xs: body.children, index: arm_index) {
     Present { value: edge } =>
       match edge {
@@ -62,7 +62,7 @@ fn pick_probe_arm_int_literal_has_magnitude_child_holds(body: Node, arm_index: I
 }
 
 fn pick_probe_module_arm_has_magnitude_child_holds(
-  module_outcome: v2.std.diagnostic.Outcome<Node>,
+  module_outcome: v2.std.diagnostic.Outcome<v2.std.node.Node>,
   arm_index: Int
 ) -> Bool {
   match module_outcome {
@@ -80,7 +80,7 @@ fn pick_probe_module_arm_has_magnitude_child_holds(
   }
 }
 
-fn pick_probe_find_if_expr_optional(root: Node) -> Optional<Node> {
+fn pick_probe_find_if_expr_optional(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_if_expr {
@@ -103,7 +103,7 @@ fn pick_probe_find_if_expr_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn pick_probe_find_fn_decl_optional(root: Node) -> Optional<Node> {
+fn pick_probe_find_fn_decl_optional(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_fn_decl {
@@ -126,7 +126,7 @@ fn pick_probe_find_fn_decl_optional(root: Node) -> Optional<Node> {
   }
 }
 
-fn pick_probe_parsed_then_arm_literal_optional(module_outcome: v2.std.diagnostic.Outcome<Node>) -> Optional<Node> {
+fn pick_probe_parsed_then_arm_literal_optional(module_outcome: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Optional<v2.std.node.Node> {
   match module_outcome {
     Accepted { value: module_root, diagnostics: _ } =>
       match pick_probe_find_fn_decl_optional(root: module_root) {

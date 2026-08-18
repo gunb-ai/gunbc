@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 
-fn dag_lex_stamp_parse_tree() -> v2.std.diagnostic.Outcome<Node> {
+fn dag_lex_stamp_parse_tree() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
@@ -19,7 +19,7 @@ fn dag_lex_stamp_parse_tree() -> v2.std.diagnostic.Outcome<Node> {
   )
 }
 
-fn dag_lex_stamp_find_import_node_in_children(tree: Node) -> Optional<Node> {
+fn dag_lex_stamp_find_import_node_in_children(tree: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   fold(tree.children, init: optional_absent(), f: fn(acc, edge) {
     match acc {
       Present { value: _ } => acc
@@ -28,7 +28,7 @@ fn dag_lex_stamp_find_import_node_in_children(tree: Node) -> Optional<Node> {
   })
 }
 
-fn dag_lex_stamp_find_import_node(tree: Node) -> Optional<Node> {
+fn dag_lex_stamp_find_import_node(tree: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: tree) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl {

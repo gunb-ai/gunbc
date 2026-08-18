@@ -3,7 +3,7 @@ module v2.std.data_initializer_identity
 
 data data_initializer_identity_authority_note: String = "Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and name locator grain (not occurrence identity). Host bridge marshals projection Node trees from typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only."
 
-fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
+fn projection_kind_lexeme_optional(node: v2.std.node.Node) -> Optional<String> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       optional_present(value: symbol_lexeme(sym: sym))
@@ -11,7 +11,7 @@ fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   }
 }
 
-fn projection_named_child_optional(node: Node, label: String) -> Optional<Node> {
+fn projection_named_child_optional(node: v2.std.node.Node, label: String) -> Optional<v2.std.node.Node> {
   fold(node_labeled_child_edges(node: node), init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -25,33 +25,33 @@ fn projection_named_child_optional(node: Node, label: String) -> Optional<Node> 
   })
 }
 
-fn projection_atom_lexeme_optional(node: Node) -> Optional<String> {
+fn projection_atom_lexeme_optional(node: v2.std.node.Node) -> Optional<String> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
     Absent => optional_absent()
   }
 }
 
-fn projection_named_child_atom_lexeme(node: Node, label: String) -> Optional<String> {
+fn projection_named_child_atom_lexeme(node: v2.std.node.Node, label: String) -> Optional<String> {
   match projection_named_child_optional(node: node, label: label) {
     Present { value: child } => projection_atom_lexeme_optional(node: child)
     Absent => optional_absent()
   }
 }
 
-fn declaration_identity_qualified_name_optional(node: Node) -> Optional<String> {
+fn declaration_identity_qualified_name_optional(node: v2.std.node.Node) -> Optional<String> {
   projection_named_child_atom_lexeme(node: node, label: "qualified_name")
 }
 
-fn variant_declaration_parent_qualified_name_optional(node: Node) -> Optional<String> {
+fn variant_declaration_parent_qualified_name_optional(node: v2.std.node.Node) -> Optional<String> {
   projection_named_child_atom_lexeme(node: node, label: "parent_qualified_name")
 }
 
-fn variant_declaration_name_optional(node: Node) -> Optional<String> {
+fn variant_declaration_name_optional(node: v2.std.node.Node) -> Optional<String> {
   projection_named_child_atom_lexeme(node: node, label: "variant_name")
 }
 
-fn record_constructor_parent_qualified_name_optional(record: Node) -> Optional<String> {
+fn record_constructor_parent_qualified_name_optional(record: v2.std.node.Node) -> Optional<String> {
   match projection_named_child_optional(node: record, label: "constructor_identity") {
     Present { value: ctor } =>
       match projection_named_child_optional(node: ctor, label: "parent_type") {
@@ -62,7 +62,7 @@ fn record_constructor_parent_qualified_name_optional(record: Node) -> Optional<S
   }
 }
 
-fn record_constructor_variant_name_optional(record: Node) -> Optional<String> {
+fn record_constructor_variant_name_optional(record: v2.std.node.Node) -> Optional<String> {
   match projection_named_child_optional(node: record, label: "constructor_identity") {
     Present { value: ctor } =>
       match projection_named_child_optional(node: ctor, label: "constructor") {
@@ -73,47 +73,47 @@ fn record_constructor_variant_name_optional(record: Node) -> Optional<String> {
   }
 }
 
-fn record_field_projection_optional(record: Node, label: String) -> Optional<Node> {
+fn record_field_projection_optional(record: v2.std.node.Node, label: String) -> Optional<v2.std.node.Node> {
   projection_named_child_optional(node: record, label: label)
 }
 
-fn value_projection_is_resolved_variant(node: Node) -> Bool {
+fn value_projection_is_resolved_variant(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "ResolvedVariantValueProjection"
     Absent => false
   }
 }
 
-fn value_projection_is_missing(node: Node) -> Bool {
+fn value_projection_is_missing(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "VariantValueResolutionMissingProjection"
     Absent => false
   }
 }
 
-fn value_projection_is_ambiguous(node: Node) -> Bool {
+fn value_projection_is_ambiguous(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "VariantValueResolutionAmbiguousProjection"
     Absent => false
   }
 }
 
-fn value_projection_is_not_variant_value(node: Node) -> Bool {
+fn value_projection_is_not_variant_value(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "NotVariantValueProjection"
     Absent => false
   }
 }
 
-fn resolved_variant_parent_qualified_name_optional(node: Node) -> Optional<String> {
+fn resolved_variant_parent_qualified_name_optional(node: v2.std.node.Node) -> Optional<String> {
   projection_named_child_atom_lexeme(node: node, label: "parent_qualified_name")
 }
 
-fn resolved_variant_name_optional(node: Node) -> Optional<String> {
+fn resolved_variant_name_optional(node: v2.std.node.Node) -> Optional<String> {
   projection_named_child_atom_lexeme(node: node, label: "variant_name")
 }
 
-fn ambiguous_candidate_projection_count(node: Node) -> Int {
+fn ambiguous_candidate_projection_count(node: v2.std.node.Node) -> Int {
   length(
     xs: fold(node_labeled_child_edges(node: node), init: std.algebra.Empty, f: fn(acc, e) {
       let key_lexeme = symbol_lexeme(sym: named_edge_sort_key(e: e))
@@ -271,42 +271,42 @@ fn decl_fact_lookup_candidate_count(lookup: DeclFactLookup) -> Int {
   }
 }
 
-fn data_initializer_is_constructor_resolution_refused_projection(node: Node) -> Bool {
+fn data_initializer_is_constructor_resolution_refused_projection(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerConstructorResolutionRefusedProjection"
     Absent => false
   }
 }
 
-fn data_initializer_is_typechecked_subject_absent_projection(node: Node) -> Bool {
+fn data_initializer_is_typechecked_subject_absent_projection(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerTypecheckedSubjectAbsentProjection"
     Absent => false
   }
 }
 
-fn data_initializer_is_plain_record_projection(node: Node) -> Bool {
+fn data_initializer_is_plain_record_projection(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerPlainRecordProjection"
     Absent => false
   }
 }
 
-fn plain_record_parent_qualified_name_optional(record: Node) -> Optional<String> {
+fn plain_record_parent_qualified_name_optional(record: v2.std.node.Node) -> Optional<String> {
   match projection_named_child_optional(node: record, label: "parent_type") {
     Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
     Absent => optional_absent()
   }
 }
 
-fn data_initializer_is_record_projection(node: Node) -> Bool {
+fn data_initializer_is_record_projection(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerRecordProjection"
     Absent => false
   }
 }
 
-fn data_initializer_is_nullary_projection(node: Node) -> Bool {
+fn data_initializer_is_nullary_projection(node: v2.std.node.Node) -> Bool {
   match projection_kind_lexeme_optional(node: node) {
     Present { value: k } => k == "DataInitializerNullaryProjection"
     Absent => false

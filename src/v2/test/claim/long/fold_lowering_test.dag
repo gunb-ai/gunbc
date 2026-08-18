@@ -11,7 +11,7 @@ data non_fold_snippet: String = "module g_probe\n\nfn f(xs: List<Int>) -> Int {\
 
 data bodyless_fold_snippet: String = "module bodyless_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0)\n}\n"
 
-fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
+fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -27,14 +27,14 @@ fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
   }
 }
 
-fn locate_call(root: Node) -> Optional<Node> {
+fn locate_call(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_primary_expr) {
     ParseSubtreeFound { captured: call } => Present { value: call }
     ParseSubtreeAbsent => Absent
   }
 }
 
-fn ingest_and_locate(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
+fn ingest_and_locate(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => locate_call(root: tree)
@@ -49,14 +49,14 @@ fn is_proven_termination(m: v2.std.cardinality.Multiplicity) -> Bool {
   }
 }
 
-fn outcome_is_rejected(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
+fn outcome_is_rejected(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-fn collect_atom_identities(n: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
+fn collect_atom_identities(n: v2.std.node.Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: n) {
     Present { value: s } => std.algebra.Cons { head: s, tail: acc }
     Absent => acc
@@ -106,7 +106,7 @@ test fn fold_call_lowers_to_terminating_loop() -> Bool {
   }
 }
 
-fn lowered_fixture_loop() -> Optional<Node> {
+fn lowered_fixture_loop() -> Optional<v2.std.node.Node> {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => Absent
     Present { value: call } =>

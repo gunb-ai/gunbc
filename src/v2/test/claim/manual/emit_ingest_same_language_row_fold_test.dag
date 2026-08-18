@@ -3,7 +3,7 @@ module v2.test.manual.emit_ingest_same_language_row_fold
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> v2.std.diagnostic.Outcome<Node> {
+fn emit_ingest_fold_row_with_emitted(row: v2.std.node.Node, emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -27,7 +27,7 @@ fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> v2.std.diagnos
   )
 }
 
-fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
+fn emit_ingest_fold_rules_table(dag_row: v2.std.node.Node, python_row: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -38,7 +38,7 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
   }
 }
 
-fn emit_ingest_fold_row_token_spine_classes(row: Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
+fn emit_ingest_fold_row_token_spine_classes(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
@@ -59,11 +59,11 @@ fn emit_ingest_fold_row_token_spine_classes(row: Node) -> v2.std.diagnostic.Outc
   )
 }
 
-fn emit_ingest_fold_row_emitted(row: Node) -> v2.std.diagnostic.Outcome<Node> {
+fn emit_ingest_fold_row_emitted(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   find_named_child(root: row, name: ^grammar_relation_field_emitted)
 }
 
-fn emit_ingest_fold_row_selector_bijectivity_holds(row: Node, rules: Node) -> Bool {
+fn emit_ingest_fold_row_selector_bijectivity_holds(row: v2.std.node.Node, rules: v2.std.node.Node) -> Bool {
   match emit_ingest_fold_row_emitted(row: row) {
     Accepted { value: emitted, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
@@ -89,7 +89,7 @@ fn emit_ingest_fold_row_selector_bijectivity_holds(row: Node, rules: Node) -> Bo
   }
 }
 
-fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: Node) -> Bool {
+fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: v2.std.node.Node) -> Bool {
   match rules.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -111,23 +111,23 @@ fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: Node) -> Bool {
   }
 }
 
-fn emit_ingest_fold_dag_add_rules() -> Node {
+fn emit_ingest_fold_dag_add_rules() -> v2.std.node.Node {
   dag_translation_rules_node()
 }
 
-fn emit_ingest_fold_python_add_rules() -> Node {
+fn emit_ingest_fold_python_add_rules() -> v2.std.node.Node {
   python_translation_rules_node()
 }
 
-fn emit_ingest_fold_dag_add_row() -> Node {
+fn emit_ingest_fold_dag_add_row() -> v2.std.node.Node {
   dag_add_grammar_relation_row_node()
 }
 
-fn emit_ingest_fold_python_add_row() -> Node {
+fn emit_ingest_fold_python_add_row() -> v2.std.node.Node {
   python_grammar_relation_row_node(row: python_grammar_relation_row())
 }
 
-fn emit_ingest_fold_perturbed_dag_row() -> Node {
+fn emit_ingest_fold_perturbed_dag_row() -> v2.std.node.Node {
   match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_dag_add_row(),
     emitted: python_emitted_add_fn_node()
@@ -137,7 +137,7 @@ fn emit_ingest_fold_perturbed_dag_row() -> Node {
   }
 }
 
-fn emit_ingest_fold_perturbed_python_row() -> Node {
+fn emit_ingest_fold_perturbed_python_row() -> v2.std.node.Node {
   match emit_ingest_fold_row_with_emitted(
     row: emit_ingest_fold_python_add_row(),
     emitted: dag_fixture_emitted_add_fn
@@ -147,21 +147,21 @@ fn emit_ingest_fold_perturbed_python_row() -> Node {
   }
 }
 
-fn emit_ingest_fold_clean_two_row_rules() -> Node {
+fn emit_ingest_fold_clean_two_row_rules() -> v2.std.node.Node {
   emit_ingest_fold_rules_table(
     dag_row: emit_ingest_fold_dag_add_row(),
     python_row: emit_ingest_fold_python_add_row()
   )
 }
 
-fn emit_ingest_fold_perturbed_dag_two_row_rules() -> Node {
+fn emit_ingest_fold_perturbed_dag_two_row_rules() -> v2.std.node.Node {
   emit_ingest_fold_rules_table(
     dag_row: emit_ingest_fold_perturbed_dag_row(),
     python_row: emit_ingest_fold_python_add_row()
   )
 }
 
-fn emit_ingest_fold_perturbed_python_two_row_rules() -> Node {
+fn emit_ingest_fold_perturbed_python_two_row_rules() -> v2.std.node.Node {
   emit_ingest_fold_rules_table(
     dag_row: emit_ingest_fold_dag_add_row(),
     python_row: emit_ingest_fold_perturbed_python_row()

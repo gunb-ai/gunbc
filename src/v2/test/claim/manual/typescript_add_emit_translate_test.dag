@@ -49,14 +49,14 @@ data typescript_add_missing_translation_rules_target: v2.std.compilers.target_mo
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_typescript_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_typescript_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   target_serialize_source_from_model(
     target: typescript_add_missing_translation_rules_target,
     emitted: typescript_add_emitted_root
   )
 }
 
-data typescript_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
+data typescript_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_typescript_add_serialize_rejects_missing_translation_rules()
 
 test fn typescript_add_serialize_reject_receipt_holds() -> Bool {
   match typescript_add_serialize_reject_receipt {
@@ -207,7 +207,7 @@ data typescript_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.
   }
 }
 
-fn anchor_typescript_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_typescript_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: typescript_add_inferred_tree, target: typescript_add_target_model)
 }
 
@@ -218,7 +218,7 @@ fn anchor_typescript_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome
   )
 }
 
-data typescript_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_typescript_add_emit_accepts()
+data typescript_add_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_typescript_add_emit_accepts()
 
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {

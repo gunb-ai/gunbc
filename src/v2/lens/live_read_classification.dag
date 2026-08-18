@@ -18,7 +18,7 @@ data empty_carrier_list: List<v2.std.live_read.LiveReadCarrier> = []
 data empty_decl_list: List<v2.std.fn_index.FnArrowDecl> = []
 data empty_string_list: List<String> = []
 data empty_symbol_list: List<v2.std.node.Symbol> = []
-data empty_node_list: List<Node> = []
+data empty_node_list: List<v2.std.node.Node> = []
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -130,11 +130,11 @@ fn callee_text_is_known_carrier(text: String) -> Bool {
 }
 
 type AtomCollectState {
-  node: Node
+  node: v2.std.node.Node
   atoms: List<v2.std.node.Symbol>
 }
 
-fn atom_collect_init(n: Node) -> AtomCollectState {
+fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
@@ -155,7 +155,7 @@ fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
   v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<v2.std.node.Symbol> {
+fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -264,7 +264,7 @@ fn carrier_for_callee_text(
   }
 }
 
-fn positional_child_targets(node: Node) -> List<Node> {
+fn positional_child_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
@@ -273,7 +273,7 @@ fn positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn arg_symbols_from_nodes(nodes: List<Node>) -> List<v2.std.node.Symbol> {
+fn arg_symbols_from_nodes(nodes: List<v2.std.node.Node>) -> List<v2.std.node.Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
       Present { value: sym } => list_snoc_item(xs: acc, item: sym)
@@ -282,7 +282,7 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<v2.std.node.Symbol> {
   })
 }
 
-fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<v2.std.live_read.LiveReadCarrier> {
+fn carriers_from_call_node(node: v2.std.node.Node, param_names: List<String>) -> List<v2.std.live_read.LiveReadCarrier> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
     HeadFound { value: callee_node } =>
@@ -303,7 +303,7 @@ fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<v2.std
   }
 }
 
-fn tail_nodes(xs: List<Node>) -> List<Node> {
+fn tail_nodes(xs: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   match list_tail(xs: xs) {
     TailFound { tail: t } => t
     TailAbsent => empty_node_list
@@ -334,12 +334,12 @@ fn literal_path_carriers_from_atoms(
 }
 
 type CarrierScanState {
-  node: Node
+  node: v2.std.node.Node
   carriers: List<v2.std.live_read.LiveReadCarrier>
   param_names: List<String>
 }
 
-fn carrier_scan_init(n: Node, param_names: List<String>) -> CarrierScanState {
+fn carrier_scan_init(n: v2.std.node.Node, param_names: List<String>) -> CarrierScanState {
   CarrierScanState { node: n, carriers: empty_carrier_list, param_names: param_names }
 }
 
@@ -370,7 +370,7 @@ fn carrier_scan_algebra(param_names: List<String>) -> NodeFold<CarrierScanState>
   }
 }
 
-fn carriers_in_node(node: Node, param_names: List<String>) -> List<v2.std.live_read.LiveReadCarrier> {
+fn carriers_in_node(node: v2.std.node.Node, param_names: List<String>) -> List<v2.std.live_read.LiveReadCarrier> {
   let from_descendants = fold_node(n: node, algebra: carrier_scan_algebra(param_names: param_names)).carriers
   merge_carriers(
     left: from_descendants,
@@ -384,7 +384,7 @@ fn carriers_in_node(node: Node, param_names: List<String>) -> List<v2.std.live_r
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn callees_from_node(node: v2.std.node.Node) -> List<String> {
   fold_list(
     xs: atom_identities_in_node(node: node),
     empty: empty_string_list,
