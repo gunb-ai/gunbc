@@ -623,7 +623,7 @@ fn callable_inferred(n: v1.std.core.Node) -> v1.std.core.Node {
   if is_callable {
     match n.inferred {
       Present { value: v1.std.core.Resolved { node: ret } } =>
-        if (ret.connective == Arrow) { ret } else { make_callable_type(func_params: n.params, ret: ret) }
+        if (ret.connective == v1.std.core.Arrow) { ret } else { make_callable_type(func_params: n.params, ret: ret) }
       Absent => error_type
       _ => error_type
     }

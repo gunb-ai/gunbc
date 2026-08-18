@@ -46,7 +46,7 @@ fn expand_scrut_from_decl(decl: v1.std.core.Node, scrut_node: v1.std.core.Node, 
       _ => scrut_node
     }
   } else {
-    if decl.connective == Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+    if decl.connective == v1.std.core.Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
       let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
       substitute_type_slots_scoped(
         n: decl,
@@ -277,7 +277,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
 
           let record_destructure = field_binding_count > 0
-            && scrut_node.connective == Conj
+            && scrut_node.connective == v1.std.core.Conj
             && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)

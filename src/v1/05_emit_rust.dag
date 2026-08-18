@@ -8467,7 +8467,7 @@ fn rust_struct_field_type_node(scope: v1.compiler.infer.InferScope, struct_name:
 fn rust_record_field_needs_fn_rc(scope: v1.compiler.infer.InferScope, struct_name: String, field_name: String) -> Bool {
   rust_struct_field_lookup_candidates(struct_name: struct_name, scope: scope) |> any(candidate =>
     match rust_struct_field_type_node(scope: scope, struct_name: candidate, field_name: field_name) {
-      Present { value: field_type } => field_type.connective == Arrow
+      Present { value: field_type } => field_type.connective == v1.std.core.Arrow
       Absent => false
     }
   )
