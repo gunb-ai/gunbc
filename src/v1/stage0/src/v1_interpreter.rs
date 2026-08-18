@@ -273,6 +273,22 @@ fn coproduct_parent_spellings_match(
     }
 }
 
+fn coproduct_child_authored_name_matches(
+    ctx: &InterpContext,
+    child: Rc<Node>,
+    record_nominal: &str,
+    bare_record_nominal_only: bool,
+) -> bool {
+    if bare_record_nominal_only && record_nominal.contains('.') {
+        return false;
+    }
+    let child_name = authored_name_at(ctx.si(), child.clone());
+    if child_name == record_nominal {
+        return true;
+    }
+    coproduct_arm_name_matches(child_name, record_nominal.to_string())
+}
+
 fn record_nominal_is_declared_variant_of_coproduct(
     ctx: &InterpContext,
     record_nominal: String,
@@ -286,7 +302,7 @@ fn record_nominal_is_declared_variant_of_coproduct(
         return false;
     }
     for child in coproduct.children.iter() {
-        if authored_name_at(ctx.si(), child.clone()) == record_nominal {
+        if coproduct_child_authored_name_matches(ctx, child.clone(), &record_nominal, false) {
             return true;
         }
     }
@@ -298,9 +314,6 @@ fn record_nominal_is_bare_declared_variant_of_coproduct(
     record_nominal: String,
     pattern_parent: &str,
 ) -> bool {
-    if record_nominal.contains('.') {
-        return false;
-    }
     let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
         Some(node) => node,
         None => return false,
@@ -309,8 +322,7 @@ fn record_nominal_is_bare_declared_variant_of_coproduct(
         return false;
     }
     for child in coproduct.children.iter() {
-        let child_name = authored_name_at(ctx.si(), child.clone());
-        if child_name == record_nominal {
+        if coproduct_child_authored_name_matches(ctx, child.clone(), &record_nominal, true) {
             return true;
         }
     }
@@ -3854,7 +3866,14 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if let Some(parent) = parent_enum.as_ref() {
-                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
+                        let value_parent = resolve_sym(*type_name);
+                        if !coproduct_parent_spellings_match(ctx, value_parent.clone(), parent)
+                            && !record_nominal_is_declared_variant_of_coproduct(
+                                ctx,
+                                resolve_sym(*variant_name),
+                                parent,
+                            )
+                        {
                             return None;
                         }
                     }
@@ -5683,7 +5702,25 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
             built
         }
     };
-    index.get(type_name).cloned()
+    if let Some(node) = index.get(type_name) {
+        return Some(node.clone());
+    }
+    let last = qualified_last_segment(type_name.to_string());
+    if last != type_name {
+        if let Some(node) = index.get(&last) {
+            return Some(node.clone());
+        }
+    }
+    let mut candidates: Vec<Rc<Node>> = Vec::new();
+    for (key, item) in index.iter() {
+        if coproduct_arm_name_matches(key.clone(), type_name.to_string()) {
+            candidates.push(item.clone());
+        }
+    }
+    if candidates.len() == 1 {
+        return Some(candidates[0].clone());
+    }
+    None
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
