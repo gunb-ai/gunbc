@@ -1,0 +1,87 @@
+module v1.compiler.trait_bound_witness
+
+import v1.compiler.emit_rust { RcMatchAnalysis, analyze_rc_match }
+import v1.compiler.infer_emit_info { EmitGraphInfo }
+import v1.std.core { Node, NewlineIndex, authored_name_at, match_scrutinee, match_arm_nodes }
+
+data trait_bound_witness_note: String = "gunbc dashboard node://adhoc-d30225a0-531 (E0599 cluster in materialization_carriers). Modeled evidence for WHY a generic function parameter needs a trait bound at emission time, derived from real compiler operation facts rather than a text scan of emitted Rust (DESIGN.md S5 construction-over-validation). Root cause traced to emit_fn_def (src/v1/05_emit_rust.dag): it calls v1_generic_params_needing_clone_bound (src/v1/trait_derive_emit.dag) with value_params/ret/bounds/type_decl_items but never with the function body, so the entire Clone-bound decision chain is structurally blind to what a function BODY does with a generic-parameterized value -- specifically, the RC-deref-clone lowering emit_typed_match already performs (via analyze_rc_match/analyze_rc_pattern, both unmodified here) on a match whose scrutinee resolves to a shared/Rc-wrapped coproduct. That lowering calls .clone() on the dereferenced pointee; when the pointee's type carries a generic parameter, the pointee's own Clone impl needs that parameter bound, and today nothing derives or emits the bound, producing rustc E0599 (no method named `clone` found for type parameter `T`) at the generated call site. CROSS-LANE GROUNDING (found while authoring this, and load-bearing for scope): this exact lowering seam is already censused by prior P-fn/B0 work at dag/tools/e0599_emitter_decision_census.dag, under cause CloneSharedRequirement, lowering operation DerefCloneWholeValue (emit_typed_match / emit_rust_tco_match via v1.compiler.languages rust_spec.sharing.deref_clone, 139 counted occurrences at that census's snapshot). That census is diagnostic-only by its own declared scope (e0599_emitter_decision_census_note: 'B0 is explicitly forbidden from pre-committing the sharing carrier') and explicitly defers the carrier choice to a pending B1 decision among v2.std.compilers.target_model.RequiredTraitWitness, a capability-keyed contract, or docs/plans/emitter-ownership-defork.md's UseSiteVerdict.CloneShared (itself only a plan-doc sketch, not landed code). TraitBoundWitness here does NOT preempt that B1 decision and is not offered as the sharing carrier: it answers a strictly narrower, always-true question independent of whichever ownership verdict B1 eventually derives -- given that a DerefCloneWholeValue clone fires at a match on a generic-parameterized shared coproduct (whether or not the ownership lane could someday convert that site to a move instead), the pointee's Clone impl needs the bound for the emitted clone to compile at all. It is deliberately named and shaped so B1 can absorb it (fold TraitBoundReason's RcMatchScrutineeClone variant into RequiredTraitWitness or UseSiteVerdict.CloneShared as a sibling constraint) rather than compete with it -- reusing analyze_rc_match (the existing, already-correct source of the needed fact) rather than inventing a parallel heuristic (DESIGN.md S2/S3 -- one mechanism, not two, and no second name for CloneSharedRequirement's DerefCloneWholeValue site family). The decision core (v1_rc_match_scrutinee_clone_bound_witnesses) is deliberately pure -- it takes already-extracted facts (generic param names, the scrutinee's resolved type name and type-argument names, and analyze_rc_match's needs_deref verdict) and is unit-testable with plain literals, no Node construction required. The Node-consuming extraction wrapper (v1_fn_body_match_scrutinee_rc_clone_bound_witnesses) is the thin layer that calls analyze_rc_match and feeds the pure core; it is scoped narrowly to a function body that IS DIRECTLY a top-level match expression (the exact shape of the two real specimens this was traced from, realize_route<T> and classify_write<T> in dag/std/cache_interface.dag) -- a body wrapped in Let/If/Branch before reaching the match is NOT walked. That is a declared boundary, not a silent gap: BoundedToDirectTopLevelMatchBody names it below, and the next-rung trigger is a recursive body walker mirroring emit_rust_expr_if/emit_rust_expr_let's accessor shapes once a second real specimen needs it (DESIGN.md S4b no-untracked-stall). This module is additive and unwired: it does not edit src/v1/05_emit_rust.dag or src/v1/trait_derive_emit.dag (both owned by witty-heron-413's materialization_carriers lane), and emit_fn_def does not call it yet. The proposed consumer diff is documented in trait_bound_witness_proposed_consumer_diff_note below for the owner to land alongside the emitter's actual .clone()-call fix, coordinated with whichever B1 carrier lands first."
+
+data trait_bound_witness_proposed_consumer_diff_note: String = "PROPOSED, NOT APPLIED. In src/v1/05_emit_rust.dag, emit_fn_def already has `body: Node`, `shared_types: Set<String>`, `emit_info: EmitGraphInfo`, and `si` (source_indices) in scope at its call to v1_generic_params_needing_clone_bound (around line 5769). Thread body through: extend v1_generic_params_needing_clone_bound's signature with `body: Node?, shared_types: Set<String>, emit_info: EmitGraphInfo` (or add a sibling call unioning results, to avoid widening trait_derive_emit.dag's existing signature under a different owner's active edits), then inside it (or beside it) call `v1_fn_body_match_scrutinee_rc_clone_bound_witnesses(generic_param_names: generic_param_names, body: body, shared_types: shared_types, emit_info: emit_info, source_indices: si)` and union the returned witnesses' param_name set into the existing List<String> of params needing Clone (a guarded set-insert, matching the idempotent-union precedent in generic_item_clone_bound_witness_test.dag's both_triggers_render_single_bound). No existing predicate in trait_derive_emit.dag needs to change; this is strictly additive fact-gathering feeding the same union point."
+
+data TraitBoundReason
+  = RcMatchScrutineeClone { scrutinee_type: String }
+
+type TraitBoundWitness {
+  param_name: String
+  trait_name: String
+  reason: TraitBoundReason
+}
+
+data TraitBoundWitnessScope
+  = BoundedToDirectTopLevelMatchBody
+
+fn v1_rc_match_scrutinee_clone_bound_witnesses(
+  generic_param_names: List<String>,
+  scrutinee_type_name: String,
+  scrutinee_type_arg_names: List<String>,
+  rc_match_needs_deref: Bool
+) -> List<TraitBoundWitness> {
+  if !rc_match_needs_deref {
+    []
+  } else {
+    scrutinee_type_arg_names
+    |> flat_map(arg_name =>
+      if generic_param_names |> any(g => g == arg_name) {
+        [TraitBoundWitness {
+          param_name: arg_name,
+          trait_name: "Clone",
+          reason: RcMatchScrutineeClone { scrutinee_type: scrutinee_type_name }
+        }]
+      } else {
+        []
+      }
+    )
+  }
+}
+
+fn v1_resolved_type_arg_names(node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  node.children |> map(c => authored_name_at(source_indices: source_indices, node: c))
+}
+
+fn v1_fn_body_match_scrutinee_rc_clone_bound_witnesses(
+  generic_param_names: List<String>,
+  body: Node?,
+  shared_types: Set<String>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>
+) -> List<TraitBoundWitness> {
+  match body {
+    Present { value: b } =>
+      match b.expr_data {
+        ExprMatch =>
+          let scrutinee = match_scrutinee(texpr: b)
+          match scrutinee.inferred {
+            Present { value: Resolved { node: rt } } =>
+              let scrut_type = authored_name_at(source_indices: source_indices, node: rt)
+              let arms = match_arm_nodes(texpr: b)
+              let rc_match = analyze_rc_match(
+                scrutinee: scrutinee,
+                arms: arms,
+                scrut_type: scrut_type,
+                shared_types: shared_types,
+                emit_info: emit_info,
+                source_indices: source_indices
+              )
+              v1_rc_match_scrutinee_clone_bound_witnesses(
+                generic_param_names: generic_param_names,
+                scrutinee_type_name: scrut_type,
+                scrutinee_type_arg_names: v1_resolved_type_arg_names(node: rt, source_indices: source_indices),
+                rc_match_needs_deref: rc_match.needs_deref
+              )
+            _ => []
+          }
+        _ => []
+      }
+    Absent => []
+  }
+}
