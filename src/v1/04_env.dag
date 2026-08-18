@@ -602,6 +602,28 @@ fn global_bare_strict_ambiguity_candidates(env: v1.compiler.infer_env.TypeEnv, n
   }
 }
 
+// A bodyless type declaration -- `type Opaque<Config>` -- carries nothing but its
+// name, so grounding a use of it from another module reaches the name itself and
+// re-enters bare lookup, which filters to the REFERENCING module's containment
+// chain and therefore misses. Measured: `probe.hollow.Opaque<T>` used from
+// probe.user is unresolved, and used from probe.hollow.user -- on the chain --
+// resolves; nine corpus rows on v2.std.patch ConfigPatchRecord and four on
+// cpp_abi are that one shape, all reported at the DECLARATION rather than at
+// the use, which is what made them read as broken declarations.
+//
+// Grounding descends into DEFINING-module structure, where the binding is that
+// module's responsibility rather than the use-site's -- the same reason the mask
+// check does not fire there. But silence cannot be unconditional: a qualified
+// reference to a type no module declares would then pass. This answers the
+// narrower question the census can decide -- does ANY module declare this name --
+// so a real declaration grounds and an invented one still refuses.
+fn name_is_declared_somewhere(env: v1.compiler.infer_env.TypeEnv, name: String) -> Bool {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn bare_name_miss_diagnostic(env: v1.compiler.infer_env.TypeEnv, name: String, span: std.types.SourceSpan) -> v1.std.core.CompilerDiagnostic {
   let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
   if cands |> count > 0 {

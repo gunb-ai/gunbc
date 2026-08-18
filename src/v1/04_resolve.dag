@@ -568,9 +568,13 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
             match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
               Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
               Absent =>
-                NodeResolveResult {
-                  resolved: n,
-                  diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
+                if masked || name_is_declared_somewhere(env: env, name: authored_name(env: env, node: n)) == false {
+                  NodeResolveResult {
+                    resolved: n,
+                    diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
+                  }
+                } else {
+                  NodeResolveResult { resolved: n, diagnostics: [] }
                 }
             }
           }

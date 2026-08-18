@@ -1767,7 +1767,12 @@ pub fn resolve_node_bounded(
                                                         }
                                                         None => Rc::new(NodeResolveResult {
                                                             resolved: n.clone(),
-                                                            diagnostics: Rc::new(vec![
+                                                            diagnostics: if masked
+                                                                || !crate::v1_compiler_infer_env::name_is_declared_somewhere(
+                                                                    env.clone(),
+                                                                    authored_name(env.clone(), n.clone()),
+                                                                ) {
+                                                                Rc::new(vec![
                                                                 make_error_node(
                                                                     bare_name_miss_diagnostic(
                                                                         env.clone(),
@@ -1779,7 +1784,7 @@ pub fn resolve_node_bounded(
                                                                     ),
                                                                     module_name.clone(),
                                                                 ),
-                                                            ]),
+                                                            ]) } else { Rc::new(vec![]) },
                                                         }),
                                                     }
                                                 }

@@ -1,0 +1,25 @@
+module test.claim.bodyless_generic_cross_module_grounding_witness
+
+// A bodyless type declaration carries nothing but its name, so grounding a use
+// of it from another module reaches the name itself and re-enters bare lookup,
+// which filters to the REFERENCING module's containment chain. Off the chain it
+// missed, and the miss was reported at the DECLARATION rather than at the use,
+// which made a correct declaration read as broken. Measured on v2.std.patch
+// ConfigPatchRecord (nine rows) and v2.extdeps.cpp_abi (four).
+//
+// The green claim is the off-chain consumer. The red claim is what keeps the
+// repair from being a widen: a name NO module declares still refuses, so the
+// relaxation is scoped to grounding into a declaration that really exists.
+
+fn w_bodyless_generic_grounds_from_an_off_chain_module() -> Bool {
+  compile_dag_rust_emit_check(
+    "module bodyless.probe\n\ntype Opaque<Config>\n\ntype ProbeConfig { x: Int }\n\ntype ProbePatch = bodyless.probe.Opaque<bodyless.probe.ProbeConfig>\n",
+    "src/bodyless_probe.rs",
+    ["struct ProbeConfig"],
+    ["unresolved type"]
+  )
+}
+
+test fn bodyless_generic_grounds_from_an_off_chain_module() -> Bool {
+  w_bodyless_generic_grounds_from_an_off_chain_module()
+}
