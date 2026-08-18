@@ -1,0 +1,424 @@
+module test.claim.codex_supervised_turn_wet_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.temporal_effect { LeaseAbsent, LeaseRunningExpected }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+  materialize_codex_runtime_bundle,
+  materialize_codex_runtime_bundle_through_prepare,
+  materialize_codex_runtime_bundle_through_pair_acquire,
+  materialize_codex_runtime_bundle_through_npm_ci_offline,
+  materialize_codex_runtime_bundle_finish_after_install,
+  materialize_codex_runtime_finish_bisect_observe_set_identity_only,
+  materialize_codex_runtime_finish_bisect_observe_manifest_digest_only,
+  materialize_codex_runtime_finish_bisect_observe_lock_digest_only,
+  materialize_codex_runtime_finish_bisect_observe_native_digest_only,
+  materialize_codex_runtime_finish_bisect_observe_toolchain_only,
+  materialize_codex_runtime_finish_bisect_observe_protocol_schema_only,
+  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only,
+  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only,
+  materialize_codex_runtime_finish_bisect_observe_package_tree_only,
+  materialize_codex_runtime_finish_bisect_observe_receipt_identity_only,
+  finish_bisect_observe_package_materialized_tree_tiny_fixture,
+  prepare_codex_runtime_closure,
+  select_codex_exact_target_closure,
+  observe_codex_npm_runtime_target,
+  acquire_and_admit_registry_artifact,
+  admit_codex_package_lock_text,
+  CodexPackageLockAdmitted,
+  CodexRuntimeClosurePrepared,
+  CodexNpmRuntimeTargetObserved,
+  CodexExactTargetClosureSelected,
+  CodexSelectedNodeAdmitted,
+  RegistryArtifactAdmitted,
+  AdmittedCodexRuntimeSource,
+  CodexRuntimeMaterialized,
+}
+import gunbc.codex_app_server_press {
+  observe_codex_account_preflight,
+  ProviderProbeKey,
+  CodexPressAccountReady,
+  CodexPressLoginRequired,
+  CodexPressUnavailable,
+  CodexPressRefused,
+}
+import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_supervised_turn {
+  CodexSupervisedTurnOk,
+  CodexSupervisedTurnRefused,
+  CodexSupervisedTurnUnavailable,
+  CodexRunnerTurnTerminalReceipt,
+  codex_supervised_turn_binding,
+  codex_supervised_turn_client_command_id,
+  CodexSupervisedTurnBindingPrepareRefused,
+  CodexSupervisedTurnBindingPrepared,
+  prepare_codex_supervised_turn_binding,
+}
+import gunbc.codex_supervised_turn_run { run_codex_supervised_turn }
+import gunbc.provider_turn_adjudication { press_display_finished }
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness_test.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
+
+data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
+
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). INTERPRETER BISECT: wet_finish_parse_canonicalize_largest_protocol_schema_only — install + generate-json-schema + parse_json/canonicalize_json_value on codex_app_server_protocol.schemas.json only (507 KB); no fold/manifest/sha512. Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
+
+data wet_bisect_ladder_receipt_note: String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
+
+data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
+
+data wet_supervised_turn_probe_key: ProviderProbeKey = "wet-supervised-turn-1" as ProviderProbeKey
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
+fn wet_codex_home_from_env() -> FilePath? {
+  match shell.Env.Get(name: "CODEX_HOME" as NonEmptyStr).value {
+    Present { value: home } => {
+      if home == "" {
+        none
+      } else {
+        Present { value: home as FilePath }
+      }
+    }
+    Absent => none
+  }
+}
+
+fn wet_supervised_turn_terminal_ok(
+  turn: WorkerTurn,
+  terminal: CodexRunnerTurnTerminalReceipt,
+) -> Bool {
+  (terminal.client_command_id as String) ==
+    (codex_supervised_turn_client_command_id(turn: turn) as String)
+    && match terminal.binding.lease.observed {
+      LeaseAbsent => true
+      LeaseRunningExpected => false
+      LeaseRunningStale => false
+      LeasePortForeign => false
+      LeaseInaccessible => false
+    }
+    && press_display_finished(disposition: terminal.disposition)
+}
+
+fn wet_supervised_turn() -> WorkerTurn {
+  WorkerTurn {
+    turn_key: "wet-turn-1",
+    attempt_key: "wet-attempt-1",
+    consumed_feedback: "Reply with exactly: wet-supervised-turn-ok",
+    resulting_head: none,
+  }
+}
+
+fn wet_committed_admitted_source_lock_admits() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
+      count(nodes) > 0 && count(registry_artifacts) > 0
+    _ => false
+  }
+}
+
+fn wet_committed_admitted_source_construct_only() -> Bool {
+  let source = committed_admitted_codex_runtime_source()
+  (source.lock_bytes != "") && (source.manifest_bytes != "")
+}
+
+fn wet_select_codex_exact_target_closure_only() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match observe_codex_npm_runtime_target() {
+        CodexNpmRuntimeTargetObserved { target } =>
+          match select_codex_exact_target_closure(graph: graph, target: target) {
+            CodexExactTargetClosureSelected {
+              native_executable_rel,
+              platform_lock_key,
+              wrapper: _,
+              platform: _,
+              target: _,
+            } =>
+              (native_executable_rel as String) != ""
+                && (platform_lock_key as String) != ""
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn wet_acquire_wrapper_artifact_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      wrapper: wrapper,
+      platform: _,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match wrapper {
+          CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: wrapper_artifact,
+            lock_node_key: wrapper_key,
+          } =>
+            match acquire_and_admit_registry_artifact(
+              artifact: wrapper_artifact,
+              lock_node_key: wrapper_key,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+fn wet_acquire_platform_artifact_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      wrapper: _,
+      platform: platform,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match platform {
+          CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: platform_artifact,
+            lock_node_key: platform_key,
+          } =>
+            match acquire_and_admit_registry_artifact(
+              artifact: platform_artifact,
+              lock_node_key: platform_key,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+fn wet_codex_runtime_prepare_closure_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      native_executable_rel,
+      platform_lock_key,
+      selected_target: _,
+      wrapper: _,
+      platform: _,
+      source: _,
+    } =>
+      (native_executable_rel as String) != ""
+        && (platform_lock_key as String) != ""
+    _ => false
+  }
+}
+
+fn wet_materialize_through_prepare_only() -> Bool {
+  materialize_codex_runtime_bundle_through_prepare(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_acquire_selected_pair_only() -> Bool {
+  materialize_codex_runtime_bundle_through_pair_acquire(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_npm_ci_offline_only() -> Bool {
+  materialize_codex_runtime_bundle_through_npm_ci_offline(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_finish_after_install_only() -> Bool {
+  materialize_codex_runtime_bundle_finish_after_install(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
+  )
+}
+
+fn wet_finish_observe_set_identity_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_set_identity_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_manifest_digest_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_lock_digest_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_native_digest_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_native_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_toolchain_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_toolchain_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_package_tree_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_package_tree_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_receipt_identity_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_package_tree_tiny_fixture() -> Bool {
+  finish_bisect_observe_package_materialized_tree_tiny_fixture()
+}
+
+data wet_materialize_bisect_release_parent: FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
+
+fn wet_materialize_codex_runtime_bundle_only() -> Bool {
+  match materialize_codex_runtime_bundle(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
+  ) {
+    CodexRuntimeMaterialized { bundle } =>
+      shell.Test.IsFile(path: codex_bundle_executable_path(bundle: bundle)).is_file
+    _ => false
+  }
+}
+
+fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
+  let release_tmp = shell.Mktemp.Dir()
+  let evidence = shell.Mktemp.Dir()
+  let cwd = shell.Mktemp.Dir()
+  if release_tmp.success == false
+    || evidence.success == false
+    || cwd.success == false {
+    false
+  } else {
+    match wet_codex_home_from_env() {
+      Absent => false
+      Present { value: codex_home } => {
+        match materialize_codex_runtime_bundle(
+          source: committed_admitted_codex_runtime_source(),
+          release_parent: release_tmp.path,
+        ) {
+          CodexRuntimeMaterialized { bundle } => {
+            let path = codex_bundle_executable_path(bundle: bundle)
+            if shell.Test.IsFile(path: path).is_file == false {
+              false
+            } else {
+              let turn = wet_supervised_turn()
+              let credential = observe_codex_account_preflight(
+                bundle: bundle,
+                probe_key: wet_supervised_turn_probe_key,
+                evidence_root: evidence.path,
+                codex_home: codex_home,
+              )
+              match credential {
+                CodexPressAccountReady { receipt } => {
+                  match prepare_codex_supervised_turn_binding(
+                    turn: turn,
+                    credential: receipt.subject.credential,
+                    evidence_root: evidence.path,
+                    observed: LeaseAbsent,
+                    standing_receipt: none,
+                  ) {
+                    CodexSupervisedTurnBindingPrepared { binding: binding } =>
+                      match run_codex_supervised_turn(
+                        bundle: bundle,
+                        credential: receipt.subject.credential,
+                        binding: binding,
+                        cwd: cwd.path,
+                        evidence_root: evidence.path,
+                      ) {
+                        CodexSupervisedTurnOk { receipt: terminal } =>
+                          wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
+                        CodexSupervisedTurnRefused { reason: _ } => false
+                        CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                      }
+                    CodexSupervisedTurnBindingPrepareRefused { reason: _ } => false
+                  }
+                }
+                CodexPressLoginRequired { reason: _, receipt: _ } => false
+                CodexPressRefused { reason: _, receipt: _ } => false
+                CodexPressUnavailable { reason: _, process: _ } => false
+              }
+            }
+          }
+          _ => false
+        }
+      }
+    }
+  }
+}

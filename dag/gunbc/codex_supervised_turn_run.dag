@@ -1,0 +1,227 @@
+module gunbc.codex_supervised_turn_run
+
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.realization_reconcile { Converged, NotConverged }
+import gunbc.codex_app_server_press {
+  AmbientCodexCredentialContext,
+  CodexAccountStandingReceipt,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
+  retain_provider_wire_capture,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
+}
+import gunbc.provider_interface_binding {
+  project_codex_app_server_stdio_binding,
+  ProviderInterfaceResolved,
+  RequiredProviderInterfaceUnavailable,
+}
+import gunbc.package_delivery { CodexRuntimeBundle }
+import extdeps.shell
+import gunbc.fleet_intent { srv1_host, ComputeHost }
+import gunbc.host_effect {
+  CodexSupervisedWorkerTurn,
+  HostOs,
+  LocalShell,
+  host_effect_identity_evidence,
+  ShellEffectApplied,
+  ConvergePlanApplied,
+}
+import std.temporal_effect { HeldSessionLease, LeaseRunningExpected }
+import gunbc.host_effect_realize { host_effect_apply }
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
+import extdeps.llm.codex_app_server {
+  codex_app_server_initialize_request_line,
+  codex_app_server_initialized_notification_line,
+  codex_app_server_account_read_request_line,
+  codex_app_server_rate_limits_read_request_line,
+  codex_app_server_thread_start_request_line,
+  codex_supervised_thread_start_id,
+  codex_supervised_turn_start_wire_id,
+}
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_supervised_turn {
+  CodexSupervisedTurnBinding,
+  CodexSupervisedTurnOutcome,
+  CodexSupervisedTurnOk,
+  CodexSupervisedTurnRefused,
+  CodexSupervisedTurnUnavailable,
+  codex_supervised_turn_binding_with_observed,
+  codex_supervised_turn_client_command_id,
+  codex_supervised_turn_client_command_id_store_path,
+  codex_supervised_turn_outcome_from_capture,
+  persist_codex_supervised_turn_client_command_id,
+}
+
+type CodexSupervisedWorkerTurnApplyOutcome
+  = CodexSupervisedWorkerTurnApplyRefused { reason: NonEmptyStr }
+
+fn codex_supervised_worker_turn_apply(
+  executor_host: ComputeHost,
+  intent: CodexAppServerStdioSessionIntent,
+  lease_key: NonEmptyStr,
+  running_binding: CodexSupervisedTurnBinding,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
+  let r = host_effect_apply(
+    target: HostOs { node: executor_host },
+    effect: CodexSupervisedWorkerTurn {
+      intent: intent,
+      lease_key: lease_key,
+    },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  )
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: stdout, stderr: stderr, exit_code: code } => {
+          let wire_capture = retain_provider_wire_capture(
+            evidence_root: evidence_root,
+            stdout: stdout,
+            stderr: stderr,
+            success: code == 0,
+            exit_code: Present { value: code },
+          )
+          let wire = match wire_capture {
+            ProviderWireCaptureOk { receipt: w } => Present { value: w }
+            ProviderWireCaptureRefused { cause: _ } => none
+          }
+          codex_supervised_turn_outcome_from_capture(
+            running_binding: running_binding,
+            stdout: stdout,
+            stderr: stderr,
+            exit_code: Present { value: code },
+            wire: wire,
+            evidence_root: evidence_root,
+          )
+        }
+        ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          CodexSupervisedTurnRefused {
+            reason: "Codex supervised worker turn returned unexpected ConvergePlanApplied evidence" as NonEmptyStr,
+          }
+      }
+    NotConverged { reason: why, applied: _ } =>
+      CodexSupervisedTurnRefused { reason: why as NonEmptyStr }
+  }
+}
+
+fn codex_supervised_stdio_session_preamble_lines(cwd: FilePath) -> List<NonEmptyStr> {
+  [
+    codex_app_server_initialize_request_line(),
+    codex_app_server_initialized_notification_line(),
+    codex_app_server_account_read_request_line(),
+    codex_app_server_rate_limits_read_request_line(),
+    codex_app_server_thread_start_request_line(cwd: cwd),
+  ]
+}
+
+fn codex_supervised_stdio_session_intent(
+  executable: FilePath,
+  codex_home: FilePath,
+  cwd: FilePath,
+  user_input: String,
+  evidence_root: FilePath,
+) -> CodexAppServerStdioSessionIntent {
+  CodexAppServerStdioSessionIntent {
+    executable: executable,
+    codex_home: codex_home,
+    cwd: cwd,
+    preamble_lines: codex_supervised_stdio_session_preamble_lines(cwd: cwd),
+    user_input: user_input,
+    client_command_id_path: codex_supervised_turn_client_command_id_store_path(
+      evidence_root: evidence_root,
+    ),
+    thread_start_rpc_id: codex_supervised_thread_start_id,
+    turn_start_wire_id: codex_supervised_turn_start_wire_id,
+  }
+}
+
+fn codex_supervised_turn_codex_home(
+  credential: AmbientCodexCredentialContext,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> FilePath {
+  match standing_receipt {
+    Present { value: receipt } => receipt.subject.credential.codex_home
+    Absent => credential.codex_home
+  }
+}
+
+fn codex_supervised_turn_user_input(turn: WorkerTurn) -> String {
+  if turn.consumed_feedback == "" {
+    "continue" as String
+  } else {
+    turn.consumed_feedback
+  }
+}
+
+fn run_codex_supervised_turn(
+  bundle: CodexRuntimeBundle,
+  credential: AmbientCodexCredentialContext,
+  binding: CodexSupervisedTurnBinding,
+  cwd: FilePath,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
+      CodexSupervisedTurnUnavailable {
+        reason: reason,
+        process: ProviderProcessReceipt {
+          exit: ProviderProcessObservationFailed,
+          wire: none,
+        },
+      }
+    ProviderInterfaceResolved { binding: projected } => {
+      let present = shell.Test.IsFile(path: projected.executable.path)
+      if present.is_file == false {
+        CodexSupervisedTurnUnavailable {
+          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+          process: ProviderProcessReceipt {
+            exit: ProviderProcessObservationFailed,
+            wire: none,
+          },
+        }
+      } else {
+        let cmd_id = codex_supervised_turn_client_command_id(turn: binding.turn)
+        if persist_codex_supervised_turn_client_command_id(
+          evidence_root: evidence_root,
+          client_command_id: cmd_id,
+        ) == false {
+          CodexSupervisedTurnRefused {
+            reason: "failed to persist client_command_id before turn/start" as NonEmptyStr,
+          }
+        } else {
+          let running_binding = codex_supervised_turn_binding_with_observed(
+            binding: binding,
+            observed: LeaseRunningExpected,
+          )
+          match running_binding.execution_policy {
+            HeldSessionLease { lease_key: lease_key } => {
+              let session_intent = codex_supervised_stdio_session_intent(
+                executable: projected.executable.path,
+                codex_home: codex_supervised_turn_codex_home(
+                  credential: credential,
+                  standing_receipt: running_binding.standing_receipt,
+                ),
+                cwd: cwd,
+                user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
+                evidence_root: evidence_root,
+              )
+              codex_supervised_worker_turn_apply(
+                executor_host: srv1_host,
+                intent: session_intent,
+                lease_key: lease_key,
+                running_binding: running_binding,
+                evidence_root: evidence_root,
+              )
+            }
+            _ =>
+              CodexSupervisedTurnRefused {
+                reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr,
+              }
+          }
+        }
+      }
+    }
+  }
+}

@@ -79,19 +79,22 @@ fn package_lock_lookup_node<NodeKey, Selection, Metadata, EdgeKind, ManagerIdent
   graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
   key: NodeKey,
 ) -> PackageLockNodeLookup<NodeKey, Selection, Metadata> {
-  let hits = graph.nodes |> filter(n => n.key == key)
-  let n = count(hits)
-  if n == 0 {
-    PackageLockNodeAbsent { key: key }
-  } else if n == 1 {
-    fold(
-      hits,
-      init: PackageLockNodeAbsent { key: key },
-      f: (_acc, node) => PackageLockNodeUnique { node: node },
-    )
-  } else {
-    PackageLockNodeDuplicate { key: key, count: n }
-  }
+  fold(
+    graph.nodes,
+    init: PackageLockNodeAbsent { key: key },
+    f: (acc, node) =>
+      if node.key != key {
+        acc
+      } else {
+        match acc {
+          PackageLockNodeAbsent { key: _ } => PackageLockNodeUnique { node: node }
+          PackageLockNodeUnique { node: _ } =>
+            PackageLockNodeDuplicate { key: key, count: 2 }
+          PackageLockNodeDuplicate { key: dup_key, count: c } =>
+            PackageLockNodeDuplicate { key: dup_key, count: c + 1 }
+        }
+      },
+  )
 }
 
 type PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>

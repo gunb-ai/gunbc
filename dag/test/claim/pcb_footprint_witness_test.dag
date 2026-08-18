@@ -1,0 +1,307 @@
+module test.claim.pcb_footprint_witness
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { micrometer }
+import std.affine_space { point2 }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  TerminalIdentity,
+  component_instance_identity,
+  component_local_label,
+  net_identity,
+  net_local_label,
+  terminal_ref,
+}
+import product.pcb.stackup {
+  AdmittedStackup,
+  CopperLayer,
+  DielectricLayer,
+  GroundPlane,
+  SignalLayer,
+  Stackup,
+  StackupPly,
+  StackupAdmitted,
+  StackupRefused,
+  admit_stackup,
+  admitted_stackup_authority,
+}
+import product.pcb.copper {
+  CopperLayerRef,
+  LayerOutsideStackup,
+  LayerSelected,
+  select_copper_layer,
+}
+import product.pcb.footprint {
+  Footprint,
+  FootprintsAdmitted,
+  FootprintsRefused,
+  NetMemberHasNoPad,
+  Pad,
+  PadSelectedAgainstAnotherStackup,
+  TerminalHasTwoPads,
+  TwoFootprintsForOneComponent,
+  admit_footprints,
+  admitted_footprints_rows,
+  footprint_pad_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
+data gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
+data core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+
+data two_layer: Stackup = Stackup {
+  top: sig,
+  plies: [StackupPly { dielectric: core, copper: gnd }],
+}
+
+data board_authority: DeclarationRef = decl_ref(module_path: "test.claim.pcb_footprint_witness", decl_name: "two_layer")
+
+data other_authority: DeclarationRef = decl_ref(module_path: "test.claim.pcb_footprint_witness", decl_name: "other_board")
+
+data other_board: Stackup = Stackup {
+  top: gnd,
+  plies: [StackupPly { dielectric: core, copper: sig }],
+}
+
+// The drawing this fixture's pads claim to come from. A footprint cannot be authored without one,
+// which is the point: pad coordinates with no source are a recollection of a datasheet.
+data fixture_drawing: DeclarationRef = decl_ref(module_path: "test.claim.pcb_footprint_witness", decl_name: "fixture_drawing")
+
+data board_frame: CoordinateFrameIdentity = coordinate_frame_identity(occurrence: 71)
+
+data fixture_design: ElectricalDesignIdentity = "test.pcb_footprint.fixture" as ElectricalDesignIdentity
+
+data vcc: NetIdentity = net_identity(design: fixture_design, local_identity: "VCC")
+
+fn admitted_board(s: Stackup, authority: DeclarationRef) -> AdmittedStackup? {
+  match admit_stackup(s: s, authority: authority) {
+    StackupAdmitted { admitted: a } => Present { value: a }
+    StackupRefused { causes: _ } => none
+  }
+}
+
+fn layer_of(a: AdmittedStackup, ordinal: Int) -> CopperLayerRef? {
+  match select_copper_layer(a: a, ordinal: ordinal) {
+    LayerSelected { layer: l } => Present { value: l }
+    LayerOutsideStackup { requested: _, layer_count: _ } => none
+  }
+}
+
+fn pad_at(layer: CopperLayerRef, terminal: NonEmptyStr, x: Int, y: Int) -> Pad {
+  Pad {
+    terminal: terminal as TerminalIdentity,
+    centre: point2(frame: board_frame, x: x, y: y),
+    layer: layer,
+  }
+}
+
+fn footprint_of(component: NonEmptyStr, pads: List<Pad>) -> Footprint {
+  Footprint {
+    component: component_instance_identity(design: fixture_design, local_identity: component),
+    pads: pads,
+    drawing_authority: fixture_drawing,
+  }
+}
+
+fn net_over(members: List<ElectricalTerminalRef>) -> List<ElectricalNet> {
+  [ElectricalNet { identity: vcc, members: members }]
+}
+
+fn t(component: NonEmptyStr, terminal: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: component), terminal: terminal as TerminalIdentity)
+}
+
+// THE JOIN, ASSERTED IN THE DIRECTION THAT MATTERS: a net whose members every have a pad admits, and
+// the admitted value carries the footprints it judged rather than a count of them.
+test fn w_a_net_whose_terminals_all_have_pads_admits() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } => {
+          let f = footprint_of(component: "u1", pads: [
+            pad_at(layer: top, terminal: "1", x: 1000, y: 1000),
+            pad_at(layer: top, terminal: "2", x: 2000, y: 1000),
+          ])
+          match admit_footprints(
+            board: admitted_stackup_authority(a: board),
+            nets: net_over(members: [t(component: "u1", terminal: "1")]),
+            fs: [f],
+          ) {
+            FootprintsRefused { causes: _ } => false
+            FootprintsAdmitted { admitted: a } =>
+              count(admitted_footprints_rows(a: a)) == 1
+                && footprint_pad_count(f: f) == 2
+          }
+        }
+      }
+  }
+}
+
+// THE CASE THAT WAS UNREPRESENTABLE BEFORE THE PAD EXISTED. Same net, same footprint, one member
+// naming a terminal the drawing does not have — so the board is unroutable and, until this module,
+// nothing could say so. The cause names the component and the terminal, not just the net, because
+// "VCC is unroutable" sends an author back to look for which of its members is the problem.
+test fn w_red_a_net_member_with_no_pad_refuses() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } => {
+          let f = footprint_of(component: "u1", pads: [pad_at(layer: top, terminal: "1", x: 1000, y: 1000)])
+          match admit_footprints(
+            board: admitted_stackup_authority(a: board),
+            nets: net_over(members: [t(component: "u1", terminal: "1"), t(component: "u1", terminal: "9")]),
+            fs: [f],
+          ) {
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
+              count(filter(c, x => match x {
+                NetMemberHasNoPad { net: n, component: comp, terminal: term } =>
+                  n == vcc && component_local_label(c: comp) == "u1" && (term as NonEmptyStr) == "9"
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
+              })) == 1
+          }
+        }
+      }
+  }
+}
+
+// RED control: the member names a terminal that EXISTS on a different component. A check that
+// compared terminal identities alone — the pin-number comparison this module refuses to perform —
+// would find "1" among the pads and pass.
+test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } => {
+          let f = footprint_of(component: "u1", pads: [pad_at(layer: top, terminal: "1", x: 1000, y: 1000)])
+          match admit_footprints(
+            board: admitted_stackup_authority(a: board),
+            nets: net_over(members: [t(component: "u2", terminal: "1")]),
+            fs: [f],
+          ) {
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
+              count(filter(c, x => match x {
+                NetMemberHasNoPad { net: _, component: comp, terminal: _ } => component_local_label(c: comp) == "u2"
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
+              })) == 1
+          }
+        }
+      }
+  }
+}
+
+// RED control: one terminal with two pads is two coordinates claiming one electrical identity.
+test fn w_red_two_pads_on_one_terminal_refuse() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } => {
+          let f = footprint_of(component: "u1", pads: [
+            pad_at(layer: top, terminal: "1", x: 1000, y: 1000),
+            pad_at(layer: top, terminal: "1", x: 5000, y: 1000),
+          ])
+          match admit_footprints(
+            board: admitted_stackup_authority(a: board),
+            nets: net_over(members: [t(component: "u1", terminal: "1")]),
+            fs: [f],
+          ) {
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
+              count(filter(c, x => match x {
+                TerminalHasTwoPads { component: comp, terminal: term } =>
+                  component_local_label(c: comp) == "u1" && (term as NonEmptyStr) == "1"
+                NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
+              })) > 0
+          }
+        }
+      }
+  }
+}
+
+// RED control: a pad whose layer was selected against a different stackup is not this board's
+// copper, however plausible its coordinate.
+test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match admitted_board(s: other_board, authority: other_authority) {
+        Absent => false
+        Present { value: elsewhere } =>
+          match layer_of(a: elsewhere, ordinal: 0) {
+            Absent => false
+            Present { value: foreign } => {
+              let f = footprint_of(component: "u1", pads: [pad_at(layer: foreign, terminal: "1", x: 1000, y: 1000)])
+              match admit_footprints(
+                board: admitted_stackup_authority(a: board),
+                nets: net_over(members: [t(component: "u1", terminal: "1")]),
+                fs: [f],
+              ) {
+                FootprintsAdmitted { admitted: _ } => false
+                FootprintsRefused { causes: c } =>
+                  count(filter(c, x => match x {
+                    PadSelectedAgainstAnotherStackup { component: comp, terminal: _ } =>
+                      component_local_label(c: comp) == "u1"
+                    NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                    TerminalHasTwoPads { component: _, terminal: _ } => false
+                    TwoFootprintsForOneComponent { component: _ } => false
+                  })) > 0
+              }
+            }
+          }
+      }
+  }
+}
+
+// RED control: two drawings read for one component, neither chosen.
+test fn w_red_two_footprints_for_one_component_refuse() -> Bool {
+  match admitted_board(s: two_layer, authority: board_authority) {
+    Absent => false
+    Present { value: board } =>
+      match layer_of(a: board, ordinal: 0) {
+        Absent => false
+        Present { value: top } => {
+          let a = footprint_of(component: "u1", pads: [pad_at(layer: top, terminal: "1", x: 1000, y: 1000)])
+          let b = footprint_of(component: "u1", pads: [pad_at(layer: top, terminal: "1", x: 9000, y: 9000)])
+          match admit_footprints(
+            board: admitted_stackup_authority(a: board),
+            nets: net_over(members: [t(component: "u1", terminal: "1")]),
+            fs: [a, b],
+          ) {
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
+              count(filter(c, x => match x {
+                TwoFootprintsForOneComponent { component: comp } => component_local_label(c: comp) == "u1"
+                NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+              })) > 0
+          }
+        }
+      }
+  }
+}

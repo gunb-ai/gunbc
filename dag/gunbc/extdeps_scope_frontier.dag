@@ -293,6 +293,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/llm/claude_sdk.dag",
   "dag/extdeps/llm/claude_setup_token_cli.dag",
   "dag/extdeps/llm/codex_app_server.dag",
+  "dag/extdeps/llm/codex_app_server_stdio_session.dag",
   "dag/extdeps/llm/cursor_sdk.dag",
   "dag/extdeps/llm/cursor_sdk_errors.dag",
   "dag/extdeps/llm/cursor_sdk_facts.dag",
