@@ -6,11 +6,11 @@ type FixtureVal {
   payload: String
 }
 
-fn fixture_val(payload: String) -> FixtureVal {
+fn fixture_val(payload: String) -> test.claim.keyed_delta_fold_witness.FixtureVal {
   FixtureVal { payload: payload }
 }
 
-fn fixture_val_eq(a: FixtureVal, b: FixtureVal) -> Bool {
+fn fixture_val_eq(a: test.claim.keyed_delta_fold_witness.FixtureVal, b: test.claim.keyed_delta_fold_witness.FixtureVal) -> Bool {
   a.payload == b.payload
 }
 
@@ -18,43 +18,43 @@ fn fixture_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn fixture_row(label: String, payload: String) -> std.keyed_row.KeyedRow<String, FixtureVal> {
+fn fixture_row(label: String, payload: String) -> std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal> {
   std.keyed_row.KeyedRow { row_key: label, value: fixture_val(payload: payload) }
 }
 
-fn fixture_rows_a() -> List<KeyedRow<String, FixtureVal>> {
+fn fixture_rows_a() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     fixture_row(label: "alpha", payload: "one"),
     fixture_row(label: "beta", payload: "two"),
   ]
 }
 
-fn fixture_rows_b() -> List<KeyedRow<String, FixtureVal>> {
+fn fixture_rows_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     fixture_row(label: "alpha", payload: "one"),
     fixture_row(label: "beta", payload: "three"),
   ]
 }
 
-fn fixture_rows_reordered_b() -> List<KeyedRow<String, FixtureVal>> {
+fn fixture_rows_reordered_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     fixture_row(label: "beta", payload: "three"),
     fixture_row(label: "alpha", payload: "one"),
   ]
 }
 
-fn fixture_rows_added() -> List<KeyedRow<String, FixtureVal>> {
+fn fixture_rows_added() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   concat(
     fixture_rows_a(),
     [fixture_row(label: "gamma", payload: "new")]
   )
 }
 
-fn fixture_rows_removed() -> List<KeyedRow<String, FixtureVal>> {
+fn fixture_rows_removed() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [fixture_row(label: "alpha", payload: "one")]
 }
 
-fn fixture_modified_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
+fn fixture_modified_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delta_fold_witness.FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_b(),
@@ -63,7 +63,7 @@ fn fixture_modified_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
   )
 }
 
-fn fixture_added_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
+fn fixture_added_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delta_fold_witness.FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_added(),
@@ -72,7 +72,7 @@ fn fixture_added_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
   )
 }
 
-fn fixture_removed_hunk() -> std.change.KeyedPatch<String, FixtureVal> {
+fn fixture_removed_hunk() -> std.change.KeyedPatch<String, test.claim.keyed_delta_fold_witness.FixtureVal> {
   keyed_two_way_diff(
     left: fixture_rows_a(),
     right: fixture_rows_removed(),
@@ -448,7 +448,7 @@ test fn witness_conflict_has_no_mutation_arm() -> Bool {
   }
 }
 
-fn fixture_apply_verdict(from_label: String, to_label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
+fn fixture_apply_verdict(from_label: String, to_label: String) -> std.change.KeyedLeafVerdict<test.claim.keyed_delta_fold_witness.FixtureVal> {
   std.change.KeyedApplyHunk {
     from: fixture_val(payload: from_label),
     to: fixture_val(payload: to_label),
@@ -463,11 +463,11 @@ test fn witness_apply_verdict_has_mutation_arm() -> Bool {
   }
 }
 
-fn fixture_verdict_added(label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
+fn fixture_verdict_added(label: String) -> std.change.KeyedLeafVerdict<test.claim.keyed_delta_fold_witness.FixtureVal> {
   std.change.KeyedVerdictAdded { value: fixture_val(payload: label) }
 }
 
-fn fixture_verdict_removed(label: String) -> std.change.KeyedLeafVerdict<FixtureVal> {
+fn fixture_verdict_removed(label: String) -> std.change.KeyedLeafVerdict<test.claim.keyed_delta_fold_witness.FixtureVal> {
   std.change.KeyedVerdictRemoved { value: fixture_val(payload: label) }
 }
 

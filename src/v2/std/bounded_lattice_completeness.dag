@@ -6,7 +6,7 @@ type BlNamedChildLookup
   | BlNamedChildMissing
   | BlNamedChildAmbiguous
 
-fn bl_named_child_lookup(root: v2.std.node.Node, name: v2.std.node.Symbol) -> BlNamedChildLookup {
+fn bl_named_child_lookup(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.bounded_lattice_completeness.BlNamedChildLookup {
   match find_named_child(root: root, name: name) {
     Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
     Rejected { diagnostics: d } =>

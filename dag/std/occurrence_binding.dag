@@ -10,47 +10,47 @@ type ContainmentPath<N> {
 }
 
 type BindingOccurrence<N> {
-  containment: ContainmentPath<N>
+  containment: std.occurrence_binding.ContainmentPath<N>
 }
 
 type BindingCandidate<N> {
-  containment: ContainmentPath<N>
+  containment: std.occurrence_binding.ContainmentPath<N>
 }
 
 type OccurrenceBinding<N> {
-  occurrence: BindingOccurrence<N>
-  candidate: BindingCandidate<N>
+  occurrence: std.occurrence_binding.BindingOccurrence<N>
+  candidate: std.occurrence_binding.BindingCandidate<N>
 }
 
 type AmbiguousBindingCandidates<N> {
-  first: BindingCandidate<N>
-  second: BindingCandidate<N>
-  rest: FreeMonoid<BindingCandidate<N>>
+  first: std.occurrence_binding.BindingCandidate<N>
+  second: std.occurrence_binding.BindingCandidate<N>
+  rest: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
 }
 
 type OccurrenceBindingResult<N>
-  = OccurrenceBound { binding: OccurrenceBinding<N> }
-  | OccurrenceUnbound { occurrence: BindingOccurrence<N> }
+  = OccurrenceBound { binding: std.occurrence_binding.OccurrenceBinding<N> }
+  | OccurrenceUnbound { occurrence: std.occurrence_binding.BindingOccurrence<N> }
   | OccurrenceAmbiguous {
-      occurrence: BindingOccurrence<N>
-      candidates: AmbiguousBindingCandidates<N>
+      occurrence: std.occurrence_binding.BindingOccurrence<N>
+      candidates: std.occurrence_binding.AmbiguousBindingCandidates<N>
     }
 
 type OccurrenceBindingFoldState<N>
   = OccurrenceBindingFoldZero
   | OccurrenceBindingFoldOne {
-      first: BindingCandidate<N>
+      first: std.occurrence_binding.BindingCandidate<N>
     }
   | OccurrenceBindingFoldMany {
-      first: BindingCandidate<N>
-      second: BindingCandidate<N>
-      rest_reversed: FreeMonoid<BindingCandidate<N>>
+      first: std.occurrence_binding.BindingCandidate<N>
+      second: std.occurrence_binding.BindingCandidate<N>
+      rest_reversed: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
     }
 
 fn occurrence_binding_from_candidates<N>(
-  occurrence: BindingOccurrence<N>,
-  candidates: FreeMonoid<BindingCandidate<N>>
-) -> OccurrenceBindingResult<N> {
+  occurrence: std.occurrence_binding.BindingOccurrence<N>,
+  candidates: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
+) -> std.occurrence_binding.OccurrenceBindingResult<N> {
   let state = fold(
     candidates,
     init: OccurrenceBindingFoldZero,
@@ -87,7 +87,7 @@ fn occurrence_binding_from_candidates<N>(
       }
     OccurrenceBindingFoldOne { first: first } =>
       OccurrenceBound {
-        binding: OccurrenceBinding {
+        binding: std.occurrence_binding.OccurrenceBinding {
           occurrence: occurrence,
           candidate: first,
         },
@@ -99,7 +99,7 @@ fn occurrence_binding_from_candidates<N>(
     } =>
       OccurrenceAmbiguous {
         occurrence: occurrence,
-        candidates: AmbiguousBindingCandidates {
+        candidates: std.occurrence_binding.AmbiguousBindingCandidates {
           first: first,
           second: second,
           rest: reverse(rest_reversed),

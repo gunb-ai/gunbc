@@ -20,7 +20,7 @@ type MandatoryTagRegion {
 
 data extdeps_external_authority_region_note: String = "Region membership mirrors the dissolved host roster exactly: extdeps.uri and extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried forward: coverage was whole-tree at dissolution time, so no backfill concept survives."
 
-data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion {
+data extdeps_external_authority_region: v2.lens.mandatory_tag.MandatoryTagRegion = MandatoryTagRegion {
   region_dotted_prefix: "extdeps.",
   required_decl_name: ^extdeps_external_authority_anchor,
   required_type_name: ^ExternalAuthority,
@@ -31,7 +31,7 @@ data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion 
   exempt_module_suffixes: [".mock_corpus"]
 }
 
-fn mandatory_tag_regions() -> v2.std.collection.List<MandatoryTagRegion> {
+fn mandatory_tag_regions() -> v2.std.collection.List<v2.lens.mandatory_tag.MandatoryTagRegion> {
   [extdeps_external_authority_region]
 }
 
@@ -51,7 +51,7 @@ fn mandatory_tag_any_suffix(xs: v2.std.collection.List<String>, dotted: String) 
   fold(xs, init: false, f: fn(acc, s) { acc || dotted.ends_with(suffix: s) })
 }
 
-fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: String) -> Bool {
+fn mandatory_tag_region_applies(region: v2.lens.mandatory_tag.MandatoryTagRegion, dotted: String) -> Bool {
   dotted.starts_with(prefix: region.region_dotted_prefix)
     && !mandatory_tag_strings_contain(xs: region.exempt_modules, s: dotted)
     && !mandatory_tag_any_prefix(xs: region.exempt_module_prefixes, dotted: dotted)
@@ -174,7 +174,7 @@ fn mandatory_tag_parse_value_node(d: v2.std.node.Node) -> v2.std.optional.Option
   }
 }
 
-fn mandatory_tag_decl_name(d: v2.std.node.Node) -> MandatoryTagDeclName {
+fn mandatory_tag_decl_name(d: v2.std.node.Node) -> v2.lens.mandatory_tag.MandatoryTagDeclName {
   match find_named_child(root: d, name: ^dag_surface_data_decl_name) {
     Accepted { value: nm, diagnostics: _ } =>
       match node_atom_identity_optional(node: nm) {
@@ -221,7 +221,7 @@ type MandatoryTagDeclScan {
   projection_gated_count: Int
 }
 
-fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.node.Symbol) -> MandatoryTagDeclScan {
+fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.node.Symbol) -> v2.lens.mandatory_tag.MandatoryTagDeclScan {
   if mandatory_tag_node_production_is(n: subtree, want: ^dag_surface_data_decl) {
     match mandatory_tag_decl_name(d: subtree) {
       DeclNameRead { name: nm } =>
@@ -236,7 +236,7 @@ fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.nod
         MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 1 }
     }
   } else {
-    fold(subtree.children, init: MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
+    fold(subtree.children, init: v2.lens.mandatory_tag.MandatoryTagDeclScan { found: optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
       match acc.found {
         Present { value: _ } => acc
         Absent =>
@@ -290,7 +290,7 @@ fn mandatory_tag_value_not_accepted_diagnostic(d: v2.std.node.Node) -> v2.std.di
   }
 }
 
-fn mandatory_tag_type_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_type_node(d: d) {
     Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
     Present { value: ty } =>
@@ -315,7 +315,7 @@ fn mandatory_tag_vocabulary_hits(atoms: v2.std.collection.List<v2.std.node.Symbo
   })
 }
 
-fn mandatory_tag_value_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_value_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_value_node(d: d) {
     Absent => []
     Present { value: v } =>
@@ -344,7 +344,7 @@ fn mandatory_tag_value_findings(d: v2.std.node.Node, region: MandatoryTagRegion)
 }
 
 fn mandatory_tag_region_module_findings(
-  region: MandatoryTagRegion,
+  region: v2.lens.mandatory_tag.MandatoryTagRegion,
   module_node: v2.std.node.Node,
   dotted: String
 ) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {

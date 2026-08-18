@@ -19,25 +19,25 @@ type GitCompatibilityObjectPurpose
 
 type GitCompatibilityRefusal
   = GitCompatibilityObjectWrongKind {
-      purpose: GitCompatibilityObjectPurpose,
+      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
       stored: extdeps.git.object_store.StoredObject,
     }
   | GitCompatibilityObjectPromisorUnavailable {
-      purpose: GitCompatibilityObjectPurpose,
+      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
       promisor: std.types.NonEmptyStr,
     }
   | GitCompatibilityObjectUnexpectedlyMissing {
-      purpose: GitCompatibilityObjectPurpose,
+      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
     }
   | GitCompatibilityObjectCorrupt {
-      purpose: GitCompatibilityObjectPurpose,
+      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
       reason: std.types.NonEmptyStr,
     }
   | GitCompatibilityRepositoryInvalid {
-      purpose: GitCompatibilityObjectPurpose,
+      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
       cause: extdeps.git.object_store.GitRepositoryDecodeRefusal,
     }
   | GitCompatibilityReadBackRejected { axis: extdeps.git.object_store.GitReadBackMismatchAxis }
@@ -69,17 +69,17 @@ type GitCompatibilityRefusal
     }
 
 type GitCompatibilityBindingOutcome
-  = GitCompatibilityBound { receipt: GitCompatibilityReceipt }
-  | GitCompatibilityBindingRefused { cause: GitCompatibilityRefusal }
+  = GitCompatibilityBound { receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt }
+  | GitCompatibilityBindingRefused { cause: gunbc.scm_compatibility.git.GitCompatibilityRefusal }
 
 type GitCompatibilityBindingOutcomeFold<R> {
-  bound: fn(GitCompatibilityReceipt) -> R
-  refused: fn(GitCompatibilityRefusal) -> R
+  bound: fn(gunbc.scm_compatibility.git.GitCompatibilityReceipt) -> R
+  refused: fn(gunbc.scm_compatibility.git.GitCompatibilityRefusal) -> R
 }
 
 fn git_compatibility_binding_outcome_fold<R>(
-  outcome: GitCompatibilityBindingOutcome,
-  fold: GitCompatibilityBindingOutcomeFold<R>,
+  outcome: gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome,
+  fold: gunbc.scm_compatibility.git.GitCompatibilityBindingOutcomeFold<R>,
 ) -> R {
   match outcome {
     GitCompatibilityBound { receipt } => fold.bound(receipt)
@@ -88,9 +88,9 @@ fn git_compatibility_binding_outcome_fold<R>(
 }
 
 fn git_compatibility_object_refusal(
-  purpose: GitCompatibilityObjectPurpose,
+  purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
   lookup: extdeps.git.object_store.ObjectLookupResult,
-) -> GitCompatibilityRefusal {
+) -> gunbc.scm_compatibility.git.GitCompatibilityRefusal {
   match lookup {
     ObjectFound { stored } =>
       GitCompatibilityObjectWrongKind {
@@ -129,7 +129,7 @@ fn git_compatibility_bind_commit(
   target: extdeps.git.object_store.GitRefName,
   expected_generation: extdeps.git.object_store.GitObjectId,
   proposed_generation: extdeps.git.object_store.GitObjectId,
-) -> GitCompatibilityBindingOutcome {
+) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
   match git_project_repository(
     repo: repository,
     tree_oid: tree,
@@ -151,7 +151,7 @@ fn git_compatibility_bind_commit(
               transition,
             } =>
               GitCompatibilityBound {
-                receipt: GitCompatibilityReceipt {
+                receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt {
                   target: target,
                   generation: expected_generation,
                   projection: projection,
@@ -261,7 +261,7 @@ fn git_compatibility_bind_commit(
 
 fn git_compatibility_generation_wrong_kind(
   stored: extdeps.git.object_store.StoredObject,
-) -> GitCompatibilityBindingOutcome {
+) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
   GitCompatibilityBindingRefused {
     cause: GitCompatibilityObjectWrongKind {
       purpose: GitCompatibilityGenerationCommit,
@@ -276,7 +276,7 @@ fn git_compatibility_bind(
   target: extdeps.git.object_store.GitRefName,
   expected_generation: extdeps.git.object_store.GitObjectId,
   proposed_generation: extdeps.git.object_store.GitObjectId,
-) -> GitCompatibilityBindingOutcome {
+) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
   match git_lookup_object(
     repo: repository,
     oid: expected_generation,
@@ -632,7 +632,7 @@ fn git_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFi
 }
 
 fn git_compatibility_projection_receipt(
-  receipt: GitCompatibilityReceipt,
+  receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt,
 ) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
   let generation = git_object_id_wire_hex(oid: receipt.generation) as std.types.NonEmptyStr
   let state = git_compatibility_observed_state_identity(
@@ -658,7 +658,7 @@ fn git_compatibility_projection_receipt(
   }
 }
 
-fn git_compatibility_projection_handler() -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<GitCompatibilityReceipt> {
+fn git_compatibility_projection_handler() -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<gunbc.scm_compatibility.git.GitCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       git_compatibility_projection_receipt(receipt: receipt)

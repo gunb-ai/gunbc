@@ -13,14 +13,14 @@ type StructuralResolutionKindPolicy
   | OutOfScopeForStructuralResolution
 
 type StructuralResolutionFact {
-  dependencies: List<v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>>
+  dependencies: List<v2.std.dependency.ClassifiedDependencyView<v2.lens.structural_resolution.StructuralResolutionStatus>>
 }
 
 fn inferred_facts_for_node(tree: v2.compiler.infer.InferredTree, node: Node) -> v2.std.witness.Witness<v2.compiler.infer.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
-fn status_for_binding_facts(usage_site_facts: Witness<v2.compiler.infer.InferredFacts>) -> StructuralResolutionStatus {
+fn status_for_binding_facts(usage_site_facts: Witness<v2.compiler.infer.InferredFacts>) -> v2.lens.structural_resolution.StructuralResolutionStatus {
   match usage_site_facts {
     Violates { diagnostic: d } =>
       if d.reason == ^resolve_reason_unbound_symbol {
@@ -34,7 +34,7 @@ fn status_for_binding_facts(usage_site_facts: Witness<v2.compiler.infer.Inferred
   }
 }
 
-fn structural_resolution_dependency_kind_classifier() -> v2.std.dependency.DependencyKindClassifier<StructuralResolutionKindPolicy> {
+fn structural_resolution_dependency_kind_classifier() -> v2.std.dependency.DependencyKindClassifier<v2.lens.structural_resolution.StructuralResolutionKindPolicy> {
   v2.std.dependency.DependencyKindClassifier {
     contains: OutOfScopeForStructuralResolution,
     binds_to: ReadsBindingFacts,
@@ -55,9 +55,9 @@ fn structural_resolution_dependency_kind_classifier() -> v2.std.dependency.Depen
 }
 
 fn structural_resolution_status_for_policy(
-  policy: StructuralResolutionKindPolicy,
+  policy: v2.lens.structural_resolution.StructuralResolutionKindPolicy,
   usage_site_facts: Witness<v2.compiler.infer.InferredFacts>
-) -> StructuralResolutionStatus {
+) -> v2.lens.structural_resolution.StructuralResolutionStatus {
   match policy {
     ReadsBindingFacts => status_for_binding_facts(usage_site_facts: usage_site_facts)
     OutOfScopeForStructuralResolution => OutOfScopeDependencyKind
@@ -67,7 +67,7 @@ fn structural_resolution_status_for_policy(
 fn structural_resolution_status_for_view(
   tree: v2.compiler.infer.InferredTree,
   view: v2.std.dependency.DependencyView
-) -> StructuralResolutionStatus {
+) -> v2.lens.structural_resolution.StructuralResolutionStatus {
   structural_resolution_status_for_policy(
     policy: classify_dependency_kind(
       classifier: structural_resolution_dependency_kind_classifier(),
@@ -80,7 +80,7 @@ fn structural_resolution_status_for_view(
 fn structural_resolution_classify(
   tree: v2.compiler.infer.InferredTree,
   view: v2.std.dependency.DependencyView
-) -> v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus> {
+) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.structural_resolution.StructuralResolutionStatus> {
   v2.std.dependency.ClassifiedDependencyView {
     dependency: view,
     classification: structural_resolution_status_for_view(tree: tree, view: view)
@@ -90,7 +90,7 @@ fn structural_resolution_classify(
 fn structural_resolution_fact(
   tree: v2.compiler.infer.InferredTree,
   dependencies: List<v2.std.dependency.DependencyView>
-) -> StructuralResolutionFact {
+) -> v2.lens.structural_resolution.StructuralResolutionFact {
   StructuralResolutionFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: structural_resolution_classify(tree: tree, view: view))
@@ -98,29 +98,29 @@ fn structural_resolution_fact(
   }
 }
 
-fn fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> StructuralResolutionFact {
+fn fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> v2.lens.structural_resolution.StructuralResolutionFact {
   structural_resolution_fact(tree: tree, dependencies: dependencies)
 }
 
-fn witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> v2.std.witness.Witness<StructuralResolutionFact> {
+fn witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> v2.std.witness.Witness<v2.lens.structural_resolution.StructuralResolutionFact> {
   v2.std.witness.Holds {
     value: fact(tree: tree, dependencies: dependencies)
   }
 }
 
-fn at(tree: v2.compiler.infer.InferredTree) -> v2.std.witness.Witness<StructuralResolutionFact> {
+fn at(tree: v2.compiler.infer.InferredTree) -> v2.std.witness.Witness<v2.lens.structural_resolution.StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
-fn fact_projects_status(fact: StructuralResolutionFact, expected: StructuralResolutionStatus) -> Bool {
+fn fact_projects_status(fact: v2.lens.structural_resolution.StructuralResolutionFact, expected: v2.lens.structural_resolution.StructuralResolutionStatus) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || (dep.classification == expected)
   })
 }
 
 fn fact_single_dependency_projects_status(
-  fact: StructuralResolutionFact,
-  expected: StructuralResolutionStatus
+  fact: v2.lens.structural_resolution.StructuralResolutionFact,
+  expected: v2.lens.structural_resolution.StructuralResolutionStatus
 ) -> Bool {
   if count(fact.dependencies) != 1 {
     false
@@ -132,15 +132,15 @@ fn fact_single_dependency_projects_status(
 }
 
 fn structural_resolution_status_eq(
-  a: StructuralResolutionStatus,
-  b: StructuralResolutionStatus
+  a: v2.lens.structural_resolution.StructuralResolutionStatus,
+  b: v2.lens.structural_resolution.StructuralResolutionStatus
 ) -> Bool {
   a == b
 }
 
 fn structural_resolution_classified_eq(
-  a: v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>,
-  b: v2.std.dependency.ClassifiedDependencyView<StructuralResolutionStatus>
+  a: v2.std.dependency.ClassifiedDependencyView<v2.lens.structural_resolution.StructuralResolutionStatus>,
+  b: v2.std.dependency.ClassifiedDependencyView<v2.lens.structural_resolution.StructuralResolutionStatus>
 ) -> Bool {
   classified_dependency_view_eq(
     a: a,
@@ -149,7 +149,7 @@ fn structural_resolution_classified_eq(
   )
 }
 
-fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
+fn fact_eq(a: v2.lens.structural_resolution.StructuralResolutionFact, b: v2.lens.structural_resolution.StructuralResolutionFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)
 }
 

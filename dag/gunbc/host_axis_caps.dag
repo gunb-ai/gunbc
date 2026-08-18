@@ -21,7 +21,7 @@ fn cap_is_managed_path(p: std.types.NonEmptyStr) -> std.types.Bool {
   fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as String == p as String))
 }
 
-fn cap_member_key(m: CapMember) -> std.types.NonEmptyStr {
+fn cap_member_key(m: gunbc.host_axis_caps.CapMember) -> std.types.NonEmptyStr {
   m.dropin_path
 }
 
@@ -29,11 +29,11 @@ fn cap_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.
   a as String == b as String
 }
 
-fn cap_member_value_eq(a: CapMember, b: CapMember) -> std.types.Bool {
+fn cap_member_value_eq(a: gunbc.host_axis_caps.CapMember, b: gunbc.host_axis_caps.CapMember) -> std.types.Bool {
   a.content == b.content
 }
 
-fn cap_member_ownership(m: CapMember) -> gunbc.ownership.Ownership? {
+fn cap_member_ownership(m: gunbc.host_axis_caps.CapMember) -> gunbc.ownership.Ownership? {
   if cap_is_managed_path(p: m.dropin_path) {
     Present { value: gunbc.ownership.Owned }
   } else {
@@ -45,21 +45,21 @@ fn cap_dropin_content(property: std.types.NonEmptyStr, bytes_value: std.types.No
   join(["[Service]\n", property as String, "=", bytes_value as String, "\n"], "")
 }
 
-fn desired_cap_member(dropin_path: std.types.NonEmptyStr, property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> CapMember {
+fn desired_cap_member(dropin_path: std.types.NonEmptyStr, property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> gunbc.host_axis_caps.CapMember {
   CapMember {
     dropin_path: dropin_path,
     content: cap_dropin_content(property: property, bytes_value: bytes_value),
   }
 }
 
-fn cap_upsert_script(m: CapMember) -> String {
+fn cap_upsert_script(m: gunbc.host_axis_caps.CapMember) -> String {
   join([
     "printf '%s' '", m.content, "' > ", m.dropin_path as String, "\n",
     "systemctl daemon-reload\n",
   ], "")
 }
 
-fn caps_reconcile(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> gunbc.membership_reconcile.MembershipPlan<CapMember, CapMemberAt> {
+fn caps_reconcile(desired: std.types.List<gunbc.host_axis_caps.CapMember>, observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> gunbc.membership_reconcile.MembershipPlan<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
@@ -72,19 +72,19 @@ fn caps_reconcile(desired: std.types.List<CapMember>, observed: std.types.List<C
   )
 }
 
-fn caps_effects(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> gunbc.membership_reconcile.EffectsOrRefusal<CapMember> {
+fn caps_effects(desired: std.types.List<gunbc.host_axis_caps.CapMember>, observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> gunbc.membership_reconcile.EffectsOrRefusal<gunbc.host_axis_caps.CapMember> {
   gunbc.membership_reconcile.membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_upsert_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
+fn caps_upsert_count(desired: std.types.List<gunbc.host_axis_caps.CapMember>, observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> Int {
   gunbc.membership_reconcile.membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_teardown_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
+fn caps_teardown_count(desired: std.types.List<gunbc.host_axis_caps.CapMember>, observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> Int {
   gunbc.membership_reconcile.membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
-fn caps_refusal_count(desired: std.types.List<CapMember>, observed: std.types.List<CapMember>) -> Int {
+fn caps_refusal_count(desired: std.types.List<gunbc.host_axis_caps.CapMember>, observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> Int {
   gunbc.membership_reconcile.membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
@@ -112,11 +112,11 @@ fn control_shadow_dropin_path(unit: std.types.NonEmptyStr, filename: std.types.N
   ], "") as std.types.NonEmptyStr
 }
 
-fn control_shadow_unit(unit: std.types.NonEmptyStr) -> ControlShadowUnit {
+fn control_shadow_unit(unit: std.types.NonEmptyStr) -> gunbc.host_axis_caps.ControlShadowUnit {
   ControlShadowUnit { unit: unit }
 }
 
-fn control_shadow_unit_key(u: ControlShadowUnit) -> std.types.NonEmptyStr {
+fn control_shadow_unit_key(u: gunbc.host_axis_caps.ControlShadowUnit) -> std.types.NonEmptyStr {
   u.unit
 }
 
@@ -124,23 +124,23 @@ fn control_shadow_unit_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr
   a as String == b as String
 }
 
-fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> std.types.Bool {
+fn control_shadow_unit_value_eq(a: gunbc.host_axis_caps.ControlShadowUnit, b: gunbc.host_axis_caps.ControlShadowUnit) -> std.types.Bool {
   a.unit as String == b.unit as String
 }
 
-fn control_shadow_unit_ownership(u: ControlShadowUnit) -> gunbc.ownership.Ownership? {
+fn control_shadow_unit_ownership(u: gunbc.host_axis_caps.ControlShadowUnit) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Owned }
 }
 
-fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
+fn control_shadow_revert_script(u: gunbc.host_axis_caps.ControlShadowUnit) -> String {
   concat(join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
 }
 
-fn control_shadow_revert_script_matches_extdeps_argv(u: ControlShadowUnit) -> std.types.Bool {
+fn control_shadow_revert_script_matches_extdeps_argv(u: gunbc.host_axis_caps.ControlShadowUnit) -> std.types.Bool {
   join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " ") == std.algebra.trim(s: control_shadow_revert_script(u: u))
 }
 
-fn derived_runner_memory_max_cap_member() -> CapMember {
+fn derived_runner_memory_max_cap_member() -> gunbc.host_axis_caps.CapMember {
   desired_cap_member(
     dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     property: extdeps.systemd.systemd_memory_max_property as std.types.NonEmptyStr,
@@ -148,7 +148,7 @@ fn derived_runner_memory_max_cap_member() -> CapMember {
   )
 }
 
-fn derived_runner_memory_high_cap_member() -> CapMember {
+fn derived_runner_memory_high_cap_member() -> gunbc.host_axis_caps.CapMember {
   desired_cap_member(
     dropin_path: gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path as std.types.NonEmptyStr,
     property: extdeps.systemd.systemd_memory_high_property as std.types.NonEmptyStr,
@@ -156,7 +156,7 @@ fn derived_runner_memory_high_cap_member() -> CapMember {
   )
 }
 
-fn derived_runner_memory_cap_members() -> std.types.List<CapMember> {
+fn derived_runner_memory_cap_members() -> std.types.List<gunbc.host_axis_caps.CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
@@ -167,7 +167,7 @@ fn runner_memory_cap_author_script() -> String {
   ], "")
 }
 
-fn cap_observed_contains_derived_member(observed: std.types.List<CapMember>, derived: CapMember) -> std.types.Bool {
+fn cap_observed_contains_derived_member(observed: std.types.List<gunbc.host_axis_caps.CapMember>, derived: gunbc.host_axis_caps.CapMember) -> std.types.Bool {
   fold(observed, init: false, f: (acc, o) =>
     acc
       || (
@@ -179,7 +179,7 @@ fn cap_observed_contains_derived_member(observed: std.types.List<CapMember>, der
 
 // Shadow revert is safe only after deploy drop-ins carry derived allocation bytes —
 // reverting before author on stale 16/15GiB disk raises effective caps (operator hazard).
-fn runner_memory_cap_author_ready_for_shadow_revert(observed: std.types.List<CapMember>) -> std.types.Bool {
+fn runner_memory_cap_author_ready_for_shadow_revert(observed: std.types.List<gunbc.host_axis_caps.CapMember>) -> std.types.Bool {
   fold(derived_runner_memory_cap_members(), init: true, f: (acc, d) =>
     acc && cap_observed_contains_derived_member(observed: observed, derived: d)
   )
@@ -208,7 +208,7 @@ fn runner_slot_service_units_for_host(host: product.placement_supply.HostIdentit
   )
 }
 
-fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: String) -> String {
+fn deploy_cap_upsert_staged_lines(m: gunbc.host_axis_caps.CapMember, stage_name: String) -> String {
   join([
     "printf '%s' '", m.content, "' > \"$_gunbc_stage/", stage_name, "\"\n",
     "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as String, "\n",
@@ -224,7 +224,7 @@ fn deploy_runner_memory_cap_author_script() -> String {
   ], "")
 }
 
-fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> String {
+fn deploy_control_shadow_revert_line(u: gunbc.host_axis_caps.ControlShadowUnit) -> String {
   concat(gunbc.live_deploy.operations.privileged_command(argv: extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit)), "\n")
 }
 
@@ -260,9 +260,9 @@ fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units:
 data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
 
 fn control_shadow_reconcile(
-  desired: std.types.List<ControlShadowUnit>,
-  observed: std.types.List<ControlShadowUnit>,
-) -> gunbc.membership_reconcile.MembershipPlan<ControlShadowUnit, ControlShadowMemberAt> {
+  desired: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+  observed: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+) -> gunbc.membership_reconcile.MembershipPlan<gunbc.host_axis_caps.ControlShadowUnit, gunbc.host_axis_caps.ControlShadowMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
@@ -276,22 +276,22 @@ fn control_shadow_reconcile(
 }
 
 fn control_shadow_effects(
-  desired: std.types.List<ControlShadowUnit>,
-  observed: std.types.List<ControlShadowUnit>,
-) -> gunbc.membership_reconcile.EffectsOrRefusal<ControlShadowUnit> {
+  desired: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+  observed: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+) -> gunbc.membership_reconcile.EffectsOrRefusal<gunbc.host_axis_caps.ControlShadowUnit> {
   gunbc.membership_reconcile.membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }
 
 fn control_shadow_teardown_count(
-  desired: std.types.List<ControlShadowUnit>,
-  observed: std.types.List<ControlShadowUnit>,
+  desired: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+  observed: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
 ) -> Int {
   gunbc.membership_reconcile.membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }
 
 fn control_shadow_refusal_count(
-  desired: std.types.List<ControlShadowUnit>,
-  observed: std.types.List<ControlShadowUnit>,
+  desired: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
+  observed: std.types.List<gunbc.host_axis_caps.ControlShadowUnit>,
 ) -> Int {
   gunbc.membership_reconcile.membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

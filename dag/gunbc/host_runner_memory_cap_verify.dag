@@ -15,7 +15,7 @@ type RunnerMemoryCapVerifyTally {
 
 type RunnerMemoryCapVerifyReceipt {
   host: product.placement_supply.HostIdentity
-  tally: RunnerMemoryCapVerifyTally
+  tally: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally
   knob_count: Int
   verdict: gunbc.host_converge.ConvergeVerdict
 }
@@ -25,10 +25,10 @@ fn runner_memory_cap_probe_unit(host: product.placement_supply.HostIdentity) -> 
 }
 
 fn runner_memory_cap_verify_tally_knob(
-  acc: RunnerMemoryCapVerifyTally,
+  acc: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally,
   read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
   knob: gunbc.host_converge.ConvergeKnob,
-) -> RunnerMemoryCapVerifyTally {
+) -> gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally {
   match runner_memory_cap_readback_verdict(read: read, knob: knob) {
     Present { value: VerdictConverged } =>
       RunnerMemoryCapVerifyTally {
@@ -60,13 +60,13 @@ fn runner_memory_cap_verify_tally_knob(
 fn runner_memory_cap_verify_tally_from_read(
   host: product.placement_supply.HostIdentity,
   read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
-) -> RunnerMemoryCapVerifyTally? {
+) -> gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally? {
   match runner_memory_host_converge(host: host) {
     Present { value: hc } =>
       Present {
         value: fold(
           runner_memory_knobs_from(host: hc),
-          init: RunnerMemoryCapVerifyTally { converged: 0, drifted: 0, absent: 0 },
+          init: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally { converged: 0, drifted: 0, absent: 0 },
           f: fn(acc, knob) { runner_memory_cap_verify_tally_knob(acc: acc, read: read, knob: knob) }
         ),
       }
@@ -74,7 +74,7 @@ fn runner_memory_cap_verify_tally_from_read(
   }
 }
 
-fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally, knob_count: Int) -> gunbc.host_converge.ConvergeVerdict {
+fn runner_memory_cap_verify_verdict_from_tally(tally: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyTally, knob_count: Int) -> gunbc.host_converge.ConvergeVerdict {
   if tally.drifted > 0 {
     Drifted
   } else { if tally.absent > 0 {
@@ -89,14 +89,14 @@ fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally
 fn runner_memory_cap_verify_receipt_from_read(
   host: product.placement_supply.HostIdentity,
   read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
-) -> RunnerMemoryCapVerifyReceipt? {
+) -> gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyReceipt? {
   match runner_memory_host_converge(host: host) {
     Present { value: hc } =>
       match runner_memory_cap_verify_tally_from_read(host: host, read: read) {
         Present { value: tally } =>
           let knob_count = runner_memory_knobs_from(host: hc).length()
           Present {
-            value: RunnerMemoryCapVerifyReceipt {
+            value: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyReceipt {
               host: host,
               tally: tally,
               knob_count: knob_count,
@@ -142,7 +142,7 @@ fn runner_memory_cap_live_read(host: product.placement_supply.HostIdentity) -> g
 }
 
 type RunnerMemoryCapVerifyRunResult
-  = RunnerMemoryCapVerifyObserved { receipt: RunnerMemoryCapVerifyReceipt }
+  = RunnerMemoryCapVerifyObserved { receipt: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyReceipt }
   | RunnerMemoryCapVerifyRefused { host: product.placement_supply.HostIdentity, reason: String }
 
 data runner_memory_cap_verify_read_absent_refusal_note: String = "The live-read arm of runner_memory_cap_verify_result_from_live_read is the fail-closed seam (DESIGN section 5): an absent typed read — clock_now_probed_at absent, or any of the three systemd.Systemctl.ShowProperty reads absent — refuses with a located reason and NEVER widens to an Observed receipt with a fabricated tally. Taking the Optional read as a parameter is what makes that arm executable hermetically: runner_memory_cap_verify_run supplies the live read, while the RED control supplies none and asserts a refusal."
@@ -150,7 +150,7 @@ data runner_memory_cap_verify_read_absent_refusal_note: String = "The live-read 
 fn runner_memory_cap_verify_result_from_live_read(
   host: product.placement_supply.HostIdentity,
   read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead?,
-) -> RunnerMemoryCapVerifyRunResult {
+) -> gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyRunResult {
   match runner_memory_host_converge(host: host) {
     Present { value: _ } =>
       match read {
@@ -180,7 +180,7 @@ fn runner_memory_cap_verify_result_from_live_read(
   }
 }
 
-fn runner_memory_cap_verify_run(host: product.placement_supply.HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+fn runner_memory_cap_verify_run(host: product.placement_supply.HostIdentity) -> gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyRunResult {
   match runner_memory_host_converge(host: host) {
     Present { value: _ } =>
       runner_memory_cap_verify_result_from_live_read(
@@ -191,6 +191,6 @@ fn runner_memory_cap_verify_run(host: product.placement_supply.HostIdentity) -> 
   }
 }
 
-fn runner_memory_cap_verify_receipt_converged(receipt: RunnerMemoryCapVerifyReceipt) -> Bool {
+fn runner_memory_cap_verify_receipt_converged(receipt: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyReceipt) -> Bool {
   receipt.verdict == VerdictConverged
 }

@@ -12,7 +12,7 @@ type LexRuleApply
   | LexRuleAnnotation { class: v2.std.node.Symbol, lexeme: String, remaining: String }
 
 type LexMatchThunk {
-  apply: fn(String) -> LexMatchResult
+  apply: fn(String) -> v2.compiler.tokenize.LexMatchResult
 }
 
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
@@ -72,7 +72,7 @@ fn lex_strip_prefix(prefix: String, source: String) -> v2.std.algebra.ListTailRe
   )
 }
 
-fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
+fn lex_match_prefix(prefix: String, source: String) -> v2.compiler.tokenize.LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
       TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
@@ -104,7 +104,7 @@ fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.l
   }
 }
 
-fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult {
+fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> v2.compiler.tokenize.LexMatchResult {
   match string_is_empty(s: source) {
     true => LexMatchRejected
     false =>
@@ -124,7 +124,7 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
   }
 }
 
-fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
+fn lex_repeat_step(elem_r: v2.compiler.tokenize.LexMatchThunk, state: v2.compiler.tokenize.RepeatState) -> v2.compiler.tokenize.RepeatState {
   match state.done {
     true => state
     false =>
@@ -138,7 +138,7 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
             false =>
               lex_repeat_step(
                 elem_r: elem_r,
-                state: RepeatState {
+                state: v2.compiler.tokenize.RepeatState {
                   remaining: rest,
                   lexeme: list_append(left: state.lexeme, right: consumed),
                   done: false
@@ -149,11 +149,11 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
   }
 }
 
-fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
+fn lex_repeat_loop(elem_r: v2.compiler.tokenize.LexMatchThunk, init: v2.compiler.tokenize.RepeatState) -> v2.compiler.tokenize.RepeatState {
   lex_repeat_step(elem_r: elem_r, state: init)
 }
 
-fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: DelimitedState) -> DelimitedState {
+fn lex_delimited_step(close_r: v2.compiler.tokenize.LexMatchThunk, body_r: v2.compiler.tokenize.LexMatchThunk, state: v2.compiler.tokenize.DelimitedState) -> v2.compiler.tokenize.DelimitedState {
   match state.done {
     true => state
     false =>
@@ -177,7 +177,7 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
                   lex_delimited_step(
                     close_r: close_r,
                     body_r: body_r,
-                    state: DelimitedState {
+                    state: v2.compiler.tokenize.DelimitedState {
                       remaining: after_body,
                       lexeme: list_append(left: state.lexeme, right: body_lex),
                       done: false,
@@ -192,14 +192,14 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
 
 type CompiledLexRule {
   rule: v2.std.compilers.lexing.LexRule
-  thunk: LexMatchThunk
+  thunk: v2.compiler.tokenize.LexMatchThunk
 }
 
-fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> LexMatchThunk {
+fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> v2.compiler.tokenize.LexMatchThunk {
   fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
     algebra: v2.std.compilers.lexing.LexPatternFold {
-      empty: LexMatchThunk { apply: fn(s) {
+      empty: v2.compiler.tokenize.LexMatchThunk { apply: fn(s) {
         LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
       } },
       literal: fn(text) {
@@ -269,7 +269,7 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> LexMatchThunk {
       repeat: fn(elem_r) {
 
         LexMatchThunk { apply: fn(s) {
-          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: std.algebra.Empty, done: false })
+          let result = lex_repeat_loop(elem_r: elem_r, init: v2.compiler.tokenize.RepeatState { remaining: s, lexeme: std.algebra.Empty, done: false })
           LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
         } }
       },
@@ -279,7 +279,7 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> LexMatchThunk {
           match elem_r.apply(s) {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: rest, lexeme: lex, done: false })
+              let result = lex_repeat_loop(elem_r: elem_r, init: v2.compiler.tokenize.RepeatState { remaining: rest, lexeme: lex, done: false })
               LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
           }
         } }
@@ -307,7 +307,7 @@ fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> LexMatchThunk {
   )
 }
 
-fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
+fn lex_try_compiled(compiled: v2.compiler.tokenize.CompiledLexRule, source: String) -> v2.compiler.tokenize.LexRuleApply {
   match compiled.thunk.apply(source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
@@ -322,25 +322,25 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
   }
 }
 
-fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.collection.List<CompiledLexRule> {
+fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.collection.List<v2.compiler.tokenize.CompiledLexRule> {
   let reversed = fold_list(
     xs: rules,
     empty: std.algebra.Empty,
     cons: fn(acc, rule) {
-      std.algebra.Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
+      std.algebra.Cons { head: v2.compiler.tokenize.CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
     }
   )
   reversed.reverse()
 }
 
-fn lex_try_rule(rule: v2.std.compilers.lexing.LexRule, source: String) -> LexRuleApply {
+fn lex_try_rule(rule: v2.std.compilers.lexing.LexRule, source: String) -> v2.compiler.tokenize.LexRuleApply {
   lex_try_compiled(
-    compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
+    compiled: v2.compiler.tokenize.CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
     source: source
   )
 }
 
-fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
+fn lex_rule_apply_lexeme_length(apply: v2.compiler.tokenize.LexRuleApply) -> Int {
   match apply {
     LexRuleNoMatch => 0
     LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
@@ -349,7 +349,7 @@ fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
   }
 }
 
-fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> LexRuleApply {
+fn lex_try_rules_prefer_longer(acc: v2.compiler.tokenize.LexRuleApply, candidate: v2.compiler.tokenize.LexRuleApply) -> v2.compiler.tokenize.LexRuleApply {
   match acc {
     LexRuleNoMatch => candidate
     _ =>
@@ -365,7 +365,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
   }
 }
 
-fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
+fn lex_try_rules(rules: List<v2.compiler.tokenize.CompiledLexRule>, source: String) -> v2.compiler.tokenize.LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
@@ -388,10 +388,10 @@ type LexWalkAcc {
   done: Bool
   error: Bool
   file: v2.std.node.Symbol
-  rules: List<CompiledLexRule>
+  rules: List<v2.compiler.tokenize.CompiledLexRule>
 }
 
-fn lex_walk_init(src: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> LexWalkAcc {
+fn lex_walk_init(src: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.compiler.tokenize.LexWalkAcc {
   LexWalkAcc {
     remaining: src,
     tokens: std.algebra.Empty,
@@ -405,11 +405,11 @@ fn lex_walk_init(src: String, file: v2.std.node.Symbol, rules: v2.std.compilers.
   }
 }
 
-fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
+fn lex_walk_is_done(acc: v2.compiler.tokenize.LexWalkAcc) -> Bool {
   acc.done
 }
 
-fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
+fn lex_walk_step(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.compiler.tokenize.LexWalkAcc {
   match string_is_empty(s: acc.remaining) {
     true =>
       LexWalkAcc {
@@ -541,7 +541,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
   }
 }
 
-fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.text.SourceFold<LexWalkAcc> {
+fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.text.SourceFold<v2.compiler.tokenize.LexWalkAcc> {
   v2.std.text.SourceFold {
     init: fn(src) { lex_walk_init(src: src, file: file, rules: rules) },
     is_done: lex_walk_is_done,

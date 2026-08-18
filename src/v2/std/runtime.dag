@@ -7,21 +7,21 @@ type RuntimeIdentity {
 
 type RuntimeFieldValue {
   field: v2.std.node.Symbol
-  value: RuntimeValue
+  value: v2.std.runtime.RuntimeValue
 }
 
 type EnvironmentBindingKey {
   identity: v2.std.node.Symbol
 }
 
-fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> EnvironmentBindingKey {
+fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> v2.std.runtime.EnvironmentBindingKey {
   EnvironmentBindingKey {
     identity: sym
   }
 }
 
 type EvaluationEnvironment {
-  bindings: Map<EnvironmentBindingKey, RuntimeValue>
+  bindings: Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
 }
 
 type RuntimePrimitiveValue {
@@ -31,19 +31,19 @@ type RuntimePrimitiveValue {
 
 type RuntimeAggregateValue {
   aggregate_type: Node
-  fields: List<RuntimeFieldValue>
+  fields: List<v2.std.runtime.RuntimeFieldValue>
 }
 
 type RuntimeReferenceValue {
   reference_type: Node
-  identity: RuntimeIdentity
+  identity: v2.std.runtime.RuntimeIdentity
   referent_type: Node
 }
 
 type RuntimeClosureValue {
   arrow_type: Node
   arrow: Node
-  environment: EvaluationEnvironment
+  environment: v2.std.runtime.EvaluationEnvironment
 }
 
 type RuntimeUnitValue {
@@ -51,11 +51,11 @@ type RuntimeUnitValue {
 }
 
 type RuntimeValue
-  = RuntimePrimitive { value: RuntimePrimitiveValue }
-  | RuntimeAggregate { value: RuntimeAggregateValue }
-  | RuntimeReference { value: RuntimeReferenceValue }
-  | RuntimeClosure { value: RuntimeClosureValue }
-  | RuntimeUnit { value: RuntimeUnitValue }
+  = RuntimePrimitive { value: v2.std.runtime.RuntimePrimitiveValue }
+  | RuntimeAggregate { value: v2.std.runtime.RuntimeAggregateValue }
+  | RuntimeReference { value: v2.std.runtime.RuntimeReferenceValue }
+  | RuntimeClosure { value: v2.std.runtime.RuntimeClosureValue }
+  | RuntimeUnit { value: v2.std.runtime.RuntimeUnitValue }
 
 type RuntimeOutcome
   = Panic { panic_classification: v2.std.node.Symbol }
@@ -71,14 +71,14 @@ type IdentityEvidence
   = ReferenceIdentical
   | StructurallyCompared { equal: Bool }
 
-fn identity_evidence_equal(evidence: IdentityEvidence) -> Bool {
+fn identity_evidence_equal(evidence: v2.std.runtime.IdentityEvidence) -> Bool {
   match evidence {
     ReferenceIdentical => true
     StructurallyCompared { equal: eq } => eq
   }
 }
 
-fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
+fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> Node {
   match value {
     RuntimePrimitive { value: p } => p.primitive_type
     RuntimeAggregate { value: a } => a.aggregate_type
@@ -134,8 +134,8 @@ fn runtime_bytes_list_node(bytes: List<std.bit.Byte>) -> Node {
 }
 
 fn runtime_primitive_value_node_projection(
-  primitive: RuntimePrimitiveValue
-) -> RuntimeValueNodeProjection {
+  primitive: v2.std.runtime.RuntimePrimitiveValue
+) -> v2.std.runtime.RuntimeValueNodeProjection {
   RuntimeValueNodeProjected {
     node: runtime_value_conj_node(children: [
       runtime_value_named_edge(
@@ -151,8 +151,8 @@ fn runtime_primitive_value_node_projection(
 }
 
 fn runtime_field_value_node_projection(
-  field_value: RuntimeFieldValue
-) -> RuntimeValueNodeProjection {
+  field_value: v2.std.runtime.RuntimeFieldValue
+) -> v2.std.runtime.RuntimeValueNodeProjection {
   match runtime_value_node_projection(value: field_value.value) {
     RuntimeValueNodeProjected { node: value_node } =>
       RuntimeValueNodeProjected {
@@ -171,7 +171,7 @@ fn runtime_field_value_node_projection(
   }
 }
 
-fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNodeProjection {
+fn runtime_fields_list_node(fields: List<v2.std.runtime.RuntimeFieldValue>) -> v2.std.runtime.RuntimeValueNodeProjection {
   fold_list(
     xs: fields,
     empty: RuntimeValueNodeProjected { node: algebra_empty_conj() },
@@ -201,8 +201,8 @@ fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNode
 }
 
 fn runtime_aggregate_value_node_projection(
-  aggregate: RuntimeAggregateValue
-) -> RuntimeValueNodeProjection {
+  aggregate: v2.std.runtime.RuntimeAggregateValue
+) -> v2.std.runtime.RuntimeValueNodeProjection {
   match runtime_fields_list_node(fields: aggregate.fields) {
     RuntimeValueNodeProjected { node: fields_node } =>
       RuntimeValueNodeProjected {
@@ -221,7 +221,7 @@ fn runtime_aggregate_value_node_projection(
   }
 }
 
-fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection {
+fn runtime_value_node_projection(value: v2.std.runtime.RuntimeValue) -> v2.std.runtime.RuntimeValueNodeProjection {
   match value {
     RuntimePrimitive { value: p } => runtime_primitive_value_node_projection(primitive: p)
     RuntimeAggregate { value: a } => runtime_aggregate_value_node_projection(aggregate: a)
@@ -232,77 +232,77 @@ fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProject
 }
 
 type ValueRepresentationModel {
-  represent_literal: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
-  represent_result: fn(RuntimeValue) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  represent_literal: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
+  represent_result: fn(v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type EvaluationFrame {
   current: Node
-  environment: EvaluationEnvironment
+  environment: v2.std.runtime.EvaluationEnvironment
 }
 
 type EvaluationCall {
   callee: Node
-  arguments: List<RuntimeValue>
+  arguments: List<v2.std.runtime.RuntimeValue>
 }
 
 type ControlTransfer
-  = Continue { value: RuntimeValue }
-  | Return { value: RuntimeValue }
+  = Continue { value: v2.std.runtime.RuntimeValue }
+  | Return { value: v2.std.runtime.RuntimeValue }
   | Raise { diagnostic: v2.std.diagnostic.Diagnostic }
-  | Suspend { continuation: EvaluationFrame }
+  | Suspend { continuation: v2.std.runtime.EvaluationFrame }
 
 type AllocationSemantics {
-  allocate: fn(RuntimeValue) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  allocate: fn(v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type CallSemantics {
-  call: fn(EvaluationCall, EvaluationFrame) -> v2.std.diagnostic.Outcome<ControlTransfer>
-  return_value: fn(RuntimeValue, EvaluationFrame) -> v2.std.diagnostic.Outcome<ControlTransfer>
+  call: fn(v2.std.runtime.EvaluationCall, v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer>
+  return_value: fn(v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer>
 }
 
 type ControlSemantics {
-  transfer: fn(ControlTransfer, EvaluationFrame) -> v2.std.diagnostic.Outcome<EvaluationFrame>
-  terminal_value: fn(ControlTransfer, EvaluationFrame) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  transfer: fn(v2.std.runtime.ControlTransfer, v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationFrame>
+  terminal_value: fn(v2.std.runtime.ControlTransfer, v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type ExecutionSemantics {
-  allocation: AllocationSemantics
-  calls: CallSemantics
-  control: ControlSemantics
+  allocation: v2.std.runtime.AllocationSemantics
+  calls: v2.std.runtime.CallSemantics
+  control: v2.std.runtime.ControlSemantics
 }
 
 type ValueInterpreter {
-  allocate_literal: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  allocate_literal: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type TransformInterpreter {
-  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  call_primitive: fn(Node, List<v2.std.runtime.RuntimeValue>, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type BranchInterpreter {
-  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
+  choose_branch: fn(Node, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
 }
 
 type LoopInterpreter {
-  step_loop: fn(Node, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<ControlTransfer>
+  step_loop: fn(Node, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.ControlTransfer>
 }
 
 type BindInterpreter {
-  bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<EvaluationEnvironment>
+  bind_value: fn(v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment>
 }
 
 type MatchInterpreter {
-  choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
+  choose_arm: fn(Node, v2.std.runtime.RuntimeValue, v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<Node>
 }
 
 type InterpretationAlgebra {
-  value: ValueInterpreter
-  transform: TransformInterpreter
-  branch: BranchInterpreter
-  loop: LoopInterpreter
-  bind: BindInterpreter
-  match: MatchInterpreter
+  value: v2.std.runtime.ValueInterpreter
+  transform: v2.std.runtime.TransformInterpreter
+  branch: v2.std.runtime.BranchInterpreter
+  loop: v2.std.runtime.LoopInterpreter
+  bind: v2.std.runtime.BindInterpreter
+  match: v2.std.runtime.MatchInterpreter
 }
 
 type InterpretationStructureWitness {
@@ -315,17 +315,17 @@ type InterpretationStructureWitness {
 }
 
 type RuntimeBehaviorInterpreter
-  = ValueRuntimeInterpreter { interpreter: ValueInterpreter }
-  | TransformRuntimeInterpreter { interpreter: TransformInterpreter }
-  | BranchRuntimeInterpreter { interpreter: BranchInterpreter }
-  | LoopRuntimeInterpreter { interpreter: LoopInterpreter }
-  | BindRuntimeInterpreter { interpreter: BindInterpreter }
-  | MatchRuntimeInterpreter { interpreter: MatchInterpreter }
+  = ValueRuntimeInterpreter { interpreter: v2.std.runtime.ValueInterpreter }
+  | TransformRuntimeInterpreter { interpreter: v2.std.runtime.TransformInterpreter }
+  | BranchRuntimeInterpreter { interpreter: v2.std.runtime.BranchInterpreter }
+  | LoopRuntimeInterpreter { interpreter: v2.std.runtime.LoopInterpreter }
+  | BindRuntimeInterpreter { interpreter: v2.std.runtime.BindInterpreter }
+  | MatchRuntimeInterpreter { interpreter: v2.std.runtime.MatchInterpreter }
 
 fn interpretation_behavior_dispatch(
-  interpretation: InterpretationAlgebra,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
   behavior: v2.std.node.Behavior
-) -> RuntimeBehaviorInterpreter {
+) -> v2.std.runtime.RuntimeBehaviorInterpreter {
   match behavior {
     Value => ValueRuntimeInterpreter { interpreter: interpretation.value }
     Transform => TransformRuntimeInterpreter { interpreter: interpretation.transform }
@@ -340,8 +340,8 @@ data runtime_match_unimplemented: v2.std.node.Symbol = ^runtime_match_unimplemen
 
 fn runtime_reject_match_arm(
   node: Node,
-  _value: RuntimeValue,
-  _env: EvaluationEnvironment
+  _value: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<Node> {
   outcome_rejected(
     v2.std.diagnostic.Diagnostic {
@@ -359,11 +359,11 @@ type BoundaryAllowance {
 }
 
 type ResourceEffectBoundary {
-  ffi: BoundaryAllowance
-  exceptions: BoundaryAllowance
-  async: BoundaryAllowance
-  concurrency: BoundaryAllowance
-  identity_reference: BoundaryAllowance
+  ffi: v2.std.runtime.BoundaryAllowance
+  exceptions: v2.std.runtime.BoundaryAllowance
+  async: v2.std.runtime.BoundaryAllowance
+  concurrency: v2.std.runtime.BoundaryAllowance
+  identity_reference: v2.std.runtime.BoundaryAllowance
 }
 
 type EffectRequestKind
@@ -371,22 +371,22 @@ type EffectRequestKind
   | WriteResource
 
 type EffectRequest {
-  kind: EffectRequestKind
+  kind: v2.std.runtime.EffectRequestKind
   operation: v2.std.model_core.PrimitiveOperationRef
-  arguments: List<RuntimeValue>
-  continuation: EvaluationFrame
+  arguments: List<v2.std.runtime.RuntimeValue>
+  continuation: v2.std.runtime.EvaluationFrame
 }
 
 type EffectHandler {
-  handle: fn(EffectRequest) -> v2.std.diagnostic.Outcome<RuntimeValue>
+  handle: fn(v2.std.runtime.EffectRequest) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type EffectHandlerBinding {
-  read_resource: EffectHandler
-  write_resource: EffectHandler
+  read_resource: v2.std.runtime.EffectHandler
+  write_resource: v2.std.runtime.EffectHandler
 }
 
-fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKind) -> EffectHandler {
+fn effect_handler_for_kind(binding: v2.std.runtime.EffectHandlerBinding, kind: v2.std.runtime.EffectRequestKind) -> v2.std.runtime.EffectHandler {
   match kind {
     ReadResource => binding.read_resource
     WriteResource => binding.write_resource
@@ -394,10 +394,10 @@ fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKin
 }
 
 type EffectReceipt {
-  request: EffectRequest
-  result: v2.std.diagnostic.Outcome<RuntimeValue>
+  request: v2.std.runtime.EffectRequest
+  result: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type EffectReceiptLog {
-  entries: List<EffectReceipt>
+  entries: List<v2.std.runtime.EffectReceipt>
 }

@@ -1,21 +1,21 @@
 module gunbc.membership_reconcile
 
 
-type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown | RosterDuplicateKey { roster: MembershipRosterSide }
+type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown | RosterDuplicateKey { roster: gunbc.membership_reconcile.MembershipRosterSide }
 
 type MemberAction<M, At>
   = MemberAdded { at: At, to: M }
   | MemberChanged { at: At, from: M, to: M }
   | MemberRemoved { at: At, from: M }
-  | MemberRemovalRefused { from: M, cause: TeardownRefusalCause }
+  | MemberRemovalRefused { from: M, cause: gunbc.membership_reconcile.TeardownRefusalCause }
   | MemberRosterDuplicateKeyRefused {
-      roster: MembershipRosterSide,
+      roster: gunbc.membership_reconcile.MembershipRosterSide,
       first: M,
       duplicate: M,
     }
 
 type MembershipPlan<M, At> {
-  actions: std.types.List<MemberAction<M, At>>
+  actions: std.types.List<gunbc.membership_reconcile.MemberAction<M, At>>
 }
 
 type MemberEffect<M>
@@ -25,28 +25,28 @@ type MemberEffect<M>
 
 type MemberRefusal<M> {
   member: M
-  cause: TeardownRefusalCause
+  cause: gunbc.membership_reconcile.TeardownRefusalCause
 }
 
 type EffectsOrRefusal<M>
-  = EffectsReady { effects: std.types.List<MemberEffect<M>> }
-  | ApplyRefused { refusals: std.types.List<MemberRefusal<M>> }
+  = EffectsReady { effects: std.types.List<gunbc.membership_reconcile.MemberEffect<M>> }
+  | ApplyRefused { refusals: std.types.List<gunbc.membership_reconcile.MemberRefusal<M>> }
 
 type MembershipRosterSide = MembershipDesiredRoster | MembershipObservedRoster
 
 type MembershipReconcileOutcome<M, K>
-  = MembershipReconcileReady { plan: MembershipPlan<M, K> }
+  = MembershipReconcileReady { plan: gunbc.membership_reconcile.MembershipPlan<M, K> }
   | MembershipReconcileDuplicateKey {
-      roster: MembershipRosterSide,
+      roster: gunbc.membership_reconcile.MembershipRosterSide,
       key: K,
       first: std.keyed_row.KeyedRow<K, M>,
       duplicate: std.keyed_row.KeyedRow<K, M>,
     }
 
 type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
-  = MembershipReconcileScopedReady { plan: MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> }
+  = MembershipReconcileScopedReady { plan: gunbc.membership_reconcile.MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> }
   | MembershipReconcileDuplicateScopedKey {
-      roster: MembershipRosterSide,
+      roster: gunbc.membership_reconcile.MembershipRosterSide,
       key: std.key_relation.ScopedKey<Relation, Scope, K>,
       first: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>,
       duplicate: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>,
@@ -76,9 +76,9 @@ data member_changed_both_sides_note: String = "WHY MemberChanged carries `from` 
 
 type RemovalAdmission
   = RemovalAdmitted
-  | RemovalRefused { cause: TeardownRefusalCause }
+  | RemovalRefused { cause: gunbc.membership_reconcile.TeardownRefusalCause }
 
-fn removal_admission<M>(existing: M, ownership_of: fn(M) -> gunbc.ownership.Ownership?) -> RemovalAdmission {
+fn removal_admission<M>(existing: M, ownership_of: fn(M) -> gunbc.ownership.Ownership?) -> gunbc.membership_reconcile.RemovalAdmission {
   match ownership_of(existing) {
     Present { value: own } =>
       match own {
@@ -92,7 +92,7 @@ fn removal_admission<M>(existing: M, ownership_of: fn(M) -> gunbc.ownership.Owne
 fn plain_hunk_to_action<M, K>(
   hunk: std.change.KeyedDiffHunk<K, M>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MemberAction<M, K> {
+) -> gunbc.membership_reconcile.MemberAction<M, K> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
     KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
@@ -110,7 +110,7 @@ fn membership_reconcile_built<M, K>(
   key_eq: fn(K, K) -> std.types.Bool,
   value_eq: fn(M, M) -> std.types.Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MembershipPlan<M, K> {
+) -> gunbc.membership_reconcile.MembershipPlan<M, K> {
   let patch = std.change.keyed_two_way_diff(
     left: observed_rows,
     right: desired_rows,
@@ -129,7 +129,7 @@ fn membership_reconcile<M, K>(
   key_eq: fn(K, K) -> std.types.Bool,
   value_eq: fn(M, M) -> std.types.Bool,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MembershipReconcileOutcome<M, K> {
+) -> gunbc.membership_reconcile.MembershipReconcileOutcome<M, K> {
   match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateKey {
@@ -162,8 +162,8 @@ fn membership_reconcile<M, K>(
 }
 
 fn membership_plan_admitting_outcome<M, K>(
-  outcome: MembershipReconcileOutcome<M, K>,
-) -> MembershipPlan<M, K> {
+  outcome: gunbc.membership_reconcile.MembershipReconcileOutcome<M, K>,
+) -> gunbc.membership_reconcile.MembershipPlan<M, K> {
   match outcome {
     MembershipReconcileReady { plan: plan } => plan
     MembershipReconcileDuplicateKey { first: f, duplicate: d, key: _, roster: r } =>
@@ -200,7 +200,7 @@ fn membership_scoped_roster_build<M, Relation, Scope, K>(
 fn scoped_hunk_to_action<M, Relation, Scope, K>(
   hunk: std.change.KeyedDiffHunk<std.key_relation.ScopedKey<Relation, Scope, K>, M>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MemberAction<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
+) -> gunbc.membership_reconcile.MemberAction<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
     KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
@@ -217,7 +217,7 @@ fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
   observed_rows: std.types.List<std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, Scope, K>, M>>,
   resource: std.key_relation.KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
+) -> gunbc.membership_reconcile.MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
   let relation = resource.key
   let value_eq = std.key_relation.keyed_resource_subject_value_eq(resource: resource)
   let patch = std.change.keyed_two_way_diff(
@@ -236,7 +236,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
   observed: std.types.List<M>,
   resource: std.key_relation.KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
-) -> MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
+) -> gunbc.membership_reconcile.MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
   let relation = resource.key
   match membership_scoped_roster_build(members: desired, relation: relation) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
@@ -269,8 +269,8 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
 }
 
 fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
-  outcome: MembershipReconcileScopedOutcome<M, Relation, Scope, K>,
-) -> MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
+  outcome: gunbc.membership_reconcile.MembershipReconcileScopedOutcome<M, Relation, Scope, K>,
+) -> gunbc.membership_reconcile.MembershipPlan<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
   match outcome {
     MembershipReconcileScopedReady { plan: plan } => plan
     MembershipReconcileDuplicateScopedKey { first: f, duplicate: d, key: _, roster: r } =>
@@ -284,9 +284,9 @@ fn membership_plan_admitting_scoped_outcome<M, Relation, Scope, K>(
 
 fn membership_subject_self_state_of<M>(m: M) -> M { m }
 
-data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
+data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<gunbc.membership_reconcile.MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
 
-fn membership_effects<M, At>(plan: MembershipPlan<M, At>) -> EffectsOrRefusal<M> {
+fn membership_effects<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> gunbc.membership_reconcile.EffectsOrRefusal<M> {
   let refusals = flat_map(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } => [MemberRefusal { member: m, cause: c }]
@@ -323,8 +323,8 @@ type MembershipTally {
 
 data membership_tally_note: String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all four counts in a single pass; the membership_added/change/removal/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
 
-fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
-  fold(plan.actions, init: MembershipTally { adds: 0, changes: 0, removals: 0, refusals: 0 }, f: (acc, a) =>
+fn membership_tally<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> gunbc.membership_reconcile.MembershipTally {
+  fold(plan.actions, init: gunbc.membership_reconcile.MembershipTally { adds: 0, changes: 0, removals: 0, refusals: 0 }, f: (acc, a) =>
     match a {
       MemberAdded { at: _, to: _ } =>
         MembershipTally { adds: acc.adds + 1, changes: acc.changes, removals: acc.removals, refusals: acc.refusals }
@@ -340,26 +340,26 @@ fn membership_tally<M, At>(plan: MembershipPlan<M, At>) -> MembershipTally {
   )
 }
 
-fn membership_added_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
+fn membership_added_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).adds
 }
 
-fn membership_change_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
+fn membership_change_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).changes
 }
 
 data membership_write_count_note: String = "adds + changes — the count of members this plan will WRITE, which is what the former membership_upsert_count actually answered for its consumers ('how much work is left'). It is kept as a DERIVED projection over the two separate tally fields, never as a stored merged counter: an add and a change have different realizations (gunbc.change_realization), so a single stored 'upserts' number is the conflation this change removed and re-storing it would reinstate it. A consumer that genuinely cares which kind of write it is reads adds and changes directly."
 
-fn membership_write_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
+fn membership_write_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
   let t = membership_tally(plan: plan)
   t.adds + t.changes
 }
 
-fn membership_removal_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
+fn membership_removal_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).removals
 }
 
-fn membership_refusal_count<M, At>(plan: MembershipPlan<M, At>) -> Int {
+fn membership_refusal_count<M, At>(plan: gunbc.membership_reconcile.MembershipPlan<M, At>) -> Int {
   membership_tally(plan: plan).refusals
 }
 

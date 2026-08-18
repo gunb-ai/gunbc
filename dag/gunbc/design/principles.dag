@@ -18,7 +18,7 @@ type PrincipleId
   | PhysicalEnclosure
 
 type RegisterPrinciple {
-  id: PrincipleId
+  id: gunbc.design.principles.PrincipleId
   law: String
   enforced_by: std.decl_ref.DeclarationRef
 }
@@ -35,70 +35,70 @@ fn principle_ref(module_path: String, decl_name: String) -> std.decl_ref.Declara
   }
 }
 
-data register_principles: List<RegisterPrinciple> = [
+data register_principles: List<gunbc.design.principles.RegisterPrinciple> = [
   RegisterPrinciple {
     id: QuietSurface,
     law: "D0/D1 stays quiet: one centered column, matte fields, no ambient ornament.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "paint"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: ResponsiveDepth,
     law: "Intricacy is behavioral: depth lives in feedback coverage, not ornament.",
     enforced_by: principle_ref(module_path: "gunbc.design.interaction", decl_name: "coverage_gaps"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: DerivedTruth,
     law: "Every intricate thing shown or answered derives from a real repo fact.",
     enforced_by: principle_ref(module_path: "gunbc.site.constellation", decl_name: "layer_stars"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: ChromaByArea,
     law: "Saturation is admissible only at point/hairline area; fields stay near-neutral.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "chroma_admissible"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: GlareEnvelope,
     law: "A material may be bright or chromatic, never both — the gamer register is inadmissible by row.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "quiet_envelope"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: ThemeCoherence,
     law: "A theme is a total role-to-material assignment at the role's area class; every color routes through a role — one model, night and day projections.",
     enforced_by: principle_ref(module_path: "gunbc.design.theme", decl_name: "theme_gaps"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: UniversalReframe,
     law: "A theme flip reframes the whole surface on one clock: themed properties cross-fade for free by derivation; an unthemed color is a counted census row, never a silent opt-out.",
     enforced_by: principle_ref(module_path: "gunbc.design.theme_transition", decl_name: "unthemed_color_decls"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: StillUntilTouched,
     law: "The causal world remains still until caused; it always answers when touched. No subject moves without a cause — no ambient motion, ever.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "BuildRule"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: SelectiveSpectacle,
     law: "Showiness is scarce, focal, and caused: chroma, emission, motion, and sound are granted per salience role from one budget table, and at most one ordinary focal subject holds the energy per interaction region — Critical may interrupt, because truth outranks visual quiet.",
     enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "region_focal_admission"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: EmissionOverMaterial,
     law: "Emission is light the active instrument produces, layered over restrained material — crisp core, one low-alpha corona, granted only to Focal or Critical and only beside a non-emission discriminator; no pulse field exists, and a steady glow cannot imply progress.",
     enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "emission_for"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: BoundedAttraction,
     law: "Physical response moves the visual plate, never the hit region: attraction is bounded travel inside a fixed local field, settles on the register's one spring, gives keyboard focus the same focal identity without displacement, and renderer-local motion never advances domain state.",
     enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "AttractionField"),
   },
-  RegisterPrinciple {
+  gunbc.design.principles.RegisterPrinciple {
     id: PhysicalEnclosure,
     law: "The enclosing instrument may exhibit bounded, preference-controlled physical character — drift, jitter, shift, impulse glitch — while the causal world it encloses stays still until caused: every channel is off-by-preference with a total off position, carries no domain fact, and the composed displacement of all channels stays below the register's attraction travel, so instrument character can never be mistaken for a real response.",
     enforced_by: principle_ref(module_path: "gunbc.design.instrument_physical", decl_name: "displacement_admission"),
   },
 ]
 
-fn principle_id_key(id: PrincipleId) -> String {
+fn principle_id_key(id: gunbc.design.principles.PrincipleId) -> String {
   match id {
     QuietSurface => "quiet-surface"
     ResponsiveDepth => "responsive-depth"
@@ -115,14 +115,14 @@ fn principle_id_key(id: PrincipleId) -> String {
   }
 }
 
-fn principles_all_carried(principles: List<RegisterPrinciple>) -> Bool {
+fn principles_all_carried(principles: List<gunbc.design.principles.RegisterPrinciple>) -> Bool {
   all(principles, p =>
     p.law.length() > 0
       && p.enforced_by.module_path.length() > 0
       && p.enforced_by.decl_name.length() > 0)
 }
 
-fn principle_keys(principles: List<RegisterPrinciple>) -> List<String> {
+fn principle_keys(principles: List<gunbc.design.principles.RegisterPrinciple>) -> List<String> {
   map(principles, p => principle_id_key(id: p.id))
 }
 
@@ -135,9 +135,9 @@ type DistinctAcc {
   ok: Bool
 }
 
-fn principle_keys_distinct(principles: List<RegisterPrinciple>) -> Bool {
+fn principle_keys_distinct(principles: List<gunbc.design.principles.RegisterPrinciple>) -> Bool {
   let result = fold(principle_keys(principles: principles),
-    init: DistinctAcc { seen: [], ok: true },
+    init: gunbc.design.principles.DistinctAcc { seen: [], ok: true },
     f: (acc, k) =>
       if contains_key(keys: acc.seen, key: k) {
         DistinctAcc { seen: acc.seen, ok: false }

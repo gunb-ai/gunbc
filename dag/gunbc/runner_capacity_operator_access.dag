@@ -29,8 +29,8 @@ type RunnerCapacityExecutionTarget
     }
 
 fn runner_capacity_execution_target_for_action(
-  action: RunnerCapacityActionClass,
-) -> RunnerCapacityExecutionTarget {
+  action: gunbc.runner_capacity_operator_access.RunnerCapacityActionClass,
+) -> gunbc.runner_capacity_operator_access.RunnerCapacityExecutionTarget {
   match action {
     RunnerCapacityAddSlots { host: h } =>
       RunnerCapacityExecuteInBand {
@@ -70,13 +70,13 @@ type RunnerCapacityInBandAdmissionProbes {
 
 type RunnerCapacityHostInBandAdmissionRequirement {
   host: product.placement_supply.HostIdentity
-  transport_binding: RunnerCapacityInBandTransportBinding
+  transport_binding: gunbc.runner_capacity_operator_access.RunnerCapacityInBandTransportBinding
   executing_principal: std.types.NonEmptyStr
-  required_operations: List<RunnerCapacitySlotAddPrivilegeOperation>
-  probes: RunnerCapacityInBandAdmissionProbes
+  required_operations: List<gunbc.runner_capacity_operator_access.RunnerCapacitySlotAddPrivilegeOperation>
+  probes: gunbc.runner_capacity_operator_access.RunnerCapacityInBandAdmissionProbes
 }
 
-data runner_capacity_slot_add_required_operations: List<RunnerCapacitySlotAddPrivilegeOperation> = [
+data runner_capacity_slot_add_required_operations: List<gunbc.runner_capacity_operator_access.RunnerCapacitySlotAddPrivilegeOperation> = [
   PrivOpRunnerRootDirectoryCreate {},
   PrivOpSystemdUnitInstall {},
   PrivOpSystemdDaemonReload {},
@@ -85,14 +85,14 @@ data runner_capacity_slot_add_required_operations: List<RunnerCapacitySlotAddPri
 
 data runner_capacity_sudo_grant_list_probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape = "/usr/bin/sudo" as extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape
 
-fn runner_capacity_in_band_transport_binding(host: product.placement_supply.HostIdentity) -> RunnerCapacityInBandTransportBinding {
+fn runner_capacity_in_band_transport_binding(host: product.placement_supply.HostIdentity) -> gunbc.runner_capacity_operator_access.RunnerCapacityInBandTransportBinding {
   RunnerCapacityInBandTransportBinding {
     github_actions_host_label: host as std.types.NonEmptyStr,
     transport: LocalShell,
   }
 }
 
-fn runner_capacity_in_band_admission_probes() -> RunnerCapacityInBandAdmissionProbes {
+fn runner_capacity_in_band_admission_probes() -> gunbc.runner_capacity_operator_access.RunnerCapacityInBandAdmissionProbes {
   RunnerCapacityInBandAdmissionProbes {
     effective_principal_read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead {},
     sudo_grant_list_probe: runner_capacity_sudo_grant_list_probe,
@@ -109,7 +109,7 @@ fn runner_capacity_executing_principal_for_host(host: product.placement_supply.H
   }
 }
 
-fn runner_capacity_host_in_band_admission_requirement(host: product.placement_supply.HostIdentity) -> RunnerCapacityHostInBandAdmissionRequirement {
+fn runner_capacity_host_in_band_admission_requirement(host: product.placement_supply.HostIdentity) -> gunbc.runner_capacity_operator_access.RunnerCapacityHostInBandAdmissionRequirement {
   RunnerCapacityHostInBandAdmissionRequirement {
     host: host,
     transport_binding: runner_capacity_in_band_transport_binding(host: host),
@@ -128,14 +128,14 @@ type InBandPrivilegeObservation
     }
   | PrivilegeUnobserved { reason: String }
 
-data srv1_in_band_privilege_observation: InBandPrivilegeObservation = PrivilegeObserved {
+data srv1_in_band_privilege_observation: gunbc.runner_capacity_operator_access.InBandPrivilegeObservation = PrivilegeObserved {
   observed_on: "2026-08-07" as std.types.NonEmptyStr,
   host: operator_host_srv1,
   principal: "briansrls" as std.types.NonEmptyStr,
   sudo_grant_summary: "actions-runner units run as User=briansrls; sudo -n -l returns (ALL) NOPASSWD: ALL; sudo -n true succeeds (deep-badger-594 srv1 probe 2026-08-07)" as std.types.NonEmptyStr,
 }
 
-fn in_band_privilege_observation_for_host(host: product.placement_supply.HostIdentity) -> InBandPrivilegeObservation {
+fn in_band_privilege_observation_for_host(host: product.placement_supply.HostIdentity) -> gunbc.runner_capacity_operator_access.InBandPrivilegeObservation {
   if (host as String) == (operator_host_srv1 as String) {
     srv1_in_band_privilege_observation
   } else if (host as String) == (operator_host_srv3 as String)
@@ -156,14 +156,14 @@ fn in_band_privilege_observation_for_host(host: product.placement_supply.HostIde
 data srv1_already_converged_caps_control_note: String = "srv1 acceptance row 6 control (operator 2026-08-07): five slots hand-converged to modeled 14GiB caps (MemoryMax=15032385536 MemoryHigh=13958643712 MemorySwapMax=34359738368 CPUWeight=100) plus (per the original note) TasksMax=512 — but the 2026-08-08 operator ruling on PR 8045 made 16384 the desired TasksMax (512 is the diagnosed EAGAIN outage value), and the 512 claim was then DECIDED FALSE BY OBSERVATION (executed pre-apply receipt, run 31288091024, 2026-08-09, operator-accepted: all five slots at effective TasksMax=16384 with matching cgroup pids.max). The zero-effects premise therefore holds on every converged axis including tasks, and the no-op control is exact. Still discriminates directory-counting or write-blind realizers."
 
 type RunnerCapacityHostAdmissionVerdict
-  = InBandAdmissionRequirementDocumented { requirement: RunnerCapacityHostInBandAdmissionRequirement }
+  = InBandAdmissionRequirementDocumented { requirement: gunbc.runner_capacity_operator_access.RunnerCapacityHostInBandAdmissionRequirement }
   | InBandPrivilegeUnobserved { host: product.placement_supply.HostIdentity, reason: String }
   | InBandPrivilegeInsufficient { host: product.placement_supply.HostIdentity, detail: std.types.NonEmptyStr, missing: std.types.NonEmptyStr }
   | OrgRosterReadScopeUnverified { host: product.placement_supply.HostIdentity, reason: String }
 
 data runner_capacity_org_roster_scope_note: String = "Acceptance rows 5/6/8 require a live org self-hosted-runner roster read. GET /orgs/gunb-ai/actions/runners returns 403 for some session tokens; in-band runner job tokens may differ. Until scope is verified in-band, roster-dependent convergence refuses — never fabricates registrations."
 
-fn runner_capacity_host_admission_verdict(host: product.placement_supply.HostIdentity) -> RunnerCapacityHostAdmissionVerdict {
+fn runner_capacity_host_admission_verdict(host: product.placement_supply.HostIdentity) -> gunbc.runner_capacity_operator_access.RunnerCapacityHostAdmissionVerdict {
   let requirement = runner_capacity_host_in_band_admission_requirement(host: host)
   match in_band_privilege_observation_for_host(host: host) {
     PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } =>
@@ -173,7 +173,7 @@ fn runner_capacity_host_admission_verdict(host: product.placement_supply.HostIde
   }
 }
 
-fn runner_capacity_managed_host_admission_verdicts() -> std.types.List<RunnerCapacityHostAdmissionVerdict> {
+fn runner_capacity_managed_host_admission_verdicts() -> std.types.List<gunbc.runner_capacity_operator_access.RunnerCapacityHostAdmissionVerdict> {
   [
     runner_capacity_host_admission_verdict(host: operator_host_srv3),
     runner_capacity_host_admission_verdict(host: operator_host_srv4),

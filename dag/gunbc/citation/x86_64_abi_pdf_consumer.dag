@@ -9,29 +9,29 @@ type X86_64AbiPdfWetReceiptHexRefusalCause = WetReceiptHexMalformed { hex: Strin
 
 type X86_64AbiPdfPinRefusalCause
   = IndependentExpectedPinUnavailable
-  | PinEstablishmentReceiptHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+  | PinEstablishmentReceiptHexRefused { hex: String, cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfWetReceiptHexRefusalCause }
 
-type X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(std.content_hash.Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(std.content_hash.Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfWetReceiptHexRefusalCause }
 
-type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(std.citation.CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(std.citation.CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfWetReceiptHexRefusalCause }
 
-type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefusalCause }
 
 type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: extdeps.standards.rfc_8118.NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: gunbc.citation.pdf_safe_profile.PdfProfileRefusalCause }
 
-type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(std.citation.CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
+type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(std.citation.CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorRefusalCause }
 
 type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: extdeps.uri.Uri } | X86_64AbiPdfNavigableUriRefused { cause: gunbc.citation.pdf_safe_profile.NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
+type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinConstruction, selector: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction }
 
-type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
+type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstruction }
 
-fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdfValidatedDigestConstruction {
+fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfValidatedDigestConstruction {
   match sha256_hex_digest(hex: hex) {
     Present { value: digest } => X86_64AbiPdfValidatedDigestConstructed(digest)
     Absent =>
@@ -42,7 +42,7 @@ fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdf
   }
 }
 
-fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRetrievalObservationConstruction {
+fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfRetrievalObservationConstruction {
   match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: hex) {
     X86_64AbiPdfValidatedDigestConstructed(digest) =>
       X86_64AbiPdfRetrievalObserved(
@@ -64,13 +64,13 @@ fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRet
   }
 }
 
-data x86_64_abi_pdf_expected_digest_construction: X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: IndependentExpectedPinUnavailable }
+data x86_64_abi_pdf_expected_digest_construction: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: IndependentExpectedPinUnavailable }
 
-fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
+fn assemble_x86_64_abi_pdf_pin_construction() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinConstruction {
   X86_64AbiPdfPinRefused { cause: IndependentExpectedPinUnavailable }
 }
 
-data x86_64_abi_pdf_pin_construction: X86_64AbiPdfPinConstruction = assemble_x86_64_abi_pdf_pin_construction()
+data x86_64_abi_pdf_pin_construction: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinConstruction = assemble_x86_64_abi_pdf_pin_construction()
 
 fn x86_64_abi_pdf_version_cover_sequence() -> gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction {
   pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)])
@@ -86,7 +86,7 @@ fn x86_64_abi_syscall_citation_page_is_authoritative(page: std.integer.PositiveI
   page == x86_64_abi_syscall_convention_authoritative_page
 }
 
-fn x86_64_abi_pdf_fragment_selector_from_page(page: std.integer.PositiveInt) -> X86_64AbiPdfCitationSelectorConstruction {
+fn x86_64_abi_pdf_fragment_selector_from_page(page: std.integer.PositiveInt) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction {
   match pdf_open_fragment_selector(
     sequence: match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: page)]) {
       SequenceConstructed(seq) => seq
@@ -102,7 +102,7 @@ fn x86_64_abi_pdf_fragment_selector_from_page(page: std.integer.PositiveInt) -> 
 
 fn x86_64_abi_pdf_citation_selector_from_safe(
   construction: gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction,
-) -> X86_64AbiPdfCitationSelectorConstruction {
+) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction {
   match construction {
     SafeSequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(
@@ -121,13 +121,13 @@ fn x86_64_abi_pdf_citation_selector_from_safe(
   }
 }
 
-fn x86_64_abi_pdf_syscall_fragment_selector() -> X86_64AbiPdfCitationSelectorConstruction {
+fn x86_64_abi_pdf_syscall_fragment_selector() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction {
   x86_64_abi_pdf_citation_selector_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence())
 }
 
-data x86_64_abi_syscall_citation_rung_disposition: X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
+data x86_64_abi_syscall_citation_rung_disposition: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
 
-fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConstruction {
+fn x86_64_abi_syscall_citation_fact_construction() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstruction {
   match x86_64_abi_pdf_pin_construction {
     X86_64AbiPdfPinConstructed(pin) =>
       match x86_64_abi_pdf_syscall_fragment_selector() {
@@ -160,9 +160,9 @@ fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConst
   }
 }
 
-data x86_64_abi_syscall_convention_citation_fact_construction: X86_64AbiCitationFactConstruction = x86_64_abi_syscall_citation_fact_construction()
+data x86_64_abi_syscall_convention_citation_fact_construction: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstruction = x86_64_abi_syscall_citation_fact_construction()
 
-fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConstruction {
+fn x86_64_abi_syscall_evidence_link_construction() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiEvidenceLinkConstruction {
   match x86_64_abi_syscall_convention_citation_fact_construction {
     X86_64AbiCitationFactConstructed(fact) =>
       X86_64AbiEvidenceLinkConstructed(
@@ -223,7 +223,7 @@ fn witness_syscall_evidence_link_binds_fact() -> Bool {
 
 fn x86_64_abi_pdf_navigable_uri_from_safe(
   construction: gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction,
-) -> X86_64AbiPdfNavigableUriProjection {
+) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjection {
   match project_navigable_uri_safe(
     base: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
     construction: construction,
@@ -236,7 +236,7 @@ fn x86_64_abi_pdf_navigable_uri_from_safe(
 fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
   name: std.types.NonEmptyStr,
   code_points: List<Int>,
-) -> X86_64AbiPdfNavigableUriProjection {
+) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjection {
   match pdf_open_nameddest_wire_from_scalar_code_points(name: name, code_points: code_points) {
     PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
       X86_64AbiPdfNavigableUriRefused {
@@ -260,11 +260,11 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
   }
 }
 
-fn x86_64_abi_pdf_version_navigable_uri_projection() -> X86_64AbiPdfNavigableUriProjection {
+fn x86_64_abi_pdf_version_navigable_uri_projection() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjection {
   x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_version_cover_sequence())
 }
 
-fn x86_64_abi_pdf_syscall_navigable_uri_projection() -> X86_64AbiPdfNavigableUriProjection {
+fn x86_64_abi_pdf_syscall_navigable_uri_projection() -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjection {
   x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence())
 }
 

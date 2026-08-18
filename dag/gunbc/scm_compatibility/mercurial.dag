@@ -34,19 +34,19 @@ type MercurialCompatibilityRefusal
     }
 
 type MercurialCompatibilityBindingOutcome
-  = MercurialCompatibilityBound { receipt: MercurialCompatibilityReceipt }
+  = MercurialCompatibilityBound { receipt: gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt }
   | MercurialCompatibilityBindingRefused {
-      cause: MercurialCompatibilityRefusal,
+      cause: gunbc.scm_compatibility.mercurial.MercurialCompatibilityRefusal,
     }
 
 type MercurialCompatibilityBindingOutcomeFold<R> {
-  bound: fn(MercurialCompatibilityReceipt) -> R
-  refused: fn(MercurialCompatibilityRefusal) -> R
+  bound: fn(gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt) -> R
+  refused: fn(gunbc.scm_compatibility.mercurial.MercurialCompatibilityRefusal) -> R
 }
 
 fn mercurial_compatibility_binding_outcome_fold<R>(
-  outcome: MercurialCompatibilityBindingOutcome,
-  fold: MercurialCompatibilityBindingOutcomeFold<R>,
+  outcome: gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcome,
+  fold: gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcomeFold<R>,
 ) -> R {
   match outcome {
     MercurialCompatibilityBound { receipt } => fold.bound(receipt)
@@ -58,7 +58,7 @@ fn mercurial_compatibility_bind(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   target: extdeps.mercurial.MercurialNamedBranchName,
   read_back: extdeps.mercurial.MercurialReadBackObservation,
-) -> MercurialCompatibilityBindingOutcome {
+) -> gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcome {
   match mercurial_decode_projection(projection: projection) {
     MercurialDecodeRefused { cause } =>
       MercurialCompatibilityBindingRefused {
@@ -86,7 +86,7 @@ fn mercurial_compatibility_bind(
         ) {
           MercurialReadBackMatches { observed_by: _ } =>
             MercurialCompatibilityBound {
-              receipt: MercurialCompatibilityReceipt {
+              receipt: gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt {
                 target: target,
                 portable_history: mercurial_portable_history(
                   repository: repository,
@@ -540,7 +540,7 @@ fn mercurial_compatibility_fidelity() -> gunbc.scm_compatibility_shape.Compatibi
 }
 
 fn mercurial_compatibility_projection_receipt(
-  receipt: MercurialCompatibilityReceipt,
+  receipt: gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt,
 ) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
   let generation = mercurial_compatibility_history_handle(
     history: receipt.target_history,
@@ -570,7 +570,7 @@ fn mercurial_compatibility_projection_receipt(
 }
 
 fn mercurial_compatibility_projection_handler(
-) -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<MercurialCompatibilityReceipt> {
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<gunbc.scm_compatibility.mercurial.MercurialCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       mercurial_compatibility_projection_receipt(receipt: receipt)

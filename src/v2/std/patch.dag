@@ -11,25 +11,25 @@ type FieldPatch<T>
   = Override { value: T }
   | Inherit
 
-fn field_patch_inherit<T>() -> FieldPatch<T> {
+fn field_patch_inherit<T>() -> v2.std.patch.FieldPatch<T> {
   Inherit
 }
 
-fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
+fn apply_field_patch<T>(base: T, patch: v2.std.patch.FieldPatch<T>) -> T {
   match patch {
     Override { value: v } => v
     Inherit => base
   }
 }
 
-fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPatch<T> {
+fn compose_field_patch<T>(left: v2.std.patch.FieldPatch<T>, right: v2.std.patch.FieldPatch<T>) -> v2.std.patch.FieldPatch<T> {
   match right {
     Override { value: v } => Override { value: v }
     Inherit => left
   }
 }
 
-fn field_patch_monoid<T>() -> std.algebra.Monoid<FieldPatch<T>> {
+fn field_patch_monoid<T>() -> std.algebra.Monoid<v2.std.patch.FieldPatch<T>> {
   std.algebra.Monoid {
     op: fn(left, right) { compose_field_patch(left: left, right: right) },
     identity: Inherit,

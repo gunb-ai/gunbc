@@ -25,7 +25,7 @@ type GrainProbe
   = GrainStageRejected
   | GrainTree { root: Node }
 
-fn parse_grain_tree(source: String) -> GrainProbe {
+fn parse_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witness.GrainProbe {
   let lm = dag_language_model()
   match tokenize(text: source, file: ^mandatory_tag_gate_witness_file, rules: lm.lex) {
     Rejected { diagnostics: _ } => GrainStageRejected
@@ -37,7 +37,7 @@ fn parse_grain_tree(source: String) -> GrainProbe {
   }
 }
 
-fn normalized_grain_tree(source: String) -> GrainProbe {
+fn normalized_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witness.GrainProbe {
   match parse_grain_tree(source: source) {
     GrainStageRejected => GrainStageRejected
     GrainTree { root: parse_root } =>
@@ -48,7 +48,7 @@ fn normalized_grain_tree(source: String) -> GrainProbe {
   }
 }
 
-fn gate_accepts_tree(probe: GrainProbe) -> Bool {
+fn gate_accepts_tree(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
@@ -59,7 +59,7 @@ fn gate_accepts_tree(probe: GrainProbe) -> Bool {
   }
 }
 
-fn gate_rejects_tree_with(probe: GrainProbe, reason: v2.std.node.Symbol) -> Bool {
+fn gate_rejects_tree_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe, reason: v2.std.node.Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
@@ -140,7 +140,7 @@ test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
   )
 }
 
-fn roster_rejects_with(probe: GrainProbe, reason: v2.std.node.Symbol) -> Bool {
+fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe, reason: v2.std.node.Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>

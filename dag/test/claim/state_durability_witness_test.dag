@@ -9,8 +9,8 @@ type FixtureReadbackSubject {
   path: std.types.NonEmptyStr
 }
 
-data fixture_target: FixtureTarget = "fixture-host" as FixtureTarget
-data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
+data fixture_target: test.claim.state_durability_witness.FixtureTarget = "fixture-host" as FixtureTarget
+data fixture_subject: test.claim.state_durability_witness.FixtureReadbackSubject = FixtureReadbackSubject {
   path: "/etc/fixture-policy",
 }
 
@@ -75,7 +75,7 @@ fn fixture_admission(
   realization: std.state_durability.StateRealizationIdentity,
   capability_version: std.state_durability.StateDurabilityCapabilityVersion,
   desired: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   std.state_durability.StateDurabilityAdmission {
     target: fixture_target,
     desired_state_digest: desired,
@@ -86,7 +86,7 @@ fn fixture_admission(
   }
 }
 
-fn current_admission() -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+fn current_admission() -> std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   fixture_admission(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
@@ -114,9 +114,9 @@ fn current_capability() -> std.state_durability.StateDurabilityCapability {
 }
 
 fn fixture_activation(
-  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
   receipt_id: std.types.NonEmptyStr,
-) -> std.state_durability.StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateActivationEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   std.state_durability.ActivationVerified {
     receipt: std.state_durability.StateActivationReceipt {
       perturbation_receipt_id: receipt_id,
@@ -133,7 +133,7 @@ fn fixture_activation(
 fn fixture_before_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateBeforeReadbackReceipt<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   std.state_durability.StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
@@ -146,7 +146,7 @@ fn fixture_before_readback(
 fn fixture_after_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateAfterReadbackReceipt<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   std.state_durability.StateAfterReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
@@ -159,13 +159,13 @@ fn fixture_after_readback(
 }
 
 fn fixture_evidence(
-  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
   boundary: std.state_durability.StateDurabilityBoundary,
   readback_receipt_id: std.types.NonEmptyStr,
   before: extdeps.crypto.hash.Digest,
   after: extdeps.crypto.hash.Digest,
-  activation: StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
-) -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  activation: StateActivationEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
+) -> std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   std.state_durability.StateDurabilityEvidence {
     admission: admission,
     perturbation: std.state_durability.StatePerturbationReceipt {
@@ -194,7 +194,7 @@ fn fixture_evidence(
   }
 }
 
-fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
@@ -209,8 +209,8 @@ fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<FixtureTa
 }
 
 fn durable_verdict(
-  evidence: List<std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
-) -> std.state_durability.StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
+  evidence: List<std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>>,
+) -> std.state_durability.StateDurabilityVerdict<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
   state_durability_verdict(
     intent: std.state_durability.DurableAcross {
       boundaries: state_durability_boundary_requirements(

@@ -7,24 +7,24 @@ type EffectIoResourceBackend
   | StorageResourceBackend
 
 type EffectIoResourceLocator {
-  backend: EffectIoResourceBackend
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
   identity: v2.std.node.Hash
 }
 
 type EffectIoFixtureStore {
-  backend: EffectIoResourceBackend
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
   entries: Map<v2.std.node.Hash, v2.std.runtime.RuntimeValue>
 }
 
 type EffectIoPureHandlerBundle {
-  fixture_store: EffectIoFixtureStore
+  fixture_store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
   handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 type V4EffectIoPureRuntime {
   bundle_identity: v2.std.node.Symbol
-  declared_backend: EffectIoResourceBackend
-  fixture_store: EffectIoFixtureStore
+  declared_backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
+  fixture_store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
   handlers: v2.std.runtime.EffectHandlerBinding
 }
 
@@ -87,15 +87,15 @@ fn effect_io_pure_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
 }
 
 fn effect_io_pure_locator_from_args(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   args: List<v2.std.runtime.RuntimeValue>
-) -> v2.std.witness.Witness<EffectIoResourceLocator> {
+) -> v2.std.witness.Witness<v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator> {
   match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
     Holds { value: locator_value } =>
       match effect_io_pure_locator_identity(value: locator_value) {
         Holds { value: digest } =>
           v2.std.witness.Holds {
-            value: EffectIoResourceLocator {
+            value: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
               backend: backend,
               identity: digest
             }
@@ -131,8 +131,8 @@ fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue
 }
 
 fn effect_io_pure_backends_match(
-  left: EffectIoResourceBackend,
-  right: EffectIoResourceBackend
+  left: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  right: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
 ) -> Bool {
   match left {
     FileResourceBackend =>
@@ -154,8 +154,8 @@ fn effect_io_pure_backends_match(
 }
 
 fn effect_io_pure_store_lookup(
-  store: EffectIoFixtureStore,
-  locator: EffectIoResourceLocator
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
+  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match map_get(m: store.entries, key: locator.identity) {
@@ -186,7 +186,7 @@ fn effect_io_pure_store_lookup(
 }
 
 fn effect_io_pure_handle_read(
-  store: EffectIoFixtureStore,
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
@@ -196,7 +196,7 @@ fn effect_io_pure_handle_read(
 }
 
 fn effect_io_pure_handle_write(
-  store: EffectIoFixtureStore,
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
@@ -229,7 +229,7 @@ fn effect_io_pure_invoke_handler(
   }
 }
 
-fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHandlerBundle {
+fn effect_io_pure_handler_binding(store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoPureHandlerBundle {
   EffectIoPureHandlerBundle {
     fixture_store: store,
     handlers: v2.std.runtime.EffectHandlerBinding {
@@ -248,16 +248,16 @@ fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHa
 }
 
 fn effect_io_pure_fixture_store(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   entries: Map<v2.std.node.Hash, v2.std.runtime.RuntimeValue>
-) -> EffectIoFixtureStore {
+) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
   EffectIoFixtureStore {
     backend: backend,
     entries: entries
   }
 }
 
-fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> EffectIoFixtureStore {
+fn effect_io_pure_empty_fixture_store(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
   effect_io_pure_fixture_store(backend: backend, entries: empty_map())
 }
 
@@ -295,9 +295,9 @@ fn effect_io_pure_append_receipt(
 }
 
 fn effect_io_pure_runtime(
-  backend: EffectIoResourceBackend,
-  store: EffectIoFixtureStore
-) -> V4EffectIoPureRuntime {
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+) -> v2.extdeps.runtimes.v2_effect_io_pure.V4EffectIoPureRuntime {
   let bundle = effect_io_pure_handler_binding(store: store)
   V4EffectIoPureRuntime {
     bundle_identity: ^v2_effect_io_pure_runtime_id,
@@ -307,7 +307,7 @@ fn effect_io_pure_runtime(
   }
 }
 
-fn effect_io_pure_runtime_from_backend(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
+fn effect_io_pure_runtime_from_backend(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> v2.extdeps.runtimes.v2_effect_io_pure.V4EffectIoPureRuntime {
   effect_io_pure_runtime(
     backend: backend,
     store: effect_io_pure_empty_fixture_store(backend: backend)
@@ -315,10 +315,10 @@ fn effect_io_pure_runtime_from_backend(backend: EffectIoResourceBackend) -> V4Ef
 }
 
 fn effect_io_pure_apply_write(
-  store: EffectIoFixtureStore,
-  locator: EffectIoResourceLocator,
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
+  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
   payload: v2.std.runtime.RuntimeValue
-) -> EffectIoFixtureStore {
+) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
   EffectIoFixtureStore {
     backend: store.backend,
     entries: map_insert(m: store.entries, key: locator.identity, value: payload)
@@ -326,7 +326,7 @@ fn effect_io_pure_apply_write(
 }
 
 fn effect_io_pure_read_write_roundtrip(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
 ) -> Bool {
@@ -346,8 +346,8 @@ fn effect_io_pure_read_write_roundtrip(
 }
 
 fn effect_io_pure_roundtrip_through_store(
-  backend: EffectIoResourceBackend,
-  locator: EffectIoResourceLocator,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
 ) -> Bool {

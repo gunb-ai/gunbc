@@ -106,7 +106,7 @@ fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVe
 // One host's collection: cat the published receipt over the typed argv seam at the
 // modeled endpoint. Wire refusal or transport failure -> Absent with the cause; a first
 // line that does not decode -> Unparseable carrying the exact bytes.
-fn collect_host_receipt(host: String) -> CollectedHostReceipt {
+fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
   match fleet_probe_target_for(host: host) {
     ProbeTargetRefused { host: _, cause: c } =>
       ReceiptAbsent {
@@ -146,7 +146,7 @@ fn receipt_first_line(raw: String) -> String? {
 // laundered into the registry as converged. Drifted/absent verdicts do not require the
 // observed cell (they are not claiming convergence). Empty stdout -> Absent; an undecodable
 // first line -> Unparseable (contradiction-shaped, never absence).
-fn classify_receipt_stdout(host: String, raw: String) -> CollectedHostReceipt {
+fn classify_receipt_stdout(host: String, raw: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
   match receipt_first_line(raw: raw) {
     Present { value: line } =>
       match parse_converge_receipt_line(line: line) {
@@ -191,7 +191,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
   })
 }
 
-fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> std.types.List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
+fn collected_receipts_only(collected: List<gunbc.fleet_receipt_collector.CollectedHostReceipt>) -> std.types.List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   collected.flat_map(c => match c {
     ReceiptCollected { host: _, receipt: r } => [r]
     ReceiptAbsent { host: _, cause: _ } => []
@@ -200,7 +200,7 @@ fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> std.types.L
   })
 }
 
-fn collected_line(c: CollectedHostReceipt) -> String {
+fn collected_line(c: gunbc.fleet_receipt_collector.CollectedHostReceipt) -> String {
   match c {
     ReceiptCollected { host: h, receipt: _ } => join(["collect host=", h, " outcome=collected"], "")
     ReceiptAbsent { host: h, cause: why } => join(["collect host=", h, " outcome=absent cause=", why], "")

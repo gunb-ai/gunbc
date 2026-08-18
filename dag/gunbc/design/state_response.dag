@@ -14,7 +14,7 @@ type StateVarRole
   | InkVar
   | PressedVar
 
-fn state_var_suffix(role: StateVarRole) -> String {
+fn state_var_suffix(role: gunbc.design.state_response.StateVarRole) -> String {
   match role {
     FillVar => ""
     InkVar => "-ink"
@@ -22,11 +22,11 @@ fn state_var_suffix(role: StateVarRole) -> String {
   }
 }
 
-fn state_var_name(prefix: String, key: String, role: StateVarRole) -> String {
+fn state_var_name(prefix: String, key: String, role: gunbc.design.state_response.StateVarRole) -> String {
   join([prefix, key, state_var_suffix(role: role)], "")
 }
 
-fn state_var_ref(prefix: String, key: String, role: StateVarRole) -> String {
+fn state_var_ref(prefix: String, key: String, role: gunbc.design.state_response.StateVarRole) -> String {
   join(["var(--", state_var_name(prefix: prefix, key: key, role: role), ")"], "")
 }
 
@@ -35,26 +35,26 @@ type StateBinding
   | StateClassBinding { class_name: String }
 
 type StateFamilyMember {
-  binding: StateBinding
+  binding: gunbc.design.state_response.StateBinding
   key: String
 }
 
 type StateFamily {
   component_class: String
   var_prefix: String
-  members: List<StateFamilyMember>
+  members: List<gunbc.design.state_response.StateFamilyMember>
 }
 
 data member_subject_note: String = "RestBinding realizes on the component's own class selector — the rest state IS the unqualified component, which is why the base rule owns the rest paint. A class-bound member composes component class + state class, the same compound the client program flips."
 
-fn member_selector_text(f: StateFamily, m: StateFamilyMember) -> String {
+fn member_selector_text(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember) -> String {
   match m.binding {
     RestBinding => join([".", f.component_class], "")
     StateClassBinding { class_name } => join([".", f.component_class, ".", class_name], "")
   }
 }
 
-fn member_subject(f: StateFamily, m: StateFamilyMember) -> extdeps.languages.css.selectors.SelectorSubject {
+fn member_subject(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember) -> extdeps.languages.css.selectors.SelectorSubject {
   match m.binding {
     RestBinding => extdeps.languages.css.selectors.ClassSelector { name: f.component_class }
     StateClassBinding { class_name: _ } => extdeps.languages.css.selectors.RawSelector { text: member_selector_text(f: f, m: m) }
@@ -62,31 +62,31 @@ fn member_subject(f: StateFamily, m: StateFamilyMember) -> extdeps.languages.css
 }
 
 type StateChannel
-  = RestChannel { prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole }
-  | ResponseChannel { trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole, transition_props: String }
+  = RestChannel { prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole }
+  | ResponseChannel { trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole, transition_props: String }
 
 type ChannelScope
-  = PerStateFamily { channel: StateChannel }
+  = PerStateFamily { channel: gunbc.design.state_response.StateChannel }
   | ConstantByLaw { channel_name: String, ruling: std.decl_ref.DeclarationRef }
 
-fn rest_member(f: StateFamily) -> StateFamilyMember? {
+fn rest_member(f: gunbc.design.state_response.StateFamily) -> gunbc.design.state_response.StateFamilyMember? {
   f.members |> filter(m => match m.binding { RestBinding => true StateClassBinding { class_name: _ } => false }) |> first
 }
 
-fn member_channel_decl(f: StateFamily, m: StateFamilyMember, prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole) -> gunbc.design.material.CssDecl {
+fn member_channel_decl(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole) -> gunbc.design.material.CssDecl {
   decl(prop: prop, value: state_var_ref(prefix: f.var_prefix, key: m.key, role: role))
 }
 
 data state_rest_decl_note: String = "The rest member's channel decls, for splicing into the component's base rule at the positions its authoring order demands. Returns a LIST so an absent rest member yields an absent decl rather than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly, instead of a placeholder value surviving review."
 
-fn state_rest_decl(f: StateFamily, prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole) -> List<gunbc.design.material.CssDecl> {
+fn state_rest_decl(f: gunbc.design.state_response.StateFamily, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole) -> List<gunbc.design.material.CssDecl> {
   match rest_member(f: f) {
     Absent => []
     Present { value: m } => [member_channel_decl(f: f, m: m, prop: prop, role: role)]
   }
 }
 
-fn scope_rest_decls(f: StateFamily, m: StateFamilyMember, channels: List<ChannelScope>) -> List<gunbc.design.material.CssDecl> {
+fn scope_rest_decls(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.material.CssDecl> {
   fold(channels, init: [], f: (acc, c) => match c {
     PerStateFamily { channel } => match channel {
       RestChannel { prop, role } => concat(acc, [member_channel_decl(f: f, m: m, prop: prop, role: role)])
@@ -98,7 +98,7 @@ fn scope_rest_decls(f: StateFamily, m: StateFamilyMember, channels: List<Channel
 
 data state_paint_rules_note: String = "The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
 
-fn state_paint_rules(f: StateFamily, channels: List<ChannelScope>) -> List<gunbc.design.material.BuildRule> {
+fn state_paint_rules(f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.material.BuildRule> {
   fold(f.members, init: [], f: (acc, m) => match m.binding {
     RestBinding => acc
     StateClassBinding { class_name: _ } =>
@@ -108,7 +108,7 @@ fn state_paint_rules(f: StateFamily, channels: List<ChannelScope>) -> List<gunbc
 
 data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a ResponseRule whose response decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
 
-fn channel_response_rules(f: StateFamily, trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole, transition_props: String, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
+fn channel_response_rules(f: gunbc.design.state_response.StateFamily, trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: gunbc.design.state_response.StateVarRole, transition_props: String, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(f.members, m =>
     gunbc.design.material.ResponseRule {
       subject: member_subject(f: f, m: m),
@@ -121,7 +121,7 @@ fn channel_response_rules(f: StateFamily, trigger: gunbc.design.material.MotionT
     })
 }
 
-fn family_response_rules(f: StateFamily, channels: List<ChannelScope>, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
+fn family_response_rules(f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   fold(channels, init: [], f: (acc, c) => match c {
     PerStateFamily { channel } => match channel {
       RestChannel { prop: _, role: _ } => acc
@@ -140,38 +140,38 @@ type FamilyCensusFault
 type FamilyCensusDefect {
   member_key: String
   channel_prop: String
-  fault: FamilyCensusFault
+  fault: gunbc.design.state_response.FamilyCensusFault
 }
 
-fn channel_prop_wire(c: StateChannel) -> String {
+fn channel_prop_wire(c: gunbc.design.state_response.StateChannel) -> String {
   match c {
     RestChannel { prop, role: _ } => css_property_wire(p: prop)
     ResponseChannel { trigger: _, prop, role: _, transition_props: _ } => css_property_wire(p: prop)
   }
 }
 
-fn channel_role(c: StateChannel) -> StateVarRole {
+fn channel_role(c: gunbc.design.state_response.StateChannel) -> gunbc.design.state_response.StateVarRole {
   match c {
     RestChannel { prop: _, role } => role
     ResponseChannel { trigger: _, prop: _, role, transition_props: _ } => role
   }
 }
 
-fn expected_cell_decl(f: StateFamily, m: StateFamilyMember, c: StateChannel) -> String {
+fn expected_cell_decl(f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, c: gunbc.design.state_response.StateChannel) -> String {
   join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: m.key, role: channel_role(c: c))], "")
 }
 
-fn foreign_cell_decl(f: StateFamily, foreign_key: String, c: StateChannel) -> String {
+fn foreign_cell_decl(f: gunbc.design.state_response.StateFamily, foreign_key: String, c: gunbc.design.state_response.StateChannel) -> String {
   join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: foreign_key, role: channel_role(c: c))], "")
 }
 
 data census_block_probe_note: String = "A class-bound member's cell is probed as selector-adjacent text: the member's selector followed by a block containing the expected decl would be exact, but blocks interleave channels, so the probe pairs (selector present) with (expected decl present) and, on a miss, substitutes every other member's key into the same decl to name the foreign family it found instead. The rest member's decls live inside the component's base rule among geometry decls, so its probe is the decl alone and cross-family detection is declared out of its reach (state_response_census_note)."
 
-fn member_block_contains(css: String, f: StateFamily, m: StateFamilyMember, expected: String) -> Bool {
+fn member_block_contains(css: String, f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, expected: String) -> Bool {
   string_contains(s: css, pattern: member_selector_text(f: f, m: m)) && string_contains(s: css, pattern: expected)
 }
 
-fn foreign_key_found(css: String, f: StateFamily, m: StateFamilyMember, c: StateChannel) -> String {
+fn foreign_key_found(css: String, f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, c: gunbc.design.state_response.StateChannel) -> String {
   fold(f.members, init: "", f: (acc, other) =>
     if acc == "" && other.key != m.key && string_contains(s: css, pattern: join([member_selector_text(f: f, m: m), " { ", foreign_cell_decl(f: f, foreign_key: other.key, c: c)], "")) {
       other.key
@@ -180,7 +180,7 @@ fn foreign_key_found(css: String, f: StateFamily, m: StateFamilyMember, c: State
     })
 }
 
-fn cell_fault(css: String, f: StateFamily, m: StateFamilyMember, c: StateChannel) -> List<FamilyCensusFault> {
+fn cell_fault(css: String, f: gunbc.design.state_response.StateFamily, m: gunbc.design.state_response.StateFamilyMember, c: gunbc.design.state_response.StateChannel) -> List<gunbc.design.state_response.FamilyCensusFault> {
   let var_name = state_var_name(prefix: f.var_prefix, key: m.key, role: channel_role(c: c))
   if !string_contains(s: css, pattern: join(["--", var_name, ":"], "")) {
     [ FamilyVarUndefined { var_name: var_name } ]
@@ -201,36 +201,36 @@ fn cell_fault(css: String, f: StateFamily, m: StateFamilyMember, c: StateChannel
   }
 }
 
-fn per_family_channels(channels: List<ChannelScope>) -> List<StateChannel> {
+fn per_family_channels(channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.state_response.StateChannel> {
   fold(channels, init: [], f: (acc, c) => match c {
     PerStateFamily { channel } => concat(acc, [channel])
     ConstantByLaw { channel_name: _, ruling: _ } => acc
   })
 }
 
-fn constant_by_law_rulings(channels: List<ChannelScope>) -> List<std.decl_ref.DeclarationRef> {
+fn constant_by_law_rulings(channels: List<gunbc.design.state_response.ChannelScope>) -> List<std.decl_ref.DeclarationRef> {
   fold(channels, init: [], f: (acc, c) => match c {
     PerStateFamily { channel: _ } => acc
     ConstantByLaw { channel_name: _, ruling } => concat(acc, [ruling])
   })
 }
 
-fn family_census_defects(css: String, f: StateFamily, channels: List<ChannelScope>) -> List<FamilyCensusDefect> {
+fn family_census_defects(css: String, f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> List<gunbc.design.state_response.FamilyCensusDefect> {
   fold(f.members, init: [], f: (acc, m) =>
     concat(acc, fold(per_family_channels(channels: channels), init: [], f: (inner, c) =>
       concat(inner, map(cell_fault(css: css, f: f, m: m, c: c), fault =>
         FamilyCensusDefect { member_key: m.key, channel_prop: channel_prop_wire(c: c), fault: fault })))))
 }
 
-fn family_census_cell_count(f: StateFamily, channels: List<ChannelScope>) -> Int {
+fn family_census_cell_count(f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> Int {
   count(f.members) * count(per_family_channels(channels: channels))
 }
 
-fn family_census_clean(css: String, f: StateFamily, channels: List<ChannelScope>) -> Bool {
+fn family_census_clean(css: String, f: gunbc.design.state_response.StateFamily, channels: List<gunbc.design.state_response.ChannelScope>) -> Bool {
   count(family_census_defects(css: css, f: f, channels: channels)) == 0
 }
 
-fn constant_rulings_all_located(channels: List<ChannelScope>) -> Bool {
+fn constant_rulings_all_located(channels: List<gunbc.design.state_response.ChannelScope>) -> Bool {
   all(constant_by_law_rulings(channels: channels), r =>
     r.module_path.length() > 0 && r.decl_name.length() > 0)
 }

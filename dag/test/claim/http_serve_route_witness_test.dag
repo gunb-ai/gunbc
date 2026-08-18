@@ -12,7 +12,7 @@ fn tpl(raw: String) -> std.http_path.PathTemplate {
   }
 }
 
-fn probe_table() -> extdeps.http.server.ServedRouteTable<ProbeHandler> {
+fn probe_table() -> extdeps.http.server.ServedRouteTable<test.claim.http_serve_route_witness.ProbeHandler> {
   extdeps.http.server.ServedRouteTable {
     routes: [
       extdeps.http.server.DynamicRoute { method: std.types.GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
@@ -28,7 +28,7 @@ fn probe_table() -> extdeps.http.server.ServedRouteTable<ProbeHandler> {
   }
 }
 
-fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<ProbeHandler>, want_dispatch: Bool) -> Bool {
+fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<test.claim.http_serve_route_witness.ProbeHandler>, want_dispatch: Bool) -> Bool {
   match sel {
     SelectedDynamic { handler: h, params: _ } =>
       match h {
@@ -41,7 +41,7 @@ fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<ProbeHandler>, wa
   }
 }
 
-fn selection_param(sel: extdeps.http.server.RouteSelection<ProbeHandler>, name: String) -> String {
+fn selection_param(sel: extdeps.http.server.RouteSelection<test.claim.http_serve_route_witness.ProbeHandler>, name: String) -> String {
   match sel {
     SelectedDynamic { handler: _, params: ps } =>
       fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })

@@ -40,7 +40,7 @@ data mt_jade_excluded_non_normative_appendices: List<extdeps.ocp.publication.Exc
 
 type MtJadeReferencePlatform {
   marketing_name: std.types.NonEmptyStr
-  revision: MtJadeSpecificationRevision
+  revision: extdeps.ocp.mt_jade.subject.MtJadeSpecificationRevision
   version_label: std.types.NonEmptyStr
   publication_date: extdeps.publication.SpecificationDocumentDate
   contributor: Vendor<extdeps.hardware.Hardware>
@@ -49,9 +49,9 @@ type MtJadeReferencePlatform {
   excluded_appendices: List<extdeps.ocp.publication.ExcludedNonNormativeAppendix>
 }
 
-data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatform {
+data mt_jade_reference_platform: extdeps.ocp.mt_jade.subject.MtJadeReferencePlatform = MtJadeReferencePlatform {
   marketing_name: "Mt. Jade",
-  revision: MtJadeRev1_0 {},
+  revision: extdeps.ocp.mt_jade.subject.MtJadeRev1_0 {},
   version_label: mt_jade_specification_version_label,
   publication_date: mt_jade_specification_publication_date,
   contributor: ampere_vendor,
