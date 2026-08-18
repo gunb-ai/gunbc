@@ -51,6 +51,33 @@ fn is_refused(o: MoneyOutcome) -> Bool {
   }
 }
 
+// Every refusal below names the arm it expects, rather than asserting that
+// something refused. The distinction is not pedantry: `is_refused` is true for
+// a ceiling overrun, a stale generation and a duplicate reference alike, so a
+// ceiling test written against it passes against an implementation that
+// refuses for entirely the wrong reason - and would have passed against the
+// duplicate-reference bug this file now covers. Naming the arm is what makes
+// each test discriminate the wall it claims to be about.
+
+fn refusal_label(o: MoneyOutcome) -> NonEmptyStr {
+  match o {
+    AccountAdvanced { account: _ } => "advanced"
+    MoneyRefused { refusal: r } =>
+      match r {
+        CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
+        LedgerRefused { account: _, refusal: lr } =>
+          match lr {
+            ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
+            UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
+            DuplicateReference { reference: _ } => "duplicate-reference"
+            StaleGeneration { reference: _, expected: _, presented: _ } => "stale-generation"
+            ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => "expenditure-exceeds-encumbrance"
+            AlreadyTerminal { reference: _ } => "already-terminal"
+          }
+      }
+  }
+}
+
 fn reserve_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: Nat) -> MoneyOutcome {
   reserve_money(
     a: a,
@@ -98,7 +125,7 @@ test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -
     Empty {} => false
     Cons { head: a, tail: _ } => {
       let second = reserve_on(a: a, reference: "grant-2", generation: 1, micros: 700000)
-      is_refused(o: second)
+      refusal_label(o: second) == "exceeds-appropriation"
         && money_amount_micro_count(m: account_committed(a: a)) == 400000
     }
   }
@@ -131,7 +158,8 @@ test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
-      is_refused(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 400001))
+      refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 400001))
+        == "expenditure-exceeds-encumbrance"
   }
 }
 
@@ -143,8 +171,9 @@ test fn a_superseded_holder_cannot_settle() -> Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 7, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
-      is_refused(o: settle_on(a: held, reference: "grant-1", generation: 6, micros: 100000))
-        && !is_refused(o: settle_on(a: held, reference: "grant-1", generation: 7, micros: 100000))
+      refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 6, micros: 100000))
+        == "stale-generation"
+        && refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 7, micros: 100000)) == "advanced"
   }
 }
 
@@ -159,7 +188,8 @@ test fn a_settled_reservation_cannot_settle_again() -> Bool {
       match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
         Empty {} => false
         Cons { head: settled, tail: _ } =>
-          is_refused(o: settle_on(a: settled, reference: "grant-1", generation: 1, micros: 100000))
+          refusal_label(o: settle_on(a: settled, reference: "grant-1", generation: 1, micros: 100000))
+            == "already-terminal"
       }
   }
 }
@@ -183,9 +213,9 @@ test fn releasing_a_hold_frees_its_headroom() -> Bool {
       ) {
         Empty {} => false
         Cons { head: freed, tail: _ } =>
-          is_refused(o: blocked)
+          refusal_label(o: blocked) == "exceeds-appropriation"
             && money_amount_micro_count(m: account_committed(a: freed)) == 0
-            && !is_refused(o: reserve_on(a: freed, reference: "grant-2", generation: 1, micros: 500000))
+            && refusal_label(o: reserve_on(a: freed, reference: "grant-2", generation: 1, micros: 500000)) == "advanced"
       }
     }
   }
@@ -208,7 +238,7 @@ test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
       currency: Eur,
     },
   )
-  is_refused(o: foreign)
+  refusal_label(o: foreign) == "currency-mismatch"
     && money_amount_micro_count(m: account_committed(a: usd_account)) == 0
 }
 
@@ -248,7 +278,7 @@ test fn a_second_hold_under_one_reference_refuses() -> Bool {
     Empty {} => false
     Cons { head: held, tail: _ } => {
       let duplicate = reserve_on(a: held, reference: "grant-1", generation: 1, micros: 100000)
-      is_refused(o: duplicate)
+      refusal_label(o: duplicate) == "duplicate-reference"
         && money_amount_micro_count(m: account_committed(a: held)) == 400000
     }
   }
@@ -300,9 +330,10 @@ test fn a_released_reference_is_not_reusable() -> Bool {
       ) {
         Empty {} => false
         Cons { head: freed, tail: _ } =>
-          is_refused(o: reserve_on(a: freed, reference: "grant-1", generation: 1, micros: 400000))
+          refusal_label(o: reserve_on(a: freed, reference: "grant-1", generation: 1, micros: 400000))
+            == "duplicate-reference"
             && money_amount_micro_count(m: account_committed(a: freed)) == 0
-            && !is_refused(o: reserve_on(a: freed, reference: "grant-1-retry", generation: 1, micros: 400000))
+            && refusal_label(o: reserve_on(a: freed, reference: "grant-1-retry", generation: 1, micros: 400000)) == "advanced"
       }
   }
 }
