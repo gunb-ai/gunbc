@@ -146,8 +146,35 @@ run 32196069889   cache=module_path_index key=<root>/dag + <root>/src/v2   fill_
 ```
 
 Same cache, same key, the `paid_by` field changing hands after #8457 quarantined the first payer.
-The second payer is **main's only failing witness**, measured at exactly 45784ms — of which
-45075ms is this fill. **98.5% of the entire remaining red is one build that 20 modules read.**
+The second payer is **main's only failing witness**. On this run it measured 45784ms, of which
+45075ms is this fill — ~98.5%. **Pin that share to the run**: the same row measured 45784, 45941,
+46714, 50532 and 52982 across five runs the same day, so the fill *fraction* is the robust part and
+the denominator is not. What survives every reading is that nearly all of the remaining red is one
+build that 20 other modules read for free.
+
+### The consumer set shrank, which prices the quarantine itself
+
+The two receipts also say what #8457's quarantine bought on this axis, and the answer is close to
+nothing for part of the population:
+
+```
+pre-quarantine    read by 139 claims across 29 modules
+post-quarantine   read by  94 claims across 20 modules
+```
+
+Nine modules and 45 claims left the consumer set. A consumer is a **free rider** — it reads a fill
+someone else already built, so its marginal cost for that fill is approximately zero. Quarantining
+a rider therefore removes coverage and recovers nothing here; quarantining the *payer* is what
+handed the bill to the next module and produced main's sole red.
+
+**The honest limit on that reading:** the first receipt reported consumer *counts* only, so those
+nine modules cannot be named retroactively — the count delta is consistent with riders having been
+quarantined, and is not proof of which ones. This is precisely why the line now names consumers,
+and from here the question is a set difference rather than an inference.
+
+The same 20-module list is therefore two lists at once: who inherits the bill if the current payer
+is ever quarantined, and who is first in line to come **back** once the fill belongs to
+preparation.
 
 Evaluation order is alphabetical and the riders are named, so the prediction is checkable rather
 than rhetorical: quarantining this payer hands ~45s to `emitter_optional_payload_cast_witness_test`
