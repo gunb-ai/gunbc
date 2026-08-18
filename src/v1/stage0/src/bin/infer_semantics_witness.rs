@@ -1168,6 +1168,24 @@ fn coproduct_exhaustiveness_missing_arm_names_only_gap() {
     }
 }
 
+fn coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible() {
+    use v1_compiler::v1_std_core::{qualified_last_segment, type_name_compatible};
+
+    let admission = "product.compute_board.admission.DuplicateComponentIdentity".to_string();
+    let witness =
+        "test.claim.compute_board_admission_witness.DuplicateComponentIdentity".to_string();
+
+    assert!(
+        !type_name_compatible(admission.clone(), witness.clone()),
+        "both-qualified different containment paths must not pass type_name_compatible"
+    );
+    assert_eq!(
+        qualified_last_segment(admission.clone()),
+        qualified_last_segment(witness.clone()),
+        "runtime coproduct arms still share the bare variant identity"
+    );
+}
+
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
@@ -1864,6 +1882,10 @@ fn main() -> ExitCode {
         (
             "coproduct_exhaustiveness_missing_arm_names_only_gap",
             coproduct_exhaustiveness_missing_arm_names_only_gap,
+        ),
+        (
+            "coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible",
+            coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible,
         ),
         (
             "resolve_node_uses_node_name_for_lookup",

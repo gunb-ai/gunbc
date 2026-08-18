@@ -31,8 +31,8 @@ use crate::v1_std_core::{
     foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
     unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
     FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
     SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
@@ -232,6 +232,10 @@ fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
         .unwrap_or_else(|| format!("#{}", sym.0))
+}
+
+fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool {
+    qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
@@ -3748,7 +3752,7 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if !type_name_compatible(resolve_sym(*variant_name), name.clone()) {
+                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
@@ -3765,7 +3769,7 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
-                    if !type_name_compatible(resolve_sym(*type_name), name.clone()) {
+                    if !coproduct_arm_name_matches(resolve_sym(*type_name), name.clone()) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
