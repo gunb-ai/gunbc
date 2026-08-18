@@ -17,7 +17,7 @@ fn variant_vis_ingest_for(src: String) -> v2.compiler.source_authority.SourceRoo
       compilation_unit: ^variant_vis_cu,
       source_root: V2Tree
     },
-    tail: Empty
+    tail: std.algebra.Empty
   }
 }
 

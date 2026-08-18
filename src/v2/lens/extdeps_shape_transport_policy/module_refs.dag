@@ -3,35 +3,35 @@ module v2.lens.extdeps_shape_transport_policy.module_refs
 
 data extdeps_cargo_build_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: std.algebra.Cons { head: ^cargo_build, tail: Empty }
+  tail: std.algebra.Cons { head: ^cargo_build, tail: std.algebra.Empty }
 }
 
 data extdeps_git_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: std.algebra.Cons { head: ^git, tail: Empty }
+  tail: std.algebra.Cons { head: ^git, tail: std.algebra.Empty }
 }
 
 data extdeps_gcp_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
   tail: std.algebra.Cons {
     head: ^cloud,
-    tail: std.algebra.Cons { head: ^gcp, tail: std.algebra.Cons { head: ^gcp, tail: Empty } }
+    tail: std.algebra.Cons { head: ^gcp, tail: std.algebra.Cons { head: ^gcp, tail: std.algebra.Empty } }
   }
 }
 
 data extdeps_github_gists_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: std.algebra.Cons { head: ^github, tail: std.algebra.Cons { head: ^gists, tail: Empty } }
+  tail: std.algebra.Cons { head: ^github, tail: std.algebra.Cons { head: ^gists, tail: std.algebra.Empty } }
 }
 
 data extdeps_runtime_local_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: std.algebra.Cons { head: ^runtime, tail: std.algebra.Cons { head: ^local, tail: Empty } }
+  tail: std.algebra.Cons { head: ^runtime, tail: std.algebra.Cons { head: ^local, tail: std.algebra.Empty } }
 }
 
 data bogus_extdeps_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: std.algebra.Cons { head: ^bogus_unknown_module_xyz, tail: Empty }
+  tail: std.algebra.Cons { head: ^bogus_unknown_module_xyz, tail: std.algebra.Empty }
 }
 
 data coverage_domain_equivalence_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
@@ -40,7 +40,7 @@ data coverage_domain_equivalence_module: v2.std.qualified_name.QualifiedName = s
     head: ^test,
     tail: std.algebra.Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: std.algebra.Cons { head: ^coverage_domain_equivalence, tail: Empty }
+      tail: std.algebra.Cons { head: ^coverage_domain_equivalence, tail: std.algebra.Empty }
     }
   }
 }
@@ -53,7 +53,7 @@ data module_source_nickname_literal_green_module: v2.std.qualified_name.Qualifie
       head: ^extdeps_shape_transport_policy,
       tail: std.algebra.Cons {
         head: ^lens_unit,
-        tail: std.algebra.Cons { head: ^module_source_nickname_literal_green, tail: Empty }
+        tail: std.algebra.Cons { head: ^module_source_nickname_literal_green, tail: std.algebra.Empty }
       }
     }
   }
@@ -67,7 +67,7 @@ data module_source_nickname_literal_local_red_module: v2.std.qualified_name.Qual
       head: ^extdeps_shape_transport_policy,
       tail: std.algebra.Cons {
         head: ^lens_unit,
-        tail: std.algebra.Cons { head: ^module_source_nickname_literal_local_red, tail: Empty }
+        tail: std.algebra.Cons { head: ^module_source_nickname_literal_local_red, tail: std.algebra.Empty }
       }
     }
   }

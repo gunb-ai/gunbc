@@ -123,7 +123,7 @@ fn ts_import_name_symbols_from_block(block: Node) -> v2.std.diagnostic.Outcome<L
             o: target_node_atom_identity(node: nd),
             f: fn(sym) {
               outcome_accepted(
-                value: list_append(left: syms, right: std.algebra.Cons { head: sym, tail: Empty })
+                value: list_append(left: syms, right: std.algebra.Cons { head: sym, tail: std.algebra.Empty })
               )
             }
           )

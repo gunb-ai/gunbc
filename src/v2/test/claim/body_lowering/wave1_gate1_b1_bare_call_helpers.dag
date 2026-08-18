@@ -24,7 +24,7 @@ fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
                 Accepted { value: module_qn, diagnostics: _ } =>
                   match resolve_with_admission(
                     lm: lm,
-                    roots: std.algebra.Cons { head: root, tail: Empty },
+                    roots: std.algebra.Cons { head: root, tail: std.algebra.Empty },
                     admission: v2.compiler.name_resolve.Admission {
                       subject: v2.compiler.name_resolve.ResolutionSubject { name: module_qn },
                       imports: Empty

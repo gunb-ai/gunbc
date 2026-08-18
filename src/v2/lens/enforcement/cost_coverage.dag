@@ -164,7 +164,7 @@ fn cost_coverage_fn_receipts_for_module(
   rel_path: String,
   module_root: v2.std.node.Node
 ) -> List<CostCoverageFnReceipt> {
-  let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: Empty)
+  let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: std.algebra.Empty)
   fold_list(
     xs: fn_decls,
     empty: std.algebra.Empty,
@@ -201,7 +201,7 @@ fn cost_coverage_empty_file_counts() -> CostCoverageFileReceipt {
     fn_unknown: 0,
     fn_body_parse_tree_opaque: 0,
     fn_body_not_located: 0,
-    fn_rows: Empty
+    fn_rows: std.algebra.Empty
   }
 }
 
@@ -328,7 +328,7 @@ fn cost_coverage_empty_census_acc() -> CostCoverageCensusAcc {
     fn_unknown: 0,
     fn_body_parse_tree_opaque: 0,
     fn_body_not_located: 0,
-    file_rows: Empty
+    file_rows: std.algebra.Empty
   }
 }
 

@@ -16,7 +16,7 @@ fn parser_frontier_ingest_for(src: String) -> v2.compiler.source_authority.Sourc
       compilation_unit: ^parser_frontier_pilot_cu,
       source_root: V2Tree
     },
-    tail: Empty
+    tail: std.algebra.Empty
   }
 }
 

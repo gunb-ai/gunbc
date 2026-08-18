@@ -3,10 +3,10 @@ module v2.test.lens_visibility.visibility_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data mod_public_api: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^public_api, tail: Empty }
-data mod_private_impl: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^private_impl, tail: Empty }
-data mod_public_util: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^public_util, tail: Empty }
-data mod_unknown_dep: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^unknown_dep, tail: Empty }
+data mod_public_api: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^public_api, tail: std.algebra.Empty }
+data mod_private_impl: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^private_impl, tail: std.algebra.Empty }
+data mod_public_util: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^public_util, tail: std.algebra.Empty }
+data mod_unknown_dep: v2.std.qualified_name.QualifiedName = std.algebra.Cons { head: ^unknown_dep, tail: std.algebra.Empty }
 
 data no_imports: List<v2.std.qualified_name.QualifiedName> = []
 
