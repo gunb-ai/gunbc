@@ -43,8 +43,14 @@ import v2.std.text { String }
 //   111 enrolled here and removed (the 469 -> 358 delta), which the pre-quarantine run
 //       32177951514 partitions exactly -- 469 = 367 held red + 97 budget-refused + 5 passed
 //       over budget -- so the 111 are 9 held red, 97 budget-refused, and all 5 passed-over-budget.
-//     5 unenrolled and budget-refused: that run reported budget_refused=102 while only 97 of
-//       them were enrolled here.
+//     5 unenrolled and budget-refused.
+//
+//   97 AND 102 ARE BOTH CORRECT AND NAME DIFFERENT SETS, which is what made the earlier
+//   accounts read as contradictory; neither may be written as a bare `budget_refused`:
+//     budget-interrupted identities, global                    102
+//       enrolled here AND budget-interrupted                    97
+//       unenrolled AND budget-interrupted                        5
+//     enrolled here AND completed-over-budget (stale_quarantine)  5
 //   313 passing when they were relocated, enrolled nowhere, counted by no number in this file.
 //       NINE of those later tipped over the ceiling once wave 1 removed the slow head (8 in
 //       32189985063, 1 straggler in 32193032348), so 304 have never been observed over budget.
@@ -160,17 +166,32 @@ import v2.std.text { String }
 // make up the 313. The figures above are exact in aggregate and unavailable at identity grain,
 // because the floor reports per-identity outcomes only as log lines and a scraped log is not an
 // oracle. Closing that needs the floor to emit an identity-grained receipt, not a better scrape.
+// So this block is SUPPORTING EVIDENCE for that receipt, not a substitute for it.
 //
-// A COST FIGURE HERE IS NOT A PROPERTY OF ITS WITNESS, and this quarantine proved it by
-// accident. test.claim.emitter_nested_refinement_cast_witness_test
+// AND `budget_refused=0` ON THE POST RUN IS NOT THE POPULATION DISAPPEARING. It means the floor
+// stopped executing it. The 116 identities that were ever observed over budget or failing are
+// still owed a remeasurement, at identity grain, against a cause -- not a green counter.
+//
+// A COST FIGURE HERE IS NOT A PROPERTY OF ITS WITNESS WHEN AN UNREPORTED LAZY SHARED FILL IS IN
+// PLAY, and this quarantine proved it by accident.
+// test.claim.emitter_nested_refinement_cast_witness_test
 // single_refinement_carrier_emits_no_unsupported_cast cost 746ms on the pre run and 45941ms on
 // the post run, unchanged in itself; its sibling in the same file costs 763ms. The relocated
 // modules included every earlier caller of `compile_dag_rust_emit_check`, so the one-time
 // `build_module_path_index_from_witness_roots` construction relocated onto the first surviving
-// caller and that row became main's only failure. RELOCATING OR SPLITTING A MODULE MOVES ITS
-// SHARED FIXED COST ONTO THE NEXT SURVIVOR RATHER THAN REMOVING IT -- so a correct decomposition
-// can turn a neighbour red, and every restoration receipt taken before the shared authority is
-// paid in preparation is confounded by whichever row happened to touch it first.
+// caller and that row became main's only failure.
+//
+// THE LAW IS NARROW, and stating it wider was this note's own first error (operator ruling,
+// 2026-08-18): a restoration receipt is confounded WHEN CHANGING THE POPULATION CHANGES WHICH
+// CLAIM PAYS AN UNREPORTED LAZY SHARED FILL. It is NOT that every restoration is confounded
+// until every subject is prepared. Preparation is the remedy for THIS class -- process-scoped
+// lazy first-touch construction -- and #8470 already applied it to the concrete instance above
+// by paying the module-path index in floor preparation. It is not the remedy for closure
+// pollution, fixture/live-index coupling, repeated end-to-end crossings, duplicate coverage,
+// true whole-tree censuses, or genuinely size-scaling algorithmic cost, which are separate
+// classes with separate owning layers. The remaining members of the lazy-fill class are what
+// #8464's process-scoped cold-fill inventory is for, and they are the only ones this paragraph
+// speaks about.
 //
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
