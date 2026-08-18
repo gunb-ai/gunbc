@@ -1,0 +1,137 @@
+module v2.std.compilers.cli_surface
+
+import std.algebra { Empty }
+import std.types { String, Int, Bool }
+import v2.std.algebra { fold_list, list_snoc_item, length }
+import v2.std.collection { List, Map }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  LexRules,
+  bound_spelling_from_map,
+  lex_rules_literal_for_class
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  None,
+  Outcome,
+  ExternalContractUnknown,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+
+// WHY THIS EXISTS, and why it is a sibling rather than a transform of the text carrier.
+//
+// v2.std.compilers.target_model.bound_tokens_source_text folds a grammar-selected token sequence
+// into TargetText, resolving each token to its spelling and joining with target_text_seq, which is
+// concatenation. Concatenation is the step that DESTROYS argument boundaries: once the tokens are
+// one String, "a b" and ["a", "b"] are the same value, and every consumer downstream must
+// re-derive a boundary that the grammar already knew. That re-derivation is what shell_quote is,
+// at 36 sites.
+//
+// This module folds the SAME tokens with the SAME spelling resolution and a DIFFERENT join: one
+// argument per token. Nothing about the grammar walk changes; only whether the boundary survives.
+// That is the whole claim the CLI-invocation-emission design rests on, reduced to the smallest
+// thing that can be executed -- see docs/plans/cli-invocation-emission-design.md, Wave 0.
+//
+// NOT A SECOND EMITTER. It consumes what translate already produced. A target model that wants
+// argument boundaries selects this serializer; one that wants source text selects the existing
+// one. Both read one grammar.
+
+// Sealed, and deliberately WITHOUT an exported mint. TransportScript needs transport_script_seal
+// because production modules must build one; nothing outside this module has any business
+// constructing a CLI argument, because an argument is a RESULT of the grammar fold, never an
+// authored value. So the wall here is stronger than TransportScript's: there is no admitted
+// caller list to add a name to, because there is no mint to admit anyone to.
+type CliArgument sole_constructor { text: String }
+
+type CliSurface sole_constructor { arguments: List<CliArgument> }
+
+fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
+  surface.arguments
+}
+
+fn cli_argument_text(argument: CliArgument) -> String {
+  argument.text
+}
+
+fn cli_surface_argument_count(surface: CliSurface) -> Int {
+  length(xs: surface.arguments)
+}
+
+// The refusal that keeps a missing CLI serializer from degrading into source text. A target whose
+// surface serializer is unwired must REFUSE (DESIGN section 5): answering with the text serializer
+// would be the absorbing fallback -- a plausible artifact standing where an unanswerable question
+// was, and the boundary loss would be invisible precisely because text can hold anything.
+fn target_surface_serializer_unwired_diagnostic(target_identity: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_surface_serializer_unwired,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: target_identity } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The sibling fold. Structurally identical to bound_tokens_source_text except that the
+// accumulator is a list of arguments and each resolved spelling is snoc'd as its own argument
+// rather than concatenated onto a running string.
+fn bound_tokens_cli_arguments(
+  tokens: List<ConcreteSyntaxToken>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<CliSurface> {
+  bind_outcome(
+    o: fold_list(
+      xs: tokens,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, token) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: partial, diagnostics: ad } =>
+            match token {
+              FixedToken { token_class: tc } =>
+                bind_outcome(
+                  o: lex_rules_literal_for_class(rules: lex, token_class: tc),
+                  f: fn(spelling) {
+                    Accepted {
+                      value: list_snoc_item(xs: partial, item: CliArgument { text: spelling }),
+                      diagnostics: ad
+                    }
+                  }
+                )
+              BoundToken { token_class: _, binding: b } =>
+                bind_outcome(
+                  o: bound_spelling_from_map(binding_spellings: binding_spellings, binding: b),
+                  f: fn(spelling) {
+                    Accepted {
+                      value: list_snoc_item(xs: partial, item: CliArgument { text: spelling }),
+                      diagnostics: ad
+                    }
+                  }
+                )
+            }
+        }
+      }
+    ),
+    f: fn(arguments) {
+      outcome_accepted(CliSurface { arguments: arguments })
+    }
+  )
+}

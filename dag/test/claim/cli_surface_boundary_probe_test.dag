@@ -1,0 +1,137 @@
+module test.claim.cli_surface_boundary_probe
+
+import std.algebra { Empty }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.types { Bool, Int, String }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { empty_map }
+import v2.std.compilers.cli_surface {
+  CliSurface,
+  bound_tokens_cli_arguments,
+  cli_argument_text,
+  cli_surface_arguments
+}
+import v2.std.compilers.lexing {
+  LexRuleSet,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule
+}
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  FixedToken,
+  bound_tokens_source_text,
+  render_target_text
+}
+import v2.std.diagnostic { Accepted, Rejected }
+
+// WAVE 0 PROBE (docs/plans/cli-invocation-emission-design.md).
+//
+// ONE question, executed rather than compiled: can the token sequence translate already produced
+// be consumed by a non-text serializer, and does the argument boundary survive there while it is
+// destroyed in the text carrier?
+//
+// The two token spellings are chosen to be the smallest thing that can tell the carriers apart.
+// The second contains a SPACE and a PIPE, which is exactly the shape that made the seventeen
+// remote jq rows lose their argument boundary at the ssh seam. Concatenated, the two tokens are
+// indistinguishable from any other split of the same characters; as arguments, they are two.
+//
+// WHY THIS CANNOT PASS BY COMPILING. A compile-only probe would false-green: emit and
+// serialize_target are fixed to Medium<String>, and v1.04_infer explicit_return_conformance_note
+// records that declared-return conformance is judged only by the ground-kernel-scalar and
+// ground-element-collection discipline, so a structured carrier mismatch yields no diagnostic.
+// Every assertion below therefore reads a VALUE produced by running the fold.
+
+data probe_option_class: String = "probe_option"
+
+data probe_program_class: String = "probe_program"
+
+// The discriminating spelling: a space and a pipe, unquoted.
+data probe_program_spelling: String = "[1,2] | length"
+
+data probe_option_spelling: String = "--argjson"
+
+fn probe_lex_rules() -> ModeledLexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TokenRule {
+          token_class: ^probe_option,
+          pattern: LiteralPattern { text: probe_option_spelling }
+        },
+        TokenRule {
+          token_class: ^probe_program,
+          pattern: LiteralPattern { text: probe_program_spelling }
+        },
+      ]
+    }
+  }
+}
+
+fn probe_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^probe_option },
+    FixedToken { token_class: ^probe_program },
+  ]
+}
+
+// The CLI carrier preserves exactly two argument boundaries, and the second is the whole
+// space-and-pipe-bearing program as ONE argument.
+test fn cli_serializer_preserves_argument_boundaries() -> Bool {
+  match bound_tokens_cli_arguments(
+    tokens: probe_tokens(),
+    lex: probe_lex_rules(),
+    binding_spellings: empty_map()
+  ) {
+    Accepted { value: surface, diagnostics: _ } =>
+      match cli_surface_arguments(surface: surface) {
+        Empty => false
+        Cons { head: first, tail: rest } =>
+          match rest {
+            Empty => false
+            Cons { head: second, tail: after } =>
+              match after {
+                Empty =>
+                  (cli_argument_text(argument: first) == probe_option_spelling)
+                    && (cli_argument_text(argument: second) == probe_program_spelling)
+                Cons { head: _, tail: _ } => false
+              }
+          }
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The text carrier over the SAME tokens produces one blob in which the boundary is gone. This is
+// the negative half: it is not a complaint about the text serializer, which is correct for source
+// text. It is the proof that the two carriers are genuinely different answers, so selecting the
+// wrong one cannot pass this probe.
+test fn text_serializer_loses_the_argument_boundary() -> Bool {
+  match bound_tokens_source_text(
+    tokens: probe_tokens(),
+    lex: probe_lex_rules(),
+    binding_spellings: empty_map()
+  ) {
+    Accepted { value: text, diagnostics: _ } =>
+      render_target_text(t: text) == "--argjson[1,2] | length"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn probe_verdict() -> ProcessExit {
+  if cli_serializer_preserves_argument_boundaries() {
+    if text_serializer_loses_the_argument_boundary() {
+      ExitSuccess
+    } else {
+      ExitFailure {
+        code: 1,
+        reason: "text carrier did not render the expected concatenation; the probe is not comparing what it claims"
+      }
+    }
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: "CLI carrier did not preserve exactly two argument boundaries"
+    }
+  }
+}
