@@ -2002,7 +2002,7 @@ type MemoHitAdmission = | RealizationProvesExactInputs
 
 type MemoMissBehavior = | EvaluateSubjectNormally
 
-type RealizationRetention = | ReleasedAtScopeExit
+type RealizationRetention = | ReleasedAtNextScopeBindOrThreadExit
 
 type PureMemoRealizationContract {
   subject: DeclarationRef
@@ -2018,9 +2018,11 @@ data pure_memo_realization_contracts: List<PureMemoRealizationContract> = [
     scope: TypecheckModuleScope,
     hit_admission: RealizationProvesExactInputs,
     miss_behavior: EvaluateSubjectNormally,
-    retention: ReleasedAtScopeExit
+    retention: ReleasedAtNextScopeBindOrThreadExit
   }
 ]
+
+data pure_memo_realization_contract_retention_note: String = "WHY THE RETENTION ARM IS NAMED FOR A BIND RATHER THAN AN EXIT, because the shorter name was a false claim and it is the kind that reads as more rigorous than the truth. An earlier revision called this ReleasedAtScopeExit, which asserts that the memo is emptied when typecheck_module returns. Nothing implements that: the realization is thread-local state with no entry/exit guard around typecheck_module, so it is released when the NEXT different scope is bound or when the thread exits, whichever comes first. The bound is the same either way -- at most one module scope of entries retained per worker thread -- so the honest name costs nothing and the dishonest one would have survived review by describing a guard a reader would then look for and not find. Claiming a lifecycle the implementation does not establish is the rung-inflation failure of DESIGN section 4b at the grain of a single variant name. If an explicit scope guard is ever added, the arm is renamed THEN, by the change that establishes it."
 
 data pure_memo_realization_contract_subject_note: String = "WHY THE SUBJECT IS A NARROW WRAPPER RATHER THAN peel_nominal_alias_identity ITSELF. The measured repetition is at ONE seam, the direct-call formal canonicalization inside build_call_application_plan, but that operation has 15 call sites in v1.compiler.infer. Naming the general operation would memoize all fifteen: it would change allocation sharing everywhere the operation is reached, and it would sit underneath the record-literal path whose SECOND peel takes an already-peeled node -- an application measurably not idempotent, at 21 counterexamples over 600,000+ calls with six of them structural. So the contract names peel_direct_call_formal, a pure wrapper that forwards unchanged. Uncached it trivially denotes the operation it wraps, the memo population is exactly the measured population, and the dissolution surface is one call seam rather than a general v1 canonicalization cache. A general memoize-any-function registry is deliberately absent: in a semantics-frozen seed that registry is itself a growth surface, and the contract is one exact subject, closed."
 
