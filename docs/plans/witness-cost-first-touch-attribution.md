@@ -289,3 +289,55 @@ properties and only the second is what paring needs:
 The honest procedure is therefore two-stage: screen out the variable head for
 free, then isolate the stable tail. The stable tail above 1000ms is small enough
 for that to be affordable, which is the actual saving on offer.
+
+## Cluster-tightness: also suggestive, also not decisive
+
+If N distinct witnesses — different names, different assertions, different
+modules — land within a few percent of each other, that near-identity looks like
+evidence the figure belongs to something they share rather than to any of them,
+since independent work has no reason to coincide. Over the four-run join, rows
+above 800ms fall into 19 clusters at 3% width, and one is remarkable: **18
+identities across 4 unrelated modules** (roadmap static site, running-release
+identity, deploy readiness, site-surface readiness) inside a 2.3% band at
+1213-1242ms.
+
+It correctly flags the `effect_reach` six at 2016-2067ms, which isolation had
+already shown collapse to ~238ms. So the signal has one confirmed true positive.
+
+**But the 18-row cluster does not collapse.** One member isolated from each of
+its four modules:
+
+```
+module                        floor    isolated   closure
+roadmap_static_site_witness    1213      888ms    -
+running_release_identity       1216      791ms    630 modules / 15657 items
+live_deploy.readiness          1218      819ms    632 modules / 15656 items
+roadmap_site_surface_readiness 1218      827ms    632 modules / 15640 items
+```
+
+Two-thirds of each floor figure survives isolation. These are not eighteen rows
+riding one fill; whatever they share, each still pays most of its cost alone. So
+cluster-tightness is a suggestive prior and not a decisive test — exactly the
+same standing as the variance screen, and for the same underlying reason: both
+observe the SHAPE of a cost distribution, and neither can see whose work it is.
+
+**What the run did surface is a better discriminator than either.** Compare cost
+against closure size:
+
+```
+root_d                 1774ms over     160 resolved items      dense
+cluster members       ~820ms over   15,650 resolved items      sparse
+effect_reach            238ms over    2,694 resolved items      sparse
+```
+
+`root_d` is doing an order of magnitude more work per resolved item than
+anything else examined. That density, not its magnitude and not its stability,
+is what marks it as a witness whose cost is its own evaluation rather than its
+surroundings.
+
+**Not settled by this run, and stated so it is not assumed:** whether the
+cluster's residual ~820ms is assertion work or per-process warm-up of a
+15,650-item closure that the single running row must pay alone. Distinguishing
+those needs two rows of one module measured on a harness without `claim_batch`'s
+shared-ctx step, which does not exist today. Until then the honest reading is
+that ~820ms is *not shared across the eighteen* — not that it is assertion work.
