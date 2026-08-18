@@ -42486,7 +42486,7 @@ pub fn run_required_floor(
         missing.sort();
         missing
     };
-    if !expected_red_missing.is_empty() && !roster_join_active {
+    if !expected_red_missing.is_empty() && !roster_join_only {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
              identity enrolled in v2.workflow.floor_expected_red must be observed among the \
@@ -42507,7 +42507,7 @@ pub fn run_required_floor(
     //
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
-    if !roster_join_active && known_red_held + known_red_now_passing != expected_red_roster.len() {
+    if !roster_join_only && known_red_held + known_red_now_passing != expected_red_roster.len() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
              roster={} — every enrolled identity must be exactly one of held or now-passing",

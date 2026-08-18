@@ -23,7 +23,9 @@ fail-open. A nonzero `not_evaluated` count is a headline number, not a footnote.
 
 ## How verdicts are obtained
 
-**Re-execution, not log parsing.** The join calls `run_required_floor` → `run_claim_measured` and reads live `ClaimOutcome` values. It does not read CI stderr, failure-log lines, or any saved artifact. `run_head` in the TSV is `git rev-parse HEAD` at execution time.
+**Not log parsing.** On the CI path the in-floor join **consumes the verdict the fold already produced** — it records `ClaimOutcome` from the single `run_claim_measured` call per claim, with no second execution. The standalone bin runs join-only (one eval per enrolled identity). `run_head` in the TSV is `git rev-parse HEAD` at execution time.
+
+**CI wiring:** `GUNBC_EXPECTED_RED_ROSTER_JOIN=expected_red_roster_join.tsv` in `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml`.
 
 ## Terminal consumer
 
