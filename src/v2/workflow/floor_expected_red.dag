@@ -31,7 +31,12 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 469 identities. Cut at 820 on tree 380c242c79a; 25 were removed after the first complete
+// POPULATION: 361 identities, after the declared rung drop below took 108 out by relocation
+// (469 -> 361). The count is NOT the whole population affected: 78 healthy passing witnesses
+// left the floor with them as collateral and are enrolled nowhere, so no number in this file
+// counts them. Read the rung drop, not this line, for what left.
+//
+// HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
 // removal path working exactly as designed rather than a roster edit. 164 more were removed once
 // prepared-floor scopes began binding bare helper names by precedence instead of corpus order, and

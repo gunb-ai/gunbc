@@ -83,7 +83,7 @@ test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
 }
 
 test fn witness_canonical_identities_join_own_enrolled_roster() -> Bool {
-  let ids = entry_canonical_identities(entry: "dag/test/claim/realization_sweep_test.dag")
+  let ids = entry_canonical_identities(entry: "dag/test/claim/long/realization_sweep_test.dag")
   let authored = [
     "witness_sweep_rows_join_planted_roster_exactly_once",
     "witness_sweep_entry_witness_absent_is_located_refusal_RED",

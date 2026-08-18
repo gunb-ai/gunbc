@@ -151,7 +151,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
       module_path: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
       decl_name: "ingested_classical_not_source"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
   retained_no_cached_carrier(
