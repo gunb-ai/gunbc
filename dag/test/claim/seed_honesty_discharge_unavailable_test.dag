@@ -135,7 +135,7 @@ fn seed_honesty_fabricated_agreement(
   primary_compiler: v2.std.node.Symbol,
   secondary_compiler: v2.std.node.Symbol
 ) -> Witness<v2.workflow.bootstrap.DiverseCompilationAgreement> {
-  Holds {
+  v2.std.witness.Holds {
     value: v2.workflow.bootstrap.DiverseCompilationAgreement {
       primary: v2.workflow.bootstrap.DiverseCompilationRun {
         source: ^seed_honesty_fabricated_source,

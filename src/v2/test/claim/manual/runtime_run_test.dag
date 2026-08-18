@@ -29,7 +29,7 @@ fn runtime_run_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: effect_io_pure_unit_type_node(),
-    descent: Holds { value: runtime_run_termination_proof() }
+    descent: v2.std.witness.Holds { value: runtime_run_termination_proof() }
   )
 }
 
@@ -46,7 +46,7 @@ fn runtime_run_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFac
 fn runtime_run_test_tree() -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: runtime_run_node_a,
-    facts: Map { lookup: runtime_run_fact_lookup }
+    facts: std.types.Map { lookup: runtime_run_fact_lookup }
   }
 }
 
@@ -60,7 +60,7 @@ fn runtime_run_allocate_literal(
   _node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Accepted { value: runtime_run_unit_value(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: runtime_run_unit_value(), diagnostics: None }
 }
 
 fn runtime_run_reject_primitive(
@@ -68,7 +68,7 @@ fn runtime_run_reject_primitive(
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
@@ -80,7 +80,7 @@ fn runtime_run_reject_branch(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
@@ -91,7 +91,7 @@ fn runtime_run_reject_loop(
   node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
     )
@@ -103,7 +103,7 @@ fn runtime_run_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn runtime_run_interpretation() -> v2.std.runtime.InterpretationAlgebra {

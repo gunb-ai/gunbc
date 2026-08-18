@@ -10,13 +10,13 @@ fn rust_fold_call_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.Infer
 fn rust_fold_call_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: rust_fold_call_emit_facts_miss }
+    facts: std.types.Map { lookup: rust_fold_call_emit_facts_miss }
   }
 }
 
 fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
-    o: Accepted {
+    o: v2.std.diagnostic.Accepted {
       value: rust_fold_call_emit_inferred_tree_for(root: root),
       diagnostics: None
     },

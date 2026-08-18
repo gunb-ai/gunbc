@@ -35,15 +35,15 @@ type EmitHostRunReceipt {
 fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transport.ByteString) -> Outcome<HostLogicalRun> {
   match exit.outcome {
     Accepted { value: Holds { value: _ }, diagnostics: None } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: HostLogicalRun {
           stdout: HostRunStdout { bytes: stdout_bytes }
         },
         diagnostics: None
       }
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

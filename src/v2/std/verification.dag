@@ -65,24 +65,24 @@ fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> v2.std.diagnostic.D
 fn impossible_bug_class_from_diagnostic_reason(reason: v2.std.node.Symbol) -> Outcome<ImpossibleBugClass> {
   if reason == ^impossible_bug_reason_suboptimal_complexity ||
     reason == ^impossible_bug_reason_suboptimal_inhabitance {
-    Accepted { value: SuboptimalComplexity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: SuboptimalComplexity, diagnostics: None }
   } else if reason == ^impossible_bug_reason_idempotency_violation ||
     reason == ^impossible_bug_reason_idempotency_repetition {
-    Accepted { value: IdempotencyContract, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: IdempotencyContract, diagnostics: None }
   } else if reason == ^impossible_bug_reason_transport_drift ||
     reason == ^impossible_bug_reason_target_transport_drift {
-    Accepted { value: TransportTypeDrift, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: TransportTypeDrift, diagnostics: None }
   } else if reason == ^impossible_bug_reason_nested_optional ||
     reason == ^impossible_bug_reason_double_unwrap {
-    Accepted { value: NestedOptionalFlatten, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: NestedOptionalFlatten, diagnostics: None }
   } else if reason == ^impossible_bug_reason_redundant_read {
-    Accepted { value: UnenumeratedEffects, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: UnenumeratedEffects, diagnostics: None }
   } else if reason == ^impossible_bug_reason_unhandled_division ||
     reason == ^impossible_bug_reason_unhandled_index ||
     reason == ^impossible_bug_reason_force_unwrap {
-    Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: impossible_bug_diagnostic_reason_unmapped_diagnostic()
       )
@@ -327,27 +327,27 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.Accepted { value: e, diagnostics: None },
         diagnostics: None
       }
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, input: _, classification: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.Rejected { diagnostics: e },
         diagnostics: None
       }
     EqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
     StructuralEqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
       }
   }
@@ -390,9 +390,9 @@ fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
 fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
   match c {
     BoolWitnessClaim { witness: w } =>
-      Accepted { value: w, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: w, diagnostics: None }
     NodeCorpus { claim: _, transport: _ } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(d: unified_test_claim_bool_witness_absent_diagnostic())
       }
   }

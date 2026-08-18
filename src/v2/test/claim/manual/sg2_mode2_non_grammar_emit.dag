@@ -43,14 +43,14 @@ fn sg2_mode2_facts_lookup(_key: Node) -> Optional<v2.compiler.infer.InferredFact
 
 data sg2_mode2_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: rust_sg2_instantiation_source_type_node(),
-  facts: Map {
+  facts: std.types.Map {
     lookup: sg2_mode2_facts_lookup
   }
 }
 
 data sg2_mode2_perturbed_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: rust_sg2_foobar_xy_no_rc_source_type_node(),
-  facts: Map {
+  facts: std.types.Map {
     lookup: sg2_mode2_facts_lookup
   }
 }

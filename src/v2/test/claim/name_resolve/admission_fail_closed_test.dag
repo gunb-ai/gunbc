@@ -128,7 +128,7 @@ fn fc_import_missing_target() -> v2.compiler.name_resolve.Import {
   v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
 }
 
-fn fc_initial_admission_state() -> AdmissionState {
+fn fc_initial_admission_state() -> v2.compiler.name_resolve.AdmissionState {
   v2.compiler.name_resolve.AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
 

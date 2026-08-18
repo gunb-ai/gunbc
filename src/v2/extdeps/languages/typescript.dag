@@ -855,7 +855,7 @@ fn ts_grammar_relation_row_token_edges_witness(row: Node) -> Witness<List<v2.std
   match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
     Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
-        TypeNode { connective: Conj } => Holds { value: tokens_root.children }
+        TypeNode { connective: Conj } => v2.std.witness.Holds { value: tokens_root.children }
         _ =>
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
@@ -874,7 +874,7 @@ fn ts_task_serialize_source_witness() -> Witness<Node> {
     Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
         Holds { value: token_edges } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: list_append(
@@ -1013,9 +1013,9 @@ fn ts_pr3_identity_formal_productions() -> List<v2.std.grammar.FormalProduction>
 
 fn ts_exemplar_emitted_for_lhs(lhs: v2.std.node.Symbol) -> Witness<Node> {
   if lhs == ^ts_production_type_alias_decl {
-    Holds { value: ts_task_type_alias_emitted() }
+    v2.std.witness.Holds { value: ts_task_type_alias_emitted() }
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
-    Holds { value: ts_pr3_identity_typed_fn_emitted() }
+    v2.std.witness.Holds { value: ts_pr3_identity_typed_fn_emitted() }
   } else if lhs == ^ts_production_fn_add {
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
@@ -1092,7 +1092,7 @@ fn ts_pr3_identity_serialize_source_witness() -> Witness<Node> {
     Holds { value: row } =>
       match ts_grammar_relation_row_token_edges_witness(row: row) {
         Holds { value: token_edges } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: list_append(
@@ -1113,7 +1113,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
     Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
         Holds { value: pr3_row } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
@@ -1144,7 +1144,7 @@ fn ts_pr3_identity_target_model_bundle_witness() -> Witness<Node> {
     Holds { value: rules } =>
       match ts_pr3_identity_serialize_source_witness() {
         Holds { value: serialize } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
@@ -1197,7 +1197,7 @@ fn ts_pr3_identity_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 fn ts_pr3_identity_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_pr3_identity_target_model_bundle_witness() {
     Holds { value: bundle } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
@@ -1238,7 +1238,7 @@ fn ts_translation_rules_node() -> Node {
 fn ts_translation_rules_witness() -> Witness<Node> {
   match ts_task_type_alias_relation_row_witness() {
     Holds { value: task_row } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
@@ -1795,7 +1795,7 @@ fn ts_task_target_model_bundle_witness() -> Witness<Node> {
     Holds { value: rules } =>
       match ts_task_serialize_source_witness() {
         Holds { value: serialize } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
@@ -1828,7 +1828,7 @@ fn ts_task_target_model_bundle_witness() -> Witness<Node> {
 fn ts_task_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   match ts_task_target_model_bundle_witness() {
     Holds { value: bundle } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.compilers.target_model.TargetModel {
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
@@ -1950,7 +1950,7 @@ fn ts_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn ts_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       ts_catalog_surface_symbol(sym: sym) ||
         ts_fn_add_lex_token_symbol(sym: sym) ||
@@ -1962,7 +1962,7 @@ fn ts_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 }
 
 fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
@@ -1978,7 +1978,7 @@ fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<v2.std.node.Symbol
 }
 
 fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
@@ -1992,7 +1992,7 @@ fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol
 }
 
 fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
@@ -2562,9 +2562,9 @@ fn ts_grammar_production_record_field() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_record_field,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
         right: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation }
       }
     },
@@ -2577,9 +2577,9 @@ fn ts_grammar_production_record_fields() -> v2.std.grammar.GrammarProduction {
     name: ^ts_production_record_fields,
     expression: v2.std.grammar.Sequence {
       left: v2.std.grammar.Nonterminal { production: ^ts_production_record_field },
-      right: Repeat {
+      right: v2.std.grammar.Repeat {
         element: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_comma, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: StampClass },
           right: v2.std.grammar.Nonterminal { production: ^ts_production_record_field }
         }
       }
@@ -2592,10 +2592,10 @@ fn ts_grammar_production_record_type() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_record_type,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
       right: v2.std.grammar.Sequence {
         left: v2.std.grammar.Nonterminal { production: ^ts_production_record_fields },
-        right: Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
+        right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
       }
     },
     emitted: ts_grammar_atom(id: ^ts_surface_record_type)
@@ -2635,16 +2635,16 @@ fn ts_grammar_production_union_type() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_union_type,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_string_lit, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass },
       right: v2.std.grammar.Sequence {
         left: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
-          right: Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
+          right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
         },
-        right: Repeat {
+        right: v2.std.grammar.Repeat {
           element: v2.std.grammar.Sequence {
-            left: Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
-            right: Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
+            left: v2.std.grammar.Terminal { token_class: ^ts_token_pipe, stamp: StampClass },
+            right: v2.std.grammar.Terminal { token_class: ^ts_token_string_lit, stamp: StampClass }
           }
         }
       }
@@ -2657,14 +2657,14 @@ fn ts_grammar_production_type_alias_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_type_alias_decl,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_kw_type, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_type, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
         right: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
-            right: Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+            right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
           }
         }
       }
@@ -2677,18 +2677,18 @@ fn ts_grammar_production_let_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_let_decl,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_kw_let, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_let, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
         right: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
             right: v2.std.grammar.Sequence {
-              left: Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
               right: v2.std.grammar.Sequence {
-                left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
-                right: Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
               }
             }
           }
@@ -2703,18 +2703,18 @@ fn ts_grammar_production_const_decl() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_const_decl,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_kw_const, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_const, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
         right: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
             right: v2.std.grammar.Sequence {
-              left: Terminal { token_class: ^ts_token_eq, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_eq, stamp: StampClass },
               right: v2.std.grammar.Sequence {
-                left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
-                right: Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+                right: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass }
               }
             }
           }
@@ -2750,8 +2750,8 @@ fn ts_grammar_production_pr3_primary_type() -> v2.std.grammar.GrammarProduction 
 
 fn ts_pr3_bracket_pair() -> v2.std.grammar.GrammarExpr {
   v2.std.grammar.Sequence {
-    left: Terminal { token_class: ^ts_token_lbracket, stamp: StampClass },
-    right: Terminal { token_class: ^ts_token_rbracket, stamp: StampClass }
+    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbracket, stamp: StampClass },
+    right: v2.std.grammar.Terminal { token_class: ^ts_token_rbracket, stamp: StampClass }
   }
 }
 
@@ -2762,7 +2762,7 @@ fn ts_grammar_production_pr3_array_type() -> v2.std.grammar.GrammarProduction {
       left: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_primary_type },
       right: v2.std.grammar.Sequence {
         left: ts_pr3_bracket_pair(),
-        right: Repeat { element: ts_pr3_bracket_pair() }
+        right: v2.std.grammar.Repeat { element: ts_pr3_bracket_pair() }
       }
     },
     emitted: ts_grammar_atom(id: ^ts_surface_array_type)
@@ -2781,9 +2781,9 @@ fn ts_grammar_production_pr3_typed_param() -> v2.std.grammar.GrammarProduction {
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_param,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
         right: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation }
       }
     },
@@ -2798,7 +2798,7 @@ fn ts_grammar_production_pr3_typed_params() -> v2.std.grammar.GrammarProduction 
       left: v2.std.grammar.Sequence {
         left: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_param },
         right: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_comma, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_comma, stamp: StampClass },
           right: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params }
         }
       },
@@ -2812,28 +2812,28 @@ fn ts_grammar_production_pr3_typed_fn_decl() -> v2.std.grammar.GrammarProduction
   v2.std.grammar.GrammarProduction {
     name: ^ts_production_pr3_typed_fn_decl,
     expression: v2.std.grammar.Sequence {
-      left: Terminal { token_class: ^ts_token_kw_function, stamp: StampClass },
+      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_function, stamp: StampClass },
       right: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
         right: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^ts_token_lparen, stamp: StampClass },
+          left: v2.std.grammar.Terminal { token_class: ^ts_token_lparen, stamp: StampClass },
           right: v2.std.grammar.Sequence {
             left: v2.std.grammar.Nonterminal { production: ^ts_production_pr3_typed_params_opt },
             right: v2.std.grammar.Sequence {
-              left: Terminal { token_class: ^ts_token_rparen, stamp: StampClass },
+              left: v2.std.grammar.Terminal { token_class: ^ts_token_rparen, stamp: StampClass },
               right: v2.std.grammar.Sequence {
-                left: Terminal { token_class: ^ts_token_colon, stamp: StampClass },
+                left: v2.std.grammar.Terminal { token_class: ^ts_token_colon, stamp: StampClass },
                 right: v2.std.grammar.Sequence {
                   left: v2.std.grammar.Nonterminal { production: ^ts_production_type_annotation },
                   right: v2.std.grammar.Sequence {
-                    left: Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
+                    left: v2.std.grammar.Terminal { token_class: ^ts_token_lbrace, stamp: StampClass },
                     right: v2.std.grammar.Sequence {
-                      left: Terminal { token_class: ^ts_token_kw_return, stamp: StampClass },
+                      left: v2.std.grammar.Terminal { token_class: ^ts_token_kw_return, stamp: StampClass },
                       right: v2.std.grammar.Sequence {
-                        left: Terminal { token_class: ^ts_token_ident, stamp: StampClass },
+                        left: v2.std.grammar.Terminal { token_class: ^ts_token_ident, stamp: StampClass },
                         right: v2.std.grammar.Sequence {
-                          left: Terminal { token_class: ^ts_token_semicolon, stamp: StampClass },
-                          right: Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
+                          left: v2.std.grammar.Terminal { token_class: ^ts_token_semicolon, stamp: StampClass },
+                          right: v2.std.grammar.Terminal { token_class: ^ts_token_rbrace, stamp: StampClass }
                         }
                       }
                     }
@@ -2903,7 +2903,7 @@ fn ts_grammar() -> v2.std.grammar.ParseGrammar {
 }
 
 fn ts_grammar_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       ts_catalog_surface_symbol(sym: sym) ||
         ts_lex_token_symbol(sym: sym) ||
@@ -3127,28 +3127,28 @@ fn ts_build_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerL
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
                                 Rejected { diagnostics: d } =>
-                                  Rejected { diagnostics: d }
+                                  v2.std.diagnostic.Rejected { diagnostics: d }
                               }
                             Rejected { diagnostics: d } =>
-                              Rejected { diagnostics: d }
+                              v2.std.diagnostic.Rejected { diagnostics: d }
                           }
                         Rejected { diagnostics: d } =>
-                          Rejected { diagnostics: d }
+                          v2.std.diagnostic.Rejected { diagnostics: d }
                       }
                     Rejected { diagnostics: d } =>
-                      Rejected { diagnostics: d }
+                      v2.std.diagnostic.Rejected { diagnostics: d }
                   }
                 Rejected { diagnostics: d } =>
-                  Rejected { diagnostics: d }
+                  v2.std.diagnostic.Rejected { diagnostics: d }
               }
             Rejected { diagnostics: d } =>
-              Rejected { diagnostics: d }
+              v2.std.diagnostic.Rejected { diagnostics: d }
           }
         Rejected { diagnostics: d } =>
-          Rejected { diagnostics: d }
+          v2.std.diagnostic.Rejected { diagnostics: d }
       }
     Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3449,7 +3449,7 @@ fn ts_model_core() -> v2.std.model_core.ModelCore {
 }
 
 fn ts_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       ts_grammar_canonical_symbols().member(sym: sym) ||
         sym == ^ts_surface_spelling_string

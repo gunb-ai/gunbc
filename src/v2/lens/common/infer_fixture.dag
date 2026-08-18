@@ -73,7 +73,7 @@ fn claim_inferred_facts(
       type_symbol: type_symbol,
       algebra_symbol: algebra_symbol,
     ),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: descent_symbol }
@@ -83,7 +83,7 @@ fn claim_inferred_facts(
 }
 
 fn claim_inferred_facts_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
-  Map {
+  std.types.Map {
     lookup: fn(_) {
       Present { value: facts }
     }

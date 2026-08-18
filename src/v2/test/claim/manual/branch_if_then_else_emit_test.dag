@@ -10,29 +10,29 @@ fn branch_if_then_else_emit_facts_lookup(key: Node) -> Optional<v2.compiler.infe
 fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: branch_if_then_else_emit_facts_lookup }
+    facts: std.types.Map { lookup: branch_if_then_else_emit_facts_lookup }
   }
 }
 
 fn branch_if_then_else_emit_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

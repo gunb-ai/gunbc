@@ -138,7 +138,7 @@ fn self_host_fixpoint_witness(
   stage2: SelfHostStageEmission
 ) -> FixedPointCheck {
   if self_host_snake_closes(stage1: stage1, stage2: stage2) {
-    Holds {
+    v2.std.witness.Holds {
       value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
     }
   } else {
@@ -165,7 +165,7 @@ fn bootstrap_roundtrip_check(
     reference_stage1: expected_stage
   ) {
     Holds { value: eq } =>
-      Holds {
+      v2.std.witness.Holds {
         value: BootstrapRoundtripEqual {
           produced_stage: eq.right,
           expected_stage: eq.left
@@ -251,7 +251,7 @@ fn stage_emission_equality(
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } =>
-      Holds {
+      v2.std.witness.Holds {
         value: StructurallyEqual {
           left: reference_stage1,
           right: fw.candidate
@@ -318,7 +318,7 @@ fn self_host_fixed_point_validate(
   reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
   if !source_models_regen_byte_pair_ready(models: source_models) {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
     }
   } else {
@@ -336,7 +336,7 @@ fn self_host_fixed_point_validate(
           )
         )
       Violates { diagnostic: d } =>
-        Rejected { diagnostics: diagnostics_singleton(d: d) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
     }
   }
 }

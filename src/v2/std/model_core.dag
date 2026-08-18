@@ -112,9 +112,9 @@ fn model_core_atom(id: v2.std.node.Symbol) -> Node {
 
 fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.std.node.Symbol) -> Witness<Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-    Holds { value: bool_width_fact_node(width: facts.width) }
+    v2.std.witness.Holds { value: bool_width_fact_node(width: facts.width) }
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-    Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+    v2.std.witness.Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
   } else {
     v2.std.witness.Violates {
       diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
@@ -123,7 +123,7 @@ fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.
 }
 
 fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       match model_core_bool_fact_lookup(facts: facts, axis: axis) {
         Holds { value: v } => Present { value: v }

@@ -9,7 +9,7 @@ fn emit_field_eval_facts_with_descent(node: Node, descent_symbol: v2.std.node.Sy
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: descent_symbol }
@@ -61,7 +61,7 @@ fn emit_field_eval_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   outcome_accepted(
     value: v2.compiler.infer.InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: Map { lookup: emit_field_eval_composed_facts }
+      facts: std.types.Map { lookup: emit_field_eval_composed_facts }
     }
   )
 }
@@ -70,7 +70,7 @@ fn emit_field_eval_alt_descent_producer_tree() -> Outcome<v2.compiler.infer.Infe
   outcome_accepted(
     value: v2.compiler.infer.InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: Map { lookup: emit_field_eval_alt_descent_composed_facts }
+      facts: std.types.Map { lookup: emit_field_eval_alt_descent_composed_facts }
     }
   )
 }
@@ -143,7 +143,7 @@ fn emit_field_eval_call_primitive(
       } else {
         outcome_accepted(value: emit_field_eval_octet_value(n: 0))
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

@@ -85,7 +85,7 @@ fn ensure_spark_serving_runtime_receipt_parent_dir() -> Bool {
 fn spark_serving_runtime_archive_admission_receipt_json(
   receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> String {
-  serialize_json(v: JsonObject {
+  serialize_json(v: extdeps.languages.json.emit.JsonObject {
     members: [
       extdeps.languages.json.emit.JsonKeyValue {
         key: spark_serving_runtime_receipt_release_asset_digest_member,

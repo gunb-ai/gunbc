@@ -34,8 +34,8 @@ fn semantic_bool_emit_text() -> Outcome<String> {
     node: semantic_bool_coproduct(),
     target: rust_target_model()
   ) {
-    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -69,8 +69,8 @@ fn semantic_record_emit_text() -> Outcome<String> {
     node: semantic_record_type(),
     target: rust_target_model()
   ) {
-    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

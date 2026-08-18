@@ -10,29 +10,29 @@ fn match_bool_emit_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inferre
 fn match_bool_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: match_bool_emit_facts_lookup }
+    facts: std.types.Map { lookup: match_bool_emit_facts_lookup }
   }
 }
 
 fn match_bool_emit_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: match_bool_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn match_bool_emit_swapped_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: match_bool_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

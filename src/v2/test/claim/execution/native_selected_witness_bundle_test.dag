@@ -85,7 +85,7 @@ type SelectedLogicVerdicts {
   complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
-fn selected_verdict_for_byte(actual: Optional<Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
+fn selected_verdict_for_byte(actual: Optional<v2.std.machine.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
     Present { value: value } => if value == emit_host_byte_from_octet(octet: expected_octet) {
       SelectedWitnessPassed
@@ -324,7 +324,7 @@ fn observe_selected_bundle_native(
       ) {
         Accepted { value: warm, diagnostics: _ } => {
           let finish = observed_monotonic_nanos("selected-bundle-native-warm-finish")
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: SelectedBundleNativeObservation {
               cold: cold
               warm: warm
@@ -333,10 +333,10 @@ fn observe_selected_bundle_native(
             diagnostics: None
           }
         }
-        Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
     }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

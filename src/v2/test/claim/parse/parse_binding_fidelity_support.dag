@@ -26,9 +26,9 @@ fn pbf_normalized_add_module() -> Outcome<v2.compiler.normalized_tree.Normalized
       match pbf_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           normalize(parse_tree: parsed)
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -45,7 +45,7 @@ fn pbf_resolved_add_module() -> Outcome<Node> {
   match pbf_normalized_add_module() {
     Accepted { value: normalized, diagnostics: _ } =>
       resolve(tree: normalized, lm: lm)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

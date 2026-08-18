@@ -38,11 +38,11 @@ type ExpressionFunction
 
 type Expression
   = ContextAccess { context: ExpressionContext, path: List<String> }
-  | FunctionCall { function: ExpressionFunction, args: List<Expression> }
+  | FunctionCall { function: ExpressionFunction, args: List<extdeps.github.expressions.Expression> }
   | StringLiteral { value: String }
-  | LogicalOr { left: Expression, right: Expression }
-  | LogicalAnd { left: Expression, right: Expression }
-  | Equals { left: Expression, right: Expression }
+  | LogicalOr { left: extdeps.github.expressions.Expression, right: extdeps.github.expressions.Expression }
+  | LogicalAnd { left: extdeps.github.expressions.Expression, right: extdeps.github.expressions.Expression }
+  | Equals { left: extdeps.github.expressions.Expression, right: extdeps.github.expressions.Expression }
 
 type TemplateSegment
   = LiteralText { text: String }

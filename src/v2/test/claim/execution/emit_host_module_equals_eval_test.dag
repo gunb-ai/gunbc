@@ -35,8 +35,8 @@ fn emit_module_two_add_decls() -> List<v2.compiler.infer.InferredTree> {
 fn emit_module_two_text() -> Outcome<String> {
   match emit_module(decls: emit_module_two_add_decls(), target: rust_target_model_staging()) {
     Accepted { value: medium, diagnostics: _ } =>
-      Accepted { value: medium.carried, diagnostics: None }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

@@ -65,7 +65,7 @@ fn idempotency_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<
       if idempotency_fact_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: idempotency_witness_diagnostic() }
       } else {
-        Holds { value: fact }
+        v2.std.witness.Holds { value: fact }
       }
   }
 }

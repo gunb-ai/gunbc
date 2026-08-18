@@ -143,7 +143,7 @@ fn add_arrow_eval_bind_value(
   value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(m: env.bindings, key: key, value: value)
     },
@@ -296,7 +296,7 @@ fn add_arrow_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inferred
 fn add_arrow_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: add_arrow_eval_facts_lookup
     }
   }
@@ -710,7 +710,7 @@ test fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
 }
 
 fn add_arrow_eval_step_loop_continue(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  outcome_accepted(value: Continue { value: add_arrow_eval_int_runtime_value(n: 5) })
+  outcome_accepted(value: v2.std.runtime.Continue { value: add_arrow_eval_int_runtime_value(n: 5) })
 }
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -741,7 +741,7 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
 fn add_arrow_eval_loop_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(key) {
         match key.kind {
           ComputationNode { behavior: Loop } =>
@@ -749,7 +749,7 @@ fn add_arrow_eval_loop_admitted_tree(root: Node) -> v2.compiler.infer.InferredTr
               value: claim_inferred_facts_from_nodes(
                 resolved: key,
                 algebra: add_arrow_eval_i64_node(),
-                descent: Holds {
+                descent: v2.std.witness.Holds {
                   value: v2.std.cardinality.TerminationProof {
                     non_increasing: [],
                     strict: v2.std.cardinality.RankingDimension {

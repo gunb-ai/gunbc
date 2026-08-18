@@ -94,91 +94,91 @@ fn cpp_add_canonical_grounding(
 
 fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == cpp_add_emitted_root {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == cpp_add_int_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_facts_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_inhabitant_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_inhabitant
       )
     }
   } else if node == cpp_add_int_facts_node {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == cpp_atom(id: ^cpp_surface_spelling_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_facts_node
       )
     }
   } else if node == cpp_add_int_scalar_node {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_facts_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_signed_integer) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_scalar_node
       )
     }
   } else if node == cpp_add_int_width_node {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_scalar_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_width_selection) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_width_node
       )
     }
   } else if node == cpp_add_int_spelling_node {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_width_node
       )
     }
   } else if node == cpp_target_profile {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_width_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_twos_complement) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_scalar_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_representable_result_required) {
-    Holds {
+    v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_scalar_node
@@ -204,7 +204,7 @@ fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Inferred
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -216,7 +216,7 @@ fn cpp_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> 
 
 data cpp_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: cpp_add_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: cpp_add_facts_lookup
   }
 }

@@ -8,7 +8,7 @@ test fn witness_known_grades_permit_share() -> Bool {
 }
 
 test fn witness_unknown_never_permits_share() -> Bool {
-  let unknown = IdentityUnknown {
+  let unknown = std.computation_identity.IdentityUnknown {
     cause: std.computation_identity.MissingEnforcement { detail: "no lens covers this producer" }
   }
   (identity_permits_share(ci: unknown) == false)
@@ -16,8 +16,8 @@ test fn witness_unknown_never_permits_share() -> Bool {
 }
 
 test fn witness_unknown_cause_arms_construct() -> Bool {
-  let a = IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "x" } }
-  let b = IdentityUnknown { cause: std.computation_identity.BoundUnmodeled { detail: "y" } }
+  let a = std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "x" } }
+  let b = std.computation_identity.IdentityUnknown { cause: std.computation_identity.BoundUnmodeled { detail: "y" } }
   (identity_grade_is_known(ci: a) == false) && (identity_grade_is_known(ci: b) == false)
 }
 

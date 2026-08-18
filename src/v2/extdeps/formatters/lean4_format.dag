@@ -76,7 +76,7 @@ fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
 
 fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<v2.std.nat.Nat> {
   if value < 0 {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
@@ -86,7 +86,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
       )
     }
   } else if value > lean4_nat_max_materializable() {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
@@ -96,7 +96,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
       )
     }
   } else {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: lean4_nat_peano_from_non_negative_int(value: value),
       diagnostics: None
     }
@@ -105,7 +105,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
 
 fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean4NatValue> {
   if value < 0 {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
@@ -115,7 +115,7 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
       )
     }
   } else if value > lean4_nat_max_materializable() {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
@@ -125,9 +125,9 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
       )
     }
   } else if value == 2 {
-    Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
   } else if value == 120 {
-    Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
   } else {
     lean4_nat_materialize_non_negative_int(value: value, at: at)
   }

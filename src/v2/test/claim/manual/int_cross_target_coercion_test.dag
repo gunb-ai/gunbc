@@ -39,8 +39,8 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<v2.std.coercion.Co
 fn coercion_outcome_node_projection(actual: Outcome<v2.std.coercion.CoercionResult>) -> Outcome<Node> {
   match actual {
     Accepted { value: r, diagnostics: ad } =>
-      Accepted { value: r.target, diagnostics: ad }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: r.target, diagnostics: ad }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

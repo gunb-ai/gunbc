@@ -269,7 +269,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
     outcome_accepted(value: root)
   } else {
     match qualified_name_from_module_node(root: root) {
-      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+      Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
           Empty =>

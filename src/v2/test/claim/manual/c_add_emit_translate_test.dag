@@ -52,11 +52,11 @@ fn c_add_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.Ca
 
 fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == c_add_emitted_root {
-    Holds { value: c_add_canonical_grounding(node: node, algebra: node) }
+    v2.std.witness.Holds { value: c_add_canonical_grounding(node: node, algebra: node) }
   } else if node == c_add_int_inhabitant {
-    Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
+    v2.std.witness.Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
   } else if node == c_atom(id: ^c_inhabitant_int) {
-    Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
+    v2.std.witness.Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
   } else {
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
@@ -77,7 +77,7 @@ fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFa
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -89,7 +89,7 @@ fn c_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
 
 data c_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: c_add_emitted_root,
-  facts: Map { lookup: c_add_facts_lookup }
+  facts: std.types.Map { lookup: c_add_facts_lookup }
 }
 
 fn c_add_emit_accepts() -> Outcome<Medium<String>> {
@@ -136,7 +136,7 @@ test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
 test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
   let wrong_tree = v2.compiler.infer.InferredTree {
     root: c_add_wrong_emitted_root,
-    facts: Map { lookup: c_add_facts_lookup }
+    facts: std.types.Map { lookup: c_add_facts_lookup }
   }
   match emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>

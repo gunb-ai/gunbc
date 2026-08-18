@@ -62,7 +62,7 @@ fn spice_component(
   intent: product.compute_board.analog.AnalogCircuitIntent,
   reference: product.electrical.connectivity.NetIdentity,
   c: product.compute_board.analog.ElectricalComponentInstance
-) -> Component {
+) -> v2.extdeps.formats.spice.Component {
   let plus = component_node(intent: intent, reference: reference, c: c, positive: true)
   let minus = component_node(intent: intent, reference: reference, c: c, positive: false)
   let name = component_local_label(c: component_identity(c: c)) as String

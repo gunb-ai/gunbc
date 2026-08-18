@@ -130,13 +130,13 @@ fn decision_for_held_lease_verdict(
 ) -> UpsertDecision<NextStepApplyPlan> {
   match verdict {
     Converged => Noop
-    Absent => Apply { plan: ApplyAtStep { step_id: pending_step_id } }
-    Drifted => Apply {
+    Absent => std.upsert_decision.Apply { plan: ApplyAtStep { step_id: pending_step_id } }
+    Drifted => std.upsert_decision.Apply {
       plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.lease_key },
     }
-    Conflict => Refuse { reason: "foreign lease holder on scoped resource" as std.types.NonEmptyStr }
-    Inaccessible => Refuse { reason: "lease observation inaccessible" as std.types.NonEmptyStr }
-    UnknownRefused => Refuse { reason: "lease observation classification unknown" as std.types.NonEmptyStr }
+    Conflict => std.upsert_decision.Refuse { reason: "foreign lease holder on scoped resource" as std.types.NonEmptyStr }
+    Inaccessible => std.upsert_decision.Refuse { reason: "lease observation inaccessible" as std.types.NonEmptyStr }
+    UnknownRefused => std.upsert_decision.Refuse { reason: "lease observation classification unknown" as std.types.NonEmptyStr }
   }
 }
 

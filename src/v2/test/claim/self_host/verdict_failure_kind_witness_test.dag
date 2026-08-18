@@ -10,7 +10,7 @@ fn sample_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic
 }
 
 fn sample_rejected_outcome() -> Outcome<String> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(d: sample_diagnostic(reason: ^emit_host_build_failed))
   }
 }

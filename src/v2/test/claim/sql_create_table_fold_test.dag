@@ -15,17 +15,17 @@ fn sql_fold_fold_serialize(
     Holds { value: emitted } =>
       let tree = v2.compiler.infer.InferredTree {
         root: emitted,
-        facts: Map { lookup: sql_fold_facts_lookup }
+        facts: std.types.Map { lookup: sql_fold_facts_lookup }
       }
       match emit(tree: tree, target: target) {
         Accepted { value: source, diagnostics: d } =>
           match d {
-            None => Accepted { value: source.carried, diagnostics: None }
-            Some { diagnostics: r } => Rejected { diagnostics: r }
+            None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: None }
+            Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -34,7 +34,7 @@ fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperati
     Holds { value: target } =>
       sql_fold_fold_serialize(op: op, target: target)
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

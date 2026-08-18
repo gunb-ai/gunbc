@@ -23,7 +23,7 @@ type DissolutionSubsumption {
 }
 
 fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
-  Set {
+  std.types.Set {
     member: fn(d) {
       d.id == ^affected_set_boundary_receipt_leaf_fix ||
         d.id == ^affected_set_dimension_receipt_leaf_fix ||
@@ -46,7 +46,7 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
 }
 
 fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
-  Set {
+  std.types.Set {
     member: fn(d) {
       d.id == ^emit_rust_template_leaf_fix ||
         d.id == ^emit_rust_name_dispatch_leaf_fix

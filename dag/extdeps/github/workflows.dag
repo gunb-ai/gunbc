@@ -22,7 +22,7 @@ service github.Workflows {
   config {
     endpoint: default_api_base
     auth: Bearer
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+    auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
     rate_limit: { requests: 5000, per: hour, scope: core }
 

@@ -532,7 +532,7 @@ test fn w_change_kind_degrades_losslessly_without_colour() -> Bool {
 test fn w_no_op_kinds_each_explain_themselves() -> Bool {
   let kinds = [
     DocsPolicy,
-    Uncovered { declaration: "std.observation.observation_attention" as std.types.NonEmptyStr },
+    std.observation.Uncovered { declaration: "std.observation.observation_attention" as std.types.NonEmptyStr },
     NoDeclsTouched,
     selection_noop_generated_artifact(drift_gate_authority: "gunbc.ci_workflow" as std.types.NonEmptyStr),
     std.observation.DepartedPath { cause: "src/v1/stage0/src/gone.rs" as std.types.NonEmptyStr }
@@ -549,9 +549,9 @@ test fn w_no_op_kinds_each_explain_themselves() -> Bool {
 }
 
 test fn w_uncovered_is_a_nudge_not_a_comfort() -> Bool {
-  observation_no_op_attention(n: Uncovered { declaration: "std.observation.observation_watchdog" as std.types.NonEmptyStr }) == Notable &&
+  observation_no_op_attention(n: std.observation.Uncovered { declaration: "std.observation.observation_watchdog" as std.types.NonEmptyStr }) == Notable &&
   observation_no_op_attention(n: DocsPolicy) == Ambient &&
-  observation_no_op_symbol(n: Uncovered { declaration: "x" as std.types.NonEmptyStr }) == StatusWarning
+  observation_no_op_symbol(n: std.observation.Uncovered { declaration: "x" as std.types.NonEmptyStr }) == StatusWarning
 }
 
 test fn w_departed_path_is_not_a_no_op() -> Bool {
@@ -559,7 +559,7 @@ test fn w_departed_path_is_not_a_no_op() -> Bool {
   !observation_no_op_is_actually_a_widen(n: DocsPolicy) &&
   !observation_no_op_is_actually_a_widen(n: NoDeclsTouched) &&
   !observation_no_op_is_actually_a_widen(n: selection_noop_generated_artifact(drift_gate_authority: "x" as std.types.NonEmptyStr)) &&
-  !observation_no_op_is_actually_a_widen(n: Uncovered { declaration: "x" as std.types.NonEmptyStr }) &&
+  !observation_no_op_is_actually_a_widen(n: std.observation.Uncovered { declaration: "x" as std.types.NonEmptyStr }) &&
   observation_no_op_attention(n: std.observation.DepartedPath { cause: "deleted module" as std.types.NonEmptyStr }) == Notable
 }
 

@@ -85,7 +85,7 @@ fn discrimination_lens(unit: List<v2.std.verification.TestClaim>) -> Witness<Dis
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_negative_not_perturbed)
     }
   } else {
-    Holds { value: DiscriminatingWitness { unit: unit } }
+    v2.std.witness.Holds { value: DiscriminatingWitness { unit: unit } }
   }
 }
 

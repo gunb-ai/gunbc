@@ -267,14 +267,14 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   name: "witnesses",
   on: [
     extdeps.github.actions.WorkflowDispatch { inputs: [] },
-    Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
+    extdeps.github.actions.Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
     extdeps.github.pulls.PullRequest {
       branches: [gunbc.repo_identity.gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
+    value: extdeps.github.actions.ConcurrencyMappingQueueNotMax {
       group: witness_floor_concurrency_group,
       cancel_in_progress: Present {
         value: extdeps.github.actions.CancelInProgressExpression {

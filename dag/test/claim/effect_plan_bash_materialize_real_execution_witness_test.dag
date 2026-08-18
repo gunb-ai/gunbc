@@ -68,27 +68,27 @@ fn wet_exec_fails_without_output(plan: EffectPlan<v2.workflow.effect_plan_bash_m
 
 test fn effect_plan_bash_two_declared_operations_execute() -> Bool {
   wet_exec_succeeds_with_output(plan: wet_plan(steps: [
-    Do { effect: wet_test_path(operation: "IsExecutable", path: "/bin/sh") },
-    Do { effect: wet_id_uid() }
+    v2.std.effect_plan.Do { effect: wet_test_path(operation: "IsExecutable", path: "/bin/sh") },
+    v2.std.effect_plan.Do { effect: wet_id_uid() }
   ]))
 }
 
 test fn effect_plan_bash_fail_fast_prevents_later_operation_execution() -> Bool {
   wet_exec_fails_without_output(plan: wet_plan(steps: [
-    Do { effect: wet_test_path(operation: "IsFile", path: "/gunbc-wave-a-definitely-absent") },
-    Do { effect: wet_id_uid() }
+    v2.std.effect_plan.Do { effect: wet_test_path(operation: "IsFile", path: "/gunbc-wave-a-definitely-absent") },
+    v2.std.effect_plan.Do { effect: wet_id_uid() }
   ]))
 }
 
 test fn effect_plan_bash_metachar_and_newline_cannot_open_a_statement() -> Bool {
   let metachar = wet_exec_fails_without_output(plan: wet_plan(steps: [
-    Do { effect: wet_test_path(
+    v2.std.effect_plan.Do { effect: wet_test_path(
       operation: "IsFile",
       path: "/tmp/absent; printf PWN"
     ) }
   ]))
   let newline = wet_exec_fails_without_output(plan: wet_plan(steps: [
-    Do { effect: wet_test_path(
+    v2.std.effect_plan.Do { effect: wet_test_path(
       operation: "IsFile",
       path: "/tmp/absent\nid -u"
     ) }

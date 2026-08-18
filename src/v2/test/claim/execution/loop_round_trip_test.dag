@@ -27,56 +27,56 @@ fn loop_canonical_grounding(
 
 fn loop_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_loop_fn {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_fixture_int_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_type_atom_node(identity: ^dag_pick_lit_one) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_pick_lit_two) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_loop_body_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_pick_arrow_domain_conj_node() {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_binding_fn_one) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_loop_measure_sym) {
-    Holds {
+    v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
     }
   } else {
@@ -105,7 +105,7 @@ fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -117,7 +117,7 @@ fn loop_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inferre
 
 data loop_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: loop_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: loop_round_trip_facts_lookup
   }
 }

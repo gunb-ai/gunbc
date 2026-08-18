@@ -11,15 +11,15 @@ fn loop_atom(s: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn loop_byte() -> Byte {
-  Byte { bits: [true] }
+fn loop_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn loop_i64_node() -> Node {
   loop_atom(s: ^loop_i64)
 }
 
-fn loop_int_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
+fn loop_int_value(bytes: List<v2.std.machine.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: loop_i64_node(),
@@ -71,7 +71,7 @@ fn loop_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment)
         } else {
           outcome_rejected(d: loop_runtime_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(d: loop_runtime_diagnostic(n: node))
@@ -100,7 +100,7 @@ fn loop_step_loop(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outc
       bind_outcome(
         o: loop_allocate_literal(node: body, env: env),
         f: fn(value) {
-          outcome_accepted(value: Continue { value: value })
+          outcome_accepted(value: v2.std.runtime.Continue { value: value })
         }
       )
     Absent =>
@@ -113,7 +113,7 @@ fn loop_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn loop_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -194,7 +194,7 @@ fn loop_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
 }
 
 fn loop_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
-  Holds { value: structural_node_size_termination_proof() }
+  v2.std.witness.Holds { value: structural_node_size_termination_proof() }
 }
 
 fn loop_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
@@ -202,7 +202,7 @@ fn loop_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_i64_node(),
-        descent: Holds { value: loop_loop_termination_proof() }
+        descent: v2.std.witness.Holds { value: loop_loop_termination_proof() }
       ))
   } else {
     optional_present(value: claim_inferred_facts_from_nodes(
@@ -216,7 +216,7 @@ fn loop_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
 fn loop_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: loop_facts_lookup
     }
   }

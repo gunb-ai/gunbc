@@ -184,7 +184,7 @@ fn family_crate_meet_join_member_agreement_divergence(
     member_id: member_id,
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: meet_join_eval_subject(tree: tree, subgraph: subgraph),
-      source_outcome: Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
       target: rust_logic_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: member_id)
@@ -219,7 +219,7 @@ fn family_crate_complement_member_agreement_divergence(
     member_id: "complement",
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_complement_eval_subject(tree: family_crate_complement_tree()),
-      source_outcome: Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
       target: rust_logic_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: "complement")

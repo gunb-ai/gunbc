@@ -15,7 +15,7 @@ type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
 
 fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetModelBridge> {
   if ingest_bridge_realized() {
-    Holds {
+    v2.std.witness.Holds {
       value: ParseTreeToTargetModelBridge {
         source_parse_tree: ^ingest_bridge_hermetic_fixture_parse_tree,
         intended_target_language: ^typescript

@@ -45,7 +45,7 @@ test fn witness_unknown_or_unparseable_route_refuses_before_slot_selection() -> 
 }
 
 fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  Converged {
+  std.realization_reconcile.Converged {
     evidence: gunbc.host_effect.ShellEffectApplied {
       exit_code: 0,
       stdout: "live-deploy-mutation-applied",

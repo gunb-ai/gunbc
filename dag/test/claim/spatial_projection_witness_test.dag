@@ -45,7 +45,7 @@ fn world_of(a: product.spatial_world.PlacedSpace?, b: product.spatial_world.Plac
   }
 }
 
-fn view_of(kind: ProjectionKind, source: std.coordinate_frame.CoordinateFrameIdentity) -> std.planar_projection.ProjectionView? {
+fn view_of(kind: std.planar_projection.ProjectionKind, source: std.coordinate_frame.CoordinateFrameIdentity) -> std.planar_projection.ProjectionView? {
   match named_projection_view(kind: kind, source_frame: source, view_frame: page()) {
     ProjectionRefused { cause: _ } => none
     ProjectionReady { value: v } => Present { value: v }
@@ -102,7 +102,7 @@ fn l_shape() -> std.orthogonal_topology.EnclosedSpace? {
   }
 }
 
-fn scene_of(w: product.spatial_world.World?, kind: ProjectionKind) -> product.spatial_projection.ProjectedScene? {
+fn scene_of(w: product.spatial_world.World?, kind: std.planar_projection.ProjectionKind) -> product.spatial_projection.ProjectedScene? {
   match w {
     Absent => none
     Present { value: world_value } =>

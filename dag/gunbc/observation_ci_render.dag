@@ -453,7 +453,7 @@ type LeafEmissionReason
 // routine_rollup_folds. The rule stays here; the seed carries an answer, not a copy of the rule.
 fn ci_routine_projection(
   event: std.observation.ObservationEvent,
-  grain: ObservationGrain?,
+  grain: std.observation.ObservationGrain?,
 ) -> RoutineProjection {
   match observation_class_density(c: observation_event_class(event: event)) {
     AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }

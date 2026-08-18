@@ -32,42 +32,42 @@ fn english_emit_add_canonical_grounding(
 
 fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == english_emit_add_noun_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
       )
     }
   } else if node == english_inhabitant_atom(id: ^english_inhabitant_noun) {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_inhabitant
       )
     }
   } else if node == english_emit_add_noun_facts_node {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == english_inhabitant_atom(id: ^english_surface_spelling_noun) {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
       )
     }
   } else if node == english_inhabitant_atom(id: ^english_category_formal_noun_phrase) {
-    Holds {
+    v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
@@ -93,7 +93,7 @@ fn english_emit_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -105,7 +105,7 @@ fn english_emit_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inferr
 
 data english_emit_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: english_emit_add_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: english_emit_add_facts_lookup
   }
 }
@@ -155,7 +155,7 @@ fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<v2.std.gramm
     file: ^english_emit_add_round_trip_fixture_file,
     rules: english_lex()
   ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: english_add_fn_paragraph_grammar())
   }

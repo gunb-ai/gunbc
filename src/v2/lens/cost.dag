@@ -98,7 +98,7 @@ fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
     UnknownCost { diagnostic: d } =>
       v2.std.witness.Violates { diagnostic: d }
     _ =>
-      Holds { value: c }
+      v2.std.witness.Holds { value: c }
   }
 }
 

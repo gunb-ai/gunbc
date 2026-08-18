@@ -131,7 +131,7 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
         v2.std.witness.Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
       } else {
         match loop_bound_measure_target(children: n.children) {
-          Found { target: measure } => Holds { value: measure }
+          Found { target: measure } => v2.std.witness.Holds { value: measure }
           Ambiguous => v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
           Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
         }
@@ -159,10 +159,10 @@ fn structural_node_size_termination_proof() -> TerminationProof {
 
 fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<TerminationProof> {
   match m {
-    Bounded => Holds { value: structural_node_size_termination_proof() }
+    Bounded => v2.std.witness.Holds { value: structural_node_size_termination_proof() }
     RequiresTerminationProof =>
       v2.std.witness.Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
-    ProvenTermination { proof } => Holds { value: proof }
+    ProvenTermination { proof } => v2.std.witness.Holds { value: proof }
   }
 }
 
@@ -407,7 +407,7 @@ fn termination_proof_fold_step(
     Holds { value: proof } =>
       match child {
         Violates { diagnostic: _ } => child
-        Holds { value: _ } => Holds { value: proof }
+        Holds { value: _ } => v2.std.witness.Holds { value: proof }
       }
   }
 }
@@ -429,7 +429,7 @@ fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
 fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
   match loop_measure_node(n: n) {
     Holds { value: measure } =>
-      Holds {
+      v2.std.witness.Holds {
         value: LoopBound {
           measure: measure,
           termination: termination_proof_witness_for_node(n: n)

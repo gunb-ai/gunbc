@@ -77,7 +77,7 @@ fn coercion_candidate_set_from_declared_inhabitants(
   closedness_property: v2.std.node.Symbol,
 ) -> Outcome<CoercionCandidateSet> {
   if well_formed(n: inhabitants_root) {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: CoercionCandidateSet {
         set: v2.std.find_witness.CandidateSet {
           candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
@@ -192,13 +192,13 @@ fn find_witness_rejection_kind_from_reason(
   reason: v2.std.node.Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
   if reason == ^find_witness_reason_no_candidate {
-    Accepted { value: FindWitnessNoCandidate, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessNoCandidate, diagnostics: None }
   } else if reason == ^find_witness_reason_ambiguous_candidate {
-    Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
   } else if reason == ^find_witness_reason_not_realized {
-    Accepted { value: FindWitnessNotRealized, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessNotRealized, diagnostics: None }
   } else if reason == ^find_witness_reason_invalid_witness {
-    Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
   } else {
     outcome_rejected(
       coercion_find_witness_reason_unmapped_diagnostic(source: source)
@@ -224,7 +224,7 @@ fn coercion_wrap_find_witness_rejection(
     reason: upstream.head.reason
   ) {
     Accepted { value: fw_kind, diagnostics: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.NonEmptyDiagnostics {
           head: coercion_not_realized_diagnostic(
             source: source,
@@ -238,7 +238,7 @@ fn coercion_wrap_find_witness_rejection(
         diagnostics: None
       }
     Rejected { diagnostics: coerce_r } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: non_empty_diagnostics_append(a: upstream, b: coerce_r)
       }
   }
@@ -249,7 +249,7 @@ fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
   refinement_algebra: Node,
 ) -> Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
   if refinement_widening_is_strict_coarsening(algebra: refinement_algebra) {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: v2.std.diagnostic.NonEmptyDiagnostics {
         head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),
         tail: list_append(
@@ -284,7 +284,7 @@ fn coercion_fold_exact_structural(
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,
           quality: coercion_quality_for_witness(source: source, fw: fw),
@@ -300,8 +300,8 @@ fn coercion_fold_exact_structural(
     Rejected { diagnostics: r } =>
       match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
         Accepted { value: wrapped, diagnostics: _ } =>
-          Rejected { diagnostics: wrapped }
-        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+          v2.std.diagnostic.Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }
@@ -329,7 +329,7 @@ fn coercion_fold_refinement_widening(
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,
           quality: Widened,
@@ -349,8 +349,8 @@ fn coercion_fold_refinement_widening(
         refinement_algebra: predicate.algebra
       ) {
         Accepted { value: wrapped, diagnostics: _ } =>
-          Rejected { diagnostics: wrapped }
-        Rejected { diagnostics: wrap_r } => Rejected { diagnostics: wrap_r }
+          v2.std.diagnostic.Rejected { diagnostics: wrapped }
+        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }

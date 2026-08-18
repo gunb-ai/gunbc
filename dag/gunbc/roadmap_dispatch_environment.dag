@@ -133,7 +133,7 @@ fn missing_capability_receipt(
     capability: cap,
     capability_label: execution_capability_label(capability: cap),
     executable: "",
-    decision: Refuse {
+    decision: std.upsert_decision.Refuse {
       reason: missing_capability_reason(cap: cap) as std.types.NonEmptyStr,
     },
     grounded: false,

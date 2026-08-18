@@ -98,7 +98,7 @@ data claim_parallelism_data_dependency_receipt: v2.std.verification.TestClaim = 
 
 data verdict_parallelism_data_dependency_node_assert: Verdict<TestClaimEvalSubject<Node>, Node> = run_test_claim_assert(
   claim: claim_parallelism_data_dependency_receipt,
-  actual: Accepted {
+  actual: v2.std.diagnostic.Accepted {
     value: parallelism_claim_input(ok: parallelism_data_dependency_claim_passes),
     diagnostics: None
   },

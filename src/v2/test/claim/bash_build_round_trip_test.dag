@@ -32,7 +32,7 @@ fn bash_build_round_trip_via_emit_matches_golden(
 ) -> Bool {
   let tree = v2.compiler.infer.InferredTree {
     root: emitted,
-    facts: Map { lookup: bash_build_round_trip_facts_lookup }
+    facts: std.types.Map { lookup: bash_build_round_trip_facts_lookup }
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } =>

@@ -88,7 +88,7 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
 }
 
 fn create_if_absent_shape(key_source: SubstrateKeySource) -> EffectShape<SubstrateKeySource> {
-  std.effects.CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
+  std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key_source } }
 }
 
 fn create_always_shape() -> EffectShape<SubstrateKeySource> {
@@ -256,7 +256,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
           v2.std.node.Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(
-              shape: std.effects.CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
+              shape: std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key_source } }
             )
           },
           v2.std.node.Edge {

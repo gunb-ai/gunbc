@@ -26,7 +26,7 @@ test fn w_red_pending_and_refused_still_produce_refusals() -> Bool {
     Present { value: _ } => true
     Absent => false
   })
-    && match unsettled_capability(s: CapabilityRefused { cause: "any cause" }, name: "stackup") {
+    && match unsettled_capability(s: product.pcb.world.CapabilityRefused { cause: "any cause" }, name: "stackup") {
       Present { value: _ } => true
       Absent => false
     }
@@ -47,7 +47,7 @@ test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
       CapabilityEstablished { authority: _ } => false
       CapabilityRefused { cause: _ } => false
     })
-    && match CapabilityRefused { cause: "any cause" } {
+    && match product.pcb.world.CapabilityRefused { cause: "any cause" } {
       CapabilityRefused { cause: _ } => true
       CapabilityEstablished { authority: _ } => false
       CapabilityPending { owed: _ } => false

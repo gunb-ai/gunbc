@@ -89,7 +89,7 @@ fn witness_the_browser_product_is_not_its_engine() -> Bool {
 }
 
 fn witness_unresolved_identity_keeps_its_cause() -> Bool {
-  ref_is_resolved(r: RefResolved {
+  ref_is_resolved(r: gunbc.host_realization.RefResolved {
       declaration: std.decl_ref.DeclarationRef { module_path: "extdeps.os.macos", decl_name: "sequoia_15_catalog", field: WholeDeclaration }
     })
     && !ref_is_resolved(r: gunbc.host_realization.RefReducedByPolicy { reported: "Mac OS X 10_15_7" })

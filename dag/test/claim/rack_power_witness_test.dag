@@ -46,7 +46,7 @@ fn budget(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power
   }
 }
 
-fn refusal_of(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> PowerRefusal? {
+fn refusal_of(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> product.rack_power.PowerRefusal? {
   match rack {
     Absent => none
     Present { value: r } =>

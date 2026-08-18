@@ -1456,7 +1456,7 @@ fn wasm_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn wasm_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       wasm_catalog_surface_symbol(sym: sym) ||
         wasm_lex_token_symbol(sym: sym) ||
@@ -1498,7 +1498,7 @@ fn wasm_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 }
 
 fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
@@ -1518,7 +1518,7 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<v2.std.node.
 }
 
 fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }

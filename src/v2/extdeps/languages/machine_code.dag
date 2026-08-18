@@ -100,7 +100,7 @@ type Operand
   | MemoryOperand { mode: AddressingMode }
 
 type ByteSequence {
-  bytes: List<Byte>
+  bytes: List<v2.std.machine.Byte>
 }
 
 type InstructionProductionRef {

@@ -22,15 +22,15 @@ fn diag_assert_other_d() -> v2.std.diagnostic.Diagnostic {
 
 data rejected_expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics = diagnostics_singleton(d: diag_assert_d())
 
-data rejected_expected: Outcome<Node> = Rejected { diagnostics: rejected_expected_rejection }
+data rejected_expected: Outcome<Node> = v2.std.diagnostic.Rejected { diagnostics: rejected_expected_rejection }
 
 data rejected_same: Outcome<Node> = rejected_expected
 
-data rejected_other: Outcome<Node> = Rejected {
+data rejected_other: Outcome<Node> = v2.std.diagnostic.Rejected {
   diagnostics: diagnostics_singleton(d: diag_assert_other_d())
 }
 
-data accepted_actual: Outcome<Node> = Accepted {
+data accepted_actual: Outcome<Node> = v2.std.diagnostic.Accepted {
   value: diag_assert_node(),
   diagnostics: None
 }

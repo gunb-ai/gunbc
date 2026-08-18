@@ -1,30 +1,30 @@
 module gunbc.host_effect_codex_supervised_turn
 
-data host_effect_codex_supervised_turn_bin_name: std.types.String = "codex_app_server_stdio_session"
+data host_effect_codex_supervised_turn_bin_name: String = "codex_app_server_stdio_session"
 
 data host_effect_codex_supervised_turn_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: host_effect_codex_supervised_turn — typed WitnessBin argv transport for CodexSupervisedWorkerTurn (#8166). DISSOLVES WHEN session driver is a native host_effect builtin with no separate release bin.")
 
 fn host_effect_codex_supervised_session_preamble_path(
-  client_command_id_path: std.types.String,
-) -> std.types.String {
+  client_command_id_path: String,
+) -> String {
   concat(client_command_id_path, ".preamble.lines")
 }
 
-fn host_effect_codex_supervised_session_bin_path(root: std.types.String) -> std.types.String {
+fn host_effect_codex_supervised_session_bin_path(root: String) -> String {
   concat(root, concat("/target/release/", host_effect_codex_supervised_turn_bin_name))
 }
 
 fn host_effect_codex_supervised_session_preamble_content(
   lines: std.types.List<std.types.NonEmptyStr>,
-) -> std.types.String {
+) -> String {
   fold(
     lines,
     init: "",
     f: (acc, line) =>
       if acc == "" {
-        line as std.types.String
+        line as String
       } else {
-        concat(acc, concat("\n", line as std.types.String))
+        concat(acc, concat("\n", line as String))
       },
   )
 }
@@ -57,7 +57,7 @@ fn host_effect_codex_supervised_turn_apply_refused(
       CodexSupervisedSessionApplyRefused {
         reason: concat(
           "CodexSupervisedWorkerTurn app-server stdio session refused over fleet ssh endpoint=",
-          concat(t.endpoint as std.types.String, ": in-band coprocess must run on executor HostOs"),
+          concat(t.endpoint as String, ": in-band coprocess must run on executor HostOs"),
         ),
       }
     gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -69,22 +69,22 @@ fn host_effect_codex_supervised_turn_apply_refused(
 
 fn host_effect_codex_supervised_turn_session_argv(
   intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
-  preamble_path: std.types.String,
+  preamble_path: String,
   client_command_id: std.types.NonEmptyStr,
-) -> std.types.List<std.types.String> {
+) -> std.types.List<String> {
   [
     "--executable",
-    intent.executable as std.types.String,
+    intent.executable as String,
     "--codex-home",
-    intent.codex_home as std.types.String,
+    intent.codex_home as String,
     "--cwd",
-    intent.cwd as std.types.String,
+    intent.cwd as String,
     "--preamble-file",
     preamble_path,
     "--user-input",
     intent.user_input,
     "--client-command-id",
-    client_command_id as std.types.String,
+    client_command_id as String,
     "--client-command-id-path",
     intent.client_command_id_path,
     "--thread-start-id",
@@ -102,7 +102,7 @@ fn host_effect_codex_supervised_turn_apply(
 ) -> CodexSupervisedSessionApplyOutcome {
   match transport {
     gunbc.host_effect.LocalShell => {
-      let root = git.Inspect.Toplevel().path as std.types.String
+      let root = git.Inspect.Toplevel().path as String
       let bin_path = host_effect_codex_supervised_session_bin_path(root: root)
       if !gunbc.ci_release_bins.release_bin_is_enrolled(bin_name: host_effect_codex_supervised_turn_bin_name) {
         CodexSupervisedSessionApplyRefused {

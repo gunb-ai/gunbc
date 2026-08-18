@@ -11,7 +11,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
   }
   let tree = v2.compiler.infer.InferredTree {
     root: node,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(n) {
         Absent
       }

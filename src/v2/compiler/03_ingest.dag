@@ -128,7 +128,7 @@ fn grammar_relation_row_forward_token_selection(
   let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
   match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
     Accepted { value: emitted, diagnostics: d } =>
-      Accepted { value: emitted, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: emitted, diagnostics: d }
     Rejected { diagnostics: _ } =>
       bind_outcome(
         o: grammar_relation_rules_formal_productions(rules: rules),
@@ -160,7 +160,7 @@ fn parse_tree_to_emitted_node(parse_tree: v2.std.grammar.ParseTree, source_model
   )
 }
 
-fn parse_tree_to_target_model_bridge(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> Outcome<CoreNode> {
+fn parse_tree_to_target_model_bridge(parse_tree: v2.std.grammar.ParseTree, source_model: v2.std.compilers.target_model.TargetModel) -> Outcome<v2.compiler.compile.CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {

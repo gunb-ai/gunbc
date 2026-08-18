@@ -92,7 +92,7 @@ fn bash_relation_translation_rules_witness(
     emitted: emitted
   ) {
     Holds { value: row } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [

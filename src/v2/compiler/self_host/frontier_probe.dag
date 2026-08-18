@@ -321,12 +321,12 @@ fn frontier_probe_admission_from_ingest(
         source_text: read.source.carried,
         file: symbol_intern_lexeme(lexeme: module_path)
       ) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: parse_root, diagnostics: _ } =>
           admission_from_module_root(root: parse_root)
       }
     Absent =>
-      Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
+      v2.std.diagnostic.Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
   }
 }
 

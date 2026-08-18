@@ -17,7 +17,7 @@ fn language_model_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.n
 }
 
 fn language_model_empty_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(_) {
       false
     }

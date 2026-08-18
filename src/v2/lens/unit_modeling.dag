@@ -129,7 +129,7 @@ data unit_modeling_gate_cost_note: String = "Node-local predicate on the per-sub
 fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_first_unit_violation(carrier: node) {
     Present { value: d } => outcome_rejected(d)
-    Absent => outcome_accepted(value: Holds { value: node })
+    Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

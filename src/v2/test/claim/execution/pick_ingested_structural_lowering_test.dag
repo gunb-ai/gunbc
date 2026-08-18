@@ -252,7 +252,7 @@ fn pick_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts
 fn pick_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: pick_eval_facts_lookup
     }
   }

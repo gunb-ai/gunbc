@@ -54,7 +54,7 @@ fn canonical_grounding_from_derived_type(
   if derived_type == node {
     outcome_rejected(grounding_evidence_is_source_diagnostic(node: node))
   } else {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: CanonicalGrounding {
         node: node,
         witness: CanonicalGroundingWitness {
@@ -106,7 +106,7 @@ fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {
   if well_formed(n: policy.graph.root) {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: CanonicalGroundingCandidateSet {
         set: v2.std.find_witness.CandidateSet {
           candidates: [policy.graph.root],

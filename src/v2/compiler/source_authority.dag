@@ -587,7 +587,7 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: _, diagnostics: _ } =>
           outcome_rejected(
             d: source_ref_read_failed_diagnostic(
@@ -803,7 +803,7 @@ fn module_storage_binding_from_provenance(
         }
       )
     Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -867,7 +867,7 @@ fn module_storage_binding_from_read_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> Outcome<ModuleStorageBinding> {
   match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
@@ -969,7 +969,7 @@ fn module_storage_bindings_from_ingest_prepared(
     }
   ) {
     ModuleStorageFoldOk { bindings: b } => outcome_accepted(value: b)
-    ModuleStorageFoldFailed { diagnostics: d } => Rejected { diagnostics: d }
+    ModuleStorageFoldFailed { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -981,7 +981,7 @@ fn module_storage_bindings_from_ingest_with_model(
     Empty => outcome_accepted(value: Empty)
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
@@ -1180,7 +1180,7 @@ fn source_ir_node_artifact_provenance_from_model(
           artifact: prov.artifact
         }
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -1235,7 +1235,7 @@ fn node_artifact_provenance_from_source_root(
     NodeArtifactProvenanceFoldOk { provenance: p } =>
       outcome_accepted(value: p)
     NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -1281,7 +1281,7 @@ fn source_ast_equal_witness(
   reparsed: DagSourceAst
 ) -> Witness<SourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
-    Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
+    v2.std.witness.Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_ast_mismatch)
@@ -1294,7 +1294,7 @@ fn normalized_source_ast_equal_witness(
   reparsed: NormalizedDagSourceAst
 ) -> Witness<NormalizedSourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
-    Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
+    v2.std.witness.Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_normalized_ast_mismatch)
@@ -1307,7 +1307,7 @@ fn semantic_ir_equal_witness(
   reparsed: DagSemanticIr
 ) -> Witness<SemanticIrEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
-    Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
+    v2.std.witness.Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_ir_mismatch)
@@ -1320,7 +1320,7 @@ fn deterministic_dag_source_serializer_witness(
   second: Medium<String>
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
   if medium_section_equal(left: first, right: second) {
-    Holds {
+    v2.std.witness.Holds {
       value: DeterministicDagSourceSerializerLaw {
         canonical_section: first.carried,
         declared_fidelity: first.fidelity
@@ -1392,11 +1392,11 @@ fn source_authority_law_from_parts(
   let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
   match source_law {
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: source_law_value } =>
       match semantic_law {
         Violates { diagnostic: d } =>
-          Rejected { diagnostics: diagnostics_singleton(d: d) }
+          v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: semantic_law_value } =>
           outcome_accepted(
             value: v2.std.witness.Holds {

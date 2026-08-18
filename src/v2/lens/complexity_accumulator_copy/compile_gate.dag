@@ -53,7 +53,7 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   let ledger = gate_ledger(findings: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: node))
   match ledger.suspects {
     Cons { head: first, tail: rest } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
           head: first,
           tail: fold(ledger.refusals, init: rest, f: fn(acc, d) {
@@ -65,12 +65,12 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
       match ledger.refusals {
         Cons { head: first, tail: rest } =>
           outcome_with_diagnostics(
-            value: Holds { value: node },
+            value: v2.std.witness.Holds { value: node },
             diagnostics: v2.std.diagnostic.Some {
               diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
             }
           )
-        Empty => outcome_accepted(value: Holds { value: node })
+        Empty => outcome_accepted(value: v2.std.witness.Holds { value: node })
       }
   }
 }

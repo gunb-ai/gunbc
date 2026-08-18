@@ -1,18 +1,18 @@
 module gunbc.codex_supervised_turn
 
-data codex_supervised_turn_authority_note: std.types.String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
+data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
 
-data codex_supervised_process_supervision_note: std.types.String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
+data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
 
-data codex_supervised_lease_selection_receipt_note: std.types.String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
+data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
-data codex_supervised_turn_wet_handoff_note: std.types.String = "BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses — admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1 only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b: wet_select_codex_exact_target_closure_only (2G). Step 2: wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle fixed; then enroll via gunbc.explicit_witness_admission."
+data codex_supervised_turn_wet_handoff_note: String = "BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses — admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1 only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b: wet_select_codex_exact_target_closure_only (2G). Step 2: wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle fixed; then enroll via gunbc.explicit_witness_admission."
 
-data codex_supervised_client_command_id_file_name: std.types.String = "/codex_supervised_client_command_id"
+data codex_supervised_client_command_id_file_name: String = "/codex_supervised_client_command_id"
 
-data codex_supervised_turn_generation_file_name: std.types.String = "/codex_supervised_turn_generation"
+data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
 
-data codex_supervised_operator_verdict_note: std.types.String = "OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold. codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until session driver lands."
+data codex_supervised_operator_verdict_note: String = "OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold. codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until session driver lands."
 
 data codex_supervised_thread_id_slot: std.types.NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as std.types.NonEmptyStr
 type CodexThreadActivity
@@ -75,7 +75,7 @@ type SupervisedTurnParseAcc {
   turn_terminal: SupervisedTurnTerminalSignal
 }
 
-fn codex_supervised_turn_lease_key(attempt_key: gunbc.roadmap_workflow_command.AttemptKey, turn_key: std.types.String) -> std.types.NonEmptyStr {
+fn codex_supervised_turn_lease_key(attempt_key: gunbc.roadmap_workflow_command.AttemptKey, turn_key: String) -> std.types.NonEmptyStr {
   concat(attempt_key, concat("/", turn_key)) as std.types.NonEmptyStr
 }
 
@@ -84,13 +84,13 @@ fn codex_supervised_turn_resource_fingerprint(
   attempt_key: gunbc.roadmap_workflow_command.AttemptKey,
 ) -> std.content_hash.ContentHash {
   std.content_hash.content_hash_of_value(
-    value: join([credential.codex_home as std.types.String, attempt_key], "|"),
+    value: join([credential.codex_home as String, attempt_key], "|"),
   )
 }
 
 fn codex_supervised_turn_owner_fingerprint(turn: gunbc.roadmap_workflow_command.WorkerTurn) -> std.content_hash.ContentHash {
   std.content_hash.content_hash_of_value(
-    value: codex_supervised_turn_client_command_id(turn: turn) as std.types.String,
+    value: codex_supervised_turn_client_command_id(turn: turn) as String,
   )
 }
 
@@ -105,7 +105,7 @@ fn codex_supervised_turn_client_command_id(turn: gunbc.roadmap_workflow_command.
 fn codex_supervised_turn_binding(
   turn: gunbc.roadmap_workflow_command.WorkerTurn,
   credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext,
-  prior_generation: std.types.Int,
+  prior_generation: Int,
   observed: std.temporal_effect.HeldLeaseObservedState,
   standing_receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt?,
 ) -> CodexSupervisedTurnBinding {
@@ -148,15 +148,15 @@ fn codex_supervised_turn_binding_with_observed(
   }
 }
 
-fn codex_supervised_turn_client_command_id_store_path(evidence_root: std.types.FilePath) -> std.types.String {
-  concat(evidence_root as std.types.String, codex_supervised_client_command_id_file_name)
+fn codex_supervised_turn_client_command_id_store_path(evidence_root: std.types.FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_client_command_id_file_name)
 }
 
-fn codex_supervised_turn_generation_store_path(evidence_root: std.types.FilePath) -> std.types.String {
-  concat(evidence_root as std.types.String, codex_supervised_turn_generation_file_name)
+fn codex_supervised_turn_generation_store_path(evidence_root: std.types.FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_turn_generation_file_name)
 }
 
-fn codex_supervised_generation_read_from_content(content: std.types.String) -> CodexSupervisedGenerationRead {
+fn codex_supervised_generation_read_from_content(content: String) -> CodexSupervisedGenerationRead {
   let trimmed = std.algebra.trim(s: content)
   if trimmed == "" {
     GenerationStoreMalformed { content: content }
@@ -176,7 +176,7 @@ fn codex_supervised_generation_read_from_content(content: std.types.String) -> C
 fn codex_supervised_generation_read_from_store(
   store_present: std.types.Bool,
   read_success: std.types.Bool,
-  content: std.types.String,
+  content: String,
 ) -> CodexSupervisedGenerationRead {
   if store_present == false {
     GenerationAbsent
@@ -224,7 +224,7 @@ fn codex_supervised_turn_generation_admission(
 
 fn persist_codex_supervised_turn_generation(
   evidence_root: std.types.FilePath,
-  generation: std.types.Int,
+  generation: Int,
 ) -> std.types.Bool {
   Filesystem.Write(
     path: codex_supervised_turn_generation_store_path(evidence_root: evidence_root),
@@ -238,7 +238,7 @@ fn persist_codex_supervised_turn_client_command_id(
 ) -> std.types.Bool {
   Filesystem.Write(
     path: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
-    content: client_command_id as std.types.String,
+    content: client_command_id as String,
   ).success
 }
 
@@ -328,14 +328,14 @@ fn provider_standing_bundle_from_codex_supervised_binding(
   }
 }
 
-fn codex_supervised_turn_start_line_template(user_input: std.types.String) -> std.types.String {
+fn codex_supervised_turn_start_line_template(user_input: String) -> String {
   extdeps.llm.codex_app_server.codex_app_server_turn_start_request_line(
     thread_id: codex_supervised_thread_id_slot,
     user_input: user_input,
-  ) as std.types.String
+  ) as String
 }
 
-fn supervised_thread_id_from_line(line: std.types.String) -> std.types.NonEmptyStr? {
+fn supervised_thread_id_from_line(line: String) -> std.types.NonEmptyStr? {
   let trimmed = line.trim()
   if trimmed == "" {
     none
@@ -346,7 +346,7 @@ fn supervised_thread_id_from_line(line: std.types.String) -> std.types.NonEmptyS
         match supervised_rpc_from_id_response(
           id: extdeps.llm.codex_app_server.codex_supervised_thread_start_id,
           obj: parsed,
-          entity_key: extdeps.llm.codex_app_server.codex_thread_start_result_thread_key as std.types.String,
+          entity_key: extdeps.llm.codex_app_server.codex_thread_start_result_thread_key as String,
         ) {
           SupervisedRpcOk { native_id: id } => Present { value: id }
           _ => none
@@ -355,14 +355,14 @@ fn supervised_thread_id_from_line(line: std.types.String) -> std.types.NonEmptyS
   }
 }
 
-fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, entity_key: std.types.String) -> std.types.NonEmptyStr? {
+fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, entity_key: String) -> std.types.NonEmptyStr? {
   match extdeps.languages.json.parse.json_object_unique_member(v: result, key: entity_key) {
     extdeps.languages.json.parse.JsonMemberFound { value: entity } =>
       match entity {
         extdeps.languages.json.emit.JsonObject { members: _ } =>
           match extdeps.languages.json.parse.json_object_unique_member(
             v: entity,
-            key: extdeps.llm.codex_app_server.codex_entity_id_key as std.types.String,
+            key: extdeps.llm.codex_app_server.codex_entity_id_key as String,
           ) {
             extdeps.languages.json.parse.JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
               if id == "" {
@@ -379,9 +379,9 @@ fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, e
 }
 
 fn supervised_rpc_from_id_response(
-  id: std.types.Int,
+  id: Int,
   obj: extdeps.languages.json.emit.JsonValue,
-  entity_key: std.types.String,
+  entity_key: String,
 ) -> SupervisedRpcObservation {
   match extdeps.languages.json.parse.json_object_unique_member(v: obj, key: "error") {
     extdeps.languages.json.parse.JsonMemberFound { value: err } =>
@@ -431,14 +431,14 @@ fn supervised_rpc_from_id_response(
   }
 }
 
-fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> std.types.String {
+fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> String {
   match err {
-    extdeps.languages.json.emit.JsonObject { members: _ } => "structured error" as std.types.String
-    extdeps.languages.json.emit.JsonNull => "unstructured error" as std.types.String
-    extdeps.languages.json.emit.JsonBool { value: _ } => "unstructured error" as std.types.String
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => "unstructured error" as std.types.String
-    extdeps.languages.json.emit.JsonString { value: _ } => "unstructured error" as std.types.String
-    extdeps.languages.json.emit.JsonArray { elements: _ } => "unstructured error" as std.types.String
+    extdeps.languages.json.emit.JsonObject { members: _ } => "structured error" as String
+    extdeps.languages.json.emit.JsonNull => "unstructured error" as String
+    extdeps.languages.json.emit.JsonBool { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonString { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonArray { elements: _ } => "unstructured error" as String
   }
 }
 
@@ -474,7 +474,7 @@ fn absorb_supervised_rpc(
 
 fn absorb_supervised_turn_line(
   acc: SupervisedTurnParseAcc,
-  line: std.types.String,
+  line: String,
 ) -> SupervisedTurnParseAcc {
   let trimmed = line.trim()
   if trimmed == "" {
@@ -494,7 +494,7 @@ fn absorb_supervised_turn_line(
                       next: supervised_rpc_from_id_response(
                         id: n,
                         obj: parsed,
-                        entity_key: extdeps.llm.codex_app_server.codex_thread_start_result_thread_key as std.types.String,
+                        entity_key: extdeps.llm.codex_app_server.codex_thread_start_result_thread_key as String,
                       ),
                     ),
                     turn_start: acc.turn_start,
@@ -508,7 +508,7 @@ fn absorb_supervised_turn_line(
                       next: supervised_rpc_from_id_response(
                         id: n,
                         obj: parsed,
-                        entity_key: extdeps.llm.codex_app_server.codex_turn_start_result_turn_key as std.types.String,
+                        entity_key: extdeps.llm.codex_app_server.codex_turn_start_result_turn_key as String,
                       ),
                     ),
                     turn_terminal: acc.turn_terminal,
@@ -542,9 +542,9 @@ fn absorb_supervised_turn_line(
   }
 }
 
-fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> std.types.Int? {
+fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as std.types.String)
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
     extdeps.languages.json.emit.JsonNull => none
     extdeps.languages.json.emit.JsonBool { value: _ } => none
     extdeps.languages.json.emit.JsonString { value: _ } => none
@@ -561,7 +561,7 @@ fn empty_supervised_turn_parse_acc() -> SupervisedTurnParseAcc {
   }
 }
 
-fn parse_supervised_turn_stdout(stdout: std.types.String) -> SupervisedTurnParseAcc {
+fn parse_supervised_turn_stdout(stdout: String) -> SupervisedTurnParseAcc {
   fold(
     split(s: stdout, delimiter: "\n"),
     init: empty_supervised_turn_parse_acc(),
@@ -571,7 +571,7 @@ fn parse_supervised_turn_stdout(stdout: std.types.String) -> SupervisedTurnParse
 
 fn disposition_from_supervised_parse(
   parse: SupervisedTurnParseAcc,
-  exit_code: std.types.Int?,
+  exit_code: Int?,
 ) -> gunbc.provider_turn_adjudication.ProviderTurnDisposition {
   match parse.turn_terminal {
     SupervisedTurnTerminalCompleted => gunbc.provider_turn_adjudication.ProviderTurnCompleted
@@ -624,9 +624,9 @@ fn codex_runner_turn_terminal_receipt(
 
 fn codex_supervised_turn_outcome_from_capture(
   running_binding: CodexSupervisedTurnBinding,
-  stdout: std.types.String,
-  stderr: std.types.String,
-  exit_code: std.types.Int?,
+  stdout: String,
+  stderr: String,
+  exit_code: Int?,
   wire: gunbc.provider_wire_evidence.ProviderWireEvidenceReceipt?,
   evidence_root: std.types.FilePath,
 ) -> CodexSupervisedTurnOutcome {

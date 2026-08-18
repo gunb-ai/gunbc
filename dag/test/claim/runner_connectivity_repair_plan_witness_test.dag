@@ -15,7 +15,7 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
   let slot = fixture_slot()
   let inc = gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
-    process: ProcessIdentity {
+    process: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as std.types.NonEmptyStr,

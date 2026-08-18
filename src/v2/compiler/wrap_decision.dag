@@ -97,7 +97,7 @@ fn wrap_decision_bundle_edge_present(
         Absent => outcome_accepted(false)
         Present { value: _ } => outcome_accepted(true)
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -313,6 +313,6 @@ fn wrap_decision_gate(
           }
         }
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

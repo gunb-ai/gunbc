@@ -9,7 +9,7 @@ fn emit_loop_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: ^emit_loop_eval_generic_descent }
@@ -28,10 +28,10 @@ fn emit_loop_eval_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
-          facts: Map { lookup: emit_loop_eval_composed_facts }
+          facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -41,10 +41,10 @@ fn emit_loop_eval_wrong_value_producer_tree() -> Outcome<v2.compiler.infer.Infer
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
-          facts: Map { lookup: emit_loop_eval_composed_facts }
+          facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -70,7 +70,7 @@ fn emit_loop_eval_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEn
     match dag_int_literal_magnitude_int_from_node(node: node) {
       Accepted { value: mag, diagnostics: _ } =>
         outcome_accepted(value: emit_loop_eval_octet_value(n: mag))
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(
@@ -108,7 +108,7 @@ fn emit_loop_eval_step_loop(
       bind_outcome(
         o: emit_loop_eval_allocate_literal(node: body, _env: env),
         f: fn(value) {
-          outcome_accepted(value: Continue { value: value })
+          outcome_accepted(value: v2.std.runtime.Continue { value: value })
         }
       )
     Absent =>

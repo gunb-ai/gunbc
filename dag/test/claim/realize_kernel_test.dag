@@ -33,7 +33,7 @@ fn mk_receipt(content: std.content_hash.ContentHash) -> CachedArtifactReceipt<st
 
 test fn witness_verified_hit_reuses() -> Bool {
   let r = mk_receipt(content: content_v1)
-  match realize_route(lookup: Hit { receipt: r }) {
+  match realize_route(lookup: std.cache_interface.Hit { receipt: r }) {
     Reuse { receipt: _ } => true
     Recompute { reason: _ } => false
   }
@@ -71,7 +71,7 @@ test fn witness_fresh_subject_written() -> Bool {
 test fn witness_idempotent_same_content() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v1)
-  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
+  match classify_write(existing: std.cache_interface.Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
     WriteSkippedIdempotent { receipt: _ } => true
     _ => false
   }
@@ -80,7 +80,7 @@ test fn witness_idempotent_same_content() -> Bool {
 test fn witness_purity_conflict_rejects_overwrite() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v2)
-  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
+  match classify_write(existing: std.cache_interface.Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
     WriteRejected { reason: WriteOnceConflict } => true
     _ => false
   }

@@ -54,7 +54,7 @@ fn sr_unbound_usage_site_witness() -> Optional<v2.compiler.infer.InferredFacts> 
 
 fn sr_unbound_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
-  Map {
+  std.types.Map {
     lookup: fn(key) {
       if key == sr_unbound_use {
         optional_absent()

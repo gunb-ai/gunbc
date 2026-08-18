@@ -7,7 +7,7 @@ data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchd
 
 type RunnerLocalIncarnation {
   slot: gunbc.build_cache_instance.RunnerSlotIdentity
-  process: ProcessIdentity
+  process: gunbc.build_cache_instance.ProcessIdentity
   unit: std.types.NonEmptyStr
 }
 
@@ -54,8 +54,8 @@ type RunnerRepairRefusalCause
   | LocalProcessNotActive
   | ObservationStale { observed_at: std.types.Timestamp, act_at: std.types.Timestamp }
   | IncarnationChangedSinceObservation {
-      expected: ProcessIdentity,
-      found: ProcessIdentity,
+      expected: gunbc.build_cache_instance.ProcessIdentity,
+      found: gunbc.build_cache_instance.ProcessIdentity,
     }
   | HostReachAdmissionRefused { reason: std.types.NonEmptyStr }
   | RestartCooldownActive { seconds_remaining: Int }

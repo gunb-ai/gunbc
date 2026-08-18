@@ -63,7 +63,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler
 },
     diagnostics: None
   ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
   }
 }
@@ -117,7 +117,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
 },
     diagnostics: None
   ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
   }
 }

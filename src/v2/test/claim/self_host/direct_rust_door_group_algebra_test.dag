@@ -25,7 +25,7 @@ fn planted_artifact(
     module_path: direct_rust_door_module_path,
     producer: producer,
     qualifications: qualifications,
-    build_result: BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
+    build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: closure
   ) {
@@ -227,7 +227,7 @@ test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> Bool {
     module_path: direct_rust_door_module_path,
     producer: V2EmitterInterpreted,
     qualifications: source_produced_qualifications,
-    build_result: BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
+    build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure {
       emitter_module_paths: ["v1.compiler.emit_rust"]

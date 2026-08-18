@@ -93,7 +93,7 @@ fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation
           tokens: tokens
         ),
         f: fn(carrier) {
-          Accepted { value: render_target_text(t: carrier), diagnostics: None }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: carrier), diagnostics: None }
         }
       )
     }

@@ -95,9 +95,9 @@ fn pa_successor() -> v2.compiler.self_host.generation.SuccessorGeneration {
 
 fn pa_build(
   subject: v2.compiler.self_host.generation.GenerationIdentity,
-  outcome: ObservedVerdict<BuildOutcome>
-) -> BuildReceipt {
-  BuildReceipt { subject: subject, outcome: outcome }
+  outcome: ObservedVerdict<v2.compiler.self_host.promotion_admission.BuildOutcome>
+) -> v2.compiler.self_host.promotion_admission.BuildReceipt {
+  v2.compiler.self_host.promotion_admission.BuildReceipt { subject: subject, outcome: outcome }
 }
 
 // classical_not over 2 inputs, plus classical_and and classical_or over 4 pairs each:
@@ -176,8 +176,8 @@ fn pa_provenance(
 }
 
 fn pa_bundle(
-  candidate_build: BuildReceipt,
-  successor_build: BuildReceipt,
+  candidate_build: v2.compiler.self_host.promotion_admission.BuildReceipt,
+  successor_build: v2.compiler.self_host.promotion_admission.BuildReceipt,
   candidate_equivalence: v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt,
   successor_equivalence: v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt,
   discriminating_fault: v2.compiler.self_host.promotion_admission.DiscriminatingFaultReceipt,
@@ -201,25 +201,25 @@ fn pa_good() -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
   pa_bundle(
     candidate_build: pa_build(
       subject: pa_candidate_identity(),
-      outcome: Observed { value: BuildGreen }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
     ),
     successor_build: pa_build(
       subject: pa_successor_identity(),
-      outcome: Observed { value: BuildGreen }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
     ),
     candidate_equivalence: pa_equivalence(
       subject: pa_candidate_identity(),
       cases: pa_corpus_cases,
-      outcome: Observed { value: BehaviorAgrees }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
     ),
     successor_equivalence: pa_equivalence(
       subject: pa_successor_identity(),
       cases: pa_corpus_cases,
-      outcome: Observed { value: BehaviorAgrees }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
     ),
     discriminating_fault: pa_fault(
       subject: pa_candidate_identity(),
-      outcome: Observed { value: FaultCaught }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
     ),
     candidate_provenance: pa_provenance(
       subject: pa_candidate_identity(),
@@ -255,8 +255,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         identity: ident,
         produced_by_candidate: cand
       },
-      candidate_build: pa_build(subject: ident, outcome: Observed { value: BuildGreen }),
-      successor_build: pa_build(subject: ident, outcome: Observed { value: BuildGreen }),
+      candidate_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }),
+      successor_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }),
       candidate_equivalence: v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt {
         subject: ident,
         oracle: ident,
@@ -275,7 +275,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
       },
       discriminating_fault: pa_fault(
         subject: ident,
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(subject: ident, producer: ident),
       successor_provenance: pa_provenance(subject: ident, producer: ident)
@@ -293,25 +293,25 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed {
+        outcome: v2.compiler.self_host.promotion_admission.Observed {
           value: v2.compiler.self_host.promotion_admission.FaultNotCaught { at_case: "classical_not(True)" }
         }
       ),
@@ -338,21 +338,21 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
@@ -381,28 +381,28 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence_on(
         subject: pa_candidate_identity(),
         corpus: pa_corpus(expected: 0),
         cases: 0,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence_on(
         subject: pa_successor_identity(),
         corpus: pa_corpus(expected: 0),
         cases: 0,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
         corpus: pa_corpus(expected: 0),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -434,25 +434,25 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: stale_subject,
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -476,25 +476,25 @@ test fn failed_successor_build_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildFailed { cause: ^rustc_error } }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildFailed { cause: ^rustc_error } }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -519,25 +519,25 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -571,21 +571,21 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: self_oracle,
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -627,25 +627,25 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       },
       candidate_build: pa_build(
         subject: unbuilt_identity,
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: unbuilt_identity,
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: unbuilt_identity,
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: unbuilt_identity,
@@ -683,25 +683,25 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       successor: spliced_successor,
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -728,21 +728,21 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
@@ -750,7 +750,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
           identity: "SOME-OTHER-corpus",
           expected_cases: pa_corpus_cases
         },
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -793,25 +793,25 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
       },
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -841,25 +841,25 @@ test fn truncated_successor_run_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: 1,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -884,25 +884,25 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases + 5,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -927,26 +927,26 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence_on(
         subject: pa_successor_identity(),
         corpus: pa_corpus(expected: 3),
         cases: 3,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -970,7 +970,7 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
 // declared corpus through unchanged, so a transport cannot quietly improve its own
 // evidence on the way into a receipt.
 fn pa_observation(
-  build: ObservedVerdict<BuildOutcome>,
+  build: ObservedVerdict<v2.compiler.self_host.promotion_admission.BuildOutcome>,
   equivalence: ObservedVerdict<v2.compiler.self_host.promotion_admission.EquivalenceOutcome>,
   fault: ObservedVerdict<v2.compiler.self_host.promotion_admission.FaultOutcome>
 ) -> v2.compiler.self_host.promotion_admission.BehavioralComparisonObservation {
@@ -1029,9 +1029,9 @@ test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
     o: admit_promotion(
       c: pa_bundle_from_observation(
         o: pa_observation(
-          build: Observed { value: BuildGreen },
-          equivalence: Observed { value: BehaviorAgrees },
-          fault: Observed { value: FaultCaught }
+          build: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen },
+          equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
+          fault: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
         )
       )
     )
@@ -1047,8 +1047,8 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
   let o = admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
-        build: Observed { value: BuildGreen },
-        equivalence: Observed { value: BehaviorAgrees },
+        build: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen },
+        equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
         fault: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
       )
     )

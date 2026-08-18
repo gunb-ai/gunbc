@@ -18,7 +18,7 @@ type GitHubAuthSource {
 }
 
 data default_github_auth_source: GitHubAuthSource = {
-  credential_source: EnvVar { name: "GITHUB_TOKEN" },
+  credential_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" },
   token_metadata: DeclaredGitHubTokenMetadata {
     scopes: [ScopeRepo, ScopeGist],
     expires_at: none

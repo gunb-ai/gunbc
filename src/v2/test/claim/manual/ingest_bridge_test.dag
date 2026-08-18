@@ -31,16 +31,16 @@ fn ingest_fixture_root() -> v2.std.grammar.GrammarRoot {
 fn ingest_parse() -> Outcome<Node> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
         tokens: std.algebra.Cons { head: ingest_fixture_token(), tail: Empty },
         validated: validated,
         production_name: ^ingest_fixture_start
       ) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
-          Accepted { value: artifact.tree, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: None }
       }
   }
 }

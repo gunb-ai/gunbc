@@ -26,23 +26,23 @@ fn typescript_pr3_canonical_grounding(node: Node, algebra: Node) -> v2.std.const
 
 fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == typescript_pr3_emitted_root {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_token_ty_number) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_binding_pr3_identity) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_binding_param_x) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
   } else if content_hash(n: node) == content_hash(n: typescript_pr3_emitted_root) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: typescript_pr3_emitted_root)
     }
   } else {
@@ -65,7 +65,7 @@ fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.I
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -77,14 +77,14 @@ fn typescript_pr3_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inferred
 
 data typescript_pr3_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: typescript_pr3_emitted_root,
-  facts: Map { lookup: typescript_pr3_facts_lookup }
+  facts: std.types.Map { lookup: typescript_pr3_facts_lookup }
 }
 
 fn anchor_typescript_pr3_emit_accepts() -> Outcome<Medium<String>> {
   match typescript_pr3_target_model_for_emit() {
     Holds { value: target } => emit(tree: typescript_pr3_inferred_tree, target: target)
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -96,7 +96,7 @@ fn anchor_typescript_pr3_compile_inferred_accepts() -> Outcome<v2.compiler.compi
         mode: v2.compiler.compile.TranslateTo { target: target }
       )
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

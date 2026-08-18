@@ -47,20 +47,20 @@ data all_node_superset_fields: List<NodeSupersetField> = [
 ]
 
 type SpanRef {
-  file_id: UInt32
-  start: UInt32
-  end: UInt32
+  file_id: v2.std.integer.UInt32
+  start: v2.std.integer.UInt32
+  end: v2.std.integer.UInt32
 }
 
 type IdentRef {
-  value: UInt32
+  value: v2.std.integer.UInt32
 }
 
 data ident_ref_absent: IdentRef = IdentRef { value: 0 }
 
 type InferenceSlot
   = InferenceAbsent
-  | InferencePresent { slot: UInt32 }
+  | InferencePresent { slot: v2.std.integer.UInt32 }
 
 type MatchPatternSlot {
   tag: v2.std.node.Symbol

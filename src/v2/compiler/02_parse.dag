@@ -204,7 +204,7 @@ fn grammar_lookup_production(root: v2.std.grammar.GrammarRoot, name: v2.std.node
     xs: filter(xs: root.productions, predicate: fn(p) { p.name == name }),
     index: 0
   ) {
-    Present { value: production } => Holds { value: production }
+    Present { value: production } => v2.std.witness.Holds { value: production }
     Absent =>
       v2.std.witness.Violates {
         diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
@@ -449,7 +449,7 @@ fn parse_table_empty() -> ParseTable {
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
-    nullable_set: Set { member: fn(_) { false } },
+    nullable_set: std.types.Set { member: fn(_) { false } },
     first_rows: empty_map()
   }
 }
@@ -981,7 +981,7 @@ fn parse_nonterminal_memoized_core(
 }
 
 fn set_symbol_insert(s: Set<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) { sym == item || s.member(sym) }
   }
 }
@@ -1011,7 +1011,7 @@ fn compute_nullable_step(ns: Set<v2.std.node.Symbol>, p: v2.std.grammar.GrammarP
 fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> Set<v2.std.node.Symbol> {
   fold_list(
     xs: root.productions,
-    empty: Set { member: fn(_) { false } },
+    empty: std.types.Set { member: fn(_) { false } },
     cons: fn(acc, _) {
       fold_list(
         xs: root.productions,
@@ -1577,23 +1577,23 @@ fn grammar_overlap_residue_diagnostics(at: v2.std.diagnostic.Locus, roster: List
 
 fn grammar_validate_and_analyze(root: v2.std.grammar.GrammarRoot, at: v2.std.diagnostic.Locus) -> Outcome<PreparedModeledGrammar> {
   if grammar_has_undefined_nonterminals(root: root) {
-    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
   } else {
     if grammar_has_duplicate_productions(root: root) {
-      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
     } else {
       if grammar_has_left_recursion(root: root) {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
         let analysis = compute_grammar_first_analysis(root: root)
         let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
         let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
         if !is_empty(xs: nullable_rows) {
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
           }
         } else {
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: PreparedModeledGrammar {
               validated: v2.std.grammar.ValidatedGrammarRoot { root: root },
               analysis: analysis,
@@ -1612,9 +1612,9 @@ fn grammar_validate_and_analyze(root: v2.std.grammar.GrammarRoot, at: v2.std.dia
 
 fn grammar_validate_for_parse(root: v2.std.grammar.GrammarRoot, at: v2.std.diagnostic.Locus) -> Outcome<v2.std.grammar.ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: modeled, diagnostics: residue } =>
-      Accepted { value: modeled.validated, diagnostics: residue }
+      v2.std.diagnostic.Accepted { value: modeled.validated, diagnostics: residue }
   }
 }
 
@@ -2118,15 +2118,15 @@ fn parse_production_prepared(
               captured: captured,
               prov: inner_prov
             )
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
               diagnostics: parse_diags_to_diagnostics(diags: diags)
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+            v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
           }
         ParseExprRejected { diagnostics: diags, table: _ } =>
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: parse_diags_to_non_empty(
               diags: diags,
               default: parse_e1_syntax_error_diagnostic(at: at)
@@ -2134,7 +2134,7 @@ fn parse_production_prepared(
           }
       }
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -2162,9 +2162,9 @@ fn parse_production_tree(
     production_name: production_name
   ) {
     Accepted { value: artifact, diagnostics: d } =>
-      Accepted { value: artifact.tree, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
     Rejected { diagnostics: r } =>
-      Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 fn prepare_grammar(grammar: v2.std.grammar.ParseGrammar) -> Outcome<PreparedGrammar> {
@@ -2173,19 +2173,19 @@ fn prepare_grammar(grammar: v2.std.grammar.ParseGrammar) -> Outcome<PreparedGram
   if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
-        Accepted { value: PreparedVoidGrammar, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: PreparedVoidGrammar, diagnostics: None }
       ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
-          Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+          Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
           Accepted { value: modeled, diagnostics: validation_residue } =>
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: PreparedModeled { modeled: modeled },
               diagnostics: validation_residue
             }
         }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
   }
 }
 
@@ -2214,12 +2214,12 @@ fn parse_module_prepared(
   match prepared {
     PreparedVoidGrammar =>
       if ntok == 0 {
-        Accepted {
+        v2.std.diagnostic.Accepted {
           value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
           diagnostics: validation_residue
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
       }
     PreparedModeled { modeled: modeled } =>
       match parse_production_prepared(
@@ -2229,12 +2229,12 @@ fn parse_module_prepared(
         production_name: modeled.validated.root.start
       ) {
         Accepted { value: artifact, diagnostics: parse_diags } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: artifact,
             diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
           }
         Rejected { diagnostics: parse_rejected } =>
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
           }
       }
@@ -2243,7 +2243,7 @@ fn parse_module_prepared(
 
 fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> Outcome<ParseArtifact> {
   match prepare_grammar(grammar: grammar) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: prepared, diagnostics: validation_residue } =>
       parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
   }
@@ -2252,8 +2252,8 @@ fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.gra
 fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> Outcome<v2.std.grammar.ParseTree> {
   match parse_module(tokens: tokens, grammar: grammar) {
     Accepted { value: artifact, diagnostics: d } =>
-      Accepted { value: artifact.tree, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
     Rejected { diagnostics: r } =>
-      Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

@@ -162,7 +162,7 @@ fn graph_reach_apply_diagnostic_correction(root: Node, d: v2.std.diagnostic.Diag
   match d.correction {
     Suggested { node: repaired } => graph_reach_apply_suggested_correction(root: root, repaired: repaired)
     Unavailable { reason: _ } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(d: d)
       }
   }

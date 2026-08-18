@@ -99,7 +99,7 @@ data claim_idempotency_write_effect_receipt: v2.std.verification.TestClaim = v2.
 
 data verdict_idempotency_write_effect_node_assert: Verdict<TestClaimEvalSubject<Node>, Node> = run_test_claim_assert(
   claim: claim_idempotency_write_effect_receipt,
-  actual: Accepted {
+  actual: v2.std.diagnostic.Accepted {
     value: idempotency_claim_input(ok: idempotency_write_effect_claim_passes),
     diagnostics: None
   },

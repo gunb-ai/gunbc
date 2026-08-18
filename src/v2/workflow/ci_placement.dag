@@ -9,7 +9,7 @@ type PlacementClassification
   | Unclassified
 
 type WarmCostReceipt {
-  measured_ms: Nat
+  measured_ms: std.nat.Nat
   run_ref: String
 }
 

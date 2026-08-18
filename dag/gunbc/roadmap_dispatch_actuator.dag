@@ -1605,13 +1605,13 @@ fn decision_for_dispatch_lease_verdict(
   verdict: std.upsert_decision.ObservationVerdict,
 ) -> UpsertDecision<DispatchLeasePlan> {
   match verdict {
-    Converged => Refuse { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
-    Absent => Apply { plan: SpawnSession }
-    Drifted => Apply { plan: DrainStaleThenSpawn }
-    Conflict => Refuse { reason: "foreign tmux session owns dispatch slot" as std.types.NonEmptyStr }
-    Inaccessible => Refuse { reason: "tmux session inaccessible" as std.types.NonEmptyStr }
+    Converged => std.upsert_decision.Refuse { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
+    Absent => std.upsert_decision.Apply { plan: SpawnSession }
+    Drifted => std.upsert_decision.Apply { plan: DrainStaleThenSpawn }
+    Conflict => std.upsert_decision.Refuse { reason: "foreign tmux session owns dispatch slot" as std.types.NonEmptyStr }
+    Inaccessible => std.upsert_decision.Refuse { reason: "tmux session inaccessible" as std.types.NonEmptyStr }
     UnknownRefused =>
-      Refuse { reason: "dispatch session name occupied; process fingerprint unobserved" as std.types.NonEmptyStr }
+      std.upsert_decision.Refuse { reason: "dispatch session name occupied; process fingerprint unobserved" as std.types.NonEmptyStr }
   }
 }
 

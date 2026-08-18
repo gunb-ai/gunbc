@@ -45,7 +45,7 @@ fn emit_call_eval_choose_branch(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: emit_call_eval_diagnostic(
         reason: ^emit_call_eval_branch_miss,
@@ -59,7 +59,7 @@ fn emit_call_eval_step_loop(
   _node: Node,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: emit_call_eval_diagnostic(
         reason: ^emit_call_eval_loop_miss,
@@ -117,7 +117,7 @@ fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: ^emit_call_eval_generic_descent }
@@ -136,7 +136,7 @@ fn emit_call_eval_composed_facts(key: Node) -> Optional<v2.compiler.infer.Inferr
 fn emit_call_eval_producer_tree() -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: rust_call_helper_arrow(),
-    facts: Map { lookup: emit_call_eval_composed_facts }
+    facts: std.types.Map { lookup: emit_call_eval_composed_facts }
   }
 }
 

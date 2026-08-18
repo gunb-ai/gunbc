@@ -50,7 +50,7 @@ fn infer_receipt_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
 }
 
 fn infer_receipt_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_call_primitive(
@@ -58,15 +58,15 @@ fn infer_receipt_call_primitive(
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
-  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_bind_value(
@@ -74,7 +74,7 @@ fn infer_receipt_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn infer_receipt_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -160,7 +160,7 @@ fn infer_receipt_context() -> v2.compiler.eval.EvalContext {
 fn infer_receipt_empty_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(_) {
         Absent
       }
@@ -191,8 +191,8 @@ fn infer_receipt_case_pin(case: InferReceiptCase) -> v2.std.node.Symbol {
 fn infer_outcome_node_projection(actual: Outcome<v2.compiler.infer.InferredTree>) -> Outcome<Node> {
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
-      Accepted { value: tree.root, diagnostics: ad }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -207,7 +207,7 @@ fn infer_add_receipt_run(
         match actual {
           Accepted { value: tree, diagnostics: ad } =>
             if outcome_node_eq(
-              a: Accepted { value: tree.root, diagnostics: ad },
+              a: v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad },
               b: expected
             ) {
               Pass
@@ -286,9 +286,9 @@ fn anchor_infer_add() -> Outcome<v2.compiler.infer.InferredTree> {
 
 fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
-    Holds { value: _ } => Accepted { value: n, diagnostics: None }
+    Holds { value: _ } => v2.std.diagnostic.Accepted { value: n, diagnostics: None }
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

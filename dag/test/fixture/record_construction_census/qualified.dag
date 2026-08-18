@@ -3,6 +3,6 @@ module test.fixture.record_construction_census.qualified
 
 data record_construction_census_qualified_note: String = "Qualified-spelling specimen: constructs specimens.CensusProbeSubject through its full dotted authored spelling. A qualified construction marshals that FULL spelling on the record_construction_spelling edge (measured, not assumed), so a bare-lexeme comparison would miss it; the witness's suffix-aware census_spelling_names_target counts it, and qualified_construction_cannot_hide_target is the executed positive control."
 
-fn census_probe_constructs_subject_qualified() -> CensusProbeSubject {
+fn census_probe_constructs_subject_qualified() -> test.fixture.record_construction_census.specimens.CensusProbeSubject {
   test.fixture.record_construction_census.specimens.CensusProbeSubject { weight: 3 }
 }

@@ -818,7 +818,7 @@ fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> Opt
 }
 
 fn empty_runtime_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  Map {
+  std.types.Map {
     lookup: runtime_binding_lookup_miss
   }
 }
@@ -845,19 +845,19 @@ fn inferred_facts_for_eval(tree: v2.compiler.infer.InferredTree, node: Node) -> 
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
       if !inferred_facts_grounding_derived(facts: facts) {
-        Rejected {
+        v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
           )
         }
       } else if !inferred_facts_cover_node(facts: facts, node: node) {
-        Rejected {
+        v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_grounding_node_mismatch, node: node)
           )
         }
       } else if !inferred_facts_canonical_admitted(facts: facts) {
-        Rejected {
+        v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
           )
@@ -865,13 +865,13 @@ fn inferred_facts_for_eval(tree: v2.compiler.infer.InferredTree, node: Node) -> 
       } else {
         match inferred_facts_descent(facts: facts) {
           Holds { value: _ } =>
-            Accepted { value: facts, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: facts, diagnostics: None }
           Violates { diagnostic: d } =>
-            Rejected { diagnostics: diagnostics_singleton(d: d) }
+            v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
         }
       }
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -879,7 +879,7 @@ fn eval_structural_node_for_eval(tree: v2.compiler.infer.InferredTree, node: Nod
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(_facts) {
-      Accepted { value: node, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: node, diagnostics: None }
     }
   )
 }
@@ -930,7 +930,7 @@ fn eval_runtime_value_acceptance_witness(
         }
       Holds { value: declared } =>
         if declared == runtime_value_resolved_type(value: value) {
-          Holds { value: runtime_value_resolved_type(value: value) }
+          v2.std.witness.Holds { value: runtime_value_resolved_type(value: value) }
         } else {
           v2.std.witness.Violates {
             diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
@@ -938,14 +938,14 @@ fn eval_runtime_value_acceptance_witness(
         }
     },
     inhabitance: if inferred_facts_canonical_admitted(facts: facts) {
-      Holds { value: facts }
+      v2.std.witness.Holds { value: facts }
     } else {
       v2.std.witness.Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_inhabitance_mismatch, node: node)
       }
     },
     canonical: if inferred_facts_canonical_admitted(facts: facts) {
-      Holds { value: facts }
+      v2.std.witness.Holds { value: facts }
     } else {
       v2.std.witness.Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
@@ -966,7 +966,7 @@ fn eval_accept_runtime_value_with_facts(
       Violates { diagnostic: d } => outcome_rejected(d: d)
       Holds { value: _ } => match witness.canonical {
         Violates { diagnostic: d } => outcome_rejected(d: d)
-        Holds { value: _ } => Accepted { value: value, diagnostics: None }
+        Holds { value: _ } => v2.std.diagnostic.Accepted { value: value, diagnostics: None }
       }
     }
   }
@@ -974,7 +974,7 @@ fn eval_accept_runtime_value_with_facts(
 
 fn eval_witness_outcome<T>(witness: Witness<T>) -> Outcome<T> {
   match witness {
-    Holds { value: v } => Accepted { value: v, diagnostics: None }
+    Holds { value: v } => v2.std.diagnostic.Accepted { value: v, diagnostics: None }
     Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
@@ -1046,7 +1046,7 @@ fn eval_bind_body(node: Node) -> Outcome<Node> {
       absent_reason: ^eval_rejected_bind_body_absent
     ),
     f: fn(e) {
-      Accepted { value: e.target, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: e.target, diagnostics: None }
     }
   )
 }
@@ -1066,7 +1066,7 @@ fn eval_binding_key_from_atom(node: Node) -> Optional<v2.std.runtime.Environment
 fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<v2.std.runtime.EnvironmentBindingKey> {
   match eval_binding_key_from_atom(node: declaration) {
     Present { value: key } =>
-      Accepted { value: key, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: key, diagnostics: None }
     Absent =>
       outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
@@ -1103,13 +1103,13 @@ fn eval_type_node_atom(
       } else {
         match eval_runtime_binding_lookup(node: node, environment: environment) {
           Accepted { value: v, diagnostics: d } =>
-            Accepted { value: v, diagnostics: d }
+            v2.std.diagnostic.Accepted { value: v, diagnostics: d }
           Rejected { diagnostics: bind_ds } =>
             match interpretation.value.allocate_literal(node, environment) {
               Accepted { value: v, diagnostics: d } =>
-                Accepted { value: v, diagnostics: d }
+                v2.std.diagnostic.Accepted { value: v, diagnostics: d }
               Rejected { diagnostics: _ } =>
-                Rejected { diagnostics: bind_ds }
+                v2.std.diagnostic.Rejected { diagnostics: bind_ds }
             }
         }
       }
@@ -1134,7 +1134,7 @@ fn eval_bind_param_edge_step(
 ) -> EvalParamBindAcc {
   match state.acc {
     Rejected { diagnostics: r } =>
-      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
+      EvalParamBindAcc { idx: state.idx + 1, acc: v2.std.diagnostic.Rejected { diagnostics: r } }
     Accepted { value: env, diagnostics: _ } =>
       match param_edge.label {
         Named { name: binding_id } =>
@@ -1158,7 +1158,7 @@ fn eval_bind_param_edge_step(
             )
           }
         Positional =>
-          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
+          EvalParamBindAcc { idx: state.idx, acc: v2.std.diagnostic.Accepted { value: env, diagnostics: None } }
       }
   }
 }
@@ -1175,7 +1175,7 @@ fn eval_bind_arrow_params(
     f: fn(domain_edge) {
       match fold_list(
         xs: domain_edge.target.children,
-        empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
+        empty: EvalParamBindAcc { idx: 0, acc: v2.std.diagnostic.Accepted { value: environment, diagnostics: None } },
         cons: fn(state, param_edge) {
           eval_bind_param_edge_step(
             state: state,
@@ -1310,7 +1310,7 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
 
 fn eval_invoke_effect_handler(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
   effect_io_pure_invoke_handler(handler: handler, request: request)
@@ -1318,7 +1318,7 @@ fn eval_invoke_effect_handler(
 
 fn eval_bundle_with_receipt_appended(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest,
+  request: v2.std.runtime.EffectRequest,
   result: Outcome<v2.std.runtime.RuntimeValue>
 ) -> EffectIoEvalBundle {
   EffectIoEvalBundle {
@@ -1335,7 +1335,7 @@ fn eval_bundle_with_receipt_appended(
 
 fn eval_yield_effect_request(
   bundle: EffectIoEvalBundle,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<EffectIoYieldOutcome> {
   let result = eval_invoke_effect_handler(bundle: bundle, request: request)
   let logged_bundle = eval_bundle_with_receipt_appended(
@@ -1345,11 +1345,11 @@ fn eval_yield_effect_request(
   )
   match result {
     Accepted { value: v, diagnostics: None } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
         diagnostics: None
       }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -1402,11 +1402,11 @@ fn eval_effect_io_roundtrip(
                       bind_outcome(
                         o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
                         f: fn(read_yield) {
-                          Accepted { value: read_yield.value, diagnostics: None }
+                          v2.std.diagnostic.Accepted { value: read_yield.value, diagnostics: None }
                         }
                       )
                     Violates { diagnostic: d } =>
-                      Rejected { diagnostics: diagnostics_singleton(d: d) }
+                      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
                   }
                 } else {
                   outcome_rejected(
@@ -1975,7 +1975,7 @@ fn eval_fold_init(
     node: node,
     progress: progress,
     structural: eval_structural_node_for_eval(tree: tree, node: node),
-    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    child_values: v2.std.diagnostic.Accepted { value: empty_runtime_values(), diagnostics: None },
     value: if count(node.children) == 0 {
       eval_interpret_node(
         node: node,
@@ -2006,7 +2006,7 @@ fn eval_fold_control_transfer_state(
     node: node,
     progress: Interpreted,
     structural: eval_structural_node_for_eval(tree: tree, node: node),
-    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    child_values: v2.std.diagnostic.Accepted { value: empty_runtime_values(), diagnostics: None },
     value: eval_runtime_control_node(
       node: node,
       tree: tree,
@@ -2042,7 +2042,7 @@ fn eval_fold_callee_reference_child_state(
     node: edge.target,
     progress: Interpreted,
     structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
-    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    child_values: v2.std.diagnostic.Accepted { value: empty_runtime_values(), diagnostics: None },
     value: outcome_rejected(
       d: eval_diagnostic(reason: ^eval_rejected_pending_children, node: edge.target)
     )
@@ -2069,8 +2069,8 @@ fn eval_fold_closure_argument_child_state(
     node: edge.target,
     progress: Interpreted,
     structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
-    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
-    value: Accepted {
+    child_values: v2.std.diagnostic.Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: v2.std.diagnostic.Accepted {
       value: v2.std.runtime.RuntimeClosure {
         value: v2.std.runtime.RuntimeClosureValue {
           arrow_type: edge.target,
@@ -2422,10 +2422,10 @@ fn eval_with_context(
         effect_io: eval_context_effect_io(context: context)
       )
     } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
@@ -2441,10 +2441,10 @@ fn eval(tree: v2.compiler.infer.InferredTree, interpretation: v2.std.runtime.Int
         effect_io: EffectIoEvalAbsent
       )
     } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
@@ -2454,7 +2454,7 @@ fn eval_node(tree: v2.compiler.infer.InferredTree, inputs: Inputs) -> Outcome<No
     f: fn(value) {
       match runtime_value_node_projection(value: value) {
         RuntimeValueNodeProjected { node: n } =>
-          Accepted { value: n, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: n, diagnostics: None }
         RuntimeValueNodeUnrepresentable =>
           outcome_rejected(
             d: eval_diagnostic(
@@ -2469,9 +2469,9 @@ fn eval_node(tree: v2.compiler.infer.InferredTree, inputs: Inputs) -> Outcome<No
 
 fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
   if well_formed(n: input) {
-    Accepted { value: input, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: input, diagnostics: None }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
       )
@@ -2544,8 +2544,8 @@ fn run_test_claim_structural_equals_verdict(
       )
     Accepted { value: admitted, diagnostics: _ } =>
       if outcome_node_eq(
-        a: Accepted { value: admitted, diagnostics: None },
-        b: Accepted { value: rhs, diagnostics: None }
+        a: v2.std.diagnostic.Accepted { value: admitted, diagnostics: None },
+        b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: None }
       ) {
         Pass
       } else {
@@ -2565,13 +2565,13 @@ fn run_test_claim_assert_decided(
 ) -> Verdict<TestClaimEvalSubject<Node>, Node> {
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+      if outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
         verdict_fail(actual: actual)
       }
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+      if outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
         verdict_fail(actual: actual)
@@ -2579,7 +2579,7 @@ fn run_test_claim_assert_decided(
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
       if outcome_node_eq(
         a: actual,
-        b: Accepted { value: expected, diagnostics: None }
+        b: v2.std.diagnostic.Accepted { value: expected, diagnostics: None }
       ) {
         Pass
       } else {
@@ -2593,7 +2593,7 @@ fn run_test_claim_assert_decided(
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
+          if outcome_node_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
             verdict_fail(actual: actual)
@@ -2659,7 +2659,7 @@ fn run_test_claim_runtime_assert(
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
+          if outcome_runtime_value_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
             verdict_fail(actual: actual)

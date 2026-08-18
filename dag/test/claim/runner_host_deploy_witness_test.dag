@@ -117,7 +117,7 @@ data activation_moved_note: String = "runner_enable_command was deleted with the
 fn witness_ready_receipt() -> gunbc.runner_activation.BuildCacheInstanceReady {
   gunbc.runner_activation.BuildCacheInstanceReady {
     instance: ci_cache_instance(host: srv4_runner_host_deploy.host_label as product.placement_supply.HostIdentity),
-    owner: ProcessIdentity {
+    owner: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "fixture-boot" as std.types.NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as std.types.NonEmptyStr,

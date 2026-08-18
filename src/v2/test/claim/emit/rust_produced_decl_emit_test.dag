@@ -12,10 +12,10 @@ fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> Outcome<String> {
     Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: rust_target_model()) {
         Accepted { value: medium, diagnostics: _ } =>
-          Accepted { value: medium.carried, diagnostics: None }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

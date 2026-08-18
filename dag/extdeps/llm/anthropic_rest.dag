@@ -13,7 +13,7 @@ service llm.Anthropic {
     endpoint: "https://api.anthropic.com"
     auth: Header("x-api-key")
     auth_input: api_key
-    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
+    auth_source: std.credentials.EnvVar { name: "ANTHROPIC_API_KEY" }
 
     rate_limit: { requests: 1000, per: minute, scope: messages }
 

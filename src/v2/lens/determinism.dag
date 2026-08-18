@@ -106,7 +106,7 @@ fn determinism_contract_witness(signature: v2.std.node.Symbol, n: Node) -> Witne
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
     std.determinism.NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
-    std.determinism.Deterministic => Holds { value: fact }
+    std.determinism.Deterministic => v2.std.witness.Holds { value: fact }
   }
 }
 
@@ -132,10 +132,10 @@ fn determinism_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
 fn determinism_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match determinism_findings(root: node) {
     Cons { head: first, tail: rest } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => outcome_accepted(value: Holds { value: node })
+    Empty => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

@@ -12,7 +12,7 @@ fn rust_variant_construct_emit_facts_miss(key: Node) -> Optional<v2.compiler.inf
 fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: rust_variant_construct_emit_facts_miss }
+    facts: std.types.Map { lookup: rust_variant_construct_emit_facts_miss }
   }
 }
 

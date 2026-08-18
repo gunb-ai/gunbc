@@ -296,7 +296,7 @@ fn type_decl_perturbed_rules_for_point_source() -> Outcome<Node> {
   ) {
     Accepted { value: pixel_row, diagnostics: _ } =>
       outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
-    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+    Rejected { diagnostics: _ } => v2.std.diagnostic.Rejected { diagnostics: None }
   }
 }
 

@@ -112,7 +112,7 @@ fn spark_serving_fleet_converge_plan_artifact(
   host: std.types.NonEmptyStr,
   prior_generation: Int,
   observed_timers: std.types.List<gunbc.fleet_converge_plan.TimerRetirementMember>,
-  observed_caps: std.types.List<gunbc.fleet_converge_plan.CapMember>,
+  observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
   linger_enabled: std.types.Bool,
 ) -> gunbc.fleet_converge_plan.FleetConvergePlanArtifact? {
   if !spark_serving_converge_host_is_spark(host: host) {
@@ -142,7 +142,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   host: std.types.NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
-  observed_caps: List<gunbc.fleet_converge_plan.CapMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
   linger_plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
   spark_rows: List<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction>,
 ) -> gunbc.fleet_converge_plan.FleetConvergePlanArtifact? {

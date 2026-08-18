@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 test fn classify_leaf_empty_is_unknown() -> Bool {
   verdict_eq(
     a: classify_leaf(witness: ""),
-    b: Unknown { missing: "witness" }
+    b: std.reducible.Unknown { missing: "witness" }
   )
 }
 
@@ -29,8 +29,8 @@ fn verdict_eq_discriminates_variants() -> Bool {
       b: std.reducible.Irreducible { witness: "x" }
     )
     && verdict_eq(
-      a: Unknown { missing: "axis" },
-      b: Unknown { missing: "axis" }
+      a: std.reducible.Unknown { missing: "axis" },
+      b: std.reducible.Unknown { missing: "axis" }
     )
 }
 
@@ -48,7 +48,7 @@ fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
       verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
       empty_missing: "verdict-list:empty"
     ),
-    b: Unknown { missing: "latch-axis" }
+    b: std.reducible.Unknown { missing: "latch-axis" }
   )
 }
 

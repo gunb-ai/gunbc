@@ -63,7 +63,7 @@ fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> Outcome<v2.std.r
   match exit.outcome {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
@@ -115,9 +115,9 @@ fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
 fn process_program_name(program: v2.std.host_transport.ProcessProgram) -> Outcome<String> {
   match program {
     HostToolProgram { executable: exe } =>
-      Accepted { value: exe, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: exe, diagnostics: None }
     ProducedProgram { path: p } =>
-      Accepted { value: concat("./", p), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: concat("./", p), diagnostics: None }
   }
 }
 
@@ -137,7 +137,7 @@ fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> Outcome<List
   bind_outcome(
     o: process_program_name(program: inv.program),
     f: fn(program) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: concat(
           [program],
           emit_host_list_map(xs: inv.args, f: fn(a) { invocation_arg_text(arg: a) })
@@ -154,7 +154,7 @@ fn empty_argv_lists() -> List<List<String>> {
 
 fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>) -> Outcome<List<List<String>>> {
   match builds {
-    Empty => Accepted { value: empty_argv_lists(), diagnostics: None }
+    Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: None }
     Cons { head: inv, tail: rest } =>
       bind_outcome(
         o: invocation_argv(inv: inv),
@@ -162,7 +162,7 @@ fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>)
           bind_outcome(
             o: build_invocation_argvs(builds: rest),
             f: fn(acc) {
-              Accepted { value: concat([argv], acc), diagnostics: None }
+              v2.std.diagnostic.Accepted { value: concat([argv], acc), diagnostics: None }
             }
           )
         }
@@ -255,8 +255,8 @@ fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
   ((octet / place) % 2) == 1
 }
 
-fn emit_host_byte_from_octet(octet: Int) -> Byte {
-  Byte {
+fn emit_host_byte_from_octet(octet: Int) -> v2.std.machine.Byte {
+  v2.std.machine.Byte {
     bits: [
       emit_host_octet_bit(octet: octet, place: 1),
       emit_host_octet_bit(octet: octet, place: 2),
@@ -380,7 +380,7 @@ fn run_host_process_admitted(
               value: match result.termination {
                 ProcessExited { code: code } =>
                   if code == 0 {
-                    Holds { value: v2.std.host_run.ExitOk { code: code } }
+                    v2.std.witness.Holds { value: v2.std.host_run.ExitOk { code: code } }
                   } else {
                     v2.std.witness.Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
                   }
@@ -392,7 +392,7 @@ fn run_host_process_admitted(
               diagnostics: None
             }
           }
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: emit_host_receipt_from_source(
               target: target,
               source: source,
@@ -481,13 +481,13 @@ fn run_test_claim_emit_vs_eval_verdict(
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
       if accepted_runtime_value_outcome_eq(
-        a: Accepted { value: host_actual, diagnostics: None },
+        a: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: None },
         b: expected
       ) {
         Pass
       } else {
         verdict_semantic_mismatch(
-          actual: Accepted { value: host_actual, diagnostics: None },
+          actual: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: None },
           falsification: optional_present(
             value: v2.std.test_claim_falsification.FalsificationReceipt {
               subject: subject,
@@ -541,7 +541,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
               )
             Rejected { diagnostics: ds } =>
               verdict_run_failed(
-                actual: Rejected { diagnostics: ds },
+                actual: v2.std.diagnostic.Rejected { diagnostics: ds },
                 diagnostic: ds.head
               )
           }
@@ -553,7 +553,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
       }
     Rejected { diagnostics: ds } =>
       v2.std.verdict.Deferred {
-        actual: Rejected { diagnostics: ds },
+        actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
       }
   }
@@ -587,7 +587,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
       )
     Rejected { diagnostics: ds } =>
       verdict_build_failed(
-        actual: Rejected { diagnostics: ds },
+        actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
       )
   }
@@ -625,7 +625,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
       )
     Rejected { diagnostics: ds } =>
       verdict_build_failed(
-        actual: Rejected { diagnostics: ds },
+        actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
       )
   }

@@ -60,7 +60,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 }
 
 type TypedRemoteFileConvergence
-  = TypedRemoteFileConverged { path: FilePath, mode: RemoteFileMode }
+  = TypedRemoteFileConverged { path: std.types.FilePath, mode: RemoteFileMode }
   | TypedRemoteFileConvergenceRefused { step: String, reason: String }
 
 // The staging sibling. It MUST share a directory with the destination: `mv` is atomic only within

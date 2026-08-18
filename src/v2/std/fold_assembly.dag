@@ -116,7 +116,7 @@ fn decode_node_list_conj(node: Node, head: v2.std.node.NamedEdgeTargetLookup, ta
 
 fn decode_node_list_cons(head_node: Node, tail_node: Node) -> Outcome<FreeMonoid<Node>> {
   match decode_node_list(node: tail_node) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: rest, diagnostics: _ } =>
       outcome_accepted(value: list_append(left: list_snoc_item(xs: freemonoid_empty(), item: head_node), right: rest))
   }
@@ -128,10 +128,10 @@ fn decode_node_list_item_step<T>(
   decode_item: fn(Node) -> Outcome<T>
 ) -> Outcome<FreeMonoid<T>> {
   match acc {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: items, diagnostics: _ } =>
       match decode_item(item_node) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: item, diagnostics: _ } =>
           outcome_accepted(value: list_snoc_item(xs: items, item: item))
       }
@@ -143,7 +143,7 @@ fn node_list_from_node<T>(
   decode_item: fn(Node) -> Outcome<T>
 ) -> Outcome<FreeMonoid<T>> {
   match decode_node_list(node: node) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: item_nodes, diagnostics: _ } =>
       fold_list(
         xs: item_nodes,
@@ -161,7 +161,7 @@ fn node_list_from_node<T>(
 
 fn decode_per_element(node: Node) -> Outcome<FreeMonoid<FreeMonoid<Node>>> {
   match decode_node_list(node: node) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: elem_nodes, diagnostics: _ } => decode_inner_lists(elem_nodes: elem_nodes)
   }
 }
@@ -176,10 +176,10 @@ fn decode_inner_lists(elem_nodes: FreeMonoid<Node>) -> Outcome<FreeMonoid<FreeMo
 
 fn decode_inner_step(acc: Outcome<FreeMonoid<FreeMonoid<Node>>>, elem_node: Node) -> Outcome<FreeMonoid<FreeMonoid<Node>>> {
   match acc {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: so_far, diagnostics: _ } =>
       match decode_node_list(node: elem_node) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: fills, diagnostics: _ } =>
           outcome_accepted(value: list_snoc_item(xs: so_far, item: fills))
       }
@@ -219,10 +219,10 @@ fn fold_per_element_of(fold_form: Node) -> Outcome<FreeMonoid<FreeMonoid<Node>>>
 
 fn expand_fold(fold_form: Node) -> Outcome<FreeMonoid<Node>> {
   match fold_template_of(fold_form: fold_form) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: template, diagnostics: _ } =>
       match fold_per_element_of(fold_form: fold_form) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: per_element, diagnostics: _ } =>
           expand_elements(template: template, per_element: per_element)
       }
@@ -239,7 +239,7 @@ fn expand_elements(template: Node, per_element: FreeMonoid<FreeMonoid<Node>>) ->
 
 fn expand_element_step(template: Node, acc: Outcome<FreeMonoid<Node>>, fills: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   match acc {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: so_far, diagnostics: _ } =>
       if template_hole_count(template: template) == length(xs: fills) {
         outcome_accepted(value: list_snoc_item(xs: so_far, item: apply_fills(template: template, fills: fills)))

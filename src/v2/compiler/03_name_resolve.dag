@@ -127,13 +127,13 @@ fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
 
 fn admission_from_module_root(root: Node) -> Outcome<Admission> {
   match qualified_name_from_module_node(root: root) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: subject_qn, diagnostics: _ } =>
       match import_rows_from_parsed_module(root: root) {
         ImportRowsFailed { reason: r } =>
-          Rejected { diagnostics: resolve_diagnostics(reason: r) }
+          v2.std.diagnostic.Rejected { diagnostics: resolve_diagnostics(reason: r) }
         ImportRowsOk { rows: rows } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: Admission {
               subject: ResolutionSubject { name: subject_qn },
               imports: rows
@@ -247,16 +247,16 @@ fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.Normalize
     }
   ) {
     ModuleRootsValid { seen: _, diagnostics: d } =>
-      Accepted { value: roots, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: roots, diagnostics: d }
     ModuleRootsDuplicate { diagnostics: d } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: rejected_with_pending(
           pending: d,
           rejected: resolve_diagnostics(reason: ^resolve_duplicate_module_name)
         )
       }
     ModuleRootsProjectionRejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -318,17 +318,17 @@ fn module_root_find(
 ) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match module_root_lookup(roots: roots, name: name) {
     ModuleRootFound { root: root } =>
-      Accepted { value: root, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: root, diagnostics: None }
     ModuleRootMissing { requested: requested } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: resolve_module_not_found_diagnostic_from_missing(
           requested: requested
         )
       }
     ModuleRootAmbiguous { requested: _ } =>
-      Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
+      v2.std.diagnostic.Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
     ModuleRootLookupRejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -606,14 +606,14 @@ fn namespace_for_subject(
   policy: v2.std.resolution_policy.NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: validated_roots, diagnostics: validate_diag } =>
       match subject_module_root_for_name(
         roots: validated_roots,
         name: admission.subject.name
       ) {
         Rejected { diagnostics: r } =>
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: validate_diag, rejected: r)
           }
         Accepted { value: subject_module_root, diagnostics: _ } =>
@@ -629,11 +629,11 @@ fn namespace_for_subject(
               NamespaceOnlyY =>
                 match initial {
                   AdmissionRejected { diagnostics: d } =>
-                    Rejected {
+                    v2.std.diagnostic.Rejected {
                       diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
                     }
                   AdmissionAccepted { bindings: b, origins: _ } =>
-                    Accepted {
+                    v2.std.diagnostic.Accepted {
                       value: admitted_subject_from_bindings(
                         bindings: b,
                         base: base,
@@ -654,7 +654,7 @@ fn namespace_for_subject(
                   active_roots: active_roots
                 ) {
                   AdmissionAccepted { bindings: b, origins: _ } =>
-                    Accepted {
+                    v2.std.diagnostic.Accepted {
                       value: admitted_subject_from_bindings(
                         bindings: b,
                         base: base,
@@ -665,13 +665,13 @@ fn namespace_for_subject(
                       diagnostics: validate_diag
                     }
                   AdmissionRejected { diagnostics: d } =>
-                    Rejected {
+                    v2.std.diagnostic.Rejected {
                       diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
                     }
                 }
             }
           } else {
-            Rejected {
+            v2.std.diagnostic.Rejected {
               diagnostics: rejected_with_pending(
                 pending: validate_diag,
                 rejected: resolve_diagnostics(reason: ^resolve_reason_malformed_imported_root)
@@ -706,16 +706,16 @@ fn resolve_with_admission_policy(
         policy: policy
       ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: resolved,
             diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
           }
         Rejected { diagnostics: r } =>
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
           }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

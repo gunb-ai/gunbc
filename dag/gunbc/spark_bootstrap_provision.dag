@@ -302,7 +302,7 @@ fn spark_cloud_request(
   cell: AccessGrantCell,
   evidence: WifCredentialIssuanceStanding
 ) -> SparkCloudRequest {
-  EffectRequest {
+  std.authorization_profile.EffectRequest {
     subject: grant.principal,
     effect: cell.operation,
     target: cell.resource,

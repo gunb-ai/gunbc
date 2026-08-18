@@ -403,42 +403,42 @@ fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.s
 fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
   if bootstrap_hash_digest_in_fixture_constants(digest: pin.digest) {
     if (pin.pin == ^v2_stage0_hash_pin) && (pin.digest == v2_stage0_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else if (pin.pin == ^v2_stage1_hash_pin) && (pin.digest == v2_stage1_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else if (pin.pin == ^v2_stage2_hash_pin) && (pin.digest == v2_stage2_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else if (pin.pin == ^v2_stage2_hash_pin) && (pin.digest == v2_stage1_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else if (pin.pin == ^pinned_v4_fixed_point_hash_pin) && (pin.digest == pinned_v4_fixed_point_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else if (pin.pin == ^pinned_v4_fixed_point_hash_pin) && (pin.digest == v2_stage1_hash) {
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
         diagnostics: None
       }
     } else {
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_pin_digest_pair_unbound))
       }
     }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_digest_not_in_fixture_constants))
     }
   }
@@ -522,7 +522,7 @@ fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFo
   let constructs = bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
   if bootstrap_projection_inputs_well_formed(inputs: inputs)
        && bootstrap_construct_inventory_unique(constructs: constructs) {
-    Holds {
+    v2.std.witness.Holds {
       value: BootstrapFootprint {
         inputs: inputs,
         closure_hash: closure_hash,
@@ -542,7 +542,7 @@ fn bootstrap_seed_capability_matches_footprint(
     Holds { value: fp } =>
       if bootstrap_construct_inventory_unique(constructs: capability.constructs)
            && bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
-        Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
+        v2.std.witness.Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
         v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_capability_not_minimal) }
       }
@@ -553,7 +553,7 @@ fn bootstrap_seed_capability_matches_footprint(
 fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
   match plan {
     Accepted { value: bp, diagnostics: _ } =>
-      Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
+      v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
     Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
@@ -575,7 +575,7 @@ fn seed_self_verify_check(
   check: DiverseCompilationRun
 ) -> Outcome<SeedSelfVerifyReceipt> {
   if claim.output == check.output {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
       )
@@ -583,19 +583,19 @@ fn seed_self_verify_check(
   } else if !(claim.source == check.source)
     || !(claim.compiler == check.compiler)
     || !(claim.output_hash.pin == check.output_hash.pin) {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_provenance_mismatch)
       )
     }
   } else if !(claim.output_hash.digest == check.output_hash.digest) {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_diverged)
       )
     }
   } else {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: SeedSelfVerifyReceipt { claim: claim, check: check },
       diagnostics: None
     }
@@ -634,7 +634,7 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
        && (f.pinned_hash.pin == ^pinned_v4_fixed_point_hash_pin)
        && (f.left_hash.digest == f.right_hash.digest)
        && (f.pinned_hash.digest == f.left_hash.digest) {
-    Holds { value: f }
+    v2.std.witness.Holds { value: f }
   } else {
     v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_mis_wired) }
   }
@@ -750,11 +750,11 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
            && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
            && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
            && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest) {
-        Accepted { value: p, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: p, diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_mis_wired)) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_mis_wired)) }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

@@ -66,9 +66,9 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
           correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
-    NotATypeCarrier => outcome_accepted(value: Holds { value: node })
-    KernelAmbientAtom => outcome_accepted(value: Holds { value: node })
-    NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: node })
+    NotATypeCarrier => outcome_accepted(value: v2.std.witness.Holds { value: node })
+    KernelAmbientAtom => outcome_accepted(value: v2.std.witness.Holds { value: node })
+    NamedFieldFacts { density: _ } => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

@@ -29,7 +29,7 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
+fn cost_account_time_count<S>(account: CostAccount<S>) -> std.nat.Nat {
   measure_count(m: account.time)
 }
 

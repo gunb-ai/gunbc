@@ -28,28 +28,28 @@ fn dag_add_canonical_grounding(
 
 fn dag_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_add_fn {
-    Holds {
+    v2.std.witness.Holds {
       value: dag_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == dag_fixture_int_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: dag_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: dag_add_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: dag_add_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
@@ -75,7 +75,7 @@ fn dag_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Inferred
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -87,7 +87,7 @@ fn dag_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> 
 
 data dag_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: dag_add_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: dag_add_facts_lookup
   }
 }
@@ -160,7 +160,7 @@ test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
     tree: v2.compiler.infer.InferredTree {
       root: dag_arrow_domain_conj_node(),
-      facts: Map { lookup: dag_add_facts_lookup }
+      facts: std.types.Map { lookup: dag_add_facts_lookup }
     },
     target: dag_add_target_model
   ) {

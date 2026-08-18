@@ -122,113 +122,113 @@ data add_body_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node
 
 fn add_body_ts_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_add_arrow_with_body_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_add_arrow_signature_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_add_binary_body_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_add_arrow_with_body_swapped_operands_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_add_binary_body_swapped_operands_fixture {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == add_body_ts_number_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^ts_inhabitant_number) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_inhabitant
       )
     }
   } else if node == add_body_ts_number_facts_node {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_surface_spelling_number) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == add_body_ts_arithmetic_semantics_node {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_arithmetic_semantics_node
       )
     }
   } else if node == add_body_ts_bitwise_semantics_node {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_bitwise_semantics_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^ts_tag_bits64) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^ts_ieee754_binary64) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^std_projection_additive_numeric) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
   } else if node == ts_inhabitant_atom(id: ^dag_token_plus) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^dag_binding_param_x) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^dag_binding_param_y) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^dag_binding_type_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_inhabitant
@@ -238,22 +238,22 @@ fn add_body_ts_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints
     match node.kind {
       TypeNode { connective: Atom { identity: id } } =>
         if id == ^dag_binding_type_int {
-          Holds {
+          v2.std.witness.Holds {
             value: add_body_ts_canonical_grounding(
               node: node,
               algebra: add_body_ts_number_inhabitant
             )
           }
         } else if id == ^dag_token_plus {
-          Holds {
+          v2.std.witness.Holds {
             value: add_body_ts_canonical_grounding(node: node, algebra: node)
           }
         } else if id == ^dag_binding_param_x {
-          Holds {
+          v2.std.witness.Holds {
             value: add_body_ts_canonical_grounding(node: node, algebra: node)
           }
         } else if id == ^dag_binding_param_y {
-          Holds {
+          v2.std.witness.Holds {
             value: add_body_ts_canonical_grounding(node: node, algebra: node)
           }
         } else {
@@ -286,7 +286,7 @@ fn add_body_ts_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Infe
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -299,29 +299,29 @@ fn add_body_ts_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFac
 fn add_body_ts_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: add_body_ts_facts_lookup }
+    facts: std.types.Map { lookup: add_body_ts_facts_lookup }
   }
 }
 
 fn add_body_ts_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn add_body_ts_producer_swapped_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

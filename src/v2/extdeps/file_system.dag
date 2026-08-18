@@ -1,7 +1,7 @@
 module v2.extdeps.file_system
 
 
-type PosixByteString = FreeMonoid<Byte>
+type PosixByteString = FreeMonoid<v2.std.machine.Byte>
 
 type NamedPathComponent {
   bytes: PosixByteString
@@ -40,7 +40,7 @@ type FileKindResolutionPolicy
 
 type Filesystem
 
-type FileBody = FreeMonoid<Byte>
+type FileBody = FreeMonoid<v2.std.machine.Byte>
 
 type FileResource {
   filesystem: Filesystem

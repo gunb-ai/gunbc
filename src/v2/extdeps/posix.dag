@@ -43,24 +43,24 @@ data signal_num_validation: Validation<Int> = v2.std.refinement.Validation {
 fn make_process_id(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ProcessId> {
   match refine(base: value, by: process_id_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
-      Accepted { value: ProcessId { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Accepted { value: ProcessId { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_exit_code(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ExitCode> {
   match refine(base: value, by: exit_code_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
-      Accepted { value: ExitCode { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Accepted { value: ExitCode { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_signal_num(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<SignalNum> {
   match refine(base: value, by: signal_num_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
-      Accepted { value: SignalNum { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Accepted { value: SignalNum { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -124,7 +124,7 @@ type ProcessResources {
   filesystem: v2.extdeps.file_system.Filesystem
 }
 
-type CapturedByteStream = FreeMonoid<Byte>
+type CapturedByteStream = FreeMonoid<v2.std.machine.Byte>
 
 type CapturedOutputPipes {
   stdout: CapturedByteStream

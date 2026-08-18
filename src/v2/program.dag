@@ -9,8 +9,8 @@ fn program_atom(s: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn program_byte() -> Byte {
-  Byte { bits: [true] }
+fn program_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn program_bool_type() -> Node {
@@ -108,9 +108,9 @@ fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
 
 fn program_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if node == program_literal_one() {
-    Accepted { value: program_int_one_value(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_int_one_value(), diagnostics: None }
   } else if node == program_literal_two() {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: v2.std.runtime.RuntimePrimitive {
         value: v2.std.runtime.RuntimePrimitiveValue {
           primitive_type: program_i64_type(),
@@ -120,13 +120,13 @@ fn program_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironme
       diagnostics: None
     }
   } else if node == program_kw_true() {
-    Accepted { value: program_bool_value(is_true: true), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: true), diagnostics: None }
   } else if node == program_kw_false() {
-    Accepted { value: program_bool_value(is_true: false), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_bool_value(is_true: false), diagnostics: None }
   } else if node == program_locator_literal || node == program_payload_literal {
-    Accepted { value: program_unit_value(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: program_unit_value(), diagnostics: None }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: eval_diagnostic(reason: ^program_allocate_rejected, node: node)
       )
@@ -139,10 +139,10 @@ fn program_nth_child(node: Node, wanted: Int) -> Outcome<Node> {
     Present { value: child } =>
       match child {
         Edge { label: _, target: arm } =>
-          Accepted { value: arm, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: arm, diagnostics: None }
       }
     Absent =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(
           d: eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
         )
@@ -161,14 +161,14 @@ fn program_choose_branch(
     } else if program_runtime_bool_false(value: condition) {
       program_nth_child(node: node, wanted: 2)
     } else {
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(
           d: eval_diagnostic(reason: ^program_branch_condition_rejected, node: node)
         )
       }
     }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
       )
@@ -197,7 +197,7 @@ fn program_reject_primitive(
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
     )
@@ -205,7 +205,7 @@ fn program_reject_primitive(
 }
 
 fn program_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
     )
@@ -217,7 +217,7 @@ fn program_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn program_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -256,7 +256,7 @@ fn program_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: program_unit_type(),
-    descent: Holds { value: program_termination_proof() }
+    descent: v2.std.witness.Holds { value: program_termination_proof() }
   )
 }
 
@@ -281,7 +281,7 @@ fn program_facts_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts>
 fn program_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: program_facts_lookup }
+    facts: std.types.Map { lookup: program_facts_lookup }
   }
 }
 
@@ -312,14 +312,14 @@ fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<v2.compiler.infer.
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
-      descent: Holds { value: program_termination_proof() }
+      descent: v2.std.witness.Holds { value: program_termination_proof() }
     ))
 }
 
 fn program_pick_if_arrow_tree(callee: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: callee,
-    facts: Map { lookup: program_pick_if_arrow_facts_lookup }
+    facts: std.types.Map { lookup: program_pick_if_arrow_facts_lookup }
   }
 }
 

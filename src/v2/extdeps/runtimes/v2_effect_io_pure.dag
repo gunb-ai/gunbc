@@ -63,7 +63,7 @@ fn effect_io_pure_operation_ref() -> v2.std.model_core.PrimitiveOperationRef {
 
 fn effect_io_pure_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
   v2.std.runtime.EvaluationEnvironment {
-    bindings: Map {
+    bindings: std.types.Map {
       lookup: fn(_) {
         Absent
       }
@@ -94,7 +94,7 @@ fn effect_io_pure_locator_from_args(
     Holds { value: locator_value } =>
       match effect_io_pure_locator_identity(value: locator_value) {
         Holds { value: digest } =>
-          Holds {
+          v2.std.witness.Holds {
             value: EffectIoResourceLocator {
               backend: backend,
               identity: digest
@@ -117,7 +117,7 @@ fn effect_io_pure_locator_unrepresentable_diagnostic() -> v2.std.diagnostic.Diag
 fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witness<v2.std.node.Hash> {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: reified } =>
-      Holds { value: content_hash(n: reified) }
+      v2.std.witness.Holds { value: content_hash(n: reified) }
     RuntimeValueNodeUnrepresentable =>
       v2.std.witness.Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
   }
@@ -125,7 +125,7 @@ fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witnes
 
 fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue>) -> Witness<v2.std.runtime.RuntimeValue> {
   match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
-    Holds { value: payload } => Holds { value: payload }
+    Holds { value: payload } => v2.std.witness.Holds { value: payload }
     Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
@@ -162,7 +162,7 @@ fn effect_io_pure_store_lookup(
       Accepted { value: opt, diagnostics: None } =>
         match opt {
           Present { value: payload } =>
-            Accepted { value: payload, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: payload, diagnostics: None }
           Absent =>
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
@@ -172,7 +172,7 @@ fn effect_io_pure_store_lookup(
               }
             )
         }
-      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     }
   } else {
     outcome_rejected(
@@ -187,24 +187,24 @@ fn effect_io_pure_store_lookup(
 
 fn effect_io_pure_handle_read(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
         Holds { value: payload } =>
           if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
-            Accepted { value: payload, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: payload, diagnostics: None }
           } else {
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
@@ -214,15 +214,15 @@ fn effect_io_pure_handle_write(
               }
             )
           }
-        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
 fn effect_io_pure_invoke_handler(
   handler: v2.std.runtime.EffectHandler,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   match handler {
     EffectHandler { handle: h } => h(request)
@@ -264,8 +264,8 @@ fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> Effec
 fn effect_io_pure_request(
   kind: v2.std.runtime.EffectRequestKind,
   args: List<v2.std.runtime.RuntimeValue>
-) -> EffectRequest {
-  EffectRequest {
+) -> v2.std.runtime.EffectRequest {
+  v2.std.runtime.EffectRequest {
     kind: kind,
     operation: effect_io_pure_operation_ref(),
     arguments: args,
@@ -273,17 +273,17 @@ fn effect_io_pure_request(
   }
 }
 
-fn effect_io_pure_read_request(args: List<v2.std.runtime.RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_read_request(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.runtime.EffectRequest {
   effect_io_pure_request(kind: ReadResource, args: args)
 }
 
-fn effect_io_pure_write_request(args: List<v2.std.runtime.RuntimeValue>) -> EffectRequest {
+fn effect_io_pure_write_request(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.runtime.EffectRequest {
   effect_io_pure_request(kind: WriteResource, args: args)
 }
 
 fn effect_io_pure_append_receipt(
   log: v2.std.runtime.EffectReceiptLog,
-  request: EffectRequest,
+  request: v2.std.runtime.EffectRequest,
   result: Outcome<v2.std.runtime.RuntimeValue>
 ) -> v2.std.runtime.EffectReceiptLog {
   v2.std.runtime.EffectReceiptLog {

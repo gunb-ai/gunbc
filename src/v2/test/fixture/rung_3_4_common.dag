@@ -16,7 +16,7 @@ fn rung34_algebra_evidence_node() -> Node {
 }
 
 fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
-  Holds {
+  v2.std.witness.Holds {
     value: v2.std.cardinality.TerminationProof {
       non_increasing: [],
       strict: v2.std.cardinality.RankingDimension { measured: ^rung34_inferred_descent_symbol }
@@ -27,7 +27,7 @@ fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
 fn rung34_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(n) {
         Present {
           value: claim_inferred_facts_from_nodes(

@@ -528,7 +528,7 @@ fn cpp_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: Node) -> 
 }
 
 fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       cpp_catalog_surface_symbol(sym: sym, target_profile: target_profile)
     }
@@ -536,7 +536,7 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<v2.std.node
 }
 
 fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
@@ -556,7 +556,7 @@ fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<v2.std.node.Sy
 }
 
 fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
@@ -574,7 +574,7 @@ fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<v2.std.nod
 }
 
 fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }

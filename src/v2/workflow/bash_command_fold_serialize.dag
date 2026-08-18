@@ -6,10 +6,10 @@ fn bash_fold_serialize_emit_from_node(emitted: Node, target: v2.std.compilers.ta
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        None => Accepted { value: source.carried, diagnostics: None }
-        Some { diagnostics: r } => Rejected { diagnostics: r }
+        None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -38,7 +38,7 @@ fn bash_fold_serialize_leaf_node(
   ) {
     Holds { value: target } =>
       bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -48,7 +48,7 @@ fn bash_fold_serialize_stmts_semi_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: None }
     HeadFound { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
@@ -186,7 +186,7 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
-            Rejected {
+            v2.std.diagnostic.Rejected {
               diagnostics: diagnostics_singleton(
                 d: bash_fold_unsupported_variant_diagnostic(
                   variant: ^bash_build_refused_empty_word_list
@@ -208,7 +208,7 @@ fn bash_fold_serialize_word_list_spelling_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: None }
     HeadFound { value: w } =>
       bind_outcome(
         o: bash_fold_serialize_word_node(word: w),
@@ -456,7 +456,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
   } else if binding == ^bash_build_stmt_negation {
     bash_fold_serialize_negation_node(stmt: stmt)
   } else if binding == ^bash_build_refused_empty_stmt_list {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: bash_fold_unsupported_variant_diagnostic(
           variant: ^bash_build_refused_empty_stmt_list
@@ -474,7 +474,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
 
 fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
   match list_head(xs: stmts) {
-    HeadAbsent => Accepted { value: "", diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: None }
     HeadFound { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),

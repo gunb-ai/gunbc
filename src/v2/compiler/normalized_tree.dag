@@ -21,14 +21,14 @@ fn normalized_tree_retention_diagnostic(root: Node) -> v2.std.diagnostic.Diagnos
 
 fn admit_normalized_tree(root: Node, diagnostics: v2.std.diagnostic.Diagnostics) -> Outcome<NormalizedTree> {
   if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: rejected_with_pending(
         pending: diagnostics,
         rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
       )
     }
   } else {
-    Accepted { value: NormalizedTree { root: root }, diagnostics: diagnostics }
+    v2.std.diagnostic.Accepted { value: NormalizedTree { root: root }, diagnostics: diagnostics }
   }
 }
 
@@ -77,8 +77,8 @@ fn admit_normalized_roots(
       }
     }
   ) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: all, diagnostics: _ } =>
-      Accepted { value: all, diagnostics: diagnostics }
+      v2.std.diagnostic.Accepted { value: all, diagnostics: diagnostics }
   }
 }

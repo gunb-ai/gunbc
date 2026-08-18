@@ -21,7 +21,7 @@ test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
 }
 
 fn nullable_set_singleton(name: v2.std.node.Symbol) -> Set<v2.std.node.Symbol> {
-  Set { member: fn(sym) { sym == name } }
+  std.types.Set { member: fn(sym) { sym == name } }
 }
 
 test fn parse_table_nullable_morphism_holds() -> Bool {

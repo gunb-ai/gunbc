@@ -57,7 +57,7 @@ test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
 
 data bash_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: bash_emitted_command,
-  facts: Map {
+  facts: std.types.Map {
     lookup: bash_facts_lookup
   }
 }
@@ -110,7 +110,7 @@ test fn bash_emit_missing_rules_rejects_holds() -> Bool {
 
 data bash_bound_words_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: bash_bound_words_emitted_command,
-  facts: Map {
+  facts: std.types.Map {
     lookup: bash_facts_lookup
   }
 }
@@ -131,7 +131,7 @@ test fn bash_emit_bound_words_holds() -> Bool {
 
 data bash_embedded_quote_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: bash_embedded_quote_emitted_command,
-  facts: Map {
+  facts: std.types.Map {
     lookup: bash_facts_lookup
   }
 }
@@ -152,7 +152,7 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
 
 data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: bash_source_root_ingest_gate_emitted_command,
-  facts: Map {
+  facts: std.types.Map {
     lookup: bash_facts_lookup
   }
 }
@@ -181,7 +181,7 @@ fn bash_emit_slice4_holds(
 ) -> Bool {
   let tree = v2.compiler.infer.InferredTree {
     root: emitted,
-    facts: Map { lookup: bash_facts_lookup }
+    facts: std.types.Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == None)
@@ -284,7 +284,7 @@ test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
 fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   let tree = v2.compiler.infer.InferredTree {
     root: bash_pipe_and_or_brace_grouped_emitted,
-    facts: Map { lookup: bash_facts_lookup }
+    facts: std.types.Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
     Accepted { value: source, diagnostics: d } =>

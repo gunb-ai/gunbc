@@ -875,12 +875,12 @@ fn lookup_served_identity(l: ProviderLookup) -> std.computation_identity.Computa
   lookup_fold(
     l: l,
     hit: (a, i) => i,
-    miss: k => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "no artifact was probed at this key" } },
-    kind_mismatch: (k, r, f) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
-    wrong_artifact: (k, fk) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } },
-    wrong_content: (k, r, o) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
-    cross_family: (k, f) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
-    incomplete: (k, m) => IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+    miss: k => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "no artifact was probed at this key" } },
+    kind_mismatch: (k, r, f) => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
+    wrong_artifact: (k, fk) => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } },
+    wrong_content: (k, r, o) => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
+    cross_family: (k, f) => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
+    incomplete: (k, m) => std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   )
 }
 

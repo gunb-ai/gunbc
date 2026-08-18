@@ -7,7 +7,7 @@ data endpoint_path_state_authority_note: String = "WHY THE ENDPOINT PATH NEEDS I
 
 type EndpointPathState
   = EndpointPathAbsent
-  | EndpointListening { owner: ProcessIdentity }
+  | EndpointListening { owner: gunbc.build_cache_instance.ProcessIdentity }
   | EndpointStaleSocket { detail: std.types.NonEmptyStr }
   | EndpointPathConflict { detail: std.types.NonEmptyStr }
   | EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointObservationUnavailableReason }
@@ -22,7 +22,7 @@ type ObservationCurrency
 type StaleSocketUnlinkRefusal
   = PathAlreadyAbsent
   | PathIsNotASocket { detail: std.types.NonEmptyStr }
-  | ListenerPresent { owner: ProcessIdentity }
+  | ListenerPresent { owner: gunbc.build_cache_instance.ProcessIdentity }
   | PathStateUnavailable { detail: std.types.NonEmptyStr }
   | ObservationNotCurrent { detail: std.types.NonEmptyStr }
   | EndpointHasNoSocketPath { detail: std.types.NonEmptyStr }

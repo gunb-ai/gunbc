@@ -35,12 +35,12 @@ fn family_cache_root_for(test_id: String) -> String {
   concat(family_cache_root, "/", test_id)
 }
 
-data match_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data match_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data loop_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data loop_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data fold_expected_octets: List<Byte> = [0, 7, 0, 0, 0]
-data fold_alt_expected_octets: List<Byte> = [0, 255, 255, 255, 255]
+data match_expected_octets: List<v2.std.machine.Byte> = [0, 1, 0, 0, 0]
+data match_alt_expected_octets: List<v2.std.machine.Byte> = [0, 2, 0, 0, 0]
+data loop_expected_octets: List<v2.std.machine.Byte> = [0, 1, 0, 0, 0]
+data loop_alt_expected_octets: List<v2.std.machine.Byte> = [0, 2, 0, 0, 0]
+data fold_expected_octets: List<v2.std.machine.Byte> = [0, 7, 0, 0, 0]
+data fold_alt_expected_octets: List<v2.std.machine.Byte> = [0, 255, 255, 255, 255]
 
 fn match_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
@@ -125,7 +125,7 @@ fn mlf_family_member_run(
   source: Medium<String>,
   member_id: String,
   expect_compile_skipped: Bool,
-  expected_octets: List<Byte>
+  expected_octets: List<v2.std.machine.Byte>
 ) -> Bool {
   match run_emit_host_cached_with_run_args(
     workspace_dir: workspace,
@@ -178,7 +178,7 @@ fn mlf_family_primary_agreements(
   emit_match_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_match_eval_subject(tree: match_tree),
-      source_outcome: Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
       target: rust_match_loop_fold_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: "match")
@@ -187,7 +187,7 @@ fn mlf_family_primary_agreements(
     && emit_loop_eval_verdict_is_pass(
       run: run_test_claim_from_source_emit_vs_eval_cached(
         subject: emit_loop_eval_subject(tree: loop_tree),
-        source_outcome: Accepted { value: source, diagnostics: None },
+        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
         target: rust_match_loop_fold_family_target_model_staging(),
         workspace_dir: workspace,
         run_args: rust_family_member_run_args(member_id: "loop")
@@ -196,7 +196,7 @@ fn mlf_family_primary_agreements(
     && emit_fold_eval_verdict_is_pass(
       run: run_test_claim_from_source_emit_vs_eval_cached(
         subject: emit_fold_eval_subject(root: fold_fixture_param_canonical_arrow),
-        source_outcome: Accepted { value: source, diagnostics: None },
+        source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
         target: rust_match_loop_fold_family_target_model_staging(),
         workspace_dir: workspace,
         run_args: rust_family_member_run_args(member_id: "fold")
@@ -212,7 +212,7 @@ fn mlf_family_alt_loop_mismatch(
   emit_loop_eval_verdict_is_fail(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_loop_eval_subject(tree: loop_alt),
-      source_outcome: Accepted { value: source, diagnostics: None },
+      source_outcome: v2.std.diagnostic.Accepted { value: source, diagnostics: None },
       target: rust_match_loop_fold_family_target_model_staging(),
       workspace_dir: workspace,
       run_args: rust_family_member_run_args(member_id: "loop")

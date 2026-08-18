@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // THE FIXTURE NAMES ITS CHANNELS, which is the point of the change under test. An earlier version
 // of this helper took a channel COUNT, and could therefore only ever build populations that were
 // contiguous from zero -- so the defect it was meant to exercise was unreachable from the test.
-fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.minimal_design.DdrChannelIdentity>, positions: List<DimmSlotPosition>, lanes: Int) -> product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
+fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.minimal_design.DdrChannelIdentity>, positions: List<product.altra_motherboard.minimal_design.DimmSlotPosition>, lanes: Int) -> product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
   product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
     intent: if intent_is_production { Production } else { EngineeringBringUp },
     memory: product.altra_motherboard.minimal_design.MemoryConfiguration {
@@ -16,7 +16,7 @@ fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.mini
   }
 }
 
-fn one_dimm() -> List<DimmSlotPosition> { [FirstDimmOnChannel] }
+fn one_dimm() -> List<product.altra_motherboard.minimal_design.DimmSlotPosition> { [FirstDimmOnChannel] }
 
 fn admits(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Bool {
   match admit_design(d: d) {

@@ -124,7 +124,7 @@ fn queue_not_max_job() -> extdeps.github.actions.Job {
     timeout_minutes: none,
     continue_on_error: none,
     concurrency: Present {
-      value: ConcurrencyMappingQueueNotMax {
+      value: extdeps.github.actions.ConcurrencyMappingQueueNotMax {
         group: "probe-queue-max-group",
         cancel_in_progress: Present { value: extdeps.github.actions.CancelInProgressBool { value: false } },
         explicit_single: none

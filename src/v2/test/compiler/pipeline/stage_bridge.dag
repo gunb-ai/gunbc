@@ -48,7 +48,7 @@ fn pipeline_parse_tree_from_tokens(tokens: v2.std.compilers.lexing.TokenStream) 
   match parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
     Accepted { value: artifact, diagnostics: d } =>
       outcome_with_diagnostics(value: artifact.tree, diagnostics: d)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

@@ -146,10 +146,10 @@ data compile_gate_law: String = "MachineShape single-constructor compile gate (o
 fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match machine_shape_construction_findings(root: node) {
     Cons { head: first, tail: rest } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => outcome_accepted(value: Holds { value: node })
+    Empty => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

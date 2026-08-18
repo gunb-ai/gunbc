@@ -119,10 +119,10 @@ fn blp_emit(
         tokens: tokens
       ) {
         Accepted { value: text, diagnostics: _ } =>
-          Accepted { value: render_target_text(t: text), diagnostics: None }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: None }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

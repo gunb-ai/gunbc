@@ -9,7 +9,7 @@ fn idempotent_operation_missing_semantics_diagnostic(node: Node) -> v2.std.diagn
 }
 
 fn idempotent_operation_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: idempotent_operation_missing_semantics_diagnostic(node: node)
     )
@@ -17,7 +17,7 @@ fn idempotent_operation_allocate_literal(node: Node, _env: v2.std.runtime.Evalua
 }
 
 fn idempotent_operation_call_primitive(node: Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: idempotent_operation_missing_semantics_diagnostic(node: node)
     )
@@ -25,11 +25,11 @@ fn idempotent_operation_call_primitive(node: Node, _args: List<v2.std.runtime.Ru
 }
 
 fn idempotent_operation_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: node, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: node, diagnostics: None }
 }
 
 fn idempotent_operation_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: idempotent_operation_missing_semantics_diagnostic(node: node)
     )
@@ -41,7 +41,7 @@ fn idempotent_operation_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn idempotent_operation_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
@@ -86,7 +86,7 @@ fn idempotent_operation_inferred_facts(root: Node) -> v2.compiler.infer.Inferred
   claim_inferred_facts_from_nodes(
     resolved: root,
     algebra: root,
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: ^idempotent_operation_descent_dimension }
@@ -99,7 +99,7 @@ fn idempotent_operation_inferred_tree(root: Node) -> v2.compiler.infer.InferredT
   let facts = idempotent_operation_inferred_facts(root: root)
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(_) {
         Present { value: facts }
       }
@@ -124,12 +124,12 @@ fn idempotent_operation_run_via_test_claim(claim: v2.std.verification.TestClaim)
 fn idempotent_operation_generated_run(row: Outcome<v2.std.verification.TestClaim>) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
   match row {
     Accepted { value: claim, diagnostics: None } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
         diagnostics: None
       }
     Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 

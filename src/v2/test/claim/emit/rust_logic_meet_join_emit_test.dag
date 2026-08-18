@@ -10,7 +10,7 @@ fn meet_join_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFa
 fn meet_join_emit_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: meet_join_emit_facts_miss }
+    facts: std.types.Map { lookup: meet_join_emit_facts_miss }
   }
 }
 

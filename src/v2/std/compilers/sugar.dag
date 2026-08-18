@@ -201,12 +201,12 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<v2.std.node.Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
   match sugar_first_atom_identity_optional(node: variant) {
     Present { value: name } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: v2.std.node.Edge { label: Named { name: name }, target: variant },
         diagnostics: None
       }
     Absent =>
-      Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
   }
 }
 
@@ -227,19 +227,19 @@ fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoi
 fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
   let variants = sugar_all_coproduct_variants(captured: captured)
   if length(xs: variants) < 2 {
-    Accepted { value: captured, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: captured, diagnostics: None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {
       Accepted { value: edges, diagnostics: d } =>
         if edges_conform(children: edges, d: LabeledEdges) {
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: sugar_type_node(connective: Disj, children: edges, n: shell),
             diagnostics: d
           }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+          v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
         }
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   }
 }
@@ -248,35 +248,35 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
   match rule.lowering {
     SugarRewriteConnective { connective: connective, edges: discipline } =>
       if edges_conform(children: folded.children, d: discipline) {
-        Accepted {
+        v2.std.diagnostic.Accepted {
           value: sugar_type_node(connective: connective, children: folded.children, n: n),
           diagnostics: None
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
     SugarUnwrapPositionalChild {} =>
       match sugar_positional_unwrap_child(children: folded.children) {
         Present { value: child } =>
-          Accepted { value: child, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: child, diagnostics: None }
         Absent =>
-          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+          v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
     SugarFoldCoproductPipeChain {} =>
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
         Present { value: captured } =>
           match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: result, diagnostics: d } =>
               match result.kind {
                 TypeNode { connective: Disj } =>
-                  Accepted { value: result, diagnostics: d }
+                  v2.std.diagnostic.Accepted { value: result, diagnostics: d }
                 _ =>
-                  Accepted { value: folded, diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: folded, diagnostics: None }
               }
           }
         Absent =>
-          Accepted { value: folded, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: folded, diagnostics: None }
       }
   }
 }

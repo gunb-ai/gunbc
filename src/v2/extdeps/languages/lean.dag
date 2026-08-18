@@ -543,7 +543,7 @@ fn lean_fixed_int_spec_facts(
   width: LeanIntegerWidth,
   overflow: LeanAdmittedOverflowSemantics
 ) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
@@ -563,7 +563,7 @@ fn lean_fixed_int_spec_facts(
 }
 
 fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
@@ -577,7 +577,7 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, No
 }
 
 fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
@@ -591,7 +591,7 @@ fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.
 }
 
 fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
@@ -799,7 +799,7 @@ fn lean_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
 data lean_ingest_grammar_probe_authority: v2.std.grammar.GrammarSchemaProbeBinding = lean_ingest_grammar_probe()
 
 fn lean_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_lex_token_symbol(sym: sym) ||

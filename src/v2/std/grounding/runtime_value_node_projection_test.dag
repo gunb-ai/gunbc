@@ -11,8 +11,8 @@ fn rvnp_test_type_node(sym: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn rvnp_test_byte() -> Byte {
-  Byte { bits: [true] }
+fn rvnp_test_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn rvnp_test_primitive_value() -> v2.std.runtime.RuntimeValue {

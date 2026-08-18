@@ -34,10 +34,10 @@ fn python_grammar_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
     file: ^python_parse_fixture_file,
     rules: python_lex()
   ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: stream, diagnostics: _ } =>
       match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
-        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),

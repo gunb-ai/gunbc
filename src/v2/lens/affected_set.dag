@@ -910,7 +910,7 @@ fn affected_set_from_diff(
   dag: Dag,
   diff: v2.std.node.Diff
 ) -> Witness<v2.std.change.AffectedSet> {
-  Holds {
+  v2.std.witness.Holds {
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
         seed_affected_set_fold_acc_live(
@@ -930,7 +930,7 @@ fn re_exec_frontier_from_diff(
   dag: Dag,
   diff: v2.std.node.Diff
 ) -> Witness<ReExecFrontier> {
-  Holds {
+  v2.std.witness.Holds {
     value: frontier_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
         seed_edit_fold_acc(

@@ -10,15 +10,15 @@ fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bo
 fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
   match fold_list(
     xs: xs,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
     cons: fn(acc, member) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
-            Rejected { diagnostics: None }
+            v2.std.diagnostic.Rejected { diagnostics: None }
           } else {
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: list_snoc_item(xs: seen, item: member),
               diagnostics: None
             }

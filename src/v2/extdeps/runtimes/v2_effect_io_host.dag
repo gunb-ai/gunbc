@@ -114,7 +114,7 @@ fn effect_io_host_dispatch_read(
   host_ctx: EffectIoHostBackendContext,
   read_envelope: std.effect_grant.Envelope,
   fixture: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -140,7 +140,7 @@ fn effect_io_host_dispatch_read(
         NoCoveringGrant { verb: v, target: t, frame: f } =>
           outcome_rejected(d: effect_io_host_read_outside_grant_diagnostic())
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -148,7 +148,7 @@ fn effect_io_host_dispatch_write(
   backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
   write_envelope: std.effect_grant.Envelope,
-  request: EffectRequest
+  request: v2.std.runtime.EffectRequest
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -170,9 +170,9 @@ fn effect_io_host_dispatch_write(
                   effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
               }
           }
-        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

@@ -24,24 +24,24 @@ fn retained_diagnostic() -> v2.std.diagnostic.Diagnostic {
 }
 
 fn rejected_outcome() -> Outcome<Node> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: Empty }
   }
 }
 
 fn clean_accept() -> Outcome<Node> {
-  Accepted { value: probe_shell(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: probe_shell(), diagnostics: None }
 }
 
 fn accept_with_unrelated_diagnostic() -> Outcome<Node> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: probe_shell(),
     diagnostics: v2.std.diagnostic.Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) }
   }
 }
 
 fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {

@@ -161,7 +161,7 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
   let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
   let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
     slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
-    local_process: ProcessIdentity {
+    local_process: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as std.types.NonEmptyStr,
@@ -171,7 +171,7 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
   }
   reobservation_refuses_mutation(
     receipt: receipt,
-    fresh_local_process: ProcessIdentity {
+    fresh_local_process: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 5151,
       start_time: "91000000" as std.types.NonEmptyStr,
@@ -190,7 +190,7 @@ test fn reobservation_refuses_when_remote_recovered() -> Bool {
   let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
   let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
     slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
-    local_process: ProcessIdentity {
+    local_process: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as std.types.NonEmptyStr,

@@ -2273,12 +2273,12 @@ fn materialize_codex_runtime_bundle_through_prepare(
 }
 
 type CodexRuntimePostInstallContext {
-  build_root: FilePath
-  staging_dir: FilePath
-  cache_dir: FilePath
-  man_dest: FilePath
-  lock_dest: FilePath
-  native_path: FilePath
+  build_root: std.types.FilePath
+  staging_dir: std.types.FilePath
+  cache_dir: std.types.FilePath
+  man_dest: std.types.FilePath
+  lock_dest: std.types.FilePath
+  native_path: std.types.FilePath
   native_executable_rel: std.types.NonEmptyStr
   platform_lock_key: std.types.NonEmptyStr
   selected_target: CodexNpmRuntimeTarget

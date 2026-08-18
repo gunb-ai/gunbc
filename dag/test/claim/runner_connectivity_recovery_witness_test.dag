@@ -16,7 +16,7 @@ fn fixture_slot(host: product.placement_supply.HostIdentity, index: Int) -> gunb
 fn fixture_incarnation(slot: gunbc.build_cache_instance.RunnerSlotIdentity, pid: Int, start: String) -> gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
   gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
-    process: ProcessIdentity {
+    process: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: pid,
       start_time: start as std.types.NonEmptyStr,

@@ -1023,7 +1023,7 @@ type CommitWorkflowRealizationKind
 type CommitWorkflowRealizationBinding {
   surface: CommitWorkflowSurface
   handler: CommitWorkflowRealizationKind
-  artifact: GeneratedArtifact
+  artifact: gunbc.generated_artifact.GeneratedArtifact
 }
 
 data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Terminal {

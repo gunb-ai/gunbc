@@ -40,7 +40,7 @@ fn sql_fold_columns_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn sql_fold_identifier_spelling(id: v2.extdeps.formats.sql.SqlIdentifier) -> Witness<String> {
   match id {
-    SqlRegularIdentifier { name: n } => Holds { value: n }
+    SqlRegularIdentifier { name: n } => v2.std.witness.Holds { value: n }
     SqlDelimitedIdentifier { name: _ } =>
       v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_delimited_identifier) }
   }
@@ -52,7 +52,7 @@ fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefi
       match col.data_type {
         SqlTypeCharacterLargeObject =>
           if col.constraints.not_null {
-            Holds {
+            v2.std.witness.Holds {
               value: v2.std.node.Node {
                 kind: v2.std.node.TypeNode { connective: Conj },
                 children: [
@@ -145,7 +145,7 @@ fn sql_fold_list_production_emitted_fold_rest(
           )
         Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Absent => Holds { value: accumulated }
+    Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
@@ -174,7 +174,7 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<v2.extdeps.formats.sql
         Holds { value: id0 } =>
           match sql_fold_identifier_spelling(id: id0) {
             Holds { value: name } =>
-              Holds {
+              v2.std.witness.Holds {
                 value: v2.std.node.Node {
                   kind: v2.std.node.TypeNode { connective: Conj },
                   children: [
@@ -264,7 +264,7 @@ fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDe
         Holds { value: column_list } =>
           match table.primary_key {
             Absent =>
-              Holds {
+              v2.std.witness.Holds {
                 value: SqlFoldCreateTableBundle {
                   production_binding: ^sql_production_fold_create_table,
                   relation_rule: ^sql_relation_rule_fold_create_table,
@@ -278,7 +278,7 @@ fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDe
             Present { value: _ } =>
               match sql_fold_primary_key_emitted_witness(pk: table.primary_key) {
                 Holds { value: pk_node } =>
-                  Holds {
+                  v2.std.witness.Holds {
                     value: SqlFoldCreateTableBundle {
                       production_binding: ^sql_production_fold_create_table_pk,
                       relation_rule: ^sql_relation_rule_fold_create_table_pk,
@@ -437,7 +437,7 @@ fn sql_fold_column_list_uses_recursive_list_production_witness(
     Holds { value: column_list } =>
       match sql_fold_column_list_matched_production_witness(column_list: column_list) {
         Holds { value: production } =>
-          Holds {
+          v2.std.witness.Holds {
             value: sql_fold_column_list_production_is_recursive_list(production: production)
           }
         Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
@@ -470,7 +470,7 @@ fn sql_fold_translation_rules_node_for_emitted(
 ) -> Witness<Node> {
   match sql_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
     Holds { value: row } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
@@ -533,7 +533,7 @@ fn sql_fold_serialize_source_witness(
     Holds { value: row } =>
       match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
         Accepted { value: tokens_root, diagnostics: _ } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
@@ -578,7 +578,7 @@ fn sql_fold_target_model_for_emitted_witness(
         rule_name: rule_name
       ) {
         Holds { value: rules } =>
-          Holds {
+          v2.std.witness.Holds {
             value: target_model_make_with_emit_transforms(
               bundle: sql_target_model_bundle(
                 rules: rules,
@@ -631,7 +631,7 @@ fn sql_fold_target_model_for_operation_witness(op: v2.extdeps.formats.sql.SqlSch
 
 fn sql_fold_operation_emitted_witness(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Witness<Node> {
   match sql_fold_schema_operation_bundle_witness(op: op) {
-    Holds { value: bundle } => Holds { value: bundle.emitted }
+    Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
     Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }

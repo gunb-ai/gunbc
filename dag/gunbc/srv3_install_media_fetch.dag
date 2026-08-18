@@ -14,7 +14,7 @@ data srv3_ubuntu_install_media_install_path: std.types.NonEmptyStr = ubuntu_inst
 )
 
 data install_media_fetch_effect_shape: EffectShape<std.effects.KeySource> = std.effects.CreateEffect {
-  cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
+  cause: std.effects.CreateIfAbsent { key_source: std.effects.InputField { field: "content_sha256" } },
 }
 
 type InstallMediaPresenceObservation

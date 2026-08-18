@@ -145,7 +145,7 @@ fn only_passing_candidate(
     NoPassingCandidate =>
       outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
     OnePassingCandidate { candidate: only } =>
-      Accepted { value: only, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: only, diagnostics: None }
     ManyPassingCandidates =>
       outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
   }
@@ -173,7 +173,7 @@ fn accepted_witness_result(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Outcome<FindWitnessResult> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: FindWitnessResult {
       candidate: candidate,
       witness: v2.std.witness.StructuralPropertyWitness {
@@ -299,7 +299,7 @@ fn find_witness_derives(
 	            Rejected { diagnostics: r } =>
 	              find_witness_derivation_rejection_better(
 	                current: acc,
-	                candidate: Rejected { diagnostics: r }
+	                candidate: v2.std.diagnostic.Rejected { diagnostics: r }
 	              )
 	          }
 	      }
@@ -332,7 +332,7 @@ fn find_witness_realized(
         candidates: candidates,
         predicate: predicate
       )
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
     _ => match multiplicity_policy {
       UniqueOnly =>
@@ -385,7 +385,7 @@ fn verify_witness_realized(
     candidate: candidate,
     predicate: predicate
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
-    Accepted { value: witness, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: witness, diagnostics: None }
   } else {
     outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
   }

@@ -211,7 +211,7 @@ fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMot
   })
 }
 
-fn requires_slot(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, c: product.altra_motherboard.minimal_design.DdrChannelIdentity, p: DimmSlotPosition) -> Bool {
+fn requires_slot(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, c: product.altra_motherboard.minimal_design.DdrChannelIdentity, p: product.altra_motherboard.minimal_design.DimmSlotPosition) -> Bool {
   fold(required_roles(d: d), init: false, f: fn(acc, r) {
     acc || roles_equal(a: r, b: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: c, position: p } })
   })

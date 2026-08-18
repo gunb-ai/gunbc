@@ -24,8 +24,8 @@ data v2_eval_bool_literal_pin: Node = v2.std.node.Node {
 
 data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
 
-fn v2_eval_bool_true_byte() -> Byte {
-  Byte { bits: [true] }
+fn v2_eval_bool_true_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
@@ -80,7 +80,7 @@ fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> Wi
 }
 
 fn v2_eval_empty_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  Map {
+  std.types.Map {
     lookup: v2_eval_binding_lookup_miss
   }
 }
@@ -120,9 +120,9 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: if is_true {
-        [Byte { bits: [true, false, false, false, false, false, false, false] }]
+        [v2.std.machine.Byte { bits: [true, false, false, false, false, false, false, false] }]
       } else {
-        [Byte { bits: [false, false, false, false, false, false, false, false] }]
+        [v2.std.machine.Byte { bits: [false, false, false, false, false, false, false, false] }]
       }
     }
   }
@@ -171,14 +171,14 @@ fn v2_eval_represent_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironm
 }
 
 fn v2_eval_represent_result(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Accepted { value: value, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: value, diagnostics: None }
 }
 
 fn v2_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if node == v2_eval_bool_literal_pin {
-    Accepted { value: v2_eval_bool_true_primitive(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: v2_eval_bool_true_primitive(), diagnostics: None }
   } else if node == v2_eval_unit_literal_pin {
-    Accepted { value: v2_eval_unit_runtime_value(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: v2_eval_unit_runtime_value(), diagnostics: None }
   } else {
     v2_eval_represent_literal(node: node, env: env)
   }
@@ -315,7 +315,7 @@ fn v2_eval_bind_value(
   value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(
         m: env.bindings,
@@ -328,7 +328,7 @@ fn v2_eval_bind_value(
 }
 
 fn v2_eval_allocate(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Accepted { value: value, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: value, diagnostics: None }
 }
 
 fn v2_eval_call(call: v2.std.runtime.EvaluationCall, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
@@ -336,7 +336,7 @@ fn v2_eval_call(call: v2.std.runtime.EvaluationCall, _frame: v2.std.runtime.Eval
 }
 
 fn v2_eval_return_value(value: v2.std.runtime.RuntimeValue, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Accepted { value: Return { value: value }, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: v2.std.runtime.Return { value: value }, diagnostics: None }
 }
 
 fn v2_eval_transfer(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.EvaluationFrame> {
@@ -355,9 +355,9 @@ fn v2_eval_transfer(control: v2.std.runtime.ControlTransfer, frame: v2.std.runti
 fn v2_eval_terminal_value(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.RuntimeValue> {
   match control {
     Continue { value: v } =>
-      Accepted { value: v, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: v, diagnostics: None }
     Return { value: v } =>
-      Accepted { value: v, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: v, diagnostics: None }
     Raise { diagnostic: d } =>
       outcome_rejected(d: d)
     Suspend { continuation: c } =>

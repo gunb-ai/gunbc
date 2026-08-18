@@ -1520,7 +1520,7 @@ fn swift_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       v2.std.optional.Absent
     }
@@ -1717,7 +1717,7 @@ fn swift_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn swift_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       swift_catalog_surface_symbol(sym: sym) ||
         swift_lex_token_symbol(sym: sym) ||

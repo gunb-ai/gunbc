@@ -60,7 +60,7 @@ fn fcr_timed_out_row() -> gunbc.floor_component_receipt.FloorComponentRow? {
   )
 }
 
-fn fcr_expect_red_row(index: Nat) -> gunbc.floor_component_receipt.FloorComponentRow? {
+fn fcr_expect_red_row(index: std.nat.Nat) -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: index,

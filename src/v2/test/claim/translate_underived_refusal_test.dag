@@ -65,7 +65,7 @@ fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.infer.In
 
 data translate_mixed_derived_root_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_mixed_tree_root(),
-  facts: Map { lookup: translate_mixed_tree_facts_lookup }
+  facts: std.types.Map { lookup: translate_mixed_tree_facts_lookup }
 }
 
 fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
@@ -78,7 +78,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v
 
 data translate_absent_parent_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_mixed_tree_root(),
-  facts: Map { lookup: translate_absent_parent_underived_child_facts_lookup }
+  facts: std.types.Map { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
 
 fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
@@ -110,7 +110,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) ->
 
 data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
-  facts: Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
+  facts: std.types.Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
 fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
@@ -148,7 +148,7 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<v2.com
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
-          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
@@ -179,7 +179,7 @@ fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> 
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
-          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }

@@ -11,8 +11,8 @@ fn bind_eval_atom(s: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn bind_eval_byte() -> Byte {
-  Byte { bits: [true] }
+fn bind_eval_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn bind_eval_i64() -> Node {
@@ -101,7 +101,7 @@ fn bind_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironm
         } else {
           outcome_rejected(d: bind_eval_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
@@ -165,7 +165,7 @@ fn bind_eval_bind_value(
   } else {
     bound
   }
-  Accepted { value: touched, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: touched, diagnostics: None }
 }
 
 fn bind_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -260,7 +260,7 @@ fn bind_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts
 fn bind_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: bind_eval_facts_lookup }
+    facts: std.types.Map { lookup: bind_eval_facts_lookup }
   }
 }
 

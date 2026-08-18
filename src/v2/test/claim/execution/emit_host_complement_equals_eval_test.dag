@@ -9,7 +9,7 @@ fn emit_complement_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredF
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: ^emit_complement_eval_generic_descent }
@@ -25,7 +25,7 @@ fn emit_complement_eval_composed_facts(key: Node) -> Optional<v2.compiler.infer.
 fn emit_complement_eval_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: emit_complement_eval_composed_facts }
+    facts: std.types.Map { lookup: emit_complement_eval_composed_facts }
   }
 }
 
@@ -126,7 +126,7 @@ fn emit_complement_eval_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
 fn emit_complement_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
   match find_named_child(root: arm_wire, name: match_arm_body) {
     Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -139,13 +139,13 @@ fn emit_complement_eval_choose_arm(
     match emit_complement_eval_nth_arm_wire(node: node, wanted: 1) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_complement_eval_arm_body_node(arm_wire: arm)
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_complement_eval_bool_false(value: scrutinee) {
     match emit_complement_eval_nth_arm_wire(node: node, wanted: 2) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_complement_eval_arm_body_node(arm_wire: arm)
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     outcome_rejected(

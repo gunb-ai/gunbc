@@ -30,7 +30,7 @@ fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Medium
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: std.types.Map { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_gha_target_model(d: d)
   )
@@ -40,7 +40,7 @@ fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Mediu
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: std.types.Map { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_bash_target_model(d: d)
   )

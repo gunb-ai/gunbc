@@ -10,7 +10,7 @@ fn one_resistor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
       head: v2.extdeps.formats.spice.DeckComponent {
         component: v2.extdeps.formats.spice.Resistor {
           name: name,
-          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
+          n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
@@ -27,7 +27,7 @@ fn one_capacitor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
       head: v2.extdeps.formats.spice.DeckComponent {
         component: v2.extdeps.formats.spice.Capacitor {
           name: name,
-          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
+          n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
@@ -79,7 +79,7 @@ test fn w_a_source_and_a_resistor_do_not_collide() -> Bool {
       head: v2.extdeps.formats.spice.DeckComponent {
         component: v2.extdeps.formats.spice.VoltageSource {
           name: "x",
-          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
+          n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },

@@ -26,19 +26,19 @@ fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> v2.s
 
 fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == typescript_record_task_emitted_root {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_token_ty_string) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
   } else if node == ts_inhabitant_atom(id: ^ts_surface_record_type) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
   } else if content_hash(n: node) == content_hash(n: typescript_record_task_emitted_root) {
-    Holds {
+    v2.std.witness.Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: typescript_record_task_emitted_root)
     }
   } else {
@@ -61,7 +61,7 @@ fn typescript_record_task_inferred_facts_for(node: Node) -> Optional<v2.compiler
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -73,14 +73,14 @@ fn typescript_record_task_facts_lookup(key: Node) -> Optional<v2.compiler.infer.
 
 data typescript_record_task_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: typescript_record_task_emitted_root,
-  facts: Map { lookup: typescript_record_task_facts_lookup }
+  facts: std.types.Map { lookup: typescript_record_task_facts_lookup }
 }
 
 fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {
   match typescript_record_task_target_model_for_emit() {
     Holds { value: target } => emit(tree: typescript_record_task_inferred_tree, target: target)
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -92,7 +92,7 @@ fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<v2.compil
         mode: v2.compiler.compile.TranslateTo { target: target }
       )
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

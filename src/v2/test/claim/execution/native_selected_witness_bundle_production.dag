@@ -30,7 +30,7 @@ fn selected_logic_process_spec_for(
               cache_root: selected_logic_bundle_cache_root,
               key: bundle_key
             )
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec {
                 workspace_dir: native_cache_realization_workspace_root(
                   workspace_root: workspace_root,
@@ -51,13 +51,13 @@ fn selected_logic_process_spec_for(
               diagnostics: None
             }
           }
-          Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+          Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
         }
-        Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
-      Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+      Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
     }
-    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

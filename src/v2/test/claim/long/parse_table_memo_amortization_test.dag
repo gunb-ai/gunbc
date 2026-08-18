@@ -64,16 +64,16 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
         true =>
           fold_list(
             xs: roots,
-            empty: Rejected { diagnostics: None },
+            empty: v2.std.diagnostic.Rejected { diagnostics: None },
             cons: fn(_acc, root) {
               outcome_accepted(value: content_hash(n: root))
             }
           )
         false =>
-          Rejected { diagnostics: None }
+          v2.std.diagnostic.Rejected { diagnostics: None }
       }
     Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 

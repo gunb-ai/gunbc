@@ -149,7 +149,7 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
     let rest = join(parts.skip(n: 1), ": ")
     if rest == "|" {
       let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
+      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
       ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
     } else {
@@ -178,7 +178,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
     let rest = join(parts.skip(n: 1), ": ")
     if rest == "|" {
       let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
+      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
       ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
     } else {

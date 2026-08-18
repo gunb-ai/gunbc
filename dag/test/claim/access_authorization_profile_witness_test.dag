@@ -20,7 +20,7 @@ test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
 }
 
 test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
-  let effect = effect_access_request(request: EffectRequest {
+  let effect = effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: "actor", effect: "write", target: "file", context: "frame", evidence: "grant",
   })
   let reference = reference_access_request(request: std.authorization_profile.ReferenceRequest {

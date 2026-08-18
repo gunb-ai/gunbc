@@ -15,13 +15,13 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inf
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
         algebra: v2_eval_bool_literal_pin,
-        descent: Holds { value: compile_eval_thesis_termination_proof() }
+        descent: v2.std.witness.Holds { value: compile_eval_thesis_termination_proof() }
       ))
   } else if key == v2_eval_unit_literal_pin {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_unit_literal_pin,
         algebra: v2_eval_unit_literal_pin,
-        descent: Holds { value: compile_eval_thesis_termination_proof() }
+        descent: v2.std.witness.Holds { value: compile_eval_thesis_termination_proof() }
       ))
   } else {
     optional_absent()
@@ -31,7 +31,7 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inf
 fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: compile_eval_thesis_facts_lookup
     }
   }

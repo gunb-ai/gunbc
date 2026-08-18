@@ -61,7 +61,7 @@ fn effect_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.st
       if effect_signature_deferred_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: effect_witness_diagnostic() }
       } else {
-        Holds { value: fact }
+        v2.std.witness.Holds { value: fact }
       }
   }
 }

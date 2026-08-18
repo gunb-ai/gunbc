@@ -24,7 +24,7 @@ fn witness_empty_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
     steps: [
-      If {
+      v2.std.effect_plan.If {
         cond: v2.std.orchestration.ExitZero {
           run: v2.std.orchestration.Run { command: "true", env: [], redirect: Absent, capture: Absent }
         },

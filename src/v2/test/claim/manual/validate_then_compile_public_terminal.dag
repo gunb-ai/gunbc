@@ -34,7 +34,7 @@ fn always_reject_lens_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Wit
 data rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: always_reject_lens_gate }
 
 fn grounding_sanity_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
-  outcome_accepted(Holds { value: tree.root })
+  outcome_accepted(v2.std.witness.Holds { value: tree.root })
 }
 
 data grounding_sanity_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: grounding_sanity_gate }

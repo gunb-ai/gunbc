@@ -59,7 +59,7 @@ fn ci_v1_compiler_test_targets_compile_gate_check_step() -> v2.workflow.effect_p
 }
 
 fn ci_v1_compiler_test_targets_compile_gate_steps() -> List<EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>> {
-  [Do { effect: ci_v1_compiler_test_targets_compile_gate_check_step() }]
+  [v2.std.effect_plan.Do { effect: ci_v1_compiler_test_targets_compile_gate_check_step() }]
 }
 
 fn ci_v1_compiler_test_targets_compile_gate_intent() -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {

@@ -12,5 +12,5 @@ type Projection {
   id: v2.std.node.Symbol
   kind: ProjectionKind
   input: Node
-  output_kind: ArtifactKind
+  output_kind: v2.std.artifact.ArtifactKind
 }

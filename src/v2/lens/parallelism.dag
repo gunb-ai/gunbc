@@ -130,7 +130,7 @@ fn parallelism_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<
       if parallelism_fact_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: parallelism_witness_diagnostic() }
       } else {
-        Holds { value: fact }
+        v2.std.witness.Holds { value: fact }
       }
   }
 }

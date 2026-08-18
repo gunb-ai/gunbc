@@ -197,7 +197,7 @@ fn coproduct_nullary_inhabitant_by_discriminant<T>(
             reason: ^coproduct_nullary_inhabitant_duplicate
           ))
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -413,7 +413,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.nod
           } else {
             outcome_with_diagnostics(value: bindings, diagnostics: d)
           }
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     _ =>
       outcome_rejected(

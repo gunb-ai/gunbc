@@ -108,7 +108,7 @@ fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic
 
 fn find_child_by_name(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
   match find_named_child(root: root, name: name) {
-    Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
+    Accepted { value: child, diagnostics: d } => v2.std.diagnostic.Accepted { value: child, diagnostics: d }
     Rejected { diagnostics: diags } =>
       if diags.head.reason == ^named_child_ambiguous {
         outcome_rejected(d: path_ambiguous_diagnostic(at: root))

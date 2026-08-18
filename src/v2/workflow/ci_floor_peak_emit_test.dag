@@ -17,7 +17,7 @@ fn ci_floor_peak_pre_perturbed_pipeline() -> v2.std.orchestration.Pipeline {
       v2.std.orchestration.Pipeline {
         steps: concat(
           s,
-          [Do {
+          [v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: "true",
               env: [],

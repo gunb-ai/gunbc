@@ -10,7 +10,7 @@ type EndpointPreflight
   | EndpointClearedByUnlink { stale_detail: std.types.NonEmptyStr }
 
 type EnsureRefusal
-  = EnsureEndpointOccupied { owner: ProcessIdentity }
+  = EnsureEndpointOccupied { owner: gunbc.build_cache_instance.ProcessIdentity }
   | EnsureEndpointPathConflict { detail: std.types.NonEmptyStr }
   | EnsureEndpointUnobservable { detail: std.types.NonEmptyStr }
   | EnsureUnlinkRefused { detail: std.types.NonEmptyStr }

@@ -320,9 +320,9 @@ test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() 
 
 test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
   let a = codex_press_credential_identity(
-    credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as FilePath })
+    credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as std.types.FilePath })
   let b = codex_press_credential_identity(
-    credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext { codex_home: "/srv/codex-b" as FilePath })
+    credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext { codex_home: "/srv/codex-b" as std.types.FilePath })
   (match a {
     LimitCredentialLabel { label: la } =>
       match b {

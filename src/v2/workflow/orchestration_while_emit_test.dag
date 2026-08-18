@@ -24,12 +24,12 @@ data orch_while_memory_peak_path: std.path_intent.PathIntent = std.path_intent.P
 
 data orch_while_predicate: std.path_intent.PathPredicate = And {
   lhs: std.path_intent.PathNonempty { path: orch_while_path_ref },
-  rhs: And {
+  rhs: std.path_intent.And {
     lhs: std.path_intent.PathNotEq {
       lhs: orch_while_path_ref,
       rhs: orch_while_root_path
     },
-    rhs: Not {
+    rhs: std.path_intent.Not {
       inner: std.path_intent.PathEntryKind {
         path: orch_while_memory_peak_path,
         kind: RegularFile

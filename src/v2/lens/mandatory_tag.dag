@@ -411,10 +411,10 @@ fn mandatory_tag_findings_count(root: Node) -> Int {
 fn mandatory_tag_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match mandatory_tag_findings(root: node) {
     Cons { head: first, tail: rest } =>
-      Rejected {
+      v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => outcome_accepted(value: Holds { value: node })
+    Empty => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

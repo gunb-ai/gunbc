@@ -24,7 +24,7 @@ data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE
 
 type FloorComponentRow {
   event: std.observation.ObservationEvent
-  witnesses: Nat
+  witnesses: std.nat.Nat
   failure_mode: gunbc.floor_component_receipt_document.FloorComponentFailureMode
 }
 

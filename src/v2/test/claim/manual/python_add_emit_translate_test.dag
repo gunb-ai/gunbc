@@ -84,49 +84,49 @@ fn python_add_canonical_grounding(
 
 fn python_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == python_add_emitted_root {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == python_add_int_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
   } else if node == python_inhabitant_atom(id: ^python_inhabitant_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_inhabitant
       )
     }
   } else if node == python_add_int_facts_node {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == python_inhabitant_atom(id: ^python_surface_spelling_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
   } else if node == python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision) {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
   } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
-    Holds {
+    v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
@@ -152,7 +152,7 @@ fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Infer
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -164,7 +164,7 @@ fn python_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFact
 
 data python_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: python_add_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: python_add_facts_lookup
   }
 }

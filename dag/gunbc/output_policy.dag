@@ -69,7 +69,7 @@ type ChannelPolicy {
   progress: OutputDecision
   shell_trace: OutputDecision
   instrumentation: OutputDecision
-  routine_rollup_grain: ObservationGrain?
+  routine_rollup_grain: std.observation.ObservationGrain?
 }
 
 // The display grain, and the reason it is NOT another OutputDecision variant.

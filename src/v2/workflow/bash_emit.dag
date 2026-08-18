@@ -75,7 +75,7 @@ fn bash_emit_program_matches_golden(
 }
 
 fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> Outcome<String> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: bash_stmt_heredoc_source_text(
       path: path_spelling,
       delimiter: delimiter,
@@ -101,7 +101,7 @@ fn bash_emit_env_prefixed(
   value_spelling: String,
   command_spelling: String
 ) -> Outcome<String> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: bash_stmt_env_prefixed_source_text(
       name: name,
       value: value_spelling,

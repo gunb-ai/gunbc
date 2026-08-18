@@ -100,11 +100,11 @@ test fn npm_sri_preserves_sha1_as_native_arm() -> Bool {
 }
 
 test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
-  let absent_obj = JsonObject { members: [] }
-  let observed_obj = JsonObject {
+  let absent_obj = extdeps.languages.json.emit.JsonObject { members: [] }
+  let observed_obj = extdeps.languages.json.emit.JsonObject {
     members: [extdeps.languages.json.emit.JsonKeyValue { key: "optional", value: JsonBool { value: true } }],
   }
-  let wrong_obj = JsonObject {
+  let wrong_obj = extdeps.languages.json.emit.JsonObject {
     members: [extdeps.languages.json.emit.JsonKeyValue { key: "optional", value: JsonString { value: "false" } }],
   }
   match npm_json_boolean_member(v: absent_obj, key: "optional") {
@@ -123,15 +123,15 @@ test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
 }
 
 test fn npm_string_list_member_refuses_wrong_type() -> Bool {
-  let wrong = JsonObject {
+  let wrong = extdeps.languages.json.emit.JsonObject {
     members: [extdeps.languages.json.emit.JsonKeyValue { key: "os", value: JsonString { value: "linux" } }],
   }
-  let absent = JsonObject { members: [] }
-  let ok = JsonObject {
+  let absent = extdeps.languages.json.emit.JsonObject { members: [] }
+  let ok = extdeps.languages.json.emit.JsonObject {
     members: [
       extdeps.languages.json.emit.JsonKeyValue {
         key: "os",
-        value: JsonArray { elements: [JsonString { value: "linux" }] },
+        value: JsonArray { elements: [extdeps.languages.json.emit.JsonString { value: "linux" }] },
       },
     ],
   }

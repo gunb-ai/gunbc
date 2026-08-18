@@ -86,7 +86,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
       match event {
         FromSource { locus } =>
           match locus {
-            Textual { file: _, extent: _ } => Holds { value: locus }
+            Textual { file: _, extent: _ } => v2.std.witness.Holds { value: locus }
             _ => v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
           }
         DerivedBy { producer: _, from: from } =>

@@ -326,7 +326,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
     )
     match gate {
       Permit =>
-        Converged {
+        std.realization_reconcile.Converged {
           evidence: gunbc.host_effect.ShellEffectApplied {
             exit_code: 0,
             stdout: deploy_access_preflight_pass_message(access: access),

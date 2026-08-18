@@ -32,8 +32,8 @@ data dispatch_requested_state: gunbc.design.component.ComponentState = gunbc.des
   role: TextDimRole,
 }
 
-fn dispatch_button_component() -> Component {
-  Component {
+fn dispatch_button_component() -> gunbc.design.component.Component {
+  gunbc.design.component.Component {
     name: "dispatch-button",
     element: DispatchBtnElement,
     verbs: [Approach, Dispatch],

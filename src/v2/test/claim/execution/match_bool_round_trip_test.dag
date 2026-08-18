@@ -27,48 +27,48 @@ fn match_bool_canonical_grounding(
 
 fn match_bool_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_match_fn {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_fixture_int_inhabitant {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(
         node: node,
         algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_type_atom_node(identity: ^dag_token_kw_true) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_token_kw_false) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_pick_lit_one) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_pick_lit_two) {
-    Holds {
+    v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else {
@@ -91,7 +91,7 @@ fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Infer
         Holds { value: proof } =>
           optional_present(value: claim_inferred_facts_witness(
               grounding: grounding,
-              descent: Holds { value: proof }
+              descent: v2.std.witness.Holds { value: proof }
             ))
       }
   }
@@ -103,7 +103,7 @@ fn match_bool_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFact
 
 data match_bool_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: match_bool_emitted_root,
-  facts: Map {
+  facts: std.types.Map {
     lookup: match_bool_facts_lookup
   }
 }

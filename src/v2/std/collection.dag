@@ -33,7 +33,7 @@ fn empty_map<K, V>() -> Map<K, V> {
   empty_map_primitive_delegate()
 }
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
-  Map {
+  std.types.Map {
     lookup: fn(candidate) {
       match candidate == key {
         true => Present { value: value }
@@ -70,7 +70,7 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -
       IndexedLookup {
         index: acc.index + 1,
         value: if acc.index == wanted {
-          Holds { value: item }
+          v2.std.witness.Holds { value: item }
         } else {
           acc.value
         }

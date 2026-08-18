@@ -46,7 +46,7 @@ fn ownership_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2
   if ownership_fact_unresolved(fact: fact) {
     v2.std.witness.Violates { diagnostic: ownership_witness_diagnostic() }
   } else {
-    Holds { value: fact }
+    v2.std.witness.Holds { value: fact }
   }
 }
 

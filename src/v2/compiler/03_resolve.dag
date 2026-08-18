@@ -47,7 +47,7 @@ fn empty_namespace() -> Namespace {
 }
 
 fn empty_canonical_symbol_set() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(_) {
       false
     }
@@ -231,11 +231,11 @@ fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> Outcome<v2.std.node.Symbo
       match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: optional_present(value: v), diagnostics: d_here }
+            v2.std.diagnostic.Accepted { value: optional_present(value: v), diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
-                Accepted {
+                v2.std.diagnostic.Accepted {
                   value: found,
                   diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
                 }
@@ -250,8 +250,8 @@ fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> Outcome<v2.std.node.Symbo
     ScopeRoot { module: mod } =>
       match v2.std.collection.map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
-          Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
-          Absent => Accepted { value: optional_absent(), diagnostics: d }
+          Present { value: v } => v2.std.diagnostic.Accepted { value: optional_present(value: v), diagnostics: d }
+          Absent => v2.std.diagnostic.Accepted { value: optional_absent(), diagnostics: d }
         }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
@@ -384,19 +384,19 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
-    Accepted { value: n, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: n, diagnostics: None }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
         Present { value: canonical } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
             diagnostics: pending
           }
         Absent =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { canonical: canonical } =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
                 diagnostics: pending
               }
@@ -412,7 +412,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> O
                 namespace: ctx.namespace,
                 name: identity
               ) {
-                Accepted {
+                v2.std.diagnostic.Accepted {
                   value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
                   diagnostics: pending
                 }
@@ -439,7 +439,7 @@ fn resolve_surface_operator_atom(
   match dag_surface_operator_canonicalization_lookup(lm: ctx.lm, surface_token: identity) {
     Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(
           kind: wire.kind,
           children: wire.children,
@@ -530,7 +530,7 @@ fn resolve_transform_children(
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
         diagnostics: d
       }
@@ -556,7 +556,7 @@ fn resolve_node(
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
             diagnostics: d
           }
@@ -597,7 +597,7 @@ fn resolve_child_edge(
     Named { name: sym } =>
       if ctx.under_module_root
         && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        Accepted { value: e, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: e, diagnostics: None }
       } else {
         let child_ctx = if ctx.under_module_root
           && !dag_surface_module_header_metadata_edge(name: sym) {
@@ -608,7 +608,7 @@ fn resolve_child_edge(
         match resolve_node(ctx: child_ctx, n: e.target) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: v2.std.node.Edge { label: e.label, target: resolved_target },
               diagnostics: d
             }
@@ -617,12 +617,12 @@ fn resolve_child_edge(
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        Accepted { value: e, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: e, diagnostics: None }
       } else {
         match resolve_node(ctx: ctx, n: e.target) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: v2.std.node.Edge { label: e.label, target: resolved_target },
               diagnostics: d
             }
@@ -703,7 +703,7 @@ fn resolve_children_homogeneous_scope(
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
         diagnostics: d
       }
@@ -792,7 +792,7 @@ fn resolve_edges_first_outer_then_inner(
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
     _ =>
       Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
@@ -916,7 +916,7 @@ fn resolve_bind_node(
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
-        Accepted {
+        v2.std.diagnostic.Accepted {
           value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
           diagnostics: d
         }

@@ -49,7 +49,7 @@ fn sr_mod_claim_facts() -> v2.compiler.infer.InferredFacts {
 }
 
 fn sr_mod_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
-  Map {
+  std.types.Map {
     lookup: fn(_) {
       Present { value: facts }
     }

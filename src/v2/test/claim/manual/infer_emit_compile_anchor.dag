@@ -31,7 +31,7 @@ data anchor_stub_inferred_facts: v2.compiler.infer.InferredFacts = claim_inferre
   }
 )
 
-data anchor_stub_empty_facts_map: Map<Node, v2.compiler.infer.InferredFacts> = Map {
+data anchor_stub_empty_facts_map: Map<Node, v2.compiler.infer.InferredFacts> = std.types.Map {
   lookup: fn(_) {
     Absent
   }

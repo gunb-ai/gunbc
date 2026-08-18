@@ -23,7 +23,7 @@ fn bash_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.s
 }
 
 fn bash_fold_serialize_refused(variant: v2.std.node.Symbol) -> Outcome<String> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: bash_fold_unsupported_variant_diagnostic(variant: variant)
     )
@@ -589,7 +589,7 @@ fn bash_fold_translation_rules_node_for_emitted(
 ) -> Witness<Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
     Holds { value: row } =>
-      Holds {
+      v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
@@ -637,7 +637,7 @@ fn bash_fold_serialize_source_witness(
     Holds { value: row } =>
       match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
         Accepted { value: tokens_root, diagnostics: _ } =>
-          Holds {
+          v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
@@ -786,7 +786,7 @@ fn bash_fold_target_model_bundle_witness(
         rule_name: rule_name
       ) {
         Holds { value: rules } =>
-          Holds {
+          v2.std.witness.Holds {
             value: bash_target_model_bundle(
               rules: rules,
               serialize_source: serialize_source
@@ -812,7 +812,7 @@ fn bash_fold_target_model_for_emitted_witness(
     rule_name: rule_name
   ) {
     Holds { value: bundle } =>
-      Holds {
+      v2.std.witness.Holds {
         value: target_model_make_with_emit_transforms(
           bundle: bundle,
           lex: bash_fold_lex(),
@@ -855,7 +855,7 @@ fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body
 }
 
 fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
-  Holds {
+  v2.std.witness.Holds {
     value: bash_fold_with_redir_target_model(
       stmt_spelling: "'true'",
       redir_spelling: ">/dev/null 2>&1"
@@ -864,7 +864,7 @@ fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<v2.std.compilers
 }
 
 fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
-  Holds {
+  v2.std.witness.Holds {
     value: bash_fold_heredoc_target_model(
       path_spelling: "'out'",
       delimiter: "EOF",
@@ -874,19 +874,19 @@ fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<v2.std.compilers.ta
 }
 
 fn bash_fold_raw_line_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
-  Holds {
+  v2.std.witness.Holds {
     value: bash_fold_raw_line_target_model(text: "wrong")
   }
 }
 
 fn bash_fold_negation_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
-  Holds {
+  v2.std.witness.Holds {
     value: bash_fold_negation_target_model(inner_spelling: "(true)")
   }
 }
 
 fn bash_fold_env_prefixed_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
-  Holds {
+  v2.std.witness.Holds {
     value: bash_fold_env_prefixed_target_model(
       name: "TMPDIR",
       value_spelling: "'/x'",

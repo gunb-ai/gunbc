@@ -163,7 +163,7 @@ fn run_required_lens_gates(
       init: outcome_accepted(value: empty_lens_gate_witnesses()),
       f: fn(acc_outcome, lens) {
         match acc_outcome {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: witnesses, diagnostics: od } =>
             bind_outcome_accepted(
               od: od,

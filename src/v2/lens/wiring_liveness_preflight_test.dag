@@ -78,7 +78,7 @@ test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
 }
 
 test fn preflight_preserves_prior_failclosed() -> Bool {
-  let prior = FailClosed { reason: v2.lens.affected_set.ReasonSymbol { reason: ^wlp_prior_failure } }
+  let prior = v2.lens.affected_set.FailClosed { reason: v2.lens.affected_set.ReasonSymbol { reason: ^wlp_prior_failure } }
   let result = preflight_reexec_frontier(
     frontier: prior,
     dependencies: wlp_slice(),

@@ -1400,7 +1400,7 @@ fn java_grammar() -> v2.std.grammar.ParseGrammar {
 }
 
 fn java_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
@@ -1498,7 +1498,7 @@ fn java_method_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn java_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
@@ -1511,7 +1511,7 @@ fn java_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 }
 
 fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
@@ -1529,7 +1529,7 @@ fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<v2.std.node.
 }
 
 fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
@@ -1545,7 +1545,7 @@ fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<v2.std.node.Symb
 }
 
 fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }

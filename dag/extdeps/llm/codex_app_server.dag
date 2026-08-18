@@ -128,7 +128,7 @@ data codex_turn_start_params_input_key: std.types.NonEmptyStr = "input" as std.t
 data codex_turn_input_text_type_key: std.types.NonEmptyStr = "type" as std.types.NonEmptyStr
 data codex_turn_input_text_value_key: std.types.NonEmptyStr = "text" as std.types.NonEmptyStr
 
-fn codex_app_server_thread_start_request_line(cwd: FilePath) -> std.types.NonEmptyStr {
+fn codex_app_server_thread_start_request_line(cwd: std.types.FilePath) -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: codex_supervised_thread_start_id,
     method: "thread/start",

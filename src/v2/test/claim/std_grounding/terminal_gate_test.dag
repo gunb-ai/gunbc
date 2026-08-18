@@ -3,7 +3,7 @@ module v2.test.std_grounding.terminal_gate
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn terminal_gate_empty_bytes() -> List<Byte> {
+fn terminal_gate_empty_bytes() -> List<v2.std.machine.Byte> {
   []
 }
 
@@ -13,7 +13,7 @@ fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionSta
       target: rust_target_model(),
       source_text: "",
       exit: v2.std.host_run.HostExit {
-        outcome: Accepted { value: Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: None }
+        outcome: Accepted { value: v2.std.witness.Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: None }
       },
       logical_run: Accepted {
         value: v2.std.host_run.HostLogicalRun { stdout: v2.std.host_run.HostRunStdout { bytes: terminal_gate_empty_bytes() } },

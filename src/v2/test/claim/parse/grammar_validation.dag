@@ -66,7 +66,7 @@ data validation_left_recursive_root: v2.std.grammar.GrammarRoot = v2.std.grammar
       name: ^validation_rec_start,
       expression: v2.std.grammar.Sequence {
         left: v2.std.grammar.Nonterminal { production: ^validation_rec_start },
-        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+        right: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
     },
@@ -81,7 +81,7 @@ data validation_right_recursive_root: v2.std.grammar.GrammarRoot = v2.std.gramma
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_rec_start,
       expression: v2.std.grammar.Sequence {
-        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        left: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass },
         right: Optional { element: v2.std.grammar.Nonterminal { production: ^validation_rec_start } }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
@@ -106,8 +106,8 @@ data validation_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.std.gramm
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
       expression: v2.std.grammar.Choice {
-        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
-        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+        left: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass }
       },
       emitted: grammar_atom(identity: ^validation_start)
     },
@@ -122,8 +122,8 @@ data validation_disjoint_choice_root: v2.std.grammar.GrammarRoot = v2.std.gramma
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
       expression: v2.std.grammar.Choice {
-        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
-        right: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
+        left: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: v2.std.grammar.Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
       },
       emitted: grammar_atom(identity: ^validation_start)
     },
@@ -150,8 +150,8 @@ data validation_nullable_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
       expression: v2.std.grammar.Choice {
-        left: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } },
-        right: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } }
+        left: Optional { element: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass } },
+        right: Optional { element: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass } }
       },
       emitted: grammar_atom(identity: ^validation_start)
     },
@@ -215,7 +215,7 @@ data validation_two_token_list: List<v2.std.compilers.lexing.Token> = std.algebr
 fn validation_right_recursive_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
         tokens: validation_two_token_list,

@@ -97,11 +97,11 @@ fn effect_runtime_unit(node: Node) -> v2.std.runtime.RuntimeValue {
 }
 
 fn effect_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Accepted { value: effect_runtime_unit(node: node), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: effect_runtime_unit(node: node), diagnostics: None }
 }
 
 fn effect_reject_runtime(node: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)
     )
@@ -121,7 +121,7 @@ fn effect_choose_branch(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)
     )
@@ -129,7 +129,7 @@ fn effect_choose_branch(
 }
 
 fn effect_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Accepted { value: Continue { value: effect_runtime_unit(node: node) }, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: v2.std.runtime.Continue { value: effect_runtime_unit(node: node) }, diagnostics: None }
 }
 
 fn effect_bind_value(
@@ -137,7 +137,7 @@ fn effect_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn effect_interpretation() -> v2.std.runtime.InterpretationAlgebra {

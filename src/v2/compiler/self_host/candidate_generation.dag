@@ -129,7 +129,7 @@ fn mint_artifact_from_rust_emission_candidate(
     module_path: module_path,
     producer: V2EmitterInterpreted,
     qualifications: source_produced_qualifications,
-    build_result: BuildRefused { cause: direct_rust_door_awaiting_cargo_cause },
+    build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: direct_rust_door_awaiting_cargo_cause },
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: realized_closure
   ) {
@@ -236,10 +236,10 @@ fn provenanced_rust_emission_observation_outcome(
   observation: ProvenancedRustEmissionObservation
 ) -> Outcome<ProvenancedRustArtifact> {
   match observation {
-    AssemblyRejected { diagnostics: d } => Rejected { diagnostics: d }
-    InferenceRejected { diagnostics: d } => Rejected { diagnostics: d }
-    EmissionRejected { diagnostics: d } => Rejected { diagnostics: d }
-    ProducerReceiptRejected { diagnostics: d } => Rejected { diagnostics: d }
+    AssemblyRejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    InferenceRejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    EmissionRejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    ProducerReceiptRejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     ArtifactProduced { artifact: a } => outcome_accepted(value: a)
   }
 }

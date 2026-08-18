@@ -23,14 +23,14 @@ fn typescript_descriptor_node_host_run_i32(target: v2.std.compilers.target_model
           match runtime_value_parse(target: target, stdout: stdout) {
             Accepted { value: rv, diagnostics: None } =>
               runtime_value_signed_i32_le_as_int(value: rv)
-            Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+            Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
           }
         _ =>
-          Rejected {
+          v2.std.diagnostic.Rejected {
             diagnostics: diagnostics_singleton(d: emit_host_exit_not_ok_diagnostic())
           }
       }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

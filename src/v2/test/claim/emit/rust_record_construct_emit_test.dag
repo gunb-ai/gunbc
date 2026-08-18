@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data rust_record_construct_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: dag_fixture_emitted_rec_fn,
-  facts: Map { lookup: rust_record_construct_emit_facts_miss }
+  facts: std.types.Map { lookup: rust_record_construct_emit_facts_miss }
 }
 
 fn rust_record_construct_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {

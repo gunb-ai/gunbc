@@ -356,7 +356,7 @@ test fn witness_malformed_checkout_input_is_not_reported_as_duplicated() -> Bool
     kv(key: "persist-credentials", value: yaml_string(s: "maybe"))
   ])
   let sequence_valued = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: YamlSequence { elements: [] })
+    kv(key: "persist-credentials", value: extdeps.languages.yaml.types.YamlSequence { elements: [] })
   ])
   match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
     PushBindingInputUnsupported { checkout_step: _, input, observed_kind } =>

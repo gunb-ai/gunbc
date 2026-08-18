@@ -11,7 +11,7 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> v2.std.diagnostic.Diagn
 }
 
 fn normalize_fold_init(n: Node) -> Outcome<Node> {
-  Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
 }
 
 fn normalize_fold_step(acc: Outcome<Node>, edge: v2.std.node.Edge, child: Outcome<Node>) -> Outcome<Node> {
@@ -24,7 +24,7 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: v2.std.node.Edge, child: Outcom
             diagnostics: rejected_with_pending(pending: ad, rejected: cr)
           }
         Accepted { value: child_node, diagnostics: cd } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: node_rebuild(
               n: shell,
               children: list_snoc_item(
@@ -63,16 +63,16 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: v2.std.diagnostic.Diagnosti
                 diagnostics: rejected_with_pending(pending: cd, rejected: r)
               }
             Accepted { value: v, diagnostics: d } =>
-              Accepted {
+              v2.std.diagnostic.Accepted {
                 value: v,
                 diagnostics: diagnostics_merge(outer: cd, inner: d)
               }
           }
         Absent =>
-          Accepted { value: folded, diagnostics: cd }
+          v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
       }
     Absent =>
-      Accepted { value: folded, diagnostics: cd }
+      v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
   }
 }
 
@@ -132,13 +132,13 @@ fn normalize_module_graft_finish(folded: Node, cd: v2.std.diagnostic.Diagnostics
           diagnostics: rejected_with_pending(pending: cd, rejected: r)
         }
       Accepted { value: grafted, diagnostics: d } =>
-        Accepted {
+        v2.std.diagnostic.Accepted {
           value: grafted,
           diagnostics: diagnostics_merge(outer: cd, inner: d)
         }
     }
   } else {
-    Accepted { value: folded, diagnostics: cd }
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
   }
 }
 

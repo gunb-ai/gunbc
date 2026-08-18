@@ -8,7 +8,7 @@ fn site() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_ide
 fn page() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
 fn elsewhere() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 9) }
 
-fn view_of(kind: ProjectionKind) -> std.planar_projection.ProjectionView? {
+fn view_of(kind: std.planar_projection.ProjectionKind) -> std.planar_projection.ProjectionView? {
   match named_projection_view(kind: kind, source_frame: site(), view_frame: page()) {
     ProjectionRefused { cause: _ } => none
     ProjectionReady { value: v } => Present { value: v }
@@ -18,7 +18,7 @@ fn view_of(kind: ProjectionKind) -> std.planar_projection.ProjectionView? {
 // The map's columns are what a reader would measure off the drawing: where each source axis goes on
 // the page. Asserting them is asserting the projection itself, which is why every camera claim below
 // reads columns rather than only checking that construction succeeded.
-fn column_is(kind: ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
+fn column_is(kind: std.planar_projection.ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
   match view_of(kind: kind) {
     Absent => false
     Present { value: view } =>
@@ -27,7 +27,7 @@ fn column_is(kind: ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
   }
 }
 
-fn projected(kind: ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_projection.ViewPoint2? {
+fn projected(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_projection.ViewPoint2? {
   match view_of(kind: kind) {
     Absent => none
     Present { value: view } =>
@@ -38,7 +38,7 @@ fn projected(kind: ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_project
   }
 }
 
-fn depth_of(kind: ProjectionKind, x: Int, y: Int, z: Int) -> Int? {
+fn depth_of(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> Int? {
   match view_of(kind: kind) {
     Absent => none
     Present { value: view } =>

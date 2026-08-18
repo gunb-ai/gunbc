@@ -101,6 +101,6 @@ fn carrier_first_lifecycle_violation(carrier: Node) -> Optional<v2.std.diagnosti
 fn lifecycle_carrier_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_first_lifecycle_violation(carrier: node) {
     Present { value: d } => outcome_rejected(d)
-    Absent => outcome_accepted(value: Holds { value: node })
+    Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }

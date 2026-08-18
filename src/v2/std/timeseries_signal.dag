@@ -302,7 +302,7 @@ fn capacitor_fold_step(
     at: port_locus(port: timeseries_passive_fold_step_locus),
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: CapacitorState {
           voltage: StepPotentialDifference {
             microvolts: voltage(v)
@@ -311,7 +311,7 @@ fn capacitor_fold_step(
         }
         diagnostics: None
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -323,7 +323,7 @@ fn fold_capacitor_transient(
 ) -> Outcome<CapacitorState> {
   fold_list(
     xs: currents,
-    empty: Accepted { value: initial, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: initial, diagnostics: None },
     cons: fn(acc, current) {
       match acc {
         Accepted { value: state, diagnostics: _ } =>
@@ -333,7 +333,7 @@ fn fold_capacitor_transient(
             current: current,
             dt: dt,
           )
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     }
   )
@@ -373,7 +373,7 @@ fn inductor_fold_step(
     at: port_locus(port: timeseries_passive_fold_step_locus),
   ) {
     Accepted { value: i, diagnostics: _ } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: InductorState {
           current: StepCurrent {
             microamperes: current(i)
@@ -382,6 +382,6 @@ fn inductor_fold_step(
         }
         diagnostics: None
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

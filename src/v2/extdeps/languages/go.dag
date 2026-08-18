@@ -536,7 +536,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 }
 
 fn go_empty_primitive_spec_facts() -> Map<v2.std.node.Symbol, Node> {
-  Map {
+  std.types.Map {
     lookup: fn(axis) {
       v2.std.optional.Absent
     }
@@ -2041,7 +2041,7 @@ fn go_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
 }
 
 fn go_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  Set {
+  std.types.Set {
     member: fn(sym) {
       go_catalog_surface_symbol(sym: sym) ||
         go_lex_token_symbol(sym: sym) ||

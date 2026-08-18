@@ -9,7 +9,7 @@ data build_cache_instance_ready_note: String = "THE RECEIPT IS ABOUT AN EXACT IN
 
 type BuildCacheInstanceReady {
   instance: gunbc.build_cache_instance.BuildCacheInstance
-  owner: ProcessIdentity
+  owner: gunbc.build_cache_instance.ProcessIdentity
   managed_unit: std.types.NonEmptyStr
   endpoint_verified: Bool
   executable_verified: Bool

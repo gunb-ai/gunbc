@@ -28,21 +28,21 @@ fn lbe_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
 }
 
 fn lbe_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
 fn lbe_call_primitive(_node: Node, _args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  Rejected {
+  v2.std.diagnostic.Rejected {
     diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: _node))
   }
 }
 
 fn lbe_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
-  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
 fn lbe_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
-  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
 }
 
 fn lbe_bind_value(
@@ -50,7 +50,7 @@ fn lbe_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn lbe_inferred_facts(resolved: Node) -> v2.compiler.infer.InferredFacts {
@@ -67,7 +67,7 @@ fn lbe_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
   let facts = lbe_inferred_facts(resolved: root)
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map {
+    facts: std.types.Map {
       lookup: fn(_) {
         Present { value: facts }
       }
@@ -170,7 +170,7 @@ fn lbe_run_test_claim_assert_from_emit(
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
     Rejected { diagnostics: d } =>
-      v2.std.verdict.SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+      v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: Absent }
   }
 }
 
@@ -191,7 +191,7 @@ fn lbe_test_claim_run_from_emit(
 }
 
 fn lbe_mock_actual(mock: v2.lens.testgen.LanguageBehaviorIoMock) -> Outcome<Node> {
-  Accepted {
+  v2.std.diagnostic.Accepted {
     value: mock.snapshot.expected_value,
     diagnostics: None
   }

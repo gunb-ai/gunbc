@@ -1,7 +1,7 @@
 module v2.std.host_transport
 
 
-type ByteString = List<Byte>
+type ByteString = List<v2.std.machine.Byte>
 
 type RelPath = String
 
@@ -86,7 +86,7 @@ fn runtime_value_parse_from_row(
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
   let expected = runtime_value_codec_expected_byte_count(codec: row.transport.runtime_value_codec)
   if length(xs: bytes) == expected {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: v2.std.runtime.RuntimePrimitive {
         value: {
           primitive_type: row.runtime_primitive_type,
@@ -96,7 +96,7 @@ fn runtime_value_parse_from_row(
       diagnostics: None
     }
   } else {
-    Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: emit_host_runtime_row_parse_byte_width_mismatch_diagnostic()
       )
@@ -109,7 +109,7 @@ fn configured_emit_host_runtime_row_from_target_row(
 ) -> Outcome<EmitHostRuntimeRow> {
   match row {
     HostRuntimeRowPresent { row: configured } =>
-      Accepted { value: configured, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: configured, diagnostics: None }
     HostRuntimeRowAbsent =>
       outcome_rejected(d: emit_host_runtime_row_unconfigured_diagnostic())
   }

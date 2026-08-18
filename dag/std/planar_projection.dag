@@ -77,7 +77,7 @@ fn triple_is_zero(t: ViewAxisTriple) -> Bool {
 // The offending axis image is carried because that is the fact the caller needs: it says which
 // source axis is foreshortened, not merely that some axis is.
 type ProjectionRefusal
-  = ProjectionArithmeticRefused { cause: IntegerOverflow }
+  = ProjectionArithmeticRefused { cause: std.checked_arithmetic.IntegerOverflow }
   | ProjectionFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
   | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
   | ViewDirectionIsZero

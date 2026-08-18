@@ -10,7 +10,7 @@ fn admits(i: product.compute_board.power_distribution.BoardPowerIntent) -> Bool 
   }
 }
 
-fn refusal_kind(r: PowerRefusal) -> String {
+fn refusal_kind(r: product.compute_board.power_distribution.PowerRefusal) -> String {
   match r {
     RailOutsideDeviceWindow { rail: _, supplied: _, minimum: _, maximum: _ } => "OutsideWindow"
     RailBuiltForAnUnconnectedPin { rail: _, supplied: _ } => "BuiltUnconnected"

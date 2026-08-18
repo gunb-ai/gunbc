@@ -14,29 +14,29 @@ fn rust_body_add_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFac
 fn rust_body_add_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: root,
-    facts: Map { lookup: rust_body_add_facts_miss }
+    facts: std.types.Map { lookup: rust_body_add_facts_miss }
   }
 }
 
 fn rust_body_add_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rust_body_add_producer_swapped_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
-      Accepted {
+      v2.std.diagnostic.Accepted {
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

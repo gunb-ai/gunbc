@@ -96,7 +96,7 @@ type RunnerWatchdogInputs {
 
 type RunnerRepairDecisionReceipt {
   slot: gunbc.build_cache_instance.RunnerSlotIdentity
-  local_process: ProcessIdentity
+  local_process: gunbc.build_cache_instance.ProcessIdentity
   remote_registration_id: String
   act_at: std.types.Timestamp
 }

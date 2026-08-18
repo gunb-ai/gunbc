@@ -38,7 +38,7 @@ fn rust_rec_nine_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFac
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
-    descent: Holds {
+    descent: v2.std.witness.Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
         strict: v2.std.cardinality.RankingDimension { measured: ^rust_rec_nine_eval_generic_descent }
@@ -54,7 +54,7 @@ fn rust_rec_nine_eval_composed_facts(key: Node) -> Optional<v2.compiler.infer.In
 fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.infer.InferredTree {
   v2.compiler.infer.InferredTree {
     root: rust_rec_nine_arrow_node(),
-    facts: Map { lookup: rust_rec_nine_eval_composed_facts }
+    facts: std.types.Map { lookup: rust_rec_nine_eval_composed_facts }
   }
 }
 
@@ -164,7 +164,7 @@ fn rust_rec_nine_eval_call_primitive(
       } else {
         outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

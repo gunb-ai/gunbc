@@ -24,8 +24,8 @@ data nds_xyy: v2.std.diagnostic.NonEmptyDiagnostics = v2.std.diagnostic.NonEmpty
   head: diag_eq_x(),
   tail: [diag_eq_y(), diag_eq_y()]
 }
-data rejected_xx_y: Outcome<Node> = Rejected { diagnostics: nds_xx_y }
-data rejected_xyy: Outcome<Node> = Rejected { diagnostics: nds_xyy }
+data rejected_xx_y: Outcome<Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xx_y }
+data rejected_xyy: Outcome<Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xyy }
 fn witness_tail_mult_not_equal() -> Bool {
   if non_empty_diagnostics_eq(a: nds_xx_y, b: nds_xyy) {
     false

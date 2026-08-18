@@ -37,7 +37,7 @@ fn emit_module_step(
 fn emit_module_text(decls: List<v2.compiler.infer.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   fold_list(
     xs: decls,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
     cons: fn(acc, tree) {
       emit_module_step(acc: acc, tree: tree, target: target)
     }
@@ -80,7 +80,7 @@ fn emit_family_append_member(
 fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
   fold_list(
     xs: members,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
     cons: fn(acc, member) {
       bind_outcome(
         o: acc,

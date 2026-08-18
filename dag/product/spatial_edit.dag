@@ -32,7 +32,7 @@ type EditRefusal
   | EditTargetAlreadyPresent { identity: product.placement_supply.RoomIdentity }
   | RoomEditedTwiceInOneBatch { identity: product.placement_supply.RoomIdentity }
   | EditGeometryRefused { cause: std.orthogonal_geometry.OrthogonalRefusal }
-  | EditArithmeticRefused { cause: IntegerOverflow }
+  | EditArithmeticRefused { cause: std.checked_arithmetic.IntegerOverflow }
   | EditFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
 
 type EditConstruction<T>
