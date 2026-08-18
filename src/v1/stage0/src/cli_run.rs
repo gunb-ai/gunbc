@@ -16162,7 +16162,8 @@ pub fn run_claims_in_process(
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
-/// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
+/// operator eval-budget ruling (2026-08-17; ceiling at `required_floor_claim_budget_ms`).
+/// A Fail/RuntimeError stays itself: those are already loud, and
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
@@ -20611,7 +20612,8 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator 5s rule, 2026-07-12). When set, every
+    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17; the ceiling itself is
+    /// `v2.workflow.required_floor` `required_floor_claim_budget_ms`). When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
@@ -40074,6 +40076,34 @@ pub fn run_required_floor(
                 }
             }
         }
+        // AN EMPTY ROSTER REFUSES, because it is indistinguishable from a roster that could
+        // not be read. Every downstream guard here is a join over this set: the partition-sum
+        // check compares four counters against `len()`, and the did-not-execute check walks
+        // the roster looking for identities no claim reported. At zero, all of them are
+        // VACUOUSLY TRUE -- 0+0+0+0 == 0 passes, and nothing is missing from an empty set. So
+        // the one shape that disables every check is the one shape nothing was checking.
+        //
+        // This is the empty-observation narrow, and it is the mirror of the absorbing fallback
+        // rather than an instance of it: a widen is merely expensive, a narrow is silently
+        // uncovered. It ran live on main. #8437 flipped prepared-floor scope to bind bare
+        // helper names last-write-wins, `floor_expected_red_roster` began evaluating to the
+        // empty list, and the run reported `roster carries 0 enrolled identity(ies)` followed
+        // by 469 ordinary FAILs -- 469 enrolled rows each re-labelled a regression, with the
+        // remainder absorbed as passes. The immediately preceding commit reported 661.
+        //
+        // The roster is a debt ledger shrinking toward zero, so an empty one WILL eventually
+        // be legitimate. It is not legitimate SILENTLY: the day the last row is removed, this
+        // refusal is what makes someone delete it deliberately and say so, rather than a read
+        // failure quietly wearing the same face as success.
+        if out.is_empty() {
+            return Err("REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterEmpty — \
+                 v2.workflow.floor_expected_red.floor_expected_red_roster evaluated to zero \
+                 identities. An empty roster makes the partition-sum and did-not-execute \
+                 checks vacuous, so every enrolled row reports as an ordinary failure and no \
+                 guard can fire. If the roster is genuinely empty, delete this refusal in the \
+                 same change that empties it."
+                .to_string());
+        }
         out
     };
     eprintln!(
@@ -40393,9 +40423,13 @@ pub fn run_required_floor(
                     outcome.budget_refused.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
-                         produces none, so the enrolled claim went undecided. Reduce the row's \
-                         cost, or move it to a lane that declares its own ceiling — removing it \
-                         from the roster would not help, because it is not passing either.",
+                         produces none, so the enrolled claim went undecided — THIS ROW'S \
+                         CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
+                         the verdict, so a content defect here would be indistinguishable from \
+                         the enrolled failure. Reducing the row's cost, or moving it to a lane \
+                         that declares its own ceiling, is what lets it reach a verdict at all; \
+                         removing it from the roster would not help, because it is not passing \
+                         either.",
                         claim.qualified, detail
                     ));
                     continue;
