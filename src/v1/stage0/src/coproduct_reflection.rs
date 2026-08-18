@@ -307,17 +307,17 @@ struct ParsedTypeDecl {
 }
 
 use std::cell::RefCell;
-use std::collections::HashMap as StdHashMap;
+use std::collections::BTreeMap as StdDeclParseMemoMap;
 
 thread_local! {
     static FLOOR_DECL_PARSE_MEMO: RefCell<
-        Option<StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
+        Option<StdDeclParseMemoMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
     > = RefCell::new(None);
 }
 
 pub fn register_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
-        *cell.borrow_mut() = Some(StdHashMap::new());
+        *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
     });
 }
 
