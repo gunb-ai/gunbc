@@ -3,6 +3,8 @@ module extdeps.boards.supermicro
 import std.types { String, NonEmptyStr, Int }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cpu.types { CpuSocket }
+import extdeps.cpu.ampere { ampere_lga4926_socket }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -36,7 +38,8 @@ type SupermicroR12spdAMechanical {
   board_label: NonEmptyStr
   form_factor_label: NonEmptyStr
   processor_socket_count: Nat
-  socket_label: NonEmptyStr
+  socket: CpuSocket
+  processor_support_label: NonEmptyStr
   dimm_slots_total: Nat
   dimms_per_channel: Nat
   ddr4_max_data_rate_mts: Int
@@ -47,7 +50,8 @@ data supermicro_r12spd_a_mechanical: SupermicroR12spdAMechanical = SupermicroR12
   board_label: "Supermicro R12SPD-A",
   form_factor_label: "proprietary (Supermicro MegaDC family), not ATX-compatible",
   processor_socket_count: 1,
-  socket_label: "LGA 4926, Ampere Altra / Altra Max up to 250 W TDP",
+  socket: ampere_lga4926_socket,
+  processor_support_label: "LGA 4926, Ampere Altra / Altra Max up to 250 W TDP",
   dimm_slots_total: 16,
   dimms_per_channel: 2,
   ddr4_max_data_rate_mts: 3200,
