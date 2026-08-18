@@ -14677,6 +14677,95 @@ fn render_batch_summary_line(
     }
 }
 
+/// Mirror of `gunbc.observation_ci_render.ci_witness_claim_result_text` and
+/// `ci_human_elapsed`. Hot-path render for per-witness floor lines: interpreter
+/// eval per printed line (~800 anomaly rows) dominated the fold and pushed marginal
+/// witnesses over the 500ms receipt budget. Format authority stays in `.dag`;
+/// `observation_ci_render_witness_test` is the oracle (same pattern as
+/// `render_heartbeat_line_mirror`).
+const WITNESS_CLAIM_COLUMN_WIDTH: usize = 60;
+
+fn witness_claim_package_path(subject: &str) -> String {
+    if subject.contains('/') {
+        if subject.ends_with(".dag") {
+            subject[..subject.len() - 4].to_string()
+        } else {
+            subject.to_string()
+        }
+    } else {
+        subject.replace('.', "/")
+    }
+}
+
+fn witness_bazel_target_label(subject: &str, function: &str) -> String {
+    format!("//{}:{}", witness_claim_package_path(subject), function)
+}
+
+pub fn render_witness_claim_result_text_mirror(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> String {
+    let label = witness_bazel_target_label(subject, function);
+    let padded = if label.len() >= WITNESS_CLAIM_COLUMN_WIDTH {
+        label
+    } else {
+        format!(
+            "{}{}",
+            label,
+            " ".repeat(WITNESS_CLAIM_COLUMN_WIDTH - label.len())
+        )
+    };
+    let token = if passed { "PASSED" } else { "FAILED" };
+    format!(
+        "{padded}{token} in {}",
+        crate::v1_rt::obs_human_elapsed(wall_nanos)
+    )
+}
+
+/// Render one per-witness claim-result line through the `.dag` authority. Every choice about
+/// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
+/// seed transports subject, function, verdict and wall time only.
+fn render_witness_claim_result_text(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> Option<String> {
+    // Fail-closed: policy install must have run before any witness line prints.
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_claim_result_text_mirror(
+        subject, function, wall_nanos, passed,
+    ))
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_witness_budget_warn_text`. Hot-path render
+/// for the warn-tier line (~800 rows/run): native format, no per-line interpreter eval.
+pub fn render_witness_budget_warn_text_mirror(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "[floor-witness-slow] {qualified} {wall_ms}ms > {warn_ms}ms warn (ceiling {budget_ms}ms)"
+    )
+}
+
+/// Render one per-witness budget-warn line through the `.dag` authority.
+fn render_witness_budget_warn_text(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> Option<String> {
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_budget_warn_text_mirror(
+        qualified, wall_ms, warn_ms, budget_ms,
+    ))
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
@@ -23549,8 +23638,8 @@ impl ShardStyle {
     fn stream_witness(
         self,
         function: &str,
-        entry: &str,
-        execution_leg: &str,
+        subject: &str,
+        _execution_leg: &str,
         wall_nanos: u128,
         passed: bool,
     ) {
@@ -23565,21 +23654,23 @@ impl ShardStyle {
         if routine_rollup_folds() && concluded_outcome_folds(passed) {
             return;
         }
-        let ms = wall_nanos as f64 / 1.0e6;
         let ts = floor_ts();
         let tag = self.shard_tag();
-        if self.color {
-            let glyph = if passed {
-                "\x1b[32m✓\x1b[0m"
-            } else {
-                "\x1b[31m✗\x1b[0m"
-            };
-            eprintln!(
-                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry} leg={execution_leg})\x1b[0m {ms:.1}ms"
-            );
-        } else {
-            let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("{ts} {tag}{glyph} {function} ({entry} leg={execution_leg}) {ms:.1}ms");
+        match render_witness_claim_result_text(subject, function, wall_nanos, passed) {
+            Some(line) => {
+                if self.color {
+                    eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
+                } else {
+                    eprintln!("{ts} {tag}{line}");
+                }
+            }
+            // Fail-closed: routine lines may already be folded, so a silent return would read as
+            // a witness that never ran rather than a renderer that refused.
+            None => eprintln!(
+                "::error::witness presentation unavailable: could not render claim result \
+                 through gunbc.observation_ci_render `ci_witness_claim_result_text` for \
+                 {subject}:{function}"
+            ),
         }
     }
 }
@@ -23726,14 +23817,14 @@ fn run_discovery_rows(
             })?;
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
-            module_path,
+            module_path: module_path.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
             execution_leg: execution_leg.clone(),
         });
         style.stream_witness(
             &row.function,
-            &row.entry,
+            &module_path,
             &execution_leg,
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
@@ -29913,11 +30004,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -40141,10 +40232,19 @@ pub fn run_required_floor(
         let wall_ms = receipt.wall_nanos / 1_000_000;
         if wall_ms > u128::from(claim.warn_ms) {
             outcome.over_warn += 1;
-            eprintln!(
-                "[floor-witness-slow] {} {}ms > {}ms warn (ceiling {}ms)",
-                claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
-            );
+            match render_witness_budget_warn_text(
+                &claim.qualified,
+                wall_ms,
+                claim.warn_ms,
+                claim.budget_ms,
+            ) {
+                Some(line) => eprintln!("{line}"),
+                None => eprintln!(
+                    "::error::witness presentation unavailable: could not render budget warn \
+                     through gunbc.observation_ci_render `ci_witness_budget_warn_text` for {}",
+                    claim.qualified
+                ),
+            }
         }
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
