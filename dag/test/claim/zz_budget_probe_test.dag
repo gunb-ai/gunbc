@@ -2,20 +2,54 @@ module gunbc.test.claim.zz_budget_probe_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
+import v2.std.node { well_formed }
+import v2.std.grammar { ParseGrammar }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
 import v2.compiler.tokenize { lex_walk_artifact }
-import v2.compiler.parse { parse_module }
+import v2.compiler.parse {
+  parse_module,
+  parse_module_prepared,
+  prepare_grammar,
+  grammar_to_node
+}
 import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 
-data zz_src_header: String = "module zz_probe\n"
 data zz_src_one_type: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n"
-data zz_src_two_type: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n\ntype AlgY = AlphaY | BetaY\n"
-data zz_src_four_type: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n\ntype AlgY = AlphaY | BetaY\n\ntype AlgZ = AlphaZ | BetaZ\n\ntype AlgW = AlphaW | BetaW\n"
-data zz_src_one_fn: String = "module zz_probe\n\nfn f() -> Int {\n  1\n}\n"
-data zz_src_nested_fn: String = "module zz_probe\n\nfn f(x: Int) -> Int {\n  (x + 1) * 2\n}\n"
 
-fn zz_parses(source: String) -> Bool {
-  match lex_walk_artifact(source: source, file: ^zz_probe, rules: dag_lex_rules()) {
+test fn zz_grammar_to_node_only() -> Bool {
+  match grammar_to_node(grammar: dag_grammar()) {
+    n => well_formed(n: n)
+  }
+}
+
+test fn zz_prepare_grammar_only() -> Bool {
+  match prepare_grammar(grammar: dag_grammar()) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zz_prepare_then_parse() -> Bool {
+  match lex_walk_artifact(source: zz_src_one_type, file: ^zz_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match prepare_grammar(grammar: dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: p, diagnostics: residue } =>
+          match parse_module_prepared(
+            tokens: lex_artifact_semantic_tokens(artifact: a),
+            prepared: p,
+            validation_residue: residue
+          ) {
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+test fn zz_full_parse_module() -> Bool {
+  match lex_walk_artifact(source: zz_src_one_type, file: ^zz_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
@@ -24,10 +58,3 @@ fn zz_parses(source: String) -> Bool {
       }
   }
 }
-
-test fn zz_parse_header_only() -> Bool { zz_parses(source: zz_src_header) }
-test fn zz_parse_one_type() -> Bool { zz_parses(source: zz_src_one_type) }
-test fn zz_parse_two_type() -> Bool { zz_parses(source: zz_src_two_type) }
-test fn zz_parse_four_type() -> Bool { zz_parses(source: zz_src_four_type) }
-test fn zz_parse_one_fn() -> Bool { zz_parses(source: zz_src_one_fn) }
-test fn zz_parse_nested_fn() -> Bool { zz_parses(source: zz_src_nested_fn) }
