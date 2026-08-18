@@ -337,7 +337,13 @@ fn stage0_src_repo_path(filename: String) -> String {
 
 fn derived_generated_stage0_repo_paths() -> List<String> {
   match current_stage0_rust_source_observation() {
-    RustManifestObserved { tracked_rust_repo_paths: paths, .. } =>
+    RustManifestObserved {
+      tracked_rust_repo_paths: paths,
+      repository_revision: _,
+      manifest_content_identity: _,
+      prior_tracked_rust_repo_paths: _,
+      cargo_bin_repo_paths: _
+    } =>
       filter(
         xs: paths,
         predicate: fn(path) {
@@ -348,9 +354,9 @@ fn derived_generated_stage0_repo_paths() -> List<String> {
             )
         }
       )
-    RustManifestReadRefused { .. } => []
-    RustManifestParseRefused { .. } => []
-    GitObservationRefused { .. } => []
+    RustManifestReadRefused { detail: _ } => []
+    RustManifestParseRefused { detail: _ } => []
+    GitObservationRefused { detail: _ } => []
   }
 }
 

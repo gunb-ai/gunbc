@@ -3,7 +3,11 @@ module gunbc.generated_projection_paths
 import gunbc.generated_artifact { committed_generated_artifact_paths }
 import std.types { List, String }
 
-type GeneratedProjectionPathSource = CommittedGeneratedArtifact
+// Stage0EmitPlanRetired is uninhabited — retains the coproduct shape after stage0_emit_plan deletion;
+// only CommittedGeneratedArtifact is constructed in production.
+type GeneratedProjectionPathSource
+  = CommittedGeneratedArtifact
+  | Stage0EmitPlanRetired
 
 type GeneratedProjectionPathRow {
   path: String
