@@ -282,17 +282,8 @@ data no_seen_qualified_names: List<String> = []
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
-// RUNG DROP (2026-08-18, witnesses run 32106177337): previous rung 500ms per-claim hard
-// ceiling; temporary rung 600ms. Reason: 15 claims measured at 501-587ms under
-// whole-corpus srv2 pressure (ci_heal_skew_guard_emit_test, roadmap_forecast_witness)
-// while the per-witness median remains ~1ms. Bounded population: cooperative-deadline
-// millisecond-boundary flakes only — 600ms is measured-max plus one scheduler-quantum,
-// not an open slack ratchet.
-// dissolve-on: restore 500ms when three consecutive main witnesses folds report zero
-// claims over 500ms, or each outlier is cost-reduced or enrolled on a named long/
-// cadence row with an executing consumer (gunbc#7762 admission ruling).
 fn required_floor_claim_budget_ms() -> Int {
-  600
+  500
 }
 
 fn required_floor_claim_warn_ms() -> Int {
