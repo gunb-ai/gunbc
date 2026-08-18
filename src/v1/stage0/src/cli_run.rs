@@ -42204,14 +42204,23 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
-    // STOPPED-LINE AUDIT ONLY (review 53063). `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS[_ONLY]`
-    // are set only by the standalone `required_floor_failure_census` bin for Wave 1 partition
-    // work — never by `claim_executor --required-floor`, witnesses.yml, or any enrolled gate.
-    // They write/report diagnostic rows and may shrink the evaluated population; they do not
-    // change pass/fail verdict arms on the production path (unset env = full manifest fold).
-    let census_only = std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY")
+    // STOPPED-LINE AUDIT ONLY (review 53063 / 53065). Population narrow is census-entrypoint
+    // only: `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY` is honored only when
+    // `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS` is also set (the standalone census bin sets both).
+    // Witness CI / `claim_executor --required-floor` never set either; ONLY without CENSUS
+    // refuses rather than silently narrowing the production fold.
+    let census_only_requested = std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY")
         .ok()
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if census_only_requested && failure_census_writer.is_none() {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=FailureCensusOnlyWithoutOutputPath — \
+             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY requires \
+             GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS (scope narrow is census-entrypoint only)"
+                .to_string(),
+        );
+    }
+    let census_only = census_only_requested && failure_census_writer.is_some();
     if census_only {
         let before = claims.len();
         claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
