@@ -119,7 +119,7 @@ type PointwisePower<T> {
 
 type FreeMonoid<T>
   = Empty
-  | Cons { head: T, tail: FreeMonoid<T> }
+  | Cons { head: T, tail: std.algebra.FreeMonoid<T> }
 
 type FreeSemigroup<T> {
   head: T
