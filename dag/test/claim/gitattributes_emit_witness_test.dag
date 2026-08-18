@@ -110,7 +110,7 @@ test fn witness_red_perturbed_emit_drifts() -> Bool {
 
 test fn witness_holds() -> Bool {
   witness_all_committed_paths_have_merge_rows_holds()
-    && witness_projection_population_contains_stage0_rust()
+    && witness_projection_population_contains_dispatch_generated()
     && witness_duplicate_projection_path_refuses_before_emission()
     && witness_presentation_policy_row_present_holds()
     && witness_committed_matches_emit_holds()
