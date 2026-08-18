@@ -11,27 +11,27 @@ module v1.compiler.coercion
 
 fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.TypeCheckpoint> {
   match target {
-    Rust => rust_type_checkpoints
-    Python => python_type_checkpoints
-    Go => go_type_checkpoints
-    Dag => dag_type_checkpoints
+    Rust => extdeps.languages.rust.types.rust_type_checkpoints
+    Python => extdeps.languages.python.types.python_type_checkpoints
+    Go => extdeps.languages.go.types.go_type_checkpoints
+    Dag => extdeps.languages.dag.types.dag_type_checkpoints
   }
 }
 
 fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.InhabitantDecl> {
   match target {
-    Rust => rust_algebra_inhabitants
-    Python => python_algebra_inhabitants
-    Go => go_algebra_inhabitants
+    Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
+    Python => extdeps.languages.python.types.python_algebra_inhabitants
+    Go => extdeps.languages.go.types.go_algebra_inhabitants
     Dag => []
   }
 }
 
 fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CallableRepr {
   match target {
-    Rust => rust_callable
-    Python => python_callable
-    Go => go_callable
+    Rust => extdeps.languages.rust.types.rust_callable
+    Python => extdeps.languages.python.types.python_callable
+    Go => extdeps.languages.go.types.go_callable
     Dag => std.coercion.CallableRepr {
       template: "fn(\{params\}) -> \{return\}",
       param_separator: ", ",
@@ -43,18 +43,18 @@ fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.Ca
 
 fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    Rust => rust_optional_template
-    Python => python_optional_template
-    Go => go_optional_template
+    Rust => extdeps.languages.rust.types.rust_optional_template
+    Python => extdeps.languages.python.types.python_optional_template
+    Go => extdeps.languages.go.types.go_optional_template
     Dag => "\{0\}?"
   }
 }
 
 fn target_cast_syntax(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CastSyntax? {
   match target {
-    Rust => Present { value: rust_cast_syntax }
-    Python => Present { value: python_cast_syntax }
-    Go => Present { value: go_cast_syntax }
+    Rust => Present { value: extdeps.languages.rust.types.rust_cast_syntax }
+    Python => Present { value: extdeps.languages.python.types.python_cast_syntax }
+    Go => Present { value: extdeps.languages.go.types.go_cast_syntax }
     Dag => none
   }
 }

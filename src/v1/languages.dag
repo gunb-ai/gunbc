@@ -405,14 +405,14 @@ fn rust_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: FuncForm),
+      func_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: FuncForm),
       async_prefix: rust_async_prefix,
-      struct_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: StructForm),
-      enum_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: EnumForm),
-      type_alias_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: TypeAliasForm),
+      struct_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: TypeAliasForm),
       param_separator: rust_param_separator, return_arrow: rust_return_arrow,
       param_type_sep: rust_param_type_sep,
-      module_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: ModuleForm),
+      module_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: ModuleForm),
       import_keyword: rust_import_keyword,
       import_from_keyword: rust_import_from_keyword
     },
@@ -471,13 +471,13 @@ fn python_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "python",
     reserved_words: ReservedWords {
-      keywords: python_reserved,
-      strategy: SuffixEscape { suffix: python_reserved_escape_suffix }
+      keywords: extdeps.languages.python.emit.python_reserved,
+      strategy: SuffixEscape { suffix: extdeps.languages.python.emit.python_reserved_escape_suffix }
     },
     scaffold: ProjectScaffold {
       manifest_file: "requirements.txt",
-      module_init_file: python_module_init,
-      source_file_extension: python_source_extension,
+      module_init_file: extdeps.languages.python.emit.python_module_init,
+      source_file_extension: extdeps.languages.python.emit.python_source_extension,
       source_dir: null
     },
     serialization: SerializationSpec {
@@ -487,8 +487,8 @@ fn python_spec() -> LanguageSpec {
       enum_derives_copy: null,
       tag_attribute: null,
       rename_attribute_template: null,
-      derive_attribute: python_derive_attribute,
-      default_value: python_default_value
+      derive_attribute: extdeps.languages.python.emit.python_derive_attribute,
+      default_value: extdeps.languages.python.emit.python_default_value
     },
     test_conventions: TestConventions {
       file_prefix: "test_",
@@ -554,16 +554,16 @@ fn python_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: item_keyword_for_kind(forms: python_item_forms, kind: FuncForm),
-      async_prefix: python_async_prefix,
-      struct_keyword: item_keyword_for_kind(forms: python_item_forms, kind: StructForm),
-      enum_keyword: item_keyword_for_kind(forms: python_item_forms, kind: EnumForm),
-      type_alias_keyword: item_keyword_for_kind(forms: python_item_forms, kind: TypeAliasForm),
-      param_separator: python_param_separator, return_arrow: python_return_arrow,
-      param_type_sep: python_param_type_sep,
-      module_keyword: item_keyword_for_kind(forms: python_item_forms, kind: ModuleForm),
-      import_keyword: python_import_keyword,
-      import_from_keyword: python_import_from_keyword
+      func_keyword: item_keyword_for_kind(forms: extdeps.languages.python.syntax.python_item_forms, kind: FuncForm),
+      async_prefix: extdeps.languages.python.emit.python_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: extdeps.languages.python.syntax.python_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: extdeps.languages.python.syntax.python_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: extdeps.languages.python.syntax.python_item_forms, kind: TypeAliasForm),
+      param_separator: extdeps.languages.python.emit.python_param_separator, return_arrow: extdeps.languages.python.emit.python_return_arrow,
+      param_type_sep: extdeps.languages.python.emit.python_param_type_sep,
+      module_keyword: item_keyword_for_kind(forms: extdeps.languages.python.syntax.python_item_forms, kind: ModuleForm),
+      import_keyword: extdeps.languages.python.emit.python_import_keyword,
+      import_from_keyword: extdeps.languages.python.emit.python_import_from_keyword
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
@@ -575,20 +575,20 @@ fn python_spec() -> LanguageSpec {
       return_suffix: "",
       suppress_unit_return: false
     },
-    lambda_template: python_lambda_template,
-    error_expr_template: python_error_expr_template,
-    list_literal_empty: python_list_literal_empty,
-    list_literal_template: python_list_literal_template,
-    null_coalesce_template: python_null_coalesce_template,
-    error_type_template: python_error_type_template,
-    type_arg_open: python_type_arg_open,
-    type_arg_close: python_type_arg_close,
-    void_type: python_void_type,
+    lambda_template: extdeps.languages.python.emit.python_lambda_template,
+    error_expr_template: extdeps.languages.python.emit.python_error_expr_template,
+    list_literal_empty: extdeps.languages.python.emit.python_list_literal_empty,
+    list_literal_template: extdeps.languages.python.emit.python_list_literal_template,
+    null_coalesce_template: extdeps.languages.python.emit.python_null_coalesce_template,
+    error_type_template: extdeps.languages.python.emit.python_error_type_template,
+    type_arg_open: extdeps.languages.python.emit.python_type_arg_open,
+    type_arg_close: extdeps.languages.python.emit.python_type_arg_close,
+    void_type: extdeps.languages.python.emit.python_void_type,
     tuple_syntax: TupleSyntax {
-      empty: python_tuple_empty,
-      pair_template: python_tuple_pair_template,
-      multi_template: python_tuple_multi_template,
-      separator: python_tuple_separator,
+      empty: extdeps.languages.python.emit.python_tuple_empty,
+      pair_template: extdeps.languages.python.emit.python_tuple_pair_template,
+      multi_template: extdeps.languages.python.emit.python_tuple_multi_template,
+      separator: extdeps.languages.python.emit.python_tuple_separator,
       first_accessor: "[0]",
       second_accessor: "[1]"
     },
@@ -620,8 +620,8 @@ fn go_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "go",
     reserved_words: ReservedWords {
-      keywords: go_reserved,
-      strategy: SuffixEscape { suffix: go_reserved_escape_suffix }
+      keywords: extdeps.languages.go.emit.go_reserved,
+      strategy: SuffixEscape { suffix: extdeps.languages.go.emit.go_reserved_escape_suffix }
     },
     scaffold: ProjectScaffold {
       manifest_file: "go.mod",
@@ -703,16 +703,16 @@ fn go_spec() -> LanguageSpec {
       temp_assign_op: " := "
     },
     items: ItemKeywords {
-      func_keyword: item_keyword_for_kind(forms: go_item_forms, kind: FuncForm),
-      async_prefix: go_async_prefix,
-      struct_keyword: item_keyword_for_kind(forms: go_item_forms, kind: StructForm),
-      enum_keyword: item_keyword_for_kind(forms: go_item_forms, kind: EnumForm),
-      type_alias_keyword: item_keyword_for_kind(forms: go_item_forms, kind: TypeAliasForm),
-      param_separator: go_param_separator, return_arrow: go_return_arrow,
-      param_type_sep: go_param_type_sep,
-      module_keyword: item_keyword_for_kind(forms: go_item_forms, kind: ModuleForm),
-      import_keyword: go_import_keyword,
-      import_from_keyword: go_import_from_keyword
+      func_keyword: item_keyword_for_kind(forms: extdeps.languages.go.syntax.go_item_forms, kind: FuncForm),
+      async_prefix: extdeps.languages.go.emit.go_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: extdeps.languages.go.syntax.go_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: extdeps.languages.go.syntax.go_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: extdeps.languages.go.syntax.go_item_forms, kind: TypeAliasForm),
+      param_separator: extdeps.languages.go.emit.go_param_separator, return_arrow: extdeps.languages.go.emit.go_return_arrow,
+      param_type_sep: extdeps.languages.go.emit.go_param_type_sep,
+      module_keyword: item_keyword_for_kind(forms: extdeps.languages.go.syntax.go_item_forms, kind: ModuleForm),
+      import_keyword: extdeps.languages.go.emit.go_import_keyword,
+      import_from_keyword: extdeps.languages.go.emit.go_import_from_keyword
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
@@ -724,20 +724,20 @@ fn go_spec() -> LanguageSpec {
       return_suffix: ", nil",
       suppress_unit_return: true
     },
-    lambda_template: go_lambda_template,
-    error_expr_template: go_error_expr_template,
-    list_literal_empty: go_list_literal_empty,
-    list_literal_template: go_list_literal_template,
-    null_coalesce_template: go_null_coalesce_template,
-    error_type_template: go_error_type_template,
-    type_arg_open: go_type_arg_open,
-    type_arg_close: go_type_arg_close,
-    void_type: go_void_type,
+    lambda_template: extdeps.languages.go.emit.go_lambda_template,
+    error_expr_template: extdeps.languages.go.emit.go_error_expr_template,
+    list_literal_empty: extdeps.languages.go.emit.go_list_literal_empty,
+    list_literal_template: extdeps.languages.go.emit.go_list_literal_template,
+    null_coalesce_template: extdeps.languages.go.emit.go_null_coalesce_template,
+    error_type_template: extdeps.languages.go.emit.go_error_type_template,
+    type_arg_open: extdeps.languages.go.emit.go_type_arg_open,
+    type_arg_close: extdeps.languages.go.emit.go_type_arg_close,
+    void_type: extdeps.languages.go.emit.go_void_type,
     tuple_syntax: TupleSyntax {
-      empty: go_tuple_empty,
-      pair_template: go_tuple_pair_template,
-      multi_template: go_tuple_multi_template,
-      separator: go_tuple_separator,
+      empty: extdeps.languages.go.emit.go_tuple_empty,
+      pair_template: extdeps.languages.go.emit.go_tuple_pair_template,
+      multi_template: extdeps.languages.go.emit.go_tuple_multi_template,
+      separator: extdeps.languages.go.emit.go_tuple_separator,
       first_accessor: ".First",
       second_accessor: ".Second"
     },
@@ -769,13 +769,13 @@ fn dag_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "dag",
     reserved_words: ReservedWords {
-      keywords: dag_reserved,
+      keywords: extdeps.languages.dag.emit.dag_reserved,
       strategy: NoEscape
     },
     scaffold: ProjectScaffold {
       manifest_file: null,
       module_init_file: null,
-      source_file_extension: dag_source_extension,
+      source_file_extension: extdeps.languages.dag.emit.dag_source_extension,
       source_dir: null
     },
     serialization: SerializationSpec {
@@ -852,16 +852,16 @@ fn dag_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: dag_func_keyword,
-      async_prefix: dag_async_prefix,
-      struct_keyword: dag_struct_keyword,
-      enum_keyword: dag_enum_keyword,
-      type_alias_keyword: dag_type_alias_keyword,
-      param_separator: dag_param_separator, return_arrow: dag_return_arrow,
-      param_type_sep: dag_param_type_sep,
-      module_keyword: dag_module_keyword,
-      import_keyword: dag_import_keyword,
-      import_from_keyword: dag_import_from_keyword
+      func_keyword: extdeps.languages.dag.emit.dag_func_keyword,
+      async_prefix: extdeps.languages.dag.emit.dag_async_prefix,
+      struct_keyword: extdeps.languages.dag.emit.dag_struct_keyword,
+      enum_keyword: extdeps.languages.dag.emit.dag_enum_keyword,
+      type_alias_keyword: extdeps.languages.dag.emit.dag_type_alias_keyword,
+      param_separator: extdeps.languages.dag.emit.dag_param_separator, return_arrow: extdeps.languages.dag.emit.dag_return_arrow,
+      param_type_sep: extdeps.languages.dag.emit.dag_param_type_sep,
+      module_keyword: extdeps.languages.dag.emit.dag_module_keyword,
+      import_keyword: extdeps.languages.dag.emit.dag_import_keyword,
+      import_from_keyword: extdeps.languages.dag.emit.dag_import_from_keyword
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
@@ -873,20 +873,20 @@ fn dag_spec() -> LanguageSpec {
       return_suffix: "",
       suppress_unit_return: false
     },
-    lambda_template: dag_lambda_template,
-    error_expr_template: dag_error_expr_template,
-    list_literal_empty: dag_list_literal_empty,
-    list_literal_template: dag_list_literal_template,
-    null_coalesce_template: dag_null_coalesce_template,
-    error_type_template: dag_error_type_template,
-    type_arg_open: dag_type_arg_open,
-    type_arg_close: dag_type_arg_close,
-    void_type: dag_void_type,
+    lambda_template: extdeps.languages.dag.emit.dag_lambda_template,
+    error_expr_template: extdeps.languages.dag.emit.dag_error_expr_template,
+    list_literal_empty: extdeps.languages.dag.emit.dag_list_literal_empty,
+    list_literal_template: extdeps.languages.dag.emit.dag_list_literal_template,
+    null_coalesce_template: extdeps.languages.dag.emit.dag_null_coalesce_template,
+    error_type_template: extdeps.languages.dag.emit.dag_error_type_template,
+    type_arg_open: extdeps.languages.dag.emit.dag_type_arg_open,
+    type_arg_close: extdeps.languages.dag.emit.dag_type_arg_close,
+    void_type: extdeps.languages.dag.emit.dag_void_type,
     tuple_syntax: TupleSyntax {
-      empty: dag_tuple_empty,
-      pair_template: dag_tuple_pair_template,
-      multi_template: dag_tuple_multi_template,
-      separator: dag_tuple_separator,
+      empty: extdeps.languages.dag.emit.dag_tuple_empty,
+      pair_template: extdeps.languages.dag.emit.dag_tuple_pair_template,
+      multi_template: extdeps.languages.dag.emit.dag_tuple_multi_template,
+      separator: extdeps.languages.dag.emit.dag_tuple_separator,
       first_accessor: ".0",
       second_accessor: ".1"
     },
@@ -926,18 +926,18 @@ fn language_spec_for_target(target: v1.compiler.artifact.RenderTarget) -> Langua
 fn target_keyword(target: v1.compiler.artifact.RenderTarget, key: String) -> String {
   match target {
     Rust => match lookup(rust_keywords, key: key) { Present { value: kw } => kw  Absent => key }
-    Go => match lookup(go_keywords, key: key) { Present { value: kw } => kw  Absent => key }
-    Python => match lookup(python_keywords, key: key) { Present { value: kw } => kw  Absent => key }
+    Go => match lookup(extdeps.languages.go.emit.go_keywords, key: key) { Present { value: kw } => kw  Absent => key }
+    Python => match lookup(extdeps.languages.python.emit.python_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Dag => key
   }
 }
 
 fn target_operators(target: v1.compiler.artifact.RenderTarget) -> List<std.syntax.OperatorSpec> {
   match target {
-    Rust => rust_operators
-    Python => python_operators
-    Go => go_operators
-    Dag => dag_operators
+    Rust => extdeps.languages.rust.syntax.rust_operators
+    Python => extdeps.languages.python.syntax.python_operators
+    Go => extdeps.languages.go.syntax.go_operators
+    Dag => extdeps.languages.dag.syntax.dag_operators
   }
 }
 
@@ -965,8 +965,8 @@ fn binop_symbol(target: v1.compiler.artifact.RenderTarget, op: std.syntax.BinOp,
 fn is_string_like(target: v1.compiler.artifact.RenderTarget, name: String) -> Bool {
   match target {
     Rust => rust_string_types |> any(t => t == name)
-    Go => go_string_types |> any(t => t == name)
-    Python => python_string_types |> any(t => t == name)
+    Go => extdeps.languages.go.emit.go_string_types |> any(t => t == name)
+    Python => extdeps.languages.python.emit.python_string_types |> any(t => t == name)
     Dag => false
   }
 }

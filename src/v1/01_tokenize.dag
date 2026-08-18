@@ -7,7 +7,7 @@ module v1.compiler.tokenize
 
 
 fn is_keyword_text(text: String) -> Bool {
-  match lookup(dag_keyword_set, key: text) {
+  match lookup(extdeps.languages.dag.syntax.dag_keyword_set, key: text) {
     Present { value: _ } => true
     Absent => false
   }
@@ -554,7 +554,7 @@ fn unicode_escape_at(
   } else {
     let ch = code_point_at(chars: source, pos: pos)
     if ch == 125 {
-      if digit_count > 0 && unicode_scalar(code_point: value) {
+      if digit_count > 0 && std.unicode.types.unicode_scalar(code_point: value) {
         Present { value: UnicodeEscape { code_point: value, next_pos: pos + 1 } }
       } else {
         none

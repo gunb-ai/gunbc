@@ -1182,8 +1182,8 @@ fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
     || pred_name == "lower_hex_40"
     || pred_name == "lower_hex_128"
     || pred_name == "lower_hex_16"
-    || pred_name == "oci_other_digest_algorithm"
-    || pred_name == "oci_other_digest_encoded"
+    || pred_name == "extdeps.container.oci.digest.oci_other_digest_algorithm"
+    || pred_name == "extdeps.container.oci.digest.oci_other_digest_encoded"
 }
 
 fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
@@ -1215,10 +1215,10 @@ fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> B
     Present {
       value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16),
     }
-  } else if pred_name == "oci_other_digest_algorithm" {
-    Present { value: oci_other_digest_algorithm(value: value) }
-  } else if pred_name == "oci_other_digest_encoded" {
-    Present { value: oci_other_digest_encoded(value: value) }
+  } else if pred_name == "extdeps.container.oci.digest.oci_other_digest_algorithm" {
+    Present { value: extdeps.container.oci.digest.oci_other_digest_algorithm(value: value) }
+  } else if pred_name == "extdeps.container.oci.digest.oci_other_digest_encoded" {
+    Present { value: extdeps.container.oci.digest.oci_other_digest_encoded(value: value) }
   } else {
     none
   }
@@ -7563,7 +7563,7 @@ fn deps_excluding_leaf_self(b: v1.compiler.infer_env.TypeBinding, source_indices
 }
 
 fn compiler_recursive_name_set() -> Map<String, Bool> {
-  fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) =>
+  fold(map_keys(std.node.compiler_recursive_types), init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
 }
@@ -8364,9 +8364,9 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
 
-  let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
-  let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
-  let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
+  let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
+  let kernel_recursive_type_set = fold(map_keys(std.node.compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
@@ -9223,7 +9223,7 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
 fn seed_kernel_intern_table(intern_table: v1.std.core.InternTable) -> v1.std.core.InternTable {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  fold(map_keys(std.node.compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
 type RealizeState {
@@ -9334,9 +9334,9 @@ fn compiler_kernel_type_env(source_indices: Map<String, v1.std.core.NewlineIndex
   let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
-  let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
-  let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
+  let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
+  let kernel_recursive_type_set = fold(map_keys(std.node.compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 }
 

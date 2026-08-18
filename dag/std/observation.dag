@@ -53,7 +53,7 @@ fn observation_subject_path(subject: ObservationSubject) -> List<String> {
 data observation_prefix_reuse_note: String = "Ancestry reuses std.effect_grant.path_is_prefix — the ONE prefix relation already carrying the containment question for effect targets, rather than a second walk written here (DESIGN section 3). Observation is one more consumer of the containment structure the resolver walks, content-addressing hashes, and effect admissibility tests. The subject tree is deliberately NOT added as a std.effect_grant.NamespaceTree variant in this phase: that enum is another lane's authority and the seed does not check match exhaustiveness, so a new variant would fall through silently in its existing consumers. Dissolve-on: the SymbolIndex-backed position supersedes the path-string interim, per the convergence commitment already declared in std.effect_grant.namespace_tree_note."
 
 fn observation_subject_contains(ancestor: ObservationSubject, descendant: ObservationSubject) -> Bool {
-  path_is_prefix(
+  std.effect_grant.path_is_prefix(
     prefix: observation_subject_path(subject: ancestor),
     path: observation_subject_path(subject: descendant)
   )
@@ -1180,7 +1180,7 @@ fn sequence_scan_step(acc: SequenceScan, r: RecordedObservation) -> SequenceScan
 // The first defect wins and later records cannot green it: once a gap is seen the reduction is
 // incomplete no matter how clean the tail reads.
 fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict {
-  fold_list(
+  v2.std.algebra.fold_list(
     records,
     SequenceScan { started: false, prev_key: "", prev_sequence: 0, verdict: SequenceEmpty },
     (acc, r) => sequence_scan_step(acc: acc, r: r)
@@ -1217,7 +1217,7 @@ type ParentResolution
   | ParentMissingFromAttempt { parent_id: std.types.NonEmptyStr }
 
 fn occurrence_present_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
-  fold_list(records, false, (acc, r) =>
+  v2.std.algebra.fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id && r.occurrence.attempt == target.attempt))
 }
 
@@ -1265,7 +1265,7 @@ type ActiveOccurrences {
 }
 
 fn occurrence_concluded_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
-  fold_list(records, false, (acc, r) =>
+  v2.std.algebra.fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id
       && r.occurrence.attempt == target.attempt
       && match r.event.transition { Concluded { outcome: _ } => true, _ => false }))

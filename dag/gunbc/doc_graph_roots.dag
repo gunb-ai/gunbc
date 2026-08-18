@@ -4,7 +4,7 @@ module gunbc.doc_graph_roots
 data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. Most rows retire: the condition names the change that deletes the row. Some do NOT -- the cited-symbol-resolution discriminating controls (hand_authored_bind_is_cited_symbol_resolution_control) are permanent evidence and carry PlanHasNoRetirement, because a climb deletes production machinery and keeps the discriminating evidence (DESIGN 4b(4)). A permanent row stating 'never retires' inside an unbound condition would be a model contradiction: the coproduct would say retires-when while the payload said never. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 
 fn plan_doc_graph_roots() -> List<String> {
-  map(all_plans, p => plan_path(p: p))
+  map(gunbc.plan_registry.all_plans, p => plan_path(p: p))
 }
 
 type DocHome
@@ -50,15 +50,15 @@ fn hand_authored_production_doc_binds() -> List<HandAuthoredDocBind> {
 }
 
 fn hand_authored_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
+  v2.std.algebra.list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
 fn hand_authored_production_doc_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
+  v2.std.algebra.list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
 fn hand_authored_cited_symbol_control_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  list_flat_map(
+  v2.std.algebra.list_flat_map(
     xs: filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
     f: fn(b) { hand_authored_bind_works(b: b) }
   )
@@ -74,10 +74,10 @@ fn hand_authored_works_refs_all_resolve() -> Bool {
     HandAuthoredDocBindsBuilt { binds: _ } => {
       let pool = hand_authored_works_resolution_pool_roots()
       let facts = decl_facts(pool_roots: pool)
-      let modules = module_declaration_facts_live(pool_roots: pool)
+      let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
       all(
         hand_authored_production_doc_declaration_refs(),
-        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+        r => v2.std.decl_ref_resolution.declaration_ref_resolves(ref: r, facts: facts, modules: modules)
       )
     }
   }
@@ -1585,16 +1585,16 @@ fn doc_graph_roots_all() -> List<String> {
 }
 
 fn doc_graph_floor_orphan_clean_holds() -> Bool {
-  doc_graph_orphan_clean_holds(plan_roots: doc_graph_roots_all())
+  v2.lens.doc_reachability.doc_graph_orphan_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 fn doc_graph_floor_clean_holds() -> Bool {
-  doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
+  v2.lens.doc_reachability.doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
   match b.home {
-    PlanDoc => all(all_plans, p => p.slug != b.slug)
+    PlanDoc => all(gunbc.plan_registry.all_plans, p => p.slug != b.slug)
     ProbeDoc => true
   }
 }

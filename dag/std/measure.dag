@@ -98,15 +98,15 @@ fn gibibyte_scale_factor_bytes() -> std.nat.Nat {
 }
 
 fn kibi_factor() -> std.nat.Nat {
-  iec_kibi_factor()
+  extdeps.units.iec_80000_13.iec_kibi_factor()
 }
 
 fn seconds_per_minute() -> std.nat.Nat {
-  iso8601_seconds_per_minute()
+  extdeps.units.iso8601.iso8601_seconds_per_minute()
 }
 
 fn minutes_per_hour() -> std.nat.Nat {
-  iso8601_minutes_per_hour()
+  extdeps.units.iso8601.iso8601_minutes_per_hour()
 }
 
 fn milliseconds_per_second() -> std.nat.Nat {
@@ -234,7 +234,7 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 type BitWidth = Measure<Information, One, std.nat.Nat>
 
 fn bits_per_byte() -> std.nat.Nat {
-  octet_bit_count()
+  extdeps.units.iec_80000_13.octet_bit_count()
 }
 
 type Hertz = Measure<Frequency, One, std.nat.Nat>
@@ -853,11 +853,11 @@ fn percent_count(p: Percent) -> std.nat.Nat {
 data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count)."
 
 fn permyriad_half_for_round_half_up() -> Int {
-  parts_per_ten_thousand_unity_count() / 2
+  extdeps.units.dimensionless.parts_per_ten_thousand_unity_count() / 2
 }
 
 fn percent_scale_hundred() -> Int {
-  percent_unity_hundred_count()
+  extdeps.units.dimensionless.percent_unity_hundred_count()
 }
 
 data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
@@ -873,7 +873,7 @@ fn basis_point_count(bp: BasisPoint) -> std.nat.Nat {
 }
 
 fn basis_point_unity_count() -> std.nat.Nat {
-  parts_per_ten_thousand_unity_count()
+  extdeps.units.dimensionless.parts_per_ten_thousand_unity_count()
 }
 
 data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
@@ -938,30 +938,30 @@ fn clock_basis_label(b: ClockBasis) -> std.types.NonEmptyStr {
 // where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
 // one place the substrate accepted an undimensioned number.
 fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
-  square_millimeter(count: square_meter_count(m: area) * square_millimetres_per_square_metre())
+  square_millimeter(count: square_meter_count(m: area) * extdeps.units.iso_80000_3.square_millimetres_per_square_metre())
 }
 
 fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
-  cubic_millimeter(count: cubic_meter_count(m: volume) * cubic_millimetres_per_cubic_metre())
+  cubic_millimeter(count: cubic_meter_count(m: volume) * extdeps.units.iso_80000_3.cubic_millimetres_per_cubic_metre())
 }
 
 // One full turn in arcseconds, derived from the cited subdivision chain rather than restated.
 fn full_turn_arcseconds() -> Arcsecond {
-  arcsecond(count: arcseconds_per_turn())
+  arcsecond(count: extdeps.units.iso_80000_3.arcseconds_per_turn())
 }
 
 fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
-  arcsecond(count: degree_count(d: degrees) * arcseconds_per_degree_derived())
+  arcsecond(count: degree_count(d: degrees) * extdeps.units.iso_80000_3.arcseconds_per_degree_derived())
 }
 
 fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
-  arcsecond(count: turn_count(t: turns) * arcseconds_per_turn())
+  arcsecond(count: turn_count(t: turns) * extdeps.units.iso_80000_3.arcseconds_per_turn())
 }
 
 // A quarter turn is exact in arcseconds because the subdivision is rational - the same reason the
 // turn is the canonical unit and radian conversion is absent.
 fn quarter_turn_arcseconds() -> Arcsecond {
-  arcsecond(count: arcseconds_per_turn() / 4)
+  arcsecond(count: extdeps.units.iso_80000_3.arcseconds_per_turn() / 4)
 }
 
 fn turn(count: std.nat.Nat) -> Turn {

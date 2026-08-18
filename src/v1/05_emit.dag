@@ -276,7 +276,7 @@ fn has_nested_records_node(n: Node, source_indices: Map<String, v1.std.core.Newl
   } else {
     let is_map = node_is_keyed_collection(n: n, source_indices: source_indices)
     if is_map {
-      match skip(n.children, 1) |> first {
+      match v2.std.algebra.skip(n.children, 1) |> first {
         Present { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child), source_indices: source_indices)
         Absent => false
       }
@@ -583,7 +583,7 @@ fn render_node_type(n: Node, target: v1.compiler.artifact.RenderTarget, shared_t
         Present { value: c } => if c.inferred != none { render_node_type(n: resolved_type(n: c), target: target, shared_types: shared_types, source_indices: source_indices) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_indices: source_indices) }
         Absent => "_"
       }
-      let second_child = match n.children |> skip(1) |> first {
+      let second_child = match n.children |> v2.std.algebra.skip(1) |> first {
         Present { value: c } => if c.inferred != none { render_node_type(n: resolved_type(n: c), target: target, shared_types: shared_types, source_indices: source_indices) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_indices: source_indices) }
         Absent => "_"
       }
@@ -647,7 +647,7 @@ fn render_node_type(n: Node, target: v1.compiler.artifact.RenderTarget, shared_t
       Present { value: kn } => render_node_type(n: child_type_node(ch: kn), target: target, shared_types: shared_types, source_indices: source_indices)
       Absent => "_"
     }
-    let v = match n.children |> skip(1) |> first {
+    let v = match n.children |> v2.std.algebra.skip(1) |> first {
       Present { value: vn } => render_node_type(n: child_type_node(ch: vn), target: target, shared_types: shared_types, source_indices: source_indices)
       Absent => "_"
     }
@@ -689,7 +689,7 @@ fn render_tuple_parts(parts: List<String>, target: v1.compiler.artifact.RenderTa
   if parts |> count > 0 {
     if parts |> count == 2 {
       match parts |> first {
-        Present { value: p0 } => match parts |> skip(1) |> first {
+        Present { value: p0 } => match parts |> v2.std.algebra.skip(1) |> first {
           Present { value: p1 } => apply_type_template2(template: ts.pair_template, arg0: p0, arg1: p1)
           Absent => apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
         }
@@ -1833,7 +1833,7 @@ fn emit_block_stmts_shared(
       let raw = emit_expr(stmt, scope, depth)
       let line = if prepend_indent { concat(make_indent(level: depth), raw) } else { raw }
       let next_scope = scope_after_expr(texpr: stmt, scope: scope)
-      emit_block_stmts_shared(remaining: remaining |> skip(1),
+      emit_block_stmts_shared(remaining: remaining |> v2.std.algebra.skip(1),
         text: list_push(text, line), scope: next_scope,
         depth: depth, prepend_indent: prepend_indent,
         emit_expr: emit_expr)
@@ -1848,7 +1848,7 @@ fn emit_init_block_stmts_shared(
   match remaining |> first {
     Absent => BlockEmitState { text: text, scope: scope }
     Present { value: stmt } =>
-      let rest = remaining |> skip(1)
+      let rest = remaining |> v2.std.algebra.skip(1)
       match rest |> first {
         Absent => BlockEmitState { text: text, scope: scope }
         Present { value: _ } =>
@@ -1961,8 +1961,8 @@ fn emit_typed_block_join(
 fn method_template_emit_for_target(target: v1.compiler.artifact.RenderTarget) -> Map<String, String>? {
   match target {
     Rust => Present { value: rust_method_templates() }
-    Python => Present { value: python_method_templates_flat() }
-    Go => Present { value: go_method_templates_flat() }
+    Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
+    Go => Present { value: extdeps.languages.go.emit.go_method_templates_flat() }
     Dag => none
   }
 }
@@ -2392,10 +2392,10 @@ fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
   let pairs = params |> enumerate
     |> filter(pair =>
       let pname = param_node_name_at(n: pair.second, source_indices: source_indices)
-      let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
+      let av = match arg_values |> v2.std.algebra.skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
       !is_tco_identity_passthrough(arg_val: av, param_name: pname, si: source_indices))
   let filtered_arg_values = pairs
-    |> map(pair => match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
+    |> map(pair => match arg_values |> v2.std.algebra.skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
   let ordered_args = filtered_arg_values |> map(av => recurse(av))
   let param_names = pairs |> map(pair => emit_ident(name: param_node_name_at(n: pair.second, source_indices: source_indices), target: target))
   shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: target))

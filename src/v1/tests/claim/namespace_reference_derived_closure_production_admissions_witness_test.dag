@@ -59,7 +59,7 @@ test fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> B
   let structural_admissions =
     namespace_structural_binding_observations_a_through_d()
       |> map(observation => assess_reference_binding_observation(observation: observation))
-  reference_derived_closure_closing_frontier_count(
+  gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_frontier_count(
     admissions: concat(
       structural_admissions,
       [

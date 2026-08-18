@@ -473,8 +473,8 @@ fn go_export_ident(name: String) -> String {
   match language_spec(target: Go).visibility {
     CaseVisibility { export_case: ec } => {
       let result = apply_naming_case(name: name, case_style: ec)
-      if go_reserved |> any(r => r == result) {
-        concat(result, go_reserved_escape_suffix)
+      if extdeps.languages.go.emit.go_reserved |> any(r => r == result) {
+        concat(result, extdeps.languages.go.emit.go_reserved_escape_suffix)
       } else {
         result
       }

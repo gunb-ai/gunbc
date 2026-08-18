@@ -547,15 +547,15 @@ type GitEffectiveConflictMarkerGrammar {
 
 // Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable.
 fn git_conflict_marker_begin(grammar: GitEffectiveConflictMarkerGrammar) -> String {
-  repeat_string(s: "<", n: grammar.size)
+  std.render_repeat_string_bootstrap.repeat_string(s: "<", n: grammar.size)
 }
 
 fn git_conflict_marker_separator(grammar: GitEffectiveConflictMarkerGrammar) -> String {
-  repeat_string(s: "=", n: grammar.size)
+  std.render_repeat_string_bootstrap.repeat_string(s: "=", n: grammar.size)
 }
 
 fn git_conflict_marker_end(grammar: GitEffectiveConflictMarkerGrammar) -> String {
-  repeat_string(s: ">", n: grammar.size)
+  std.render_repeat_string_bootstrap.repeat_string(s: ">", n: grammar.size)
 }
 
 type GitIndexEntry {
@@ -764,12 +764,12 @@ fn git_tree_canonical_payload_step(
         }
         Present { value: raw_oid } =>
           GitCanonicalHashInputReady {
-            bytes: octets_bytes(
+            bytes: std.bytes.octets_bytes(
               o: append(
-                bytes_octets(b: bytes),
+                std.bytes.bytes_octets(b: bytes),
                 items: append(
-                  bytes_octets(
-                    b: utf8_encode_bytes(
+                  std.bytes.bytes_octets(
+                    b: std.bytes.utf8_encode_bytes(
                       s: concat(parts.mode as String, " "),
                     ),
                   ),
@@ -824,7 +824,7 @@ fn git_tree_canonical_payload(
   fold(
     tree.entries,
     init: GitCanonicalHashInputReady {
-      bytes: octets_bytes(o: []),
+      bytes: std.bytes.octets_bytes(o: []),
     },
     f: git_tree_canonical_payload_step,
   )
@@ -866,10 +866,10 @@ fn git_commit_canonical_payload(
   match invalid {
     Absent =>
       GitCanonicalHashInputReady {
-        bytes: octets_bytes(
+        bytes: std.bytes.octets_bytes(
           o: append(
-            bytes_octets(b: utf8_encode_bytes(s: header)),
-            items: bytes_octets(b: commit.message),
+            std.bytes.bytes_octets(b: std.bytes.utf8_encode_bytes(s: header)),
+            items: std.bytes.bytes_octets(b: commit.message),
           ),
         )
       }
@@ -901,10 +901,10 @@ fn git_tag_canonical_payload(
   match git_object_id_raw_octets(oid: tag.target) {
     Present { value: _ } =>
       GitCanonicalHashInputReady {
-        bytes: octets_bytes(
+        bytes: std.bytes.octets_bytes(
           o: append(
-            bytes_octets(b: utf8_encode_bytes(s: header)),
-            items: bytes_octets(b: tag.message),
+            std.bytes.bytes_octets(b: std.bytes.utf8_encode_bytes(s: header)),
+            items: std.bytes.bytes_octets(b: tag.message),
           ),
         )
       }
@@ -935,7 +935,7 @@ fn git_store_object_canonical_hash_input(
     GitCanonicalHashInputRefused { cause } =>
       GitCanonicalHashInputRefused { cause: cause }
     GitCanonicalHashInputReady { bytes: payload } =>
-      let payload_octets = bytes_octets(b: payload)
+      let payload_octets = std.bytes.bytes_octets(b: payload)
       let header = join(
         [
           git_object_type_wire_name(
@@ -948,9 +948,9 @@ fn git_store_object_canonical_hash_input(
         "",
       )
       GitCanonicalHashInputReady {
-        bytes: octets_bytes(
+        bytes: std.bytes.octets_bytes(
           o: append(
-            bytes_octets(b: utf8_encode_bytes(s: header)),
+            std.bytes.bytes_octets(b: std.bytes.utf8_encode_bytes(s: header)),
             items: payload_octets,
           ),
         )
@@ -962,7 +962,7 @@ fn git_store_object_canonical_size(object: StoreObject) -> std.measure.ByteSize?
   match git_store_object_canonical_payload(object: object) {
     GitCanonicalHashInputReady { bytes } =>
       Present {
-        value: byte_size(count: count(bytes_octets(b: bytes)))
+        value: byte_size(count: count(std.bytes.bytes_octets(b: bytes)))
       }
     GitCanonicalHashInputRefused { cause: _ } => none
   }
@@ -1886,7 +1886,7 @@ fn git_nul_field_octet_step(
 
 fn git_decode_nul_quartets(payload: Bytes) -> GitNulQuartetDecodeOutcome {
   match fold(
-    bytes_octets(b: payload),
+    std.bytes.bytes_octets(b: payload),
     init: GitNulFieldsAccumulating {
       current: [],
       fields: [],

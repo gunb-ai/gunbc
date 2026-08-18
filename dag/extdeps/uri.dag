@@ -234,9 +234,9 @@ fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
 fn uri_validated_scalar_construction(cp: Int) -> UriValidatedScalarConstruction {
   if cp < 0 {
     UriValidatedScalarOutOfRangeRefused { cp: cp }
-  } else if cp > unicode_scalar_max_code_point {
+  } else if cp > std.unicode.types.unicode_scalar_max_code_point {
     UriValidatedScalarOutOfRangeRefused { cp: cp }
-  } else if cp >= unicode_surrogate_first_code_point && cp <= unicode_surrogate_last_code_point {
+  } else if cp >= std.unicode.types.unicode_surrogate_first_code_point && cp <= std.unicode.types.unicode_surrogate_last_code_point {
     UriValidatedScalarSurrogateRefused { cp: cp }
   } else {
     UriValidatedScalarConstructed(UriValidatedScalar { admitted_cp: cp })

@@ -65,5 +65,5 @@ fn plan_path(p: Plan) -> String {
 }
 
 fn expected_plan_md(p: Plan) -> String {
-  serialize_markdown_source(doc: plan_to_document(p: p))
+  extdeps.languages.markdown.serialize_markdown_source(doc: plan_to_document(p: p))
 }

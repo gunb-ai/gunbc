@@ -172,8 +172,8 @@ test fn w_dual_role_exclusion_intersection_is_singleton_minus() -> Bool {
   let excluded = operator_continuation_dual_role_excluded_symbols
   (excluded |> count) == 1
     && first(excluded).value == "-"
-    && find_operator_bp(ops: dag_operators, symbol: "-") != none
-    && find_operator_bp(ops: dag_operators, symbol: "!") == none
-    && find_operator_bp(ops: dag_operators, symbol: "!=") != none
-    && (dag_operators |> filter(op => op.symbol == "!") |> count) == 0
+    && find_operator_bp(ops: extdeps.languages.dag.syntax.dag_operators, symbol: "-") != none
+    && find_operator_bp(ops: extdeps.languages.dag.syntax.dag_operators, symbol: "!") == none
+    && find_operator_bp(ops: extdeps.languages.dag.syntax.dag_operators, symbol: "!=") != none
+    && (extdeps.languages.dag.syntax.dag_operators |> filter(op => op.symbol == "!") |> count) == 0
 }

@@ -467,7 +467,7 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
 
               match int_pow_bounded(base: base, exp: exp - 1) {
                 Present { value: prev } =>
-                  match checked_int_optional(r: checked_int_multiply(a: base, b: prev)) {
+                  match std.checked_arithmetic.checked_int_optional(r: std.checked_arithmetic.checked_int_multiply(a: base, b: prev)) {
                     Present { value: prod } => Present { value: prod }
                     Absent => none
                   }
@@ -488,10 +488,10 @@ fn ceil_log(base: Int, argument: Int) -> Int? {
 fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
   if power >= argument { Present { value: k } }
   else {
-    match checked_int_optional(r: checked_int_multiply(a: power, b: base)) {
+    match std.checked_arithmetic.checked_int_optional(r: std.checked_arithmetic.checked_int_multiply(a: power, b: base)) {
       Absent => none
       Present { value: next_power } =>
-        match checked_int_optional(r: checked_int_add(a: k, b: 1)) {
+        match std.checked_arithmetic.checked_int_optional(r: std.checked_arithmetic.checked_int_add(a: k, b: 1)) {
           Absent => none
           Present { value: k1 } =>
             ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
