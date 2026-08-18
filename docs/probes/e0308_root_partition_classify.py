@@ -102,7 +102,7 @@ def classify_root(expected: str, found: str) -> tuple[str, str]:
         inner_exp, inner_fnd = exp[3:-1], fnd[3:-1]
         if inner_exp == inner_fnd or inner_exp.startswith("Rc<") or inner_fnd.startswith("Rc<"):
             return "R1", "nested_rc_wrap_depth"
-    if "Present" in pair or "Absent" in pair and "Option" in pair:
+    if ("Present" in pair or "Absent" in pair) and "Option" in pair:
         return "R2", "optional_variant_surface_vs_option"
     if any(
         k in pair
