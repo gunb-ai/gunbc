@@ -432,3 +432,55 @@ built from timings alone.
 **And a floor of ~108s no paring can reach:** three fills — a 55392ms module
 graph, a 35060ms path index, a 17646ms reference-edge scan — are paid before any
 claim runs. Quarantining every witness on the floor would not move them.
+
+## Retraction: the variance screen measured four different trees
+
+External review on the subtree rollup caught a defect in the screen above that
+neither its author nor its reviewer checked, and it is fatal to the statistic as
+stated.
+
+**The four runs have four different heads, on four different branches:**
+
+```
+32172125816   6aa80c79   work/last-two
+32177951514   59653f56   main
+32185058245   178db9ad   session/crisp-wren-479
+32187164199   ccf21913   floor/cost-is-not-a-defect
+```
+
+Not one pair among them is a repeat measurement of the same subject. Repeatability
+requires the same subject digest, claim code, manifest and order, budget and poll
+policy, and source universe; these share none of that. So every coefficient of
+variation in the section above is **agreement across four different worlds, not
+repeatability under identical input** — and this lane has already established
+that changing the source population moves both instrument sensitivity and
+first-touch ownership, which is exactly the variable left uncontrolled.
+
+`root_d`'s 1.5% figure therefore did not establish what it was used for.
+Isolation vindicated the row independently, but the statistic did not earn that
+agreement and should not be cited as though it had.
+
+**The negative direction fails too.** This document demoted the screen to a
+"sound negative filter" after `effect_reach` came out stable. Review rejects
+that half as well: an intrinsically expensive claim can swing 20-30% from host
+scheduling and frequency variation, page-cache state, allocator behaviour,
+subprocess startup, lock contention, input-dependent branch and allocation shape,
+or a nested shared fill reached during otherwise genuine work. High variance
+therefore does not establish that a row is context-only, and the variable head
+cannot be dropped for free.
+
+And stable context cost is not the accident this document treated it as. Claim
+order is deterministic, so the same identity always first-touches a given cache;
+corpus and cache key are deterministic; every process starts cold; the same host
+class recurs; and a cooperative deadline pins observations near one polling
+boundary. Under those conditions a shared cost is *expected* to look stable.
+`effect_reach` is the normal case, not a freak counterexample.
+
+**What survives.** Variance is legitimate PRIORITISATION — high variance means
+investigate order and context sensitivity early, low variance means
+repeatable-cost candidate — and is never evidence of ownership in either
+direction. The minimum evidence stack for ownership is three things together:
+an uncensored completion rather than an interrupt-point value, repeated runs on
+the SAME subject, and an order perturbation showing whether the charge moves to a
+different first toucher. The reversal control used earlier in this document is
+that third item; the second is the one this lane has never actually performed.
