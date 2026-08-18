@@ -79,7 +79,7 @@ Observed at the wipe boundary (identity-grain, 2026-08-15), beyond the predicted
 ## Contested / do-not-delete (sweep-verified non-floor consumers)
 
 - **Keep whole:** `src/v1/stage0/src/bin/claim_batch.rs` (the local path) · `src/v2/workflow/floor_discovery.dag`, `floor_discovery_producer.dag`, `floor_discovery_transport.dag` (reached by the local producer path in cli_run, not by the floor) · `src/v2/workflow/floor_naming_hygiene.dag` (surviving `test fn` placement rule; non-floor importer) · `src/v2/workflow/executor.dag`, `scheduler.dag`, `batch_runner.dag` (generic substrate) · the fleet-converge pair · the regen bins
-- **Trim rows only:** `dag/tools/dag_compile_clean_scope.dag` (broad non-floor consumers) · `dag/gunbc/ci_layer_roots.dag` (~40 importers) · `dag/gunbc/ci_release_bins.dag` · `src/v1/stage0/src/ci_control_plane.rs` (string edits at its six `gunbc_ci_floor_plan` sites)
+- **Trim rows only:** `dag/tools/dag_compile_clean_scope.dag` (broad non-floor consumers) · `dag/gunbc/ci_layer_roots.dag` (~40 importers) · `dag/gunbc/ci_release_bins.dag` (the owned-CI control plane formerly listed here was deleted whole with its lane; it is no longer a trim row)
 - `dag/gunbc/ci_floor_measurement.dag` is a **fleet budget authority** (runner placement, oomd, host budgets import it) — survives despite the name
 - **Field grain:** `node_frontier_selection` comes off the generic `Runnable` in `dag/std/realization_schedule.dag` + `src/v1/stage0/src/std_realization_schedule.rs` (in flight with step 0's area)
 - `dag/gunbc/plans/ci_*.dag` planning carriers are registered quarry — deleting any requires plan-registry surgery; `dag/gunbc/plans/affected_set_self_confirmation.dag` is the only unregistered one

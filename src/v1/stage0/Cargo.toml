@@ -273,15 +273,6 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
-
 [[bin]]
 name = "floor_prepared_toll_receipt"
 path = "src/bin/floor_prepared_toll_receipt.rs"
-
-# Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
-# GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
-# dissolve-on: REST transport folds into extdeps.github.checks/pulls interpreter bridge;
-# receipt: `rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER src/v1/stage0` until deletion.
-[[bin]]
-name = "ci_control_plane"
-path = "src/bin/ci_control_plane.rs"
