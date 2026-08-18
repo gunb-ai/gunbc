@@ -21,6 +21,10 @@ import product.fabric.supply {
 import product.fabric.execution {
   Attempt, ExecutionAttemptLineage, InitialAttempt, InfrastructureRetry, LeaseIdentity,
   Receipt, ReceiptPayload, ExecutionReceipt, receipt_lease_generation,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
+  ReceiptAdmission, ReceiptAdmissible, ReceiptFromDifferentLease,
+  ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable,
+  ReceiptGenerationStale, admit_receipt_for_grant,
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -252,10 +256,110 @@ data stale_receipt: Receipt<NonEmptyStr> = Receipt {
   },
 }
 
-test fn receipt_carries_the_generation_it_was_produced_under() -> Bool {
-  receipt_lease_generation(r: stale_receipt) == 8
-    && lease_gen_9.generation == 9
-    && receipt_lease_generation(r: stale_receipt) != lease_gen_9.generation
+
+data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
+  id: FabricIdentity { principal: "operator", key: "grant-1" },
+  object: FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
+  context: FabricGrantContext {
+    demand: github_binding_demand.id,
+    work: FabricIdentity { principal: "operator", key: fixture_work_key },
+    attempt: first_attempt.id,
+    executor: "srv3",
+    lease: lease_gen_9,
+    issued_at: "2026-08-18T01:00:00Z",
+    maximum_liability: money_amount_micro(1000000),
+  },
+  evidence: FabricGrantEvidence {
+    fungibility_receipt: "fungibility-1",
+    offer_authority: "offer-authority-1",
+    resource_conservation: "resource-conservation-1",
+    budget_conservation: "budget-conservation-1",
+    principal_authority: "principal-authority-1",
+  },
+  resource_reservations: ["reservation-cpu-1"],
+  money_reservation: "reservation-money-1",
+}
+
+// The receipt that makes the fence discriminating. It is at the SAME
+// generation as the grant and names the same attempt, and differs only in
+// which slice of the host it was produced against. A fence comparing
+// generations alone accepts it, which is the defect this fixture exists to
+// catch: generation is a small integer every lease starts at and increments
+// independently, so two unrelated leases share a number almost immediately.
+
+data other_slice_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-2" },
+  attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+  lease: LeaseIdentity {
+    lease_key: "lease-attempt-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+    generation: 9,
+  },
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-2"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+data foreign_attempt_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-3" },
+  attempt: FabricIdentity { principal: "operator", key: "attempt-99" },
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-3"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+fn admission_label(r: Receipt<NonEmptyStr>) -> NonEmptyStr {
+  match admit_receipt_for_grant(r: r, g: fixture_grant) {
+    ReceiptAdmissible => "admissible"
+    ReceiptFromDifferentLease => "different-lease"
+    ReceiptFromDifferentAttempt => "different-attempt"
+    ReceiptFingerprintIncomparable => "fingerprint-incomparable"
+    ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
+  }
+}
+
+// Acceptance must compare the WHOLE lease identity. The three refusals below
+// are each reachable only if a different part of that identity is checked:
+// generation alone cannot tell same-generation-different-slice from current,
+// and cannot tell a foreign attempt from a stale one.
+
+test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
+  admission_label(r: stale_receipt) == "generation-stale"
+    && admission_label(r: other_slice_receipt) == "different-lease"
+    && admission_label(r: foreign_attempt_receipt) == "different-attempt"
+}
+
+// The positive control. Without it every refusal above is satisfied by an
+// admission function that refuses everything.
+
+test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
+  match admit_receipt_for_grant(
+    r: Receipt {
+      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+      attempt: first_attempt.id,
+      lease: lease_gen_9,
+      payload: ExecutionReceipt {
+        step_id: "floor",
+        outputs: content_hash_of_value(value: "outputs-ok"),
+        billable: second(count: 10),
+        completed_at: "2026-08-18T01:00:00Z",
+      },
+    },
+    g: fixture_grant,
+  ) {
+    ReceiptAdmissible => true
+    ReceiptFromDifferentLease => false
+    ReceiptFromDifferentAttempt => false
+    ReceiptFingerprintIncomparable => false
+    ReceiptGenerationStale { presented: _, current: _ } => false
+  }
 }
 
 // Resumability is declared per step, so a step with opaque effects cannot be
