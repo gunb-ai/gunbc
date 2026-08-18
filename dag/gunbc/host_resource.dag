@@ -2,37 +2,30 @@ module gunbc.host_resource
 
 import std.types { String, Int, Bool }
 import product.placement_supply { HostIdentity }
+import std.minted_identity { MintedId, MintedIdAllocation, MintedIdAllocator, mint_id, minted_id_eq }
 
-data resource_occurrence_subject_decision_note: String = "WHY THIS IS A DISTINCT CARRIER AND NOT std.occurrence_identity (DESIGN §3, decided by reading rather than by assumption). std.occurrence_identity is specifically about SOURCE occurrences: its OccurrenceCategory enumerates CallableOccurrence/TypeOccurrence/ConstructorOccurrence/FieldOccurrence/MethodOccurrence/NamespaceSegmentOccurrence/LexicalValueOccurrence, its carriers are DeclarationOccurrence/ReferenceOccurrence over OccurrenceContainmentPath, and its allocator is coupled through occurrence_id_allocator_advance_to to AuthoredTokenOrdinalSpace — the authored-source token ordering that gates ModuleExposure. A host resource has no authored token ordinal and no containment path, so a fleet allocator sharing that surface would inherit a watermark constraint that means nothing for it. The subject-agnostic residue in that module is only a monotone Int counter, and sharing ONE Int space across two unrelated subjects is not single authority — it is the cross-family comparison DESIGN closed for ContentHash: occurrence_id_eq would answer true on a numeric coincidence between a host resource and a source occurrence, which is exactly the state-space conflation the family grounding row forbids. So a distinct carrier is correct here. The genuinely shared concept — an opaque, allocator-minted identity in a NAMED subject space, never derived from content — is real but not yet extracted; see resource_occurrence_generalization_trigger."
+data resource_occurrence_subject_decision_note: String = "WHY THIS IS A DISTINCT CARRIER AND NOT std.occurrence_identity (DESIGN §3, decided by reading rather than by assumption). std.occurrence_identity is specifically about SOURCE occurrences: its OccurrenceCategory enumerates CallableOccurrence/TypeOccurrence/ConstructorOccurrence/FieldOccurrence/MethodOccurrence/NamespaceSegmentOccurrence/LexicalValueOccurrence, its carriers are DeclarationOccurrence/ReferenceOccurrence over OccurrenceContainmentPath, and its allocator is coupled through occurrence_id_allocator_advance_to to AuthoredTokenOrdinalSpace — the authored-source token ordering that gates ModuleExposure. A host resource has no authored token ordinal and no containment path, so a fleet allocator sharing that surface would inherit a watermark constraint that means nothing for it. The subject-agnostic residue in that module is only a monotone Int counter, and sharing ONE Int space across two unrelated subjects is not single authority — it is the cross-family comparison DESIGN closed for ContentHash: occurrence_id_eq would answer true on a numeric coincidence between a host resource and a source occurrence, which is exactly the state-space conflation the family grounding row forbids. So a distinct SUBJECT is correct here — and as of this change it is a distinct subject rather than a distinct mechanism: the genuinely shared concept, an opaque allocator-minted identity in a NAMED subject space, is now std.minted_identity MintedId<Subject>, and ResourceOccurrenceId is its HostResourceSubject instantiation. The type argument is what makes the numeric-coincidence comparison unwritable rather than merely unlikely: minted_id_eq admits two ids of the SAME subject only."
 
 data minted_not_derived_note: String = "Identity is MINTED BY THE DECLARATION, never derived from content, path, or unit name (operator ruling). This is the whole point: a derived key makes a rename indistinguishable from a delete-plus-create unless some key function is clever enough to notice the two are the same thing — which is inference, and DESIGN §4 rules a heuristic never necessary in a closed system. Git does not track renames; it INFERS them from content similarity after the fact, and that inference is precisely what a content-or-path-derived key_of reproduces. Minting the occurrence at declaration time closes it: the occurrence is stable across every value change, so a rename is ONE MemberChanged whose from and to share an identity, and nothing has to be guessed. A consequence worth stating because it is easy to lose: the identity is NOT the role and NOT the address — role is a separate typed field, and unit name, FIFO path, storage path and configuration are all mutable VALUE fields that may change under a fixed identity."
 
-type ResourceOccurrenceId {
-  value: Int
-}
+type HostResourceSubject
 
-type ResourceOccurrenceAllocator {
-  next_id: Int
-}
+type ResourceOccurrenceId = MintedId<HostResourceSubject>
 
-type ResourceOccurrenceAllocResult {
-  id: ResourceOccurrenceId
-  alloc: ResourceOccurrenceAllocator
-}
+type ResourceOccurrenceAllocator = MintedIdAllocator<HostResourceSubject>
+
+type ResourceOccurrenceAllocResult = MintedIdAllocation<HostResourceSubject>
 
 fn resource_occurrence_allocator_initial() -> ResourceOccurrenceAllocator {
-  ResourceOccurrenceAllocator { next_id: 0 }
+  MintedIdAllocator { next_ordinal: 0 }
 }
 
 fn alloc_resource_occurrence(alloc: ResourceOccurrenceAllocator) -> ResourceOccurrenceAllocResult {
-  ResourceOccurrenceAllocResult {
-    id: ResourceOccurrenceId { value: alloc.next_id },
-    alloc: ResourceOccurrenceAllocator { next_id: alloc.next_id + 1 },
-  }
+  mint_id(alloc: alloc)
 }
 
 fn resource_occurrence_eq(left: ResourceOccurrenceId, right: ResourceOccurrenceId) -> Bool {
-  left.value == right.value
+  minted_id_eq(left: left, right: right)
 }
 
 type HostResourceIdentity {
@@ -64,4 +57,4 @@ fn host_resource_same_occurrence<R, V>(
   host_resource_identity_eq(left: left.identity, right: right.identity)
 }
 
-data resource_occurrence_generalization_trigger: String = "OPEN, deliberately not built here: the shared concept behind ResourceOccurrenceId and std.occurrence_identity's OccurrenceId is 'an opaque allocator-minted identity in a named subject space'. Extracting it as one subject-parameterized carrier (the Vendor<Domain> move — one concept, the subject as a type argument) is the §2-horizontal answer and would make cross-subject comparison unwritable rather than merely unlikely. It is NOT done in this change because std.occurrence_identity is load-bearing compiler substrate with staged work in flight (the stage0 roster and ContainmentPath<OccurrenceId> projection), so migrating it under a fleet-membership brief would be exactly the improvising past doubt the working agreement forbids. DISSOLVE-ON: a THIRD minted-identity subject appears, or the std.occurrence_identity stage0 projection settles — whichever comes first; at that point extract the parameterized carrier and re-ground both subjects on it."
+data resource_occurrence_generalization_discharged_note: String = "DISCHARGED. This row previously carried an OPEN trigger: extract the subject-parameterized minted-identity carrier when a THIRD minted-identity subject appears, or when the std.occurrence_identity stage0 projection settles, whichever comes first. The third subject arrived (product.inventory procurement lots), so the carrier was extracted to std.minted_identity and this module re-grounded on it — the local ResourceOccurrenceId record, its allocator, and resource_occurrence_eq are gone in favor of aliases and calls, so there is exactly one allocator authority for this shape. What is deliberately NOT done, and remains open under its ORIGINAL reason rather than a new one: std.occurrence_identity is still un-migrated, because it is load-bearing compiler substrate with staged work in flight (the stage0 roster and ContainmentPath<OccurrenceId> projection), and migrating it under an inventory brief would be improvising past doubt. DISSOLVE-ON for that residue is unchanged: the std.occurrence_identity stage0 projection settles, at which point OccurrenceId re-grounds on MintedId<SourceOccurrenceSubject> and this note retires."
