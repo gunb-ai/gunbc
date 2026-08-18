@@ -287,16 +287,28 @@ fn v1_map_key_fixpoint_loop(
 type HandRustMapKeyRequirement {
   type_name: String
   consumer: String
-  dissolution: DissolutionCondition
 }
 
 data hand_rust_map_key_requirements: List<HandRustMapKeyRequirement> = [
   HandRustMapKeyRequirement {
     type_name: "ItemKind",
-    consumer: "src/v1/stage0/src/coproduct_reflection.rs -- StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)> memoizes declaration parsing by (module path, item kind)",
-    dissolution: unbound_dissolution(description: "that hand-written memo stops keying by ItemKind, or coproduct_reflection.rs is deleted with the v1 seed. The row is then removed and the fixpoint answers alone. The obligation is per-row rather than one condition for the roster because each hand-Rust consumer is independently removable, which is the grain DESIGN section 5 requires of a dissolution obligation; a single broad trigger over a growing roster would launder exactly the expansion this roster must not have.")
+    consumer: "src/v1/stage0/src/coproduct_reflection.rs -- StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)> memoizes declaration parsing by (module path, item kind)"
   }
 ]
+
+// WHY THE DISSOLUTION IS A TOP-LEVEL ROW RATHER THAN A FIELD ON THE REQUIREMENT.
+// It was authored as a field first, on the DESIGN section 5 grain argument that
+// one obligation should cover one independently removable unit -- each hand-Rust
+// consumer dissolves on its own. The substrate REFUSED it: unbound_dissolution
+// evaluated as a field value inside a record literal inside a list emits
+// "compile_error!(unsupported mock expression)" and regeneration dies decoding
+// DissolutionCondition. The five sibling rows at the end of this module are all
+// top-level data rows, so the convention encodes a real constraint rather than a
+// house style, and this follows it instead of routing around it. The grain
+// argument is not abandoned: with one requirement this row IS one obligation for
+// one removable unit, and a second requirement gets its own named row rather
+// than sharing this one.
+data hand_rust_map_key_requirement_itemkind_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the coproduct_reflection.rs memo stops keying by ItemKind, or that hand-written file is deleted with the v1 seed. The ItemKind row is then removed from hand_rust_map_key_requirements and the fixpoint answers alone. Removing it while the consumer still keys by ItemKind does not fail quietly: the emitted crate loses Eq + Hash on ItemKind and fails to build, which is the negative control this requirement ships with.")
 
 fn hand_rust_map_key_required_names() -> List<String> {
   hand_rust_map_key_requirements |> map(r => r.type_name)
