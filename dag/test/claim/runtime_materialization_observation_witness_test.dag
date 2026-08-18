@@ -11,7 +11,7 @@ import gunbc.ollama_runtime_bundle {
   RuntimeRootPresentButEmpty,
   RuntimeExecutableMissing,
   runtime_materialization_defects,
-  runtime_materialization_observed_identity,
+  runtime_materialization_state_digest,
   runtime_materialization_was_observed,
   ollama_runtime_materialization_identity_for_required_release,
 }
@@ -41,17 +41,46 @@ test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
   }
 }
 
-// IT IS NOT ABSENCE. Folding it there would report nothing installed while a partial tree sits on
-// disk, and the remedies differ -- materialize versus repair. Both contribute no observed member,
-// which is exactly why the distinction has to live in the type rather than in the consequence.
-test fn incomplete_and_absent_agree_on_the_member_and_differ_as_facts() -> Bool {
-  match runtime_materialization_observed_identity(observation: corrupted_under_a_correct_root()) {
-    Present { value: _ } => false
-    Absent =>
-      match runtime_materialization_observed_identity(observation: RuntimeMaterializationAbsent) {
+// IT IS NOT ABSENCE, AND THE DIFFERENCE REACHES THE MEMBER. This claim previously asserted the
+// opposite -- that incomplete and absent "agree on the member" -- which pinned the exact collapse the
+// carrier exists to prevent: the two arms differ in the type and were then made identical before
+// reconcile could act on them. Absence yields MemberAdded and a differing value yields MemberChanged,
+// so erasing this selects a fresh materialization where a repair was owed.
+//
+// The control is two-sided on purpose: incomplete must project SOME value, absent must project NONE,
+// and the value incomplete projects must not equal the desired identity -- otherwise a corrupted root
+// would compare converged.
+test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> Bool {
+  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+    Absent => false
+    Present { value: incomplete_digest } =>
+      match runtime_materialization_state_digest(observation: RuntimeMaterializationAbsent) {
         Present { value: _ } => false
-        Absent => runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
-          && runtime_materialization_was_observed(observation: RuntimeMaterializationAbsent)
+        Absent =>
+          (incomplete_digest as String) != (required_identity() as String)
+            && runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
+            && runtime_materialization_was_observed(observation: RuntimeMaterializationAbsent)
+      }
+  }
+}
+
+// TWO DIFFERENT DEFECTS ARE TWO DIFFERENT OBSERVED VALUES. A constant "broken" digest would satisfy
+// the claim above while making every partial state indistinguishable, so repairing one defect and
+// introducing another would read as no change at all.
+test fn distinct_defects_project_distinct_state_values() -> Bool {
+  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+    Absent => false
+    Present { value: missing_digest } =>
+      match runtime_materialization_state_digest(
+        observation: RuntimeMaterializationIncomplete {
+          identity: ollama_runtime_materialization_identity_for_required_release(),
+          first_defect: RuntimeRootPresentButEmpty,
+          further_defects: [],
+        },
+      ) {
+        Absent => false
+        Present { value: empty_digest } =>
+          (missing_digest as String) != (empty_digest as String)
       }
   }
 }
@@ -72,13 +101,13 @@ test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool {
 // was observed to hold. Without this the three negative claims above pass on a projection that
 // simply never answers.
 test fn only_a_complete_materialization_projects_its_identity() -> Bool {
-  match runtime_materialization_observed_identity(
+  match runtime_materialization_state_digest(
     observation: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),
     },
   ) {
     Absent => false
-    Present { value: id } => (id.digest as String) == (required_identity() as String)
+    Present { value: d } => (d as String) == (required_identity() as String)
   }
 }
 

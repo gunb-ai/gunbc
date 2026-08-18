@@ -146,16 +146,56 @@ fn runtime_materialization_defects(
   }
 }
 
-// ONLY A COMPLETE MATERIALIZATION CONTRIBUTES AN OBSERVED MEMBER. Absent and incomplete both mean
-// the desired identity is not present at that address, so reconcile plans the work; refusal means
-// nobody knows, and an unknown must not project a value. That the first three answer differently to
-// the PLAN while sharing "no member" is exactly why they are distinct arms rather than one absence.
-fn runtime_materialization_observed_identity(
+fn runtime_materialization_defect_label(defect: RuntimeMaterializationDefect) -> String {
+  match defect {
+    RuntimeRootPresentButEmpty => "root-present-but-empty"
+    RuntimeExecutableMissing { expected_relative_path: p } =>
+      join(["executable-missing:", p as String], "")
+    RuntimeExecutableNotExecutable { expected_relative_path: p } =>
+      join(["executable-not-executable:", p as String], "")
+  }
+}
+
+// AN INCOMPLETE MATERIALIZATION IS A PRESENT MEMBER CARRYING A DIFFERENT VALUE, NOT AN ABSENT ONE.
+//
+// The previous projection answered `none` for both absent and incomplete, which reconstructed the
+// distinction in the type and then erased it one function later -- before reconcile ever saw it. The
+// cost is not cosmetic: absence yields `MemberAdded` and a difference yields `MemberChanged`, and a
+// partially-extracted root reported as absent selects a fresh materialization rather than a repair,
+// with no `from` value for the repair to be safe about. That is the same collapse the linger member
+// already avoids by carrying a distinct disabled-state digest rather than dropping the member.
+//
+// So incomplete projects a state value DERIVED FROM THE DEFECTS. It is deliberately not the desired
+// identity -- an incomplete tree must never compare equal to a complete one -- and deliberately not a
+// constant, so that a root which loses its executable and a root which merely lost the executable bit
+// are two different observed values rather than one indistinguishable "broken".
+//
+// Absent still projects no member, because nothing is at the address. Refusal also projects no
+// member, but its consumer must refuse on the completeness bit rather than read the absence as a
+// fact -- `runtime_materialization_was_observed` is what separates the two, and dropping it would be
+// the empty-observation narrow.
+fn runtime_materialization_state_digest(
   observation: RuntimeMaterializationObservation,
-) -> Fnv1a64Structural? {
+) -> NonEmptyStr? {
   match observation {
-    RuntimeMaterializationComplete { identity: id } => Present { value: id }
-    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => none
+    RuntimeMaterializationComplete { identity: id } =>
+      Present { value: id.digest as NonEmptyStr }
+    RuntimeMaterializationIncomplete { identity: id, first_defect: d, further_defects: rest } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-runtime-materialization-incomplete|identity=", id.digest as String,
+            "|defects=",
+            fold(
+              concat([d], rest),
+              init: "",
+              f: fn(acc, defect) {
+                join([acc, ",", runtime_materialization_defect_label(defect: defect)], "")
+              },
+            ),
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
     RuntimeMaterializationAbsent => none
     RuntimeMaterializationObservationRefused { cause: _ } => none
   }
