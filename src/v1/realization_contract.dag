@@ -7,13 +7,13 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // std.realization: importing it into the v1 seed risks a bootstrap inversion,
 // and this row dissolves with v1 rather than outliving it.
 
-type RealizationScope = TypecheckModuleScope
+type RealizationScope = | TypecheckModuleScope
 
-type MemoHitAdmission = RealizationProvesExactInputs
+type MemoHitAdmission = | RealizationProvesExactInputs
 
-type MemoMissBehavior = EvaluateSubjectNormally
+type MemoMissBehavior = | EvaluateSubjectNormally
 
-type RealizationRetention = ReleasedAtScopeExit
+type RealizationRetention = | ReleasedAtScopeExit
 
 type PureMemoRealizationContract {
   subject: DeclarationRef
