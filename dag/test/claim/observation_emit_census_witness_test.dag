@@ -206,13 +206,13 @@ test fn w_the_raw_shell_shape_is_gone_from_the_seed() -> Bool {
 test fn w_the_raw_witness_claim_result_shape_is_gone_from_the_seed() -> Bool {
   let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
   !string_contains(s: cli, pattern: "falling back to legacy")
-    && !string_contains(s: cli, pattern: "({subject}) {ms:.1}ms")
+    && !string_contains(s: cli, pattern: "(\{subject\}) \{ms:.1\}ms")
     && string_contains(s: cli, pattern: "render_witness_claim_result_text_mirror")
 }
 
 test fn w_the_raw_witness_budget_warn_shape_is_gone_from_the_seed() -> Bool {
   let cli = census_source(path: "src/v1/stage0/src/cli_run.rs")
-  !string_contains(s: cli, pattern: "[floor-witness-slow] {} {}ms > {}ms warn")
+  !string_contains(s: cli, pattern: "[floor-witness-slow] \{\} \{\}ms > \{\}ms warn")
     && string_contains(s: cli, pattern: "render_witness_budget_warn_text_mirror")
 }
 
