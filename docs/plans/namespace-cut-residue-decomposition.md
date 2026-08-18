@@ -1025,3 +1025,73 @@ took 16,079 pairs to 10,728, a 33% reduction. Convergence is repeated rounds
 against a re-measured stream, not a bigger single pass -- and with the local
 instrument each round costs minutes, so rounds can be run to a fixed point
 before anything is pushed.
+
+## What binds the variants that DO resolve: pattern position, and only that
+
+The question was raised by tidy-pike-117 and it is the right one: 33% per
+round proves SOMETHING binds bare variants, and whatever that is, it is the
+specification for the rest. Measured rather than reasoned.
+
+First, absence of a diagnostic is not evidence of binding -- the file may not
+have been reached. Discriminating on whether the file carries ANY diagnostic:
+
+```
+files constructing bare `Cons {`                                   151
+  with an unresolved-Cons diagnostic                               133
+  without one                                                       18
+    ... file HAS other diagnostics, so it was reached and Cons BOUND  14
+    ... file has no diagnostics at all, binding UNKNOWN                4
+```
+
+So 14 files genuinely bind it. What they have in common is position:
+
+```
+BINDS   src/v2/std/node_query.dag:30
+          fn conj_payload_type_name_go(xs: FreeMonoid<v2.std.node.Edge>, ...)
+            match xs { Empty => acc
+                       Cons { head: h, tail: t } => ...
+
+FAILS   dag/gunbc/replacement_cut.dag:112
+          CoverageOpen => Cons { head: UncoveredSurvivingConsumer {...}, tail: acc }
+```
+
+Across the corpus, splitting every `Cons {` by whether a `}` is followed by
+`=>` (match arm) or not (expression):
+
+```
+files WITHOUT a Cons diagnostic:   pattern   33    construction    7
+files WITH    a Cons diagnostic:   pattern   68    construction 1878
+```
+
+**Pattern position binds; construction position does not.** That is exactly
+what the namespace design specifies and nobody had connected to this residue:
+"patterns-via-scrutinee" gives a match arm the scrutinee's type to resolve the
+variant against, and "no expected-type picker" denies construction the
+symmetric move. A constructor expression has no scrutinee and may not consult
+its expected type, and `Cons` is declared in `FreeMonoid` in `std.algebra`,
+which is not an ancestor of a workflow module -- so a pure lexical walk up the
+containment tree cannot reach it either.
+
+**And qualifying is not the escape**: of the 175 already-qualified-and-still-
+failing diagnostics, 9 were over-qualified variants
+(`v2.std.algebra.Cons`, `v2.std.algebra.Empty`, `v2.std.collection.Present`).
+So for a variant in construction position, neither the bare nor the qualified
+form resolves. There is no source spelling that works, which is why this class
+cannot be ground out file by file.
+
+**This is a design question, not a migration one**, and it is of the same
+class as the `List` fork: what binds a variant constructor in construction
+position under namespace-only resolution? Until it is answered, ~11,836
+variant spans have no correct source form, and iterating rounds will asymptote
+against them rather than converge.
+
+### Instrument rule earned here: the quote-pairing artifact
+
+`grep -o` with a pattern delimited by quote characters pairs the CLOSING quote
+of one token with the OPENING quote of the next, so the captured text is the
+CODE BETWEEN two strings while presenting as a string containing that code. It
+has now produced two false findings in this program: a "3 files with altered
+string bytes" audit failure here, and a peer's read that `Cons`/`Empty` were
+desugarer-generated. It fails in the direction that INVENTS structure, which
+is the harder direction to doubt. Split on the literal and keep the
+even-indexed pieces instead.
