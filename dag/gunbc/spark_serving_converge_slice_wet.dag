@@ -196,7 +196,58 @@ fn spark_serving_converge_slice_would_apply_verdict(
   ], "")
 }
 
+// CONVERGED MEANS THE WHOLE POPULATION RECONCILES, NOT THAT LINGER CAME BACK YES.
+//
+// The read-back after apply was the linger probe alone. That was survivable only while linger was
+// the only member anything could plan: once the runtime, unit and model effects execute, a
+// linger=yes answer would return wet-applied-converged over a missing model, a wrong runtime, or a
+// unit that was written and never enabled. Applying N operations and verifying one of them is the
+// fail-open this whole lane exists to close, and it sits at the actuation boundary where the verdict
+// becomes a receipt.
+//
+// The bar is the SECOND PLAN: re-observe every member, reconcile against the unchanged desired
+// population, and require zero writes. That is the property an operator actually wants -- not "the
+// commands exited 0" but "the host is now in the declared state" -- and it is exactly what
+// distinguishes convergence from execution.
+//
+// NOT CLAIMED HERE, and named rather than left for a reader to assume: this does not run a
+// generation. An empty replan says the modeled members match; it does not say the server answers.
+// The terminal serving evidence -- a non-streaming generate returning done=true, the planned model
+// identity, and exactly pong -- is owed by the run that first restores a host, and belongs with the
+// wet receipt rather than with this verdict.
+fn spark_serving_applied_replan_verdict(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  linger_enabled: Bool,
+) -> String {
+  match spark_serving_fleet_converge_plan_artifact(
+    host: host as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    projection: spark_serving_observed_members(
+      observation: spark_serving_observe_host_via_locus(context: context, host: host),
+      unit: spark_serving_observe_user_unit(context: context, host: host),
+      linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
+    ),
+  ) {
+    SparkServingPlanArtifactRefused { cause: why } =>
+      join(["wet-applied-replan-refused ", why], "")
+    SparkServingPlanArtifactReady { artifact: replanned } =>
+      if length(replanned.spark_serving_typed_actions) == 0 {
+        spark_serving_slice_verdict_applied_converged
+      } else {
+        join([
+          "wet-applied-replan-nonempty rows=",
+          to_string(length(replanned.spark_serving_typed_actions)),
+          " -- apply executed but the host does not match the declared state",
+        ], "")
+      }
+  }
+}
+
 fn spark_serving_converge_slice_exec_verdict(
+  context: FleetSshExecutionContext,
   transport: HostEffectTransport,
   host: HostIdentity,
   artifact: FleetConvergePlanArtifact,
@@ -233,7 +284,11 @@ fn spark_serving_converge_slice_exec_verdict(
                         join(["wet-applied-readback-refused stdout=", trim(s: post.stdout)], "")
                       Present { value: enabled } =>
                         if enabled {
-                          spark_serving_slice_verdict_applied_converged
+                          spark_serving_applied_replan_verdict(
+                            context: context,
+                            host: host,
+                            linger_enabled: enabled,
+                          )
                         } else {
                           "wet-applied-readback-mismatch lingering-still-no"
                         }
@@ -348,6 +403,7 @@ fn spark_serving_converge_slice_wet_host_report(
                           apply_command_count: remote_operation_count(operations: ops),
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
+                              context: context,
                               transport: transport,
                               host: host,
                               artifact: artifact,
