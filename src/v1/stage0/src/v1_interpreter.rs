@@ -33,9 +33,9 @@ use crate::v1_std_core::{
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
     record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -312,15 +312,22 @@ fn record_pattern_type_name_matches(
     parent_enum: Option<&String>,
 ) -> bool {
     let resolved = resolve_sym(record_type_name);
-    if record_type_name == ctx.sym(pattern_name) || resolved == pattern_name {
-        return true;
-    }
+    let name_matches = record_type_name == ctx.sym(pattern_name)
+        || resolved == pattern_name
+        || type_name_compatible(resolved.clone(), pattern_name.to_string());
     match parent_enum {
         Some(parent) => {
-            record_nominal_is_declared_variant_of_coproduct(ctx, resolved, parent)
+            if record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
                 || variant_arm_is_declared_in_coproduct(ctx, record_type_name, parent)
+            {
+                return true;
+            }
+            // Parent scoping was requested but the coproduct authority is not visible in this
+            // scope's module population — fall back to the same last-segment reconciliation the
+            // Variant arm uses, rather than refusing every Record-shaped coproduct value.
+            name_matches && resolve_coproduct_type_node(ctx, parent).is_none()
         }
-        None => false,
+        None => name_matches,
     }
 }
 
@@ -3913,7 +3920,7 @@ fn match_pattern(
                     if !record_pattern_type_name_matches(
                         ctx,
                         *type_name,
-                        name,
+                        name_last,
                         parent_enum.as_ref(),
                     ) {
                         return None;
