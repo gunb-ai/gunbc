@@ -402,6 +402,31 @@ fn fleet_converge_spark_serving_action_kind(action: MemberAction<SparkServingMem
   }
 }
 
+// THE MEMBER VALUES ARE IN THE WIRE, NOT ONLY THE MEMBER KEY.
+//
+// `spark_serving_member_key` is host x principal x ADDRESS -- deliberately, because that is the
+// stable identity reconcile keys on. But the hash needs the VALUE too: with the key alone, a row
+// whose `to` digest changed from one model manifest to another serializes identically, so the
+// approved artifact would still admit after the very drift the CAS baseline exists to catch. Key
+// answers "which resource"; the digests answer "from what, to what", and an approval is about both.
+//
+// `from` is rendered explicitly as absent where the arm has none, rather than omitted, so an add and
+// a change to the same value cannot collide on one string.
+fn fleet_converge_spark_serving_action_state_wire(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => join([" from=<none> to=", m.state_digest as String], "")
+    MemberChanged { at: _, from: f, to: m } =>
+      join([" from=", f.state_digest as String, " to=", m.state_digest as String], "")
+    MemberRemoved { at: _, from: f } => join([" from=", f.state_digest as String, " to=<none>"], "")
+    MemberRemovalRefused { from: f, cause: c } =>
+      join([" from=", f.state_digest as String, " to=<refused> cause=", c], "")
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: d } =>
+      join([" first=", f.state_digest as String, " duplicate=", d.state_digest as String], "")
+  }
+}
+
 fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedAction) -> String {
   let member = match row.action {
     MemberAdded { at: _, to: m } => m
@@ -415,6 +440,7 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
       fleet_converge_spark_serving_action_kind(action: row.action),
       " spark-serving ",
       spark_serving_member_key(member: member),
+      fleet_converge_spark_serving_action_state_wire(action: row.action),
       " effects=",
       join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
       " ops=",

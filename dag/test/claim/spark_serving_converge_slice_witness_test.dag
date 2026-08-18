@@ -8,9 +8,11 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused,
 }
-import gunbc.membership_reconcile { MemberChanged }
+import gunbc.membership_reconcile { MemberChanged, MemberAdded }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
+  FleetConvergeSparkServingTypedAction,
+  fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_plan_artifact_hash,
   fleet_converge_plan_artifact_bundle_admits,
   fleet_converge_plan_spark_typed_actions_consistency_admits,
@@ -32,7 +34,16 @@ import gunbc.spark_serving_desired {
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
 }
-import gunbc.spark_serving_membership { spark_serving_user_unit_state_digest }
+import gunbc.spark_serving_membership {
+  spark_serving_user_unit_state_digest,
+  spark_serving_member,
+  spark_serving_member_key,
+  spark_serving_serving_principal,
+  SparkServingUserUnitAddress,
+}
+import gunbc.ownership { Owned }
+import gunbc.remote_operation { RemoteOperation, RemoteArgv }
+import std.types { List }
 import gunbc.spark_serving_observed_members {
   SparkServingObservedMemberProjection,
   UserUnitStateObserved,
@@ -469,4 +480,81 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
           == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
+}
+
+// ── Tamper controls: what the approved artifact hash actually discriminates ──────────────────────
+
+fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSparkServingTypedAction {
+  FleetConvergeSparkServingTypedAction {
+    action: MemberAdded {
+      at: spark_serving_member_key(
+        member: spark_serving_member(
+          host: witness_host_srv5 as HostIdentity,
+          principal: spark_serving_serving_principal(),
+          address: SparkServingUserUnitAddress,
+          state_digest: state,
+          ownership: Owned,
+        ),
+      ),
+      to: spark_serving_member(
+        host: witness_host_srv5 as HostIdentity,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitAddress,
+        state_digest: state,
+        ownership: Owned,
+      ),
+    },
+    install_effects: [EnableLingerForOwnAccount],
+    operations: ops,
+  }
+}
+
+fn tamper_wire(state: NonEmptyStr, ops: List<RemoteOperation>) -> String {
+  fleet_converge_spark_serving_typed_actions_wire(rows: [tamper_row(state: state, ops: ops)])
+}
+
+data tamper_base_ops: List<RemoteOperation> = [RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }]
+
+// THE APPROVAL IS OVER THE VALUES, NOT ONLY THE ADDRESS. A row whose `to` digest moved from one
+// model manifest to another used to serialize identically, because the member KEY is host x
+// principal x address by design -- so the approved artifact still admitted after exactly the drift
+// the baseline exists to catch. Key answers "which resource"; the digest answers "to what".
+test fn changing_a_member_state_digest_changes_the_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    != tamper_wire(state: "digest-b" as NonEmptyStr, ops: tamper_base_ops)
+}
+
+// Changing one argv word changes it.
+test fn changing_one_argv_word_changes_the_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    != tamper_wire(
+      state: "digest-a" as NonEmptyStr,
+      ops: [RemoteArgv { argv: ["loginctl", "enable-linger", "b"] }],
+    )
+}
+
+// REORDERING is a distinct tamper from substitution: the same two operations in the other order is
+// a different program -- writing the unit before creating its directory is precisely the bare-host
+// failure the mkdir ordering exists to prevent -- and a set-shaped wire would call them equal.
+test fn reordering_two_operations_changes_the_wire() -> Bool {
+  let a = RemoteArgv { argv: ["mkdir", "-p", "/d"] }
+  let b = RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a, b])
+    != tamper_wire(state: "digest-a" as NonEmptyStr, ops: [b, a])
+}
+
+// And DROPPING an operation changes it, so a row cannot be quietly emptied while keeping its effects.
+test fn dropping_an_operation_changes_the_wire() -> Bool {
+  let a = RemoteArgv { argv: ["mkdir", "-p", "/d"] }
+  let b = RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a, b])
+    != tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a])
+}
+
+// THE POSITIVE CONTROL. Every claim above is an inequality, and inequalities are satisfied by a wire
+// that is simply nondeterministic. Two structurally identical rows must produce the SAME wire, or
+// the four claims above prove nothing about tamper detection.
+test fn two_identical_rows_produce_the_same_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    == tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
 }
