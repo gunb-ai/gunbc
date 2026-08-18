@@ -26,7 +26,7 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
     Accepted { value: facts, diagnostics: None } =>
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
         Accepted { value: encoding, diagnostics: None } =>
-          if encoding == v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
+          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
  occurrence_id: SyntheticOccurrence
 } {
             integer_unbounded_value_set_node()

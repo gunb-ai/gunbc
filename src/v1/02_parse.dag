@@ -4425,10 +4425,40 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
 }
 
+// A qualified construction head must parse exactly where its bare spelling
+// does. parse_ident_expr consumes `Name {` inside the primary, so a bare head
+// reaches a record literal even in a no-brace context, where a brace otherwise
+// ends the expression; a dotted head is a field-access chain and reaches one
+// only through the postfix arm this loop omits. So the two spellings disagreed:
+// `if x == Node { .. }` parsed and `if x == v2.std.node.Node { .. }` reported
+// `expected expression, found Colon` at the first field label. This yields the
+// dotted spelling of a field-access chain whose last segment is uppercase, and
+// nothing else, so a lowercase projection still ends the expression at the brace.
+fn qualified_construction_head_name(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
+  match texpr.expr_data {
+    ExprFieldAccess { summary: _ } =>
+      if is_uppercase_start(name: field_access_field_at(texpr: texpr, source_indices: source_indices)) {
+        match field_access_spine(texpr: texpr, source_indices: source_indices) {
+          Present { value: spine } => Present { value: spine.dotted }
+          Absent => none
+        }
+      } else {
+        none
+      }
+    _ => none
+  }
+}
+
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
   let tok = token_stream_first(stream: tokens)
-  if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
+  if tok_is_eof(tok: tok) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
+  } else if tok_is_lbrace(tok: tok) {
+    match qualified_construction_head_name(texpr: lhs, source_indices: ctx.source_indices) {
+      Present { value: dotted } =>
+        parse_record_literal_named(tokens: tokens, ctx: ctx, name: dotted, span: field_access_chain_span(texpr: lhs), name_span: v1.std.core.kernel_span(name: dotted))
+      Absent => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     let loop_span = token_span(tok: tok)
     let tokens = skip_continuation_newlines(tokens: tokens)
