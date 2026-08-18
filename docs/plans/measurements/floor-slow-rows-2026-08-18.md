@@ -74,3 +74,24 @@ milliseconds on a shared CI host. Recorded, not adjudicated: whether that is a
 real cost or the ceiling sitting inside its own measurement noise is a question
 for whoever owns the ceiling, and moving it to make them pass would be
 tuning a threshold to its current population rather than to a requirement.
+
+## Why this run is usable as a baseline, and what it must not be used for
+
+**Uncensored.** Run 32172125816 carries five `cost is exactly` lines and zero
+`cost is at least`. Nothing in it was interrupted, so all 720 elapsed figures
+are real measurements rather than deadline ceilings. That is not true of main's
+runs on the same day: those carry 97 interrupted rows, every one reporting at
+least the 1552ms interrupt point, so a census taken from them would be censored
+and its ordering would be an artifact of where the kill landed rather than of
+cost. A baseline drawn from this table is comparing measurements; one drawn from
+a main run today would not be.
+
+**Not a ranking of expensive witnesses.** This table records what the floor
+spent and where. It does not record which witnesses are expensive, and the two
+differ by exactly the first-touch effect documented in
+[the attribution note](../witness-cost-first-touch-attribution.md): a row that
+is first to reach a shared computation carries its entry's bill, and its
+siblings show near zero for the same work. The 71-second row is the extreme
+case — 70-85ms in isolation. Treating any row here as a per-witness cost, or
+sorting the population to decide what to pare, reproduces the error the note
+exists to prevent.
