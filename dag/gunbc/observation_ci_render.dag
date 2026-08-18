@@ -762,13 +762,13 @@ fn ci_witness_claim_result_text(
   concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
 }
 
-data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn_ms but under budget_ms is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and hard ceiling so the population is observable rather than reconstructed from timings. The seed transports scalars only; every choice about how the line READS lives here."
+data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn threshold but under the hard budget is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and ceiling so the population is observable rather than reconstructed from timings. Durations cross as std.measure Millisecond at this seam; the seed converts wall_nanos and policy thresholds at the boundary."
 
 fn ci_witness_budget_warn_text(
   qualified: String,
-  wall_ms: Nat,
-  warn_ms: Nat,
-  budget_ms: Nat,
+  wall: Millisecond,
+  warn: Millisecond,
+  budget: Millisecond,
 ) -> String {
   concat(
     "[floor-witness-slow] ",
@@ -777,12 +777,12 @@ fn ci_witness_budget_warn_text(
       concat(
         " ",
         concat(
-          to_string(wall_ms),
+          to_string(millisecond_count(m: wall)),
           concat(
             "ms > ",
             concat(
-              to_string(warn_ms),
-              concat("ms warn (ceiling ", concat(to_string(budget_ms), "ms)"))
+              to_string(millisecond_count(m: warn)),
+              concat("ms warn (ceiling ", concat(to_string(millisecond_count(m: budget)), "ms)"))
             )
           )
         )

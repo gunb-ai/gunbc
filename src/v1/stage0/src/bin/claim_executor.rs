@@ -14735,7 +14735,9 @@ mod tests {
             .into_owned();
         let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-        let arg = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+        let wall = millisecond_value(&ctx, u128::from(wall_ms)).ok()?;
+        let warn = millisecond_value(&ctx, u128::from(warn_ms)).ok()?;
+        let budget = millisecond_value(&ctx, u128::from(budget_ms)).ok()?;
         let out = run_in_context_with_args(
             &ctx,
             "ci_witness_budget_warn_text",
@@ -14744,9 +14746,9 @@ mod tests {
                     Some("qualified".to_string()),
                     str_value(qualified.to_string()),
                 ),
-                arg("wall_ms", wall_ms),
-                arg("warn_ms", warn_ms),
-                arg("budget_ms", budget_ms),
+                (Some("wall".to_string()), wall),
+                (Some("warn".to_string()), warn),
+                (Some("budget".to_string()), budget),
             ],
             false,
         )

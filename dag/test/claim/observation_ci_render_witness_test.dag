@@ -658,9 +658,9 @@ test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
 test fn w_witness_budget_warn_line_holds() -> Bool {
   ci_witness_budget_warn_text(
     qualified: "test.claim.foo.w_bar",
-    wall_ms: 600,
-    warn_ms: 500,
-    budget_ms: 1000
+    wall: millisecond(count: 600),
+    warn: millisecond(count: 500),
+    budget: millisecond(count: 1000)
   ) == "[floor-witness-slow] test.claim.foo.w_bar 600ms > 500ms warn (ceiling 1000ms)"
 }
 
@@ -693,9 +693,9 @@ test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool {
 test fn w_RED_witness_budget_warn_requires_ceiling_clause() -> Bool {
   let text = ci_witness_budget_warn_text(
     qualified: "test.claim.foo.w_bar",
-    wall_ms: 600,
-    warn_ms: 500,
-    budget_ms: 1000
+    wall: millisecond(count: 600),
+    warn: millisecond(count: 500),
+    budget: millisecond(count: 1000)
   )
   string_contains(s: text, pattern: "(ceiling 1000ms)")
     && string_contains(s: text, pattern: "[floor-witness-slow]")
