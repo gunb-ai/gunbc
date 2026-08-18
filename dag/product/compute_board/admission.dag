@@ -293,6 +293,8 @@ fn refusal_set_count(s: BoardArticleRefusalSet) -> std.nat.Nat {
 
 // Match on BoardArticleRefusal in the module that owns the coproduct — imported variant
 // patterns in witness modules do not reconcile at runtime (non-exhaustive on every arm).
+// dissolve-on: ingest/reconcile reconciles imported VariantPattern arms at the witness
+// module boundary; then witness modules match BoardArticleRefusal directly and this helper deletes.
 fn refusal_matches_name(r: BoardArticleRefusal, wanted: String) -> Bool {
   match r {
     DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"

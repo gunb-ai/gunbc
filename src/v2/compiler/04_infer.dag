@@ -7,7 +7,7 @@ type AlgebraRef {
   witness: v2.std.node.Node
 }
 
-data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly three of the closed vocabulary's twelve node kinds (Branch, Match, Loop — 6 connectives + 6 behaviors = 12); the other nine have no derivation rule yet. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
+data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for exactly four of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only — 6 connectives + 6 behaviors = 12); the other eight kinds, and every other Transform shape, have no derivation rule yet. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
 type NodeGrounding
   = DerivedGrounding { grounding: v2.std.constraints.CanonicalGrounding }
@@ -119,6 +119,7 @@ type InferGatherFoldAcc {
   await_branch_row: Bool
   await_match_row: Bool
   await_loop_row: Bool
+  await_transform_row: Bool
   children_remaining: Int
 }
 
@@ -225,8 +226,32 @@ fn infer_match_non_exhaustive_diagnostic(node: v2.std.node.Node) -> v2.std.diagn
   }
 }
 
-fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
-  v2.std.diagnostic.Diagnostic {
+fn infer_transform_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_transform_operand_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_operand_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_transform_operator_unsupported_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_operator_unsupported,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
     reason: ^infer_match_int_scrutinee_bool_literal_scaffold,
     at: node_locus(node: node),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
@@ -1073,12 +1098,145 @@ fn infer_loop_iteration(
   }
 }
 
+data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating add vertical witness enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission (SubstrateLongLaneEvalBudget); fast per-PR subtract dispatch control in body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general operator/operand typing table subsumes this rule."
+
+fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
+  match op_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_token_plus
+        || canonical_operation_wire_matches_operation(
+          wire: op_node,
+          operation: canonical_operation_op_add()
+        )
+    _ =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+  }
+}
+
+fn infer_transform_is_binary_infix_int_add_shape(node: Node) -> Bool {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    false
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => false
+      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+    }
+  }
+}
+
+fn infer_unify_transform_operand_types(
+  left_node: Node,
+  left_facts: InferredFacts,
+  right_node: Node,
+  right_facts: InferredFacts,
+  tree: Node,
+) -> Outcome<Node> {
+  match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, tree: tree) {
+    Violates { diagnostic: d } => outcome_rejected(d)
+    Holds { value: left_type } =>
+      match infer_branch_operand_resolved_type_in_tree(
+        node: right_node,
+        facts: right_facts,
+        tree: tree
+      ) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: right_type } =>
+          if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
+            Accepted { value: left_type, diagnostics: None }
+          } else {
+            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+          }
+      }
+  }
+}
+
+fn infer_transform_binary_infix(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node,
+) -> Outcome<InferredFacts> {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+      Present { value: op_target } =>
+        match list_at_optional(xs: positional_targets, index: 1) {
+          Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+          Present { value: left_target } =>
+            match list_at_optional(xs: positional_targets, index: 2) {
+              Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+              Present { value: right_target } =>
+                if !infer_transform_operator_is_int_add(op_node: op_target) {
+                  outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
+                } else {
+                  match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
+                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
+                    Present { value: left_facts } =>
+                      match lookup_inferred_facts_in_entries(entries: entries, key: right_target) {
+                        Absent =>
+                          outcome_rejected(infer_facts_lookup_miss_diagnostic(key: right_target))
+                        Present { value: right_facts } =>
+                          match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: _, diagnostics: cd } =>
+                              match infer_unify_transform_operand_types(
+                                left_node: left_target,
+                                left_facts: left_facts,
+                                right_node: right_target,
+                                right_facts: right_facts,
+                                tree: tree
+                              ) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: unified_type, diagnostics: ud } =>
+                                  if !infer_branch_type_is_int(type_node: unified_type) {
+                                    outcome_rejected(
+                                      infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                    )
+                                  } else {
+                                    match infer_descent_witness_for_node(n: node) {
+                                      Violates { diagnostic: d } =>
+                                        Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                      Holds { value: descent_proof } =>
+                                        bind_outcome(
+                                          o: inferred_facts_from_derived_type(
+                                            node: node,
+                                            derived_type: unified_type,
+                                            descent: Holds { value: descent_proof }
+                                          ),
+                                          f: fn(facts) {
+                                            Accepted {
+                                              value: facts,
+                                              diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                                            }
+                                          }
+                                        )
+                                    }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
 fn infer_gather_fold_acc_failed(
   node: v2.std.node.Node,
   pending: v2.std.diagnostic.NonEmptyDiagnostics,
   await_branch_row: Bool,
   await_match_row: Bool,
   await_loop_row: Bool,
+  await_transform_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -1089,6 +1247,7 @@ fn infer_gather_fold_acc_failed(
     await_branch_row: await_branch_row,
     await_match_row: await_match_row,
     await_loop_row: await_loop_row,
+    await_transform_row: await_transform_row,
     children_remaining: children_remaining
   }
 }
@@ -1100,6 +1259,7 @@ fn infer_gather_fold_acc_ok(
   await_branch_row: Bool,
   await_match_row: Bool,
   await_loop_row: Bool,
+  await_transform_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -1110,6 +1270,7 @@ fn infer_gather_fold_acc_ok(
     await_branch_row: await_branch_row,
     await_match_row: await_match_row,
     await_loop_row: await_loop_row,
+    await_transform_row: await_transform_row,
     children_remaining: children_remaining
   }
 }
@@ -1155,6 +1316,7 @@ fn infer_gather_branch_row_on_entries(
         await_branch_row: false,
         await_match_row: false,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -1166,6 +1328,7 @@ fn infer_gather_branch_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -1179,6 +1342,7 @@ fn infer_gather_branch_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
       }
@@ -1200,6 +1364,7 @@ fn infer_gather_match_row_on_entries(
         await_branch_row: false,
         await_match_row: false,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -1211,6 +1376,7 @@ fn infer_gather_match_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -1224,6 +1390,7 @@ fn infer_gather_match_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
       }
@@ -1244,6 +1411,7 @@ fn infer_gather_loop_row_on_entries(
         await_branch_row: false,
         await_match_row: false,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -1255,6 +1423,7 @@ fn infer_gather_loop_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -1268,13 +1437,62 @@ fn infer_gather_loop_row_on_entries(
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
       }
   }
 }
 
-data infer_gather_dispatch_totality_note: String = "This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no wildcard arm, and that is the construction half of the wall. The wildcard it replaces is what let nine kinds fall silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be added without deciding, at this site, whether it derives its type or joins the counted frontier — the decision cannot be defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction)."
+fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+data infer_gather_dispatch_totality_note: String = "This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no wildcard arm, and that is the construction half of the wall. The wildcard it replaces is what let eight kinds fall silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be added without deciding, at this site, whether it derives its type or joins the counted frontier — the decision cannot be defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction)."
 
 fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node.Node>) -> InferGatherFoldAcc {
   match infer_node_facts(n: n, partials: partials) {
@@ -1285,6 +1503,7 @@ fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node
         await_branch_row: false,
         await_match_row: false,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -1296,6 +1515,7 @@ fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -1306,6 +1526,7 @@ fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node
             await_branch_row: false,
             await_match_row: false,
             await_loop_row: false,
+            await_transform_row: false,
             children_remaining: 0
           )
       }
@@ -1322,6 +1543,7 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
         await_branch_row: true,
         await_match_row: false,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: length(xs: n.children)
       )
     ComputationNode { behavior: Match } =>
@@ -1332,6 +1554,7 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
         await_branch_row: false,
         await_match_row: true,
         await_loop_row: false,
+        await_transform_row: false,
         children_remaining: length(xs: n.children)
       )
     ComputationNode { behavior: Loop } =>
@@ -1342,10 +1565,25 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
         await_branch_row: false,
         await_match_row: false,
         await_loop_row: true,
+        await_transform_row: false,
         children_remaining: length(xs: n.children)
       )
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials)
-    ComputationNode { behavior: Transform } => infer_gather_fold_not_derived(n: n, partials: partials)
+    ComputationNode { behavior: Transform } =>
+      if infer_transform_is_binary_infix_int_add_shape(node: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: true,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials)
+      }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Conj } => infer_gather_fold_not_derived(n: n, partials: partials)
@@ -1399,6 +1637,7 @@ fn infer_gather_fold_step(
       await_branch_row: acc.await_branch_row,
       await_match_row: acc.await_match_row,
       await_loop_row: acc.await_loop_row,
+      await_transform_row: acc.await_transform_row,
       children_remaining: acc.children_remaining
     )
   } else {
@@ -1431,6 +1670,14 @@ fn infer_gather_fold_step(
         pending: merged_pending,
         partials: partials
       )
+    } else if acc.await_transform_row && children_remaining == 0 {
+      infer_gather_transform_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials,
+        tree: tree
+      )
     } else {
       infer_gather_fold_acc_ok(
         node: acc.node,
@@ -1439,6 +1686,7 @@ fn infer_gather_fold_step(
         await_branch_row: acc.await_branch_row,
         await_match_row: acc.await_match_row,
         await_loop_row: acc.await_loop_row,
+        await_transform_row: acc.await_transform_row,
         children_remaining: children_remaining
       )
     }

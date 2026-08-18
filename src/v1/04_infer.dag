@@ -741,7 +741,24 @@ fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
         Present { value: r } => r
         Absent => exp
       }
-      if (resolved.connective == Disj) { Present { value: resolved } } else { none }
+      let nominal = if node_is_element_collection(n: resolved, source_indices: scope.type_env.source_indices) {
+        match resolved.children |> first {
+          Present { value: elem } =>
+            let elem_ty = child_type_node(ch: elem)
+            match lookup_type_for(env: scope.type_env, node: elem_ty) {
+              Present { value: r } => Present { value: r }
+              Absent => Present { value: elem_ty }
+            }
+          Absent => none
+        }
+      } else {
+        Present { value: resolved }
+      }
+      match nominal {
+        Present { value: n } =>
+          if (n.connective == Disj) { Present { value: n } } else { none }
+        Absent => none
+      }
     Absent => none
   }
 }

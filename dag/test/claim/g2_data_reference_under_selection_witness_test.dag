@@ -33,6 +33,20 @@ data specimen_entry_path: String = "dag/test/claim/scaffold_disposition_census_f
 
 data specimen_fn_name: String = "scaffold_disposition_census_fixture_pool_is_nonempty"
 
+// WHY THIS POOL IS NOT NARROWABLE, so the next reader costing it does not re-derive the answer
+// (census 2026-08-18; operator ruling, not authorized on cost grounds).
+//
+// dag/test/claim is READ -- but for exactly ONE file, this witness's own specimen entry
+// (specimen_entry_path). It costs 838 files / 6,643,760 bytes, 99.7% of this pool, and the
+// required floor pays it once per ROW because run_required_floor builds a fresh InterpContext per
+// claim. That is the largest single waste measured in the pool-roots census.
+//
+// It is still not worth fixing. The blocker is that pool roots are DIRECTORY-grained
+// (corpus_dag_files_for_roots walks a root only `if root_path.is_dir()`), and no directory
+// contains this specimen and nothing else. Making a root able to name a file is a change to the
+// corpus-walk seam every pool in the repository shares, and the census found it would buy exactly
+// this one specimen -- a seam change for a single row. If file-grain roots ever land for an
+// independent reason, narrowing this list to the specimen file is a one-line follow-up.
 data specimen_pool_roots: List<String> = [
   "dag/test/claim",
   "dag/test/fixture/scaffold_disposition_census"
