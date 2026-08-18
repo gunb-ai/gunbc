@@ -264,6 +264,10 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 # DISSOLVES WHEN namespace lane deletes import grammar + binding-source modeled in substrate.
 # Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion.
 [[bin]]
+name = "codex_app_server_stdio_session"
+path = "src/bin/codex_app_server_stdio_session.rs"
+
+[[bin]]
 name = "compile_clean_unlisted_import_census"
 path = "src/bin/compile_clean_unlisted_import_census.rs"
 
