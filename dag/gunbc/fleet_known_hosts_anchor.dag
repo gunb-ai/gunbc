@@ -216,14 +216,14 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
     let fragment = fleet_known_hosts_fragment()
     let path = fleet_known_hosts_anchor_path(attempt: attempt)
     let registry_identity = fleet_known_hosts_registry_identity()
-    let existing = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as String)
+    let existing = Filesystem.Read(path: path as String)
     let already = existing.success && existing.content == fragment
     let written = if already { true } else {
-      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path as String, content: fragment)
+      let w = Filesystem.Write(path: path as String, content: fragment)
       w.success
     }
     if written {
-      let back = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as String)
+      let back = Filesystem.Read(path: path as String)
       if back.success {
         let materialized_identity = std.content_hash.content_hash_of_value(value: back.content as std.types.NonEmptyStr)
         match std.content_hash.compare_content_hash(left: registry_identity, right: materialized_identity) {

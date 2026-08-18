@@ -305,7 +305,7 @@ func fleet_multi_principal_probe_wet() -> std.process.ProcessExit {
     ], ""),
     join(map(multi_principal_probe_hosts, h => multi_principal_host_block_agent_backed(host: h)), ""),
   ], "")
-  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
+  let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
   if w.success {
     std.process.ExitSuccess
   } else {
@@ -345,7 +345,7 @@ func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> std.proces
           }
         }
       }
-      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
+      let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
       if w.success {
         std.process.ExitSuccess
       } else {
@@ -468,7 +468,7 @@ func spark_exact_grant_probe_wet(attempt_raw: String) -> std.process.ProcessExit
           }
         }
       }
-      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))
+      let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))
       if !w.success {
         std.process.exit_failure(reason: join(["exact-grant probe receipt write failed: ", w.error], ""))
       } else {
@@ -649,7 +649,7 @@ func spark_managed_access_standing_with_verified_credential(
         spark_authorization_lines(standing: standing, credential_identity: credential_identity),
       ], "")), ""),
   ], "")
-  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_standing_receipt_path, content: body)
+  let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
   if !w.success {
     std.process.exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
   } else {

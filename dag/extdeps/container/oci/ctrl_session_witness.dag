@@ -48,7 +48,7 @@ data ctrl_session_manifest: extdeps.container.oci.manifest.ImageManifest = {
 }
 
 data ctrl_session_image_config: extdeps.container.oci.image_config.ImageConfiguration = {
-  architecture: extdeps.container.oci.types.Aarch64,
+  architecture: extdeps.toolchain.types.Aarch64,
   os: extdeps.toolchain.types.Linux,
   config: {
     User: null,
@@ -161,7 +161,7 @@ fn witness_descriptor_rejects_negative_size() -> Bool {
 fn witness_image_config_accepts() -> Bool {
   match accept_image_configuration(ctrl_session_image_config) {
     ImageConfigAccepted { value: c } =>
-      c.architecture == extdeps.container.oci.types.Aarch64
+      c.architecture == extdeps.toolchain.types.Aarch64
         && c.os == extdeps.toolchain.types.Linux
         && image_config_has_exposed_port(c: c, expected_port: 7681, protocol: Tcp)
         && count(image_config_entrypoint(c)) == 4
@@ -171,7 +171,7 @@ fn witness_image_config_accepts() -> Bool {
 
 fn witness_goarch_parses_arm64_wire() -> Bool {
   match parse_image_config_goarch("arm64") {
-    ImageConfigGoarchKnown { value: arch } => arch == extdeps.container.oci.types.Aarch64
+    ImageConfigGoarchKnown { value: arch } => arch == extdeps.toolchain.types.Aarch64
     ImageConfigGoarchUnknown { wire: _ } => false
   }
 }
