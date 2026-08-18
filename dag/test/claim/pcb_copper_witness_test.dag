@@ -4,8 +4,15 @@ import std.logic { Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { micrometer }
 import product.electrical.connectivity {
+  ElectricalDesignIdentity,
   ElectricalNet,
   NetIdentity,
+  component_identity_eq,
+  component_instance_identity,
+  component_local_label,
+  net_identity,
+  net_identity_eq,
+  net_local_label,
 }
 import product.pcb.stackup {
   AdmittedStackup,
@@ -46,6 +53,8 @@ import product.pcb.copper {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
+data fixture_design: ElectricalDesignIdentity = "test.pcb_copper.fixture" as ElectricalDesignIdentity
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
@@ -78,9 +87,9 @@ data board_authority: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data vcc: NetIdentity = "VCC" as NetIdentity
-data gnd_net: NetIdentity = "GND" as NetIdentity
-data absent_net: NetIdentity = "SPI_CLK" as NetIdentity
+data vcc: NetIdentity = net_identity(design: fixture_design, local_identity: "VCC")
+data gnd_net: NetIdentity = net_identity(design: fixture_design, local_identity: "GND")
+data absent_net: NetIdentity = net_identity(design: fixture_design, local_identity: "SPI_CLK")
 
 // THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
 // intent, so this witness hands it a roster belonging to no analog article at all. If the carrier
