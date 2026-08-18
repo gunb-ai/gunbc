@@ -1,0 +1,20 @@
+module test.claim.rust_test_fixtures_import_closure_witness
+
+import v2.workflow.class_b_import_closure_transport {
+  class_b_declared_import_closure_lists_rust_import,
+  class_b_ambient_pool_provider_preserves_listed_import
+}
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data class_b_gate_witness_note: String = "Required-floor executing consumer for Class B rows 1-2 (#6985). Replaces the deleted thin-wrapper module: same transport funcs and late module name, but two claims not one — folding both rows into class_b_rows_1_and_2_hold measured 187s/1.27GB RSS on CI versus ~60s/0.28GB as separate claims, blowing the 1500ms compile-wall budget on witnesses that follow. SubstrateInputsOnly admits both rows to the hermetic manifest. Rows 3-4 stay in class_b_import_closure_binding_refusal_witness_test.dag and class_b_strip_receipt_witness_test.dag; wet integration remains run_class_b_import_closure_gate on source_root_ingest_gate."
+
+test fn declared_import_closure_lists_rust_import() -> Bool {
+  class_b_declared_import_closure_lists_rust_import()
+}
+
+test fn ambient_pool_provider_preserves_listed_import() -> Bool {
+  class_b_ambient_pool_provider_preserves_listed_import()
+}
