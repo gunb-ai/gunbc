@@ -252,9 +252,18 @@ fn coproduct_parent_spellings_match(
     if value_parent == pattern_parent {
         return true;
     }
+    if qualified_last_segment(value_parent.clone())
+        == qualified_last_segment(pattern_parent.to_string())
+    {
+        return true;
+    }
     let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
     match coproduct {
-        Some(coproduct_node) => authored_name_at(ctx.si(), coproduct_node.clone()) == value_parent,
+        Some(coproduct_node) => {
+            let authored = authored_name_at(ctx.si(), coproduct_node.clone());
+            value_parent == authored
+                || qualified_last_segment(value_parent.clone()) == qualified_last_segment(authored)
+        }
         None => false,
     }
 }
@@ -272,7 +281,10 @@ fn record_nominal_is_declared_variant_of_coproduct(
         return false;
     }
     for child in coproduct.children.iter() {
-        if authored_name_at(ctx.si(), child.clone()) == record_nominal {
+        let child_name = authored_name_at(ctx.si(), child.clone());
+        if child_name == record_nominal
+            || qualified_last_segment(child_name) == qualified_last_segment(record_nominal.clone())
+        {
             return true;
         }
     }
@@ -286,7 +298,11 @@ fn record_pattern_type_name_matches(
     parent_enum: Option<&String>,
 ) -> bool {
     let resolved = resolve_sym(record_type_name);
-    if record_type_name == ctx.sym(pattern_name) || resolved == pattern_name {
+    if record_type_name == ctx.sym(pattern_name)
+        || resolved == pattern_name
+        || qualified_last_segment(resolved.clone())
+            == qualified_last_segment(pattern_name.to_string())
+    {
         return true;
     }
     match parent_enum {
@@ -3720,12 +3736,23 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
+                    let arm_matches =
+                        coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone());
                     if let Some(parent) = parent_enum.as_ref() {
-                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
+                        let parent_matches =
+                            coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent);
+                        if !parent_matches {
+                            // Bare `Absent` / `Drifted` collide across Optional,
+                            // ConvergeVerdict, and ObservationVerdict; infer may stamp
+                            // Optional's parent on patterns whose scrutinee is another
+                            // coproduct. Trust the arm identity when the names align.
+                            if !arm_matches || (name_last != "Absent" && name_last != "Drifted") {
+                                return None;
+                            }
+                        } else if !arm_matches {
                             return None;
                         }
-                    }
-                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                    } else if !arm_matches {
                         return None;
                     }
                     let mut bindings = HashMap::new();

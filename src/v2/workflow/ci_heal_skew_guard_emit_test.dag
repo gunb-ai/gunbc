@@ -9,10 +9,14 @@ import v2.workflow.ci_heal_skew_guard_emit {
 }
 import gunbc.generated_artifact { committed_generated_artifact_paths }
 
+// One emission per module eval: every witness reads this row, not ci_heal_binary_source_skew_guard_script()
+// directly — re-emitting per test row burned ~500ms thread-CPU each under floor load.
+data ci_heal_skew_guard_emitted_script: String = ci_heal_binary_source_skew_guard_script()
+
 data ci_heal_skew_guard_test_note: String = "WHY THIS IS NOT A GOLDEN-STRING TEST. The sibling ci_regen_rustfmt_path_emit_test pins its whole emitted script as a golden, which works there because that script depends on nothing outside itself. This guard's emission is DERIVED from committed_generated_artifact_paths(), so a golden would encode ~80 registry paths and would break on every unrelated generated-artifact registration — a test that fails for the wrong reason, and a second place the registry is written down (§3). These witnesses instead assert the STRUCTURE and the DERIVATION against the same single authority the emitter reads, so they stay green across registry changes and go red exactly when the guard's behaviour is wrong.\n\nThe behavioural half cannot live here at all: whether the remedy actually repairs a skew, and whether a mixed conflict refuses without partially resolving, is a property of RUNNING the emitted bytes against real git — proven by execution in the PR's receipt (a fixture repo with a real src/v1 skew and a real three-way conflict, five truth-table cases, plus two mutation RED controls that flip the verdict). A typecheck and a .contains() are not consumers (DESIGN §5), so these rows deliberately claim only what a pure reader can decide."
 
 fn ci_heal_skew_guard_script_text() -> String {
-  ci_heal_binary_source_skew_guard_script()
+  ci_heal_skew_guard_emitted_script
 }
 
 fn ci_heal_skew_opaque_string_control() -> String {
