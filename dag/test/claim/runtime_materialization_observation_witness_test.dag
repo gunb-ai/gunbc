@@ -1,6 +1,7 @@
 module test.claim.runtime_materialization_observation_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String, List }
+import gunbc.spark_serving_observe { spark_serving_runtime_materialization_receipt_probe_argv }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
   RuntimeMaterializationAbsent,
@@ -10,6 +11,7 @@ import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationDefect,
   RuntimeRootPresentButEmpty,
   RuntimeExecutableMissing,
+  RuntimeMaterializationReceiptMissing,
   runtime_materialization_defects,
   runtime_materialization_state_digest,
   runtime_materialization_was_observed,
@@ -133,4 +135,47 @@ test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
         identity: ollama_runtime_materialization_identity_for_required_release(),
       },
     )) == 0
+}
+
+// AN EXECUTABLE WITHOUT THE COMPLETION RECEIPT IS NOT A MATERIALIZED RUNTIME.
+//
+// This is the state the observation used to call Complete. The root exists, an executable sits at
+// the expected path, the executable bit is set -- and none of that establishes that the closure was
+// installed, because every one of those facts is true of a stub, a half-extracted tree, or a wrong
+// build someone dropped there. The install sequence writes its receipt LAST precisely so that one
+// file covers the steps a directory listing cannot see, and the observation was not reading it.
+//
+// The claim asserts the DIGEST DIFFERS from a complete one, not merely that the arm is Incomplete.
+// Sharing a digest with Complete is what would let the member converge, which is the actual harm --
+// an arm name that reconcile never reads would be cosmetic.
+test fn a_missing_completion_receipt_is_not_complete() -> Bool {
+  let ident = ollama_runtime_materialization_identity_for_required_release()
+  let no_receipt = RuntimeMaterializationIncomplete {
+    identity: ident,
+    first_defect: RuntimeMaterializationReceiptMissing,
+    further_defects: [],
+  }
+  match runtime_materialization_state_digest(observation: no_receipt) {
+    Absent => false
+    Present { value: partial } =>
+      match runtime_materialization_state_digest(
+        observation: RuntimeMaterializationComplete { identity: ident },
+      ) {
+        Absent => false
+        Present { value: whole } =>
+          (partial as String) != (whole as String)
+            && runtime_materialization_was_observed(observation: no_receipt)
+      }
+  }
+}
+
+// AND THE PROBE ACTUALLY ASKS FOR IT. The arm above is unreachable unless the observer runs a leg
+// that can fail, so this pins the argv: a receipt arm nothing probes for is a state the type can
+// express and the producer can never emit.
+test fn the_observer_probes_for_the_completion_receipt() -> Bool {
+  let argv = spark_serving_runtime_materialization_receipt_probe_argv()
+  length(argv) == 3
+    && argv[0] == "test"
+    && argv[1] == "-f"
+    && string_contains(argv[2], "gunbc-materialization-receipt")
 }

@@ -100,10 +100,27 @@ fn ollama_runtime_materialization_identity_for_observed_release(
 // exposes, which is a fact about a process rather than about an installation, and a runtime can be
 // perfectly materialized while nothing is running. Keeping that out is what lets a host mid-install
 // be observed at all -- the property whose absence made every partial state unhealable.
+// THE COMPLETION RECEIPT IS A DEFECT AXIS OF ITS OWN, and its absence was a fail-open.
+//
+// The install sequence writes .gunbc-materialization-receipt LAST, so its presence is what
+// establishes that every earlier step ran -- download, digest admission, extraction, entrypoint
+// check, publication. A witness already asserts it is written last. But the OBSERVATION did not read
+// it: Complete was derived from directory-exists plus executable-exists plus the executable bit, and
+// it then carried the DESIRED identity. So any executable at that path -- a half-extracted tree, a
+// wrong build, a stub someone dropped there -- reported Complete and converged the member.
+//
+// That is the same shape as a model manifest vouching for blobs it does not contain, closed for the
+// model store and left open here. Existence of an entrypoint is not evidence that the closure it
+// belongs to was installed; the receipt is, because it is the one artifact whose write is ordered
+// after everything the observation cannot see.
+//
+// This does not make Complete unforgeable -- the constructor is still public, per the note below --
+// but it stops the PRODUCER from minting one on evidence that never established it.
 type RuntimeMaterializationDefect
   = RuntimeRootPresentButEmpty
   | RuntimeExecutableMissing { expected_relative_path: NonEmptyStr }
   | RuntimeExecutableNotExecutable { expected_relative_path: NonEmptyStr }
+  | RuntimeMaterializationReceiptMissing
 
 // WHAT THIS CARRIER DOES NOT YET DO, named so it is not mistaken for closed.
 //
@@ -153,6 +170,7 @@ fn runtime_materialization_defect_label(defect: RuntimeMaterializationDefect) ->
       join(["executable-missing:", p as String], "")
     RuntimeExecutableNotExecutable { expected_relative_path: p } =>
       join(["executable-not-executable:", p as String], "")
+    RuntimeMaterializationReceiptMissing => "materialization-receipt-missing"
   }
 }
 

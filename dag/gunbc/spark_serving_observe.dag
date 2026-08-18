@@ -30,12 +30,14 @@ import gunbc.ollama_runtime_bundle {
   RuntimeRootPresentButEmpty,
   RuntimeExecutableMissing,
   RuntimeExecutableNotExecutable,
+  RuntimeMaterializationReceiptMissing,
   ollama_runtime_materialization_identity_for_required_release,
 }
 import extdeps.ollama.binary_release { ollama_required_release }
 import gunbc.spark_serving_install_paths {
   spark_serving_required_runtime_root,
   spark_serving_required_runtime_executable_path,
+  spark_serving_required_runtime_receipt_path,
 }
 import v2.std.algebra { fold_list }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -1182,6 +1184,16 @@ fn spark_serving_classify_runtime_executable_absence(
   }
 }
 
+// THE RECEIPT LEG, which is what stops an arbitrary executable reading as an installed closure.
+//
+// The install sequence writes this file last, after digest admission, extraction, the entrypoint
+// check and publication, so its presence is the one on-disk fact that covers the steps a directory
+// listing cannot see. Reading it is the difference between "something executable is at the expected
+// path" and "the closure this path names was installed by a sequence that completed".
+fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
+  ["test", "-f", spark_serving_required_runtime_receipt_path() as String]
+}
+
 fn spark_serving_observe_runtime_materialization(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -1230,7 +1242,25 @@ fn spark_serving_observe_runtime_materialization(
                       further_defects: [],
                     }
                   } else {
-                    RuntimeMaterializationComplete { identity: identity }
+                    match spark_serving_probe_leg(
+                      context: context, host: host,
+                      raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
+                    ) {
+                      Absent =>
+                        RuntimeMaterializationObservationRefused {
+                          cause: "runtime materialization receipt probe leg did not run" as NonEmptyStr,
+                        }
+                      Present { value: receipt } =>
+                        if receipt.success == false {
+                          RuntimeMaterializationIncomplete {
+                            identity: identity,
+                            first_defect: RuntimeMaterializationReceiptMissing,
+                            further_defects: [],
+                          }
+                        } else {
+                          RuntimeMaterializationComplete { identity: identity }
+                        }
+                    }
                   }
               }
             }
