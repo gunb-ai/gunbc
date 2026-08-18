@@ -1,4 +1,4 @@
-module v2.test.execution.pick_ingested_probe
+module v2.test.long.pick_ingested_probe
 
 
 fn pick_probe_find_arrow(root: Node) -> Node {

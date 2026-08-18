@@ -1,4 +1,4 @@
-module test.claim.roadmap_page_witness
+module test.claim.long.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }

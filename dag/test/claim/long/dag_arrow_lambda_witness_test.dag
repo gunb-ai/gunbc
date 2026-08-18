@@ -1,4 +1,4 @@
-module gunbc.test.claim.dag_arrow_lambda_witness_test
+module test.claim.long.dag_arrow_lambda_witness_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }

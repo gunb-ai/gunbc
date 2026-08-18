@@ -1,4 +1,4 @@
-module v2.test.claim.identity_captured_navigation.roster_gate
+module v2.test.claim.long.identity_captured_navigation_roster_gate
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

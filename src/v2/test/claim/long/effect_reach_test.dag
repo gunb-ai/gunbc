@@ -1,4 +1,4 @@
-module v2.test.claim.effect_reach_test
+module v2.test.claim.long.effect_reach_test
 
 import v2.lens.effect_reach {
   effect_reach_classification_from_facts,

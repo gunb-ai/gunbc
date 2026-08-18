@@ -1,4 +1,4 @@
-module gunbc.test.claim.realization_sweep_test
+module test.claim.long.realization_sweep_test
 
 import v2.workflow.realization_sweep {
   RealizationSweepRow,

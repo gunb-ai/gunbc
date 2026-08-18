@@ -1,4 +1,4 @@
-module gunbc.test.claim.namespace_graft_body_dissolution_witness_test
+module test.claim.long.namespace_graft_body_dissolution_witness_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }

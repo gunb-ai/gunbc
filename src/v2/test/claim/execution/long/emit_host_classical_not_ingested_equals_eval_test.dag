@@ -1,4 +1,4 @@
-module v2.test.execution.emit_host_classical_not_ingested_equals_eval
+module v2.test.long.emit_host_classical_not_ingested_equals_eval
 
 import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
