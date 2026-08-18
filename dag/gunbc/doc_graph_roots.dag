@@ -375,6 +375,15 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "reconcile-cost-root-cause",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "typecheck_module", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_record_lit_structural", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measured cost this record localizes is removed -- gunbc.host_effect_realize stops dominating corpus type inference -- at which point the document describes history rather than a live cost and deletes with this row. Registered at subject grain: typecheck_module owns the per-module inference this record partitions, and infer_record_lit_structural owns the RecordLit half; movement in either is what would make this document's numbers false.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-cut-replacement-plan",
     primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
     additional_works: [
