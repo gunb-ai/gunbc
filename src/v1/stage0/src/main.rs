@@ -447,7 +447,7 @@ fn main() {
             // — that requires the full whole-tree census join against
             // containment_ambiguous_rows/diverge_rows, too costly to run on
             // every `gunbc compile` (measured >90s/3GB+ RSS whole-tree, per
-            // ci_layer_roots.dag's falsifier_silent_pick_gate_note). This is a
+            // ci_layer_roots.dag's resolution_divergence_silent_pick_gate_retirement_receipt). This is a
             // deliberately narrower, cost-motivated proxy, asymmetric in both
             // directions from the shared authority (review 41032):
             //   - fn_parent_first_hit: red-on-any raw count here, on the
