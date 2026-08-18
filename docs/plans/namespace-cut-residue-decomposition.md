@@ -303,3 +303,56 @@ file. Sequencing is therefore: close the corpus residue, then port the floor ent
 check can pass for the first time.
 
 Recorded so that a later session does not read `unknown argument` as a small flag-parsing fix.
+
+## Run 10 (regen_stage0, the real binary): 27 rows, and two corrections
+
+Runs up to 9 are not comparable with run 10 and must not be quoted as one series. Run 9 was
+invoked as `gunbc regen`, which is not a subcommand -- it exited 2 having compiled nothing,
+printing zero diagnostics, which is byte-identical to what a clean run prints. Only the exit
+code distinguished them. Regen is the separate `regen_stage0` binary. **Run 10 is the baseline;
+earlier counts came from a different tool with a different closure and are retired as a series.**
+
+Result: RC 1, 27 diagnostics.
+
+### What landed
+
+- `std.nat.Nat` as an opaque carrier: **works**. Zero `CommutativeSemiring` mismatches remain,
+  down from ~11 rows. An opaque carrier accepts integer literals and closes no cycle, and it
+  makes the v1 and v2 declarations agree.
+- `MacAddress` -> `extdeps.dhcp.v4.MacAddress`: **works**, zero rows.
+
+### What regressed, and was reverted
+
+Qualifying `fold_list` to `v2.std.algebra.fold_list` **made it worse** and has been reverted.
+It traded 4 clean `function 'fold_list' not found in scope` rows for 5 `undefined variable 'v2'`
+plus 4 `method 'fold_list' cannot be resolved: receiver type 'Primitive()'`. `dag/` and `src/v2`
+are separate source roots; from a `dag/` file the leading `v2` parses as a variable.
+
+The repair was reasoned from passing files that use the qualified form -- but both forms appear
+in passing files (`secret_manager.dag` bare, `iam.dag` and `effect.dag` qualified), so **form was
+never the discriminator**; those files are simply outside regen's closure. Reasoning from "files
+that pass use form X" was invalid because passing was not caused by the form.
+
+### `fold_list` is the unregistered-primitive gap, not a qualification target
+
+`fold_list` is declared in `src/v2/std/algebra.dag`, which is not among regen's source roots,
+and pre-cut `dag/std/attribution.dag` carried **no import for it** -- it resolved as a kernel
+builtin. DESIGN's determinism thread already names this exact gap: `fold_list` "has a native
+interpreter arm while appearing in neither the algebra Map surface nor the builtin registry."
+
+So there is nothing correct to qualify it to, and no reference-site edit can fix it. It needs
+the **language-prelude step** -- resolution order lexical -> prelude -> qualified -> bare -- which
+is the same authority as the open resolver decision. 11 of the 27 rows are this one cause.
+
+### `src/v1` is NOT clean -- earlier claim retracted
+
+Reported earlier as zero on run 8's tool. Run 10 shows six rows:
+
+    4x variant 'Present' not found in type 'Node'   src/v1/00_core.dag
+    1x no field 'inferred' on type 'Unit'           src/v1/04_infer.dag
+    1x no field 'body'     on type 'Unit'           src/v1/04_infer.dag
+
+The `Present` rows are the qualification deliberately declined earlier (kernel-optional, no
+pre-cut import owner) -- the refusal was right, and this is what it looks like when it comes due.
+The two `Unit` rows are the recorded 04_infer merge debt. The earlier "src/v1 is clean" claim
+came from a different tool with a different closure and is withdrawn.
