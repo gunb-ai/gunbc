@@ -2094,7 +2094,7 @@ type GitLsFilesStageZRefusal
   | GitLsFilesStageZPathRefused { cause: GitPathDecodeRefusal }
 
 type GitLsFilesStageZDecodeOutcome
-  = GitLsFilesStageZDecoded { entries: List<GitIndexEntry> }
+  = GitLsFilesStageZDecoded { entries: std.types.List<GitIndexEntry> }
   | GitLsFilesStageZRefused { cause: GitLsFilesStageZRefusal }
 
 fn git_ls_files_stage_z_row_step(

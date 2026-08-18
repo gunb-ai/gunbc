@@ -172,7 +172,7 @@ fn gunbc_ci_floor_positional_clamp(overhead_seconds: Int, per_unit_ms: Int) -> s
   }
 }
 
-data gunbc_ci_floor_batch_clamp_params: List<std.realization_schedule.RunnableBatchClamp> = [
+data gunbc_ci_floor_batch_clamp_params: std.types.List<std.realization_schedule.RunnableBatchClamp> = [
   gunbc_ci_floor_positional_clamp(overhead_seconds: 240, per_unit_ms: 0),
   gunbc_ci_floor_positional_clamp(overhead_seconds: 60, per_unit_ms: 0),
   gunbc_ci_floor_positional_clamp(overhead_seconds: 300, per_unit_ms: 1000),

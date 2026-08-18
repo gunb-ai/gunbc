@@ -4,7 +4,7 @@ module test.claim.base64_rfc4648_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn b64_std_of_utf8(s: String) -> String {
-  base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+  base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: std.encoding.Standard)
 }
 
 data url_witness_octets: List<std.integer.UInt8> = [251, 255, 191]
@@ -20,35 +20,35 @@ test fn utf8_total_direction_holds() -> Bool {
 
 test fn base64_octet_roundtrip_holds() -> Bool {
   let o = bytes_octets(b: utf8_encode_bytes(s: "foobar"))
-  match base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) {
+  match base64_decode(s: base64_encode(octets: o, variant: std.encoding.Standard), variant: std.encoding.Standard) {
     Present { value: d } => d == o
     Absent => false
   }
 }
 
 test fn base64_decode_rejects_invalid_char_holds() -> Bool {
-  match base64_decode(s: "Zm9*", variant: Standard) {
+  match base64_decode(s: "Zm9*", variant: std.encoding.Standard) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn base64_decode_rejects_cross_variant_char_holds() -> Bool {
-  match base64_decode(s: "Zm9-", variant: Standard) {
+  match base64_decode(s: "Zm9-", variant: std.encoding.Standard) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn base64_decode_rejects_interior_pad_holds() -> Bool {
-  match base64_decode(s: "Zg==Zg==", variant: Standard) {
+  match base64_decode(s: "Zg==Zg==", variant: std.encoding.Standard) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn base64_decode_rejects_lone_sextet_holds() -> Bool {
-  match base64_decode(s: "Zm9vY", variant: Standard) {
+  match base64_decode(s: "Zm9vY", variant: std.encoding.Standard) {
     Present { value: _ } => false
     Absent => true
   }
@@ -56,7 +56,7 @@ test fn base64_decode_rejects_lone_sextet_holds() -> Bool {
 
 test fn base64_decode_accepts_unpadded_holds() -> Bool {
   let o = bytes_octets(b: utf8_encode_bytes(s: "foob"))
-  match base64_decode(s: "Zm9vYg", variant: Standard) {
+  match base64_decode(s: "Zm9vYg", variant: std.encoding.Standard) {
     Present { value: d } => d == o
     Absent => false
   }
@@ -73,7 +73,7 @@ test fn base64_rfc4648_golden_vectors_holds() -> Bool {
 }
 
 test fn base64url_alphabet_golden_holds() -> Bool {
-  base64_encode(octets: url_witness_octets, variant: Standard) == "+/+/"
+  base64_encode(octets: url_witness_octets, variant: std.encoding.Standard) == "+/+/"
     && base64_encode(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
 }
 
