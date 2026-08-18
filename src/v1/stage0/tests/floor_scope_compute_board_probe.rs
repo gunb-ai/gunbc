@@ -9,7 +9,7 @@ use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn scoped_floor_outcome(function: &str) -> ClaimOutcome {
     let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let prepared =
+    let (prepared, _views) =
         prepare_repository_once(&roots, &floor_prepared_subject_exclusions()).expect("prepare");
     let scope =
         claim_scope_for(&prepared, "test.claim.compute_board_admission_witness").expect("scope");
