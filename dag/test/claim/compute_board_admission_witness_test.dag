@@ -60,6 +60,7 @@ import product.compute_board.admission {
   DuplicateNetIdentity,
   DuplicateSignalName,
   NetMemberNamesNoTerminal,
+  NetMemberBelongsToAnotherDesign,
   BondTerminalNamesNoTerminal,
   BondNamesUndeclaredNet,
   ReferenceNetNotDeclared,
