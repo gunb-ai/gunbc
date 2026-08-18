@@ -231,3 +231,61 @@ therefore the first genuine subject for the operator's decomposition brief. It
 is also the most stable over-budget row across runs (2792 / 2849 / 2855, a 2.3%
 spread, against 22-30% for the large ones), which is what a real cost looks like
 and what an attribution artifact does not.
+
+## The stability screen: a sound negative filter, not a paring worklist
+
+The one row whose cost survived isolation, `root_d`, was also the most stable
+across runs (2.3% spread where the large rows swung 22-30%). That suggests a
+cheap screen over all 720 slow rows — rank by cross-run variance rather than by
+magnitude — since a cost that is genuinely a witness's own should not care what
+else ran, while context, fill and position costs vary with everything around
+them. Ranking by magnitude is known to sort mostly by who touched a cache first,
+so a principled screen would be the first real way to build the paring worklist
+without running an isolation harness 720 times.
+
+Built over four runs (32172125816, 32177951514, 32185058245, 32187164199),
+joined by identity, 650 rows with three or more usable observations.
+
+**Censoring rule, and it decides the result.** An observation is dropped when
+the row was explicitly interrupted (`cost is at least`) or when its figure sits
+in the poll-pinned band, because those values are the deadline rather than a
+cost. Observations from rows that were budget-refused but COMPLETED are kept:
+those carry a real measurement. An earlier cut of this screen dropped every
+budget-refused row indiscriminately and thereby excluded `root_d`, the 71s row
+and all eight `effect_reach` rows — that is, every row worth screening — which
+is what over-broad censoring looks like when the expensive population is exactly
+the refused one.
+
+**Validation.** Three rows with known ground truth from isolation:
+
+```
+row                            CV     mean      percentile   known truth
+root_d                        1.5%    2854ms        18       real own work (1774ms isolated)
+71s extdeps_scope row         7.8%   76988ms        86       context (70-85ms isolated)
+g2 specimen row               7.4%   13292ms        84       first-touch
+```
+
+Two of three land correctly: the context-dominated rows sit in the variable head,
+`root_d` in the stable tail.
+
+**But it fails the fourth case, and the failure is the finding.** The eight
+`effect_reach` rows come out STABLE — CV 1.9% to 6.4% around a ~2050ms mean —
+and isolation has already established they do about 238ms of their own work.
+A row can therefore be highly stable and still be carrying an order of magnitude
+of cost that is not its own, because whatever context it carries is itself
+reproducible from run to run.
+
+So the screen measures REPRODUCIBILITY, not ownership. Those are different
+properties and only the second is what paring needs:
+
+- **Sound as a negative filter.** A high-variance row is certainly not measuring
+  its own work, so the variable head can be excluded from a paring worklist
+  without isolating anything. That is a real saving over 720 rows.
+- **Unsound as a positive test.** A low-variance row may be real work
+  (`root_d`) or may be stable context (`effect_reach`). Nothing short of
+  isolation separates those, and the screen must not be presented as producing
+  the worklist directly.
+
+The honest procedure is therefore two-stage: screen out the variable head for
+free, then isolate the stable tail. The stable tail above 1000ms is small enough
+for that to be affordable, which is the actual saving on offer.
