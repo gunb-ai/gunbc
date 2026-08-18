@@ -20,7 +20,7 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // match is the only route by which the production article reaches either projection. A refused
 // article fails the witness rather than being projected anyway.
 fn admitted_production_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match admit_board_article(a: power_interlock_article) {
+  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
   }

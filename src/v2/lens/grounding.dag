@@ -331,7 +331,7 @@ fn whole_tree_extract_smoke_decl_floor() -> Int {
 }
 
 fn whole_tree_extract_smoke() -> Bool {
-  let decls = concept_decl_facts(pool_roots: witness_layer_roots)
+  let decls = concept_decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
   (length(xs: decls) > whole_tree_extract_smoke_decl_floor())
     && has_any_layer_included_candidate_from_decls(decls: decls)
 }
@@ -345,11 +345,11 @@ fn candidates_in(pool_roots: List<String>) -> List<GroundingWorklistEntry> {
 }
 
 fn candidates() -> List<GroundingWorklistEntry> {
-  candidates_in(pool_roots: witness_layer_roots)
+  candidates_in(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 fn worklist() -> List<GroundingWorklistEntry> {
-  let decls = concept_decl_facts(pool_roots: witness_layer_roots)
+  let decls = concept_decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
   let all_concepts = enumerate_concepts_from_decls(decls: decls)
   candidates_from_decls(decls: decls, all_concepts: all_concepts)
 }

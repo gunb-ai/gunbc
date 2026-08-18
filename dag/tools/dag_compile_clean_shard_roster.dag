@@ -93,7 +93,7 @@ fn list_contains_path(xs: List<String>, target: String) -> Bool {
 }
 
 fn witness_shard_roster_boundary_is_witness_layer_roots() -> Bool {
-  compile_clean_partition_boundary().entry_roots == witness_layer_roots
+  compile_clean_partition_boundary().entry_roots == gunbc.ci_layer_roots.witness_layer_roots
 }
 
 data compile_clean_shard_roster_mechanism_fixture_facts: List<CompileCleanModuleDeclFact> = [

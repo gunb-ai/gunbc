@@ -19,7 +19,7 @@ fn run_corpus_capturing_stderr(entry: String, function: String) -> String {
     workdir: root.path,
     bin_path: claim_batch_path(),
     args: claim_batch_claims_argv(
-      source_roots: compile_clean_source_roots(),
+      source_roots: gunbc.ci_layer_roots.compile_clean_source_roots(),
       claims: [tools.host_prelude.ClaimRun { entry: entry, function: function }]
     ),
     expect: ExpectSuccess

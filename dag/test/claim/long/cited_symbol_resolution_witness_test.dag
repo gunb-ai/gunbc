@@ -3,9 +3,9 @@ module test.claim.long.cited_symbol_resolution_witness_test
 
 data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census and planted-control mutation proofs over live decl_facts + module_declaration_facts. Long lane only: each witness pays full witness-layer decl_facts scan(s) (operator 5s fast-lane rule 2026-07-12)."
 
-data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
-data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
+data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
 fn cited_symbol_hand_authored_census_live() -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
   let pool = hand_authored_works_resolution_pool_roots()

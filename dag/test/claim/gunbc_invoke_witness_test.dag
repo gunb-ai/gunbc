@@ -29,7 +29,7 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
 
 test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
   let modeled = claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: CiFloorPlan,
     notice_title: Present { value: gunbc_ci_spec.notice_title },
@@ -47,15 +47,15 @@ test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> B
 }
 
 test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
-  witness_layer_source_flags(roots: witness_layer_roots) ==
-    source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootBare)
-    && source_roots_shell_flags(roots: witness_layer_roots, style: gunbc.cli_invoke.SourceRootRooted { root_var: "$ROOT" }) ==
+  gunbc.ci_layer_roots.witness_layer_source_flags(roots: gunbc.ci_layer_roots.witness_layer_roots) ==
+    source_roots_shell_flags(roots: gunbc.ci_layer_roots.witness_layer_roots, style: SourceRootBare)
+    && source_roots_shell_flags(roots: gunbc.ci_layer_roots.witness_layer_roots, style: gunbc.cli_invoke.SourceRootRooted { root_var: "$ROOT" }) ==
       concat(" --source-root \"$ROOT/dag\"", " --source-root \"$ROOT/src/v2\"")
 }
 
 test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
   let shell = claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: CiFloorPlan,
     notice_title: Present { value: "" },
@@ -70,14 +70,14 @@ fn transport_argv_contains_flag(argv: List<String>, flag: String) -> Bool {
 
 test fn gunbc_invoke_transport_argv_empty_notice_title_omits_flag_holds() -> Bool {
   let argv = claim_executor_run_plan_transport_argv(
-    source_roots: witness_layer_roots,
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: CiFloorPlan,
     notice_title: Present { value: "" }
   )
   !transport_argv_contains_flag(argv: argv, flag: "--notice-title")
     && claim_executor_run_plan_transport_argv(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
       plan_function: CiFloorPlan,
       notice_title: Absent

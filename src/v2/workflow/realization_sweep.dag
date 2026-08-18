@@ -68,7 +68,7 @@ fn entry_canonical_identities(entry: String) -> List<String> {
       acc
     }
   })
-  fold_list(xs: falsifier_substrate_long_lane_rows, empty: with_admitted, cons: fn(acc, row) {
+  fold_list(xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, empty: with_admitted, cons: fn(acc, row) {
     if row.entry == entry {
       identity_snoc_unique(acc: acc, f: row.function)
     } else {

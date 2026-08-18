@@ -39,7 +39,7 @@ fn run_closure_ingest_overlay_claims(
   )
   if emitted.success {
     run_gunbc_claims(
-      source_roots: concat(witness_layer_roots, [manifest_dir]),
+      source_roots: concat(gunbc.ci_layer_roots.witness_layer_roots, [manifest_dir]),
       claims: claims
     )
   } else {
@@ -61,7 +61,7 @@ fn run_closure_boundary_overlay_claims(
   )
   if emitted.success {
     run_gunbc_claims(
-      source_roots: concat(witness_layer_roots, [manifest_dir]),
+      source_roots: concat(gunbc.ci_layer_roots.witness_layer_roots, [manifest_dir]),
       claims: [
         tools.host_prelude.ClaimRun {
           entry: closure_boundary_test_entry,
@@ -76,7 +76,7 @@ fn run_closure_boundary_overlay_claims(
 
 func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
     let pre_overlay = run_gunbc_claims(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       claims: [
         tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_witness_layer_roots },
         tools.host_prelude.ClaimRun { entry: closure_gap4_entry, function: closure_gap4_witness }

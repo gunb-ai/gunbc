@@ -8,21 +8,21 @@ type CensusConstructionCount {
   self_is_target_atom: Bool
 }
 
-fn census_edge_is_construction(e: v2.std.node.Edge) -> Bool {
+fn census_edge_is_construction(e: Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }
 
-fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) -> Bool {
+fn census_spelling_names_target(spelling: String, target: Symbol) -> Bool {
   spelling == (target as String) || ends_with(spelling, "." + (target as String))
 }
 
-fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
+fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount {
   fold_node(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } =>
@@ -40,7 +40,7 @@ fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> 
   )
 }
 
-fn census_construction_count(n: v2.std.node.Node, target: v2.std.node.Symbol) -> Int {
+fn census_construction_count(n: Node, target: Symbol) -> Int {
   census_construction_fold(n: n, target: target).constructions
 }
 

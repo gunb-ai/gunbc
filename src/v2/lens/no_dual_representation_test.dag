@@ -18,7 +18,7 @@ fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<v2.lens.
 
 fn dual_rep_live_module_scans() -> List<v2.lens.no_dual_representation_test.scan.DualRepModuleScan> {
   dual_rep_module_scans_from_fn_index(
-    modules: module_refs_from_declaration_facts(pool_roots: witness_layer_roots)
+    modules: module_refs_from_declaration_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
   )
 }
 

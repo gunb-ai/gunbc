@@ -71,7 +71,7 @@ test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool
 // through the admission module's own accessor, so this asserts the set, not a re-derivation.
 test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
   match emit_spice_for(article: incoherent_article) {
-    BoardArticleNotAdmitted { causes: cs } => refusal_set_count(s: cs) == 2
+    BoardArticleNotAdmitted { causes: cs } => product.compute_board.admission.refusal_set_count(s: cs) == 2
     BoardEmitted { source: _ } => false
     BoardTargetRefused { cause: _ } => false
   }

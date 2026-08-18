@@ -44,7 +44,7 @@ data pre_push_witness_corpus_plan_entry: String = "src/v2/workflow/ci_floor_plan
 data pre_push_witness_corpus_plan_fn: String = "gunbc_ci_witness_corpus_only_batches"
 
 fn pre_push_source_roots() -> List<String> {
-  witness_layer_roots
+  gunbc.ci_layer_roots.witness_layer_roots
 }
 
 fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
@@ -59,7 +59,7 @@ fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool
 }
 
 fn pre_push_witness_trigger_globs() -> List<String> {
-  map(witness_layer_roots, r => concat(r, "/"))
+  map(gunbc.ci_layer_roots.witness_layer_roots, r => concat(r, "/"))
 }
 
 fn pre_push_witness_binding() -> PrePushGateBinding {

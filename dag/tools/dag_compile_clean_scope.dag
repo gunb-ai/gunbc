@@ -134,7 +134,7 @@ fn compile_clean_scope_disposition_from_touched(
 }
 
 fn witness_pool_roots_match_witness_layer_roots() -> Bool {
-  fold(witness_layer_roots, init: true, f: fn(ok, root) {
+  fold(gunbc.ci_layer_roots.witness_layer_roots, init: true, f: fn(ok, root) {
     ok && fold(compile_clean_pool_roots(), init: false, f: fn(found, pool_root) {
       found || (pool_root == root)
     })
@@ -142,7 +142,7 @@ fn witness_pool_roots_match_witness_layer_roots() -> Bool {
 }
 
 fn witness_entry_roots_are_witness_layer_roots() -> Bool {
-  compile_clean_entry_roots() == witness_layer_roots
+  compile_clean_entry_roots() == gunbc.ci_layer_roots.witness_layer_roots
 }
 
 fn witness_empty_touched_requires_whole_tree() -> Bool {

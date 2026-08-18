@@ -378,7 +378,7 @@ fn floor_discovery_apply_test_sidecar_rules(
           test_names,
           init: state,
           f: fn(acc, name) {
-            if witness_row_excluded_from_discovery(entry: repo_path, function: name) {
+            if v2.workflow.witness_admission.witness_row_excluded_from_discovery(entry: repo_path, function: name) {
               acc
             } else {
               floor_discovery_append_row(

@@ -210,7 +210,7 @@ fn project_article_to_pin_constraints(
   bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<DevicePinAssignment>
 ) -> PinConstraintProjection {
-  let article = admitted_article(a: admitted)
+  let article = product.compute_board.admission.admitted_article(a: admitted)
   let control = article.digital_control
   match fold(
     pin_chain_refusals(realization: realization, control: control, bindings: bindings, assignments: assignments),

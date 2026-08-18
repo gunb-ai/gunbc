@@ -1,4 +1,4 @@
 module v2.compiler.self_host.closure_witness_layer_roots
 
 
-data self_host_closure_witness_layer_roots: List<String> = witness_layer_roots
+data self_host_closure_witness_layer_roots: List<String> = gunbc.ci_layer_roots.witness_layer_roots

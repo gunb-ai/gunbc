@@ -281,7 +281,7 @@ fn project_article_to_verilog(
   admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
-  let article = admitted_article(a: admitted)
+  let article = product.compute_board.admission.admitted_article(a: admitted)
   project_intent_to_verilog(
     article_identity: article.identity,
     intent: article.digital_control,

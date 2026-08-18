@@ -1,16 +1,5 @@
 module v2.workflow.required_floor
 
-// THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
-//
-// The host evaluates the expected-red roster in the SAME frame it evaluates this manifest in,
-// and that frame's scope is this module's closure. Without this edge the roster module is
-// simply not in the world the frame was built from, and the call fails with `no such function`
-// — which is what happened on the first run that reached admission-decode.
-//
-// The import names the roster's own function and nothing wraps it: the host still calls
-// `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
-// thin accessor here would be a second name for one authority, and this module would then own
-// a fact it does not produce.
 
 // BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
 // stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
@@ -43,7 +32,7 @@ module v2.workflow.required_floor
 // such renames stand on this branch as interim debt, dissolving with the trigger below.
 // Qualification at the reference routes past the whole class without touching the frozen
 // component, because the qualified key is collision-free by construction.
-data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
+data floor_bare_name_ambiguity_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
 
 // THE REQUIRED FLOOR IS ONE ATTEMPT: read the sources once, prepare one subject, fold one
 // exact claim manifest, reduce one receipt. This module is that program.
@@ -79,15 +68,15 @@ data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCon
 // reporting exclusions cannot distinguish a clean small roster from a subject that silently
 // lost half the tree.
 type ObservedSubjectIdentity {
-  commit: v2.std.text.String
-  source_digest: v2.std.text.String
+  commit: String
+  source_digest: String
   modules_resolved: Int
   modules_excluded: Int
 }
 
 type RequiredFloorAttempt {
   subject: ObservedSubjectIdentity
-  claims: v2.std.collection.List<RequiredFloorClaim>
+  claims: List<RequiredFloorClaim>
 }
 
 // EXECUTION MODE IS DECLARED ON THE CLAIM, and it is deliberately NOT derived from
@@ -106,8 +95,8 @@ type RequiredFloorAttempt {
 // reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
 // the seam would put a unit change between the authority and the mechanism that enforces it.
 type RequiredFloorClaim {
-  declaration: v2.workflow.floor2_prepared_subject.WitnessIdentity
-  execution_mode: std.execution_mode.ExecutionMode
+  declaration: WitnessIdentity
+  execution_mode: ExecutionMode
   budget_ms: Int
   warn_ms: Int
 }
@@ -156,34 +145,34 @@ type WitnessDisposition
 // cadences, and this is not that question.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
-  std.algebra.Cons {
+fn long_home_prefixes() -> List<String> {
+  Cons {
     head: "test.claim.long.",
-    tail: std.algebra.Cons {
+    tail: Cons {
       head: "v2.test.long.",
-      tail: std.algebra.Cons {
+      tail: Cons {
         head: "v2.test.claim.long.",
-        tail: std.algebra.Empty {}
+        tail: Empty {}
       }
     }
   }
 }
 
-fn string_starts_with(s: v2.std.text.String, prefix: v2.std.text.String) -> v2.std.logic.Bool {
-  match v2.std.text.string_head(s: prefix) {
-    v2.std.text.CharAbsent => true
+fn string_starts_with(s: String, prefix: String) -> Bool {
+  match string_head(s: prefix) {
+    CharAbsent => true
     CharFound { value: p } =>
-      match v2.std.text.string_head(s: s) {
-        v2.std.text.CharAbsent => false
+      match string_head(s: s) {
+        CharAbsent => false
         CharFound { value: c } =>
           match c == p {
             false => false
             true =>
-              match v2.std.text.string_tail(s: s) {
-                v2.std.algebra.TailAbsent => v2.std.text.string_is_empty(s: prefix)
+              match string_tail(s: s) {
+                TailAbsent => string_is_empty(s: prefix)
                 TailFound { tail: s_rest } =>
-                  match v2.std.text.string_tail(s: prefix) {
-                    v2.std.algebra.TailAbsent => true
+                  match string_tail(s: prefix) {
+                    TailAbsent => true
                     TailFound { tail: p_rest } =>
                       string_starts_with(s: s_rest, prefix: p_rest)
                   }
@@ -193,8 +182,8 @@ fn string_starts_with(s: v2.std.text.String, prefix: v2.std.text.String) -> v2.s
   }
 }
 
-fn module_is_long_home(module_path: v2.std.text.String) -> v2.std.logic.Bool {
-  v2.std.algebra.fold_list(
+fn module_is_long_home(module_path: String) -> Bool {
+  fold_list(
     xs: long_home_prefixes(),
     empty: false,
     cons: fn(acc, prefix) {
@@ -206,7 +195,7 @@ fn module_is_long_home(module_path: v2.std.text.String) -> v2.std.logic.Bool {
   )
 }
 
-fn disposition_is_required_floor(d: WitnessDisposition) -> v2.std.logic.Bool {
+fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
   match d {
     RequiredFloor => true
     ScheduledWet => false
@@ -221,21 +210,21 @@ fn disposition_is_required_floor(d: WitnessDisposition) -> v2.std.logic.Bool {
 // losing mode is precisely the fact worth having. Each arm names the exact qualified
 // declaration, so the refusal is located rather than counted.
 type ManifestRefusal
-  = DeclarationEnrolledTwice { qualified: v2.std.text.String }
-  | DeclarationEnrolledWithConflictingModes { qualified: v2.std.text.String }
+  = DeclarationEnrolledTwice { qualified: String }
+  | DeclarationEnrolledWithConflictingModes { qualified: String }
 
 // ADMISSION IS ALL-OR-NOTHING. A manifest carrying any refusal does not run its clean subset
 // and report on the rest: a narrowed roster presented as a roster is the silent narrowing
 // every other wall on this path exists to prevent.
 type RequiredFloorAdmission
   = RequiredFloorRunnable { attempt: RequiredFloorAttempt }
-  | RequiredFloorRefused { refusals: v2.std.collection.List<ManifestRefusal> }
+  | RequiredFloorRefused { refusals: List<ManifestRefusal> }
 
-data no_required_floor_claims: v2.std.collection.List<RequiredFloorClaim> = []
+data no_required_floor_claims: List<RequiredFloorClaim> = []
 
-data no_manifest_refusals: v2.std.collection.List<ManifestRefusal> = []
+data no_manifest_refusals: List<ManifestRefusal> = []
 
-data no_seen_qualified_names: v2.std.collection.List<v2.std.text.String> = []
+data no_seen_qualified_names: List<String> = []
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
@@ -280,23 +269,23 @@ fn required_floor_claim_warn_ms() -> Int {
   100
 }
 
-fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> v2.std.text.String {
-  v2.workflow.floor2_prepared_subject.witness_identity_qualified_name(identity: claim.declaration)
+fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
+  witness_identity_qualified_name(identity: claim.declaration)
 }
 
 // A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
 // one pass so the refusal population and the claim population cannot disagree about which
 // rows they came from.
 type ClaimScan {
-  claims: v2.std.collection.List<RequiredFloorClaim>
-  refusals: v2.std.collection.List<ManifestRefusal>
+  claims: List<RequiredFloorClaim>
+  refusals: List<ManifestRefusal>
 }
 
 // THE SCAN ACCUMULATES BY PREPENDING AND REVERSES ONCE AT THE END.
 //
-// It appended with `v2.std.algebra.list_snoc_item`, and that is quadratic in ALLOCATION, not merely in time.
-// `v2.std.algebra.list_snoc_item(xs, item)` is `v2.std.algebra.list_append(left: xs, right: [item])`, and `v2.std.algebra.list_append` folds
-// over its LEFT argument rebuilding every cell — so appending one row to a list of v2.std.algebra.length k
+// It appended with `list_snoc_item`, and that is quadratic in ALLOCATION, not merely in time.
+// `list_snoc_item(xs, item)` is `list_append(left: xs, right: [item])`, and `list_append` folds
+// over its LEFT argument rebuilding every cell — so appending one row to a list of length k
 // allocates k+1 cells and abandons the k that were there. Appending n rows one at a time
 // allocates about n squared over two.
 //
@@ -313,14 +302,14 @@ type ClaimScan {
 // once is what turned a latent cost shape into a measured peak, which is the deletion surfacing
 // what the old structure was hiding rather than a regression the cut introduced.
 //
-// Prepending is O(1) per row and `v2.std.algebra.list_reverse` is one linear prepend fold, so the population is
+// Prepending is O(1) per row and `list_reverse` is one linear prepend fold, so the population is
 // built in time and allocation linear in its own size. Both populations are REVERSED-ORDER while
 // the scan runs and are restored exactly once, in `required_floor_manifest`. The field names say
 // so, because a list whose order is a lie is worse than a slow one: the obligation is discharged
 // in a single named place rather than assumed by each reader.
 type ClaimScanReversed {
-  claims_reversed: v2.std.collection.List<RequiredFloorClaim>
-  refusals_reversed: v2.std.collection.List<ManifestRefusal>
+  claims_reversed: List<RequiredFloorClaim>
+  refusals_reversed: List<ManifestRefusal>
 }
 
 data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
@@ -360,16 +349,16 @@ data claim_scan_reversed_empty: ClaimScanReversed = ClaimScanReversed {
 // lane exists to run them.
 fn scan_site(
   acc: ClaimScanReversed,
-  site: v2.workflow.floor2_prepared_subject.WitnessSite,
-  mode: std.execution_mode.ExecutionMode
+  site: WitnessSite,
+  mode: ExecutionMode
 ) -> ClaimScanReversed {
   match module_is_long_home(module_path: site.module_path) || site.reads_live_tree {
     true => acc
     false =>
       ClaimScanReversed {
-        claims_reversed: std.algebra.Cons {
+        claims_reversed: Cons {
           head: RequiredFloorClaim {
-            declaration: v2.workflow.floor2_prepared_subject.WitnessIdentity {
+            declaration: WitnessIdentity {
               module_path: site.module_path,
               function: site.function
             },
@@ -386,10 +375,10 @@ fn scan_site(
 
 fn scan_site_list(
   acc: ClaimScanReversed,
-  sites: v2.std.collection.List<v2.workflow.floor2_prepared_subject.WitnessSite>,
-  mode: std.execution_mode.ExecutionMode
+  sites: List<WitnessSite>,
+  mode: ExecutionMode
 ) -> ClaimScanReversed {
-  v2.std.algebra.fold_list(xs: sites, empty: acc, cons: fn(inner, s) {
+  fold_list(xs: sites, empty: acc, cons: fn(inner, s) {
     scan_site(acc: inner, site: s, mode: mode)
   })
 }
@@ -403,28 +392,28 @@ fn scan_site_list(
 // while also testing membership with `contains` over a linearly growing `seen` list that was
 // itself built by quadratic append. On 10,444 claims with mostly distinct names that is three
 // separate quadratic populations layered on one pass, and none of them retains anything the
-// verdict needs: the group was collected only to take its v2.std.algebra.length and compare its modes.
+// verdict needs: the group was collected only to take its length and compare its modes.
 //
 // `QualifiedEnrollment` carries exactly what those questions consume, and it is a state machine
 // over occurrences rather than a collection of them. Absence from the map is the zero case.
 // The reference mode is the FIRST occurrence's, which is what the group form compared against,
-// and once conflicting it stays conflicting — so a declaration enrolled std.execution_mode.Hermetic, std.execution_mode.Hermetic, std.execution_mode.Wet
+// and once conflicting it stays conflicting — so a declaration enrolled Hermetic, Hermetic, Wet
 // reports the conflict rather than reporting agreement from a prefix.
 type QualifiedEnrollment
-  = FirstEnrollment { mode: std.execution_mode.ExecutionMode }
-  | RepeatedSameMode { mode: std.execution_mode.ExecutionMode }
+  = FirstEnrollment { mode: ExecutionMode }
+  | RepeatedSameMode { mode: ExecutionMode }
   | RepeatedConflictingModes
 
-fn enrollment_after(prior: QualifiedEnrollment, mode: std.execution_mode.ExecutionMode) -> QualifiedEnrollment {
+fn enrollment_after(prior: QualifiedEnrollment, mode: ExecutionMode) -> QualifiedEnrollment {
   match prior {
     FirstEnrollment { mode: first } =>
-      if std.execution_mode.execution_mode_eq(left: first, right: mode) {
+      if execution_mode_eq(left: first, right: mode) {
         RepeatedSameMode { mode: first }
       } else {
         RepeatedConflictingModes
       }
     RepeatedSameMode { mode: first } =>
-      if std.execution_mode.execution_mode_eq(left: first, right: mode) {
+      if execution_mode_eq(left: first, right: mode) {
         RepeatedSameMode { mode: first }
       } else {
         RepeatedConflictingModes
@@ -439,21 +428,21 @@ fn enrollment_after(prior: QualifiedEnrollment, mode: std.execution_mode.Executi
 // and the tempting repair — pick one — discards the fact worth knowing. Both refuse; only the
 // second is unrecoverable without a decision. A name enrolled exactly once refuses nothing.
 // Prepends onto the accumulator rather than returning a fragment to be appended: a zero-or-one
-// fragment joined with `v2.std.algebra.list_append` would rebuild the accumulator once per name, which is the
+// fragment joined with `list_append` would rebuild the accumulator once per name, which is the
 // same quadratic being removed above, merely over a smaller population. "n is small here" is not
 // a fact that stays true — this list is one row per DUPLICATED declaration today because the
 // roster is mostly clean, and the shape must not depend on the roster staying that way.
 fn enrollment_refusal_prepend(
-  acc: v2.std.collection.List<ManifestRefusal>,
-  qualified: v2.std.text.String,
+  acc: List<ManifestRefusal>,
+  qualified: String,
   enrollment: QualifiedEnrollment
-) -> v2.std.collection.List<ManifestRefusal> {
+) -> List<ManifestRefusal> {
   match enrollment {
     FirstEnrollment { mode: _ } => acc
     RepeatedSameMode { mode: _ } =>
-      std.algebra.Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+      Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
     RepeatedConflictingModes =>
-      std.algebra.Cons {
+      Cons {
         head: DeclarationEnrolledWithConflictingModes { qualified: qualified },
         tail: acc
       }
@@ -461,12 +450,12 @@ fn enrollment_refusal_prepend(
 }
 
 type ManifestScan {
-  enrollments: v2.std.collection.Map<v2.std.text.String, QualifiedEnrollment>
-  first_seen_reversed: v2.std.collection.List<v2.std.text.String>
+  enrollments: Map<String, QualifiedEnrollment>
+  first_seen_reversed: List<String>
 }
 
 data manifest_scan_empty: ManifestScan = ManifestScan {
-    enrollments: v2.std.collection.empty_map(),
+    enrollments: empty_map(),
     first_seen_reversed: no_seen_qualified_names
   }
 
@@ -477,20 +466,20 @@ data manifest_scan_empty: ManifestScan = ManifestScan {
 // `first_seen_reversed` is walked in reverse — last-seen first — and the prepending fold flips
 // it back, so the emitted refusals come out in FIRST-OCCURRENCE order with one reversal rather
 // than two.
-fn duplicate_refusals(claims: v2.std.collection.List<RequiredFloorClaim>) -> v2.std.collection.List<ManifestRefusal> {
-  let scan = v2.std.algebra.fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
+fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
+  let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
     let qualified = required_floor_claim_qualified(claim: c)
-    match v2.std.collection.map_lookup(m: acc.enrollments, key: qualified) {
+    match map_lookup(m: acc.enrollments, key: qualified) {
       Absent => ManifestScan {
-        enrollments: v2.std.collection.map_insert(
+        enrollments: map_insert(
           m: acc.enrollments,
           key: qualified,
           value: FirstEnrollment { mode: c.execution_mode }
         ),
-        first_seen_reversed: std.algebra.Cons { head: qualified, tail: acc.first_seen_reversed }
+        first_seen_reversed: Cons { head: qualified, tail: acc.first_seen_reversed }
       }
       Present { value: prior } => ManifestScan {
-        enrollments: v2.std.collection.map_insert(
+        enrollments: map_insert(
           m: acc.enrollments,
           key: qualified,
           value: enrollment_after(prior: prior, mode: c.execution_mode)
@@ -499,11 +488,11 @@ fn duplicate_refusals(claims: v2.std.collection.List<RequiredFloorClaim>) -> v2.
       }
     }
   })
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: scan.first_seen_reversed,
     empty: no_manifest_refusals,
     cons: fn(acc, qualified) {
-      match v2.std.collection.map_lookup(m: scan.enrollments, key: qualified) {
+      match map_lookup(m: scan.enrollments, key: qualified) {
         Present { value: e } =>
           enrollment_refusal_prepend(acc: acc, qualified: qualified, enrollment: e)
         Absent => acc
@@ -521,27 +510,27 @@ fn duplicate_refusals(claims: v2.std.collection.List<RequiredFloorClaim>) -> v2.
 // and the only available something is `reads_live_tree` — the derivation this module refuses
 // to make.
 // THIS IS THE ONE PLACE REVERSED ORDER IS DISCHARGED. Both scan populations were prepended and
-// are restored here, once each, before anything reads them. std.execution_mode.Hermetic claims precede wet ones and
+// are restored here, once each, before anything reads them. Hermetic claims precede wet ones and
 // each class keeps its site order, exactly as the appending form produced them.
 fn required_floor_manifest(
-  hermetic_sites: v2.std.collection.List<v2.workflow.floor2_prepared_subject.WitnessSite>,
-  wet_sites: v2.std.collection.List<v2.workflow.floor2_prepared_subject.WitnessSite>
+  hermetic_sites: List<WitnessSite>,
+  wet_sites: List<WitnessSite>
 ) -> ClaimScan {
   let after_hermetic = scan_site_list(
     acc: claim_scan_reversed_empty,
     sites: hermetic_sites,
-    mode: std.execution_mode.Hermetic
+    mode: Hermetic
   )
   let after_wet = scan_site_list(
     acc: after_hermetic,
     sites: wet_sites,
-    mode: std.execution_mode.Wet
+    mode: Wet
   )
-  let claims = v2.std.algebra.list_reverse(xs: after_wet.claims_reversed)
+  let claims = list_reverse(xs: after_wet.claims_reversed)
   ClaimScan {
     claims: claims,
-    refusals: v2.std.algebra.list_append(
-      left: v2.std.algebra.list_reverse(xs: after_wet.refusals_reversed),
+    refusals: list_append(
+      left: list_reverse(xs: after_wet.refusals_reversed),
       right: duplicate_refusals(claims: claims)
     )
   }
@@ -549,14 +538,14 @@ fn required_floor_manifest(
 
 fn required_floor_attempt(
   subject: ObservedSubjectIdentity,
-  hermetic_sites: v2.std.collection.List<v2.workflow.floor2_prepared_subject.WitnessSite>,
-  wet_sites: v2.std.collection.List<v2.workflow.floor2_prepared_subject.WitnessSite>
+  hermetic_sites: List<WitnessSite>,
+  wet_sites: List<WitnessSite>
 ) -> RequiredFloorAdmission {
   let scan = required_floor_manifest(
     hermetic_sites: hermetic_sites,
     wet_sites: wet_sites
   )
-  if v2.std.algebra.length(xs: scan.refusals) == 0 {
+  if length(xs: scan.refusals) == 0 {
     RequiredFloorRunnable {
       attempt: RequiredFloorAttempt { subject: subject, claims: scan.claims }
     }
@@ -575,25 +564,25 @@ fn required_floor_preparation_count(attempt: RequiredFloorAttempt) -> Int {
 }
 
 fn required_floor_claim_count(attempt: RequiredFloorAttempt) -> Int {
-  v2.std.algebra.length(xs: attempt.claims)
+  length(xs: attempt.claims)
 }
 
 // The attempt's effect envelope, derived from its claims rather than declared beside them. A
-// separately declared envelope drifts: a manifest gains a std.execution_mode.Wet row while a hand-written
-// std.execution_mode.Hermetic declaration keeps saying the run reaches no live effects. It widens rather than
+// separately declared envelope drifts: a manifest gains a Wet row while a hand-written
+// Hermetic declaration keeps saying the run reaches no live effects. It widens rather than
 // narrows, which is the fail-closed direction — an envelope narrower than some claim would
-// let a consumer treat a live-effect run as inert. std.execution_mode.Record is widest because it dispatches AND
+// let a consumer treat a live-effect run as inert. Record is widest because it dispatches AND
 // captures.
-fn required_floor_effect_envelope(attempt: RequiredFloorAttempt) -> std.execution_mode.ExecutionMode {
-  v2.std.algebra.fold_list(xs: attempt.claims, empty: std.execution_mode.Hermetic, cons: fn(acc, c) {
+fn required_floor_effect_envelope(attempt: RequiredFloorAttempt) -> ExecutionMode {
+  fold_list(xs: attempt.claims, empty: Hermetic, cons: fn(acc, c) {
     match acc {
-      std.execution_mode.Record => std.execution_mode.Record
-      std.execution_mode.Wet => match c.execution_mode {
-        std.execution_mode.Record => std.execution_mode.Record
-        std.execution_mode.Wet => std.execution_mode.Wet
-        std.execution_mode.Hermetic => std.execution_mode.Wet
+      Record => Record
+      Wet => match c.execution_mode {
+        Record => Record
+        Wet => Wet
+        Hermetic => Wet
       }
-      std.execution_mode.Hermetic => c.execution_mode
+      Hermetic => c.execution_mode
     }
   })
 }

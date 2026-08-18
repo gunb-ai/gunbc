@@ -106,7 +106,7 @@ data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
-  discovery_scan_dirs: witness_discovery_scan_dirs,
+  discovery_scan_dirs: gunbc.ci_layer_roots.witness_discovery_scan_dirs,
   diff_policy: {
     base: gunbc_merge_target_ref as String,
     head: "HEAD",
@@ -352,7 +352,7 @@ data plan_artifact_plan_function: String = plan_function_name(p: CiPlanArtifactP
 
 fn scheduler_invoke_with(spec: CiSpec, plan_function: gunbc.cli_invoke.PlanFunction) -> String {
   claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: floor_plan_entry,
     plan_function: plan_function,
     notice_title: Present { value: spec.notice_title },
@@ -461,7 +461,7 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/host_reach_identity_probe.dag",
           function: "probe_fleet_reach_wet",
           rooted: true,
@@ -488,7 +488,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_multi_principal_probe.dag",
           function: "fleet_multi_principal_probe_wet",
           rooted: true,
@@ -587,7 +587,7 @@ fn gunbc_ci_fleet_timer_install_invoke() -> String {
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
-        source_roots: witness_layer_roots,
+        source_roots: gunbc.ci_layer_roots.witness_layer_roots,
         entry: "dag/gunbc/fleet_converge_timer_install.dag",
         function: "fleet_timer_self_install_wet",
         rooted: true,
@@ -616,7 +616,7 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
-        source_roots: witness_layer_roots,
+        source_roots: gunbc.ci_layer_roots.witness_layer_roots,
         entry: "dag/gunbc/fleet_converge_plan_cli.dag",
         function: "fleet_converge_plan_wet",
         rooted: true,
@@ -650,7 +650,7 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
     "fi\n",
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     gunbc_run_shell(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       entry: "dag/gunbc/fleet_converge_plan_cli.dag",
       function: "fleet_converge_apply_wet",
       rooted: true,
@@ -688,7 +688,7 @@ fn gunbc_ci_spark_serving_observe_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/spark_serving_observe.dag",
           function: "spark_serving_observe_ci_wet",
           rooted: true,
@@ -707,7 +707,7 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/spark_serving_converge_slice_wet.dag",
           function: "spark_serving_converge_slice_ci_wet",
           rooted: true,
@@ -742,7 +742,7 @@ fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_receipt_collector.dag",
           function: "collect_fleet_convergence_wet",
           rooted: true,
@@ -774,7 +774,7 @@ fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_host_key_enrollment.dag",
           function: "fleet_host_key_scan_wet",
           rooted: true,
@@ -804,7 +804,7 @@ fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_host_key_enrollment.dag",
           function: "fleet_host_key_enroll_wet",
           rooted: true,
@@ -834,7 +834,7 @@ fn gunbc_ci_probe_identity_observe_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_probe_identity_observe.dag",
           function: "fleet_probe_identity_observe_wet",
           rooted: true,
@@ -864,7 +864,7 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
         gunbc_run_shell(
-          source_roots: witness_layer_roots,
+          source_roots: gunbc.ci_layer_roots.witness_layer_roots,
           entry: "dag/gunbc/fleet_host_key_enrollment.dag",
           function: "fleet_authorized_key_self_enroll_wet",
           rooted: true,
@@ -921,7 +921,7 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
-        source_roots: witness_layer_roots,
+        source_roots: gunbc.ci_layer_roots.witness_layer_roots,
         entry: gunbc_ci_srv1_tasks_observation_entry,
         function: gunbc_ci_srv1_tasks_observation_function,
         rooted: true,
@@ -937,7 +937,7 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     gunbc_run_shell(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       entry: stage.entry,
       function: stage.function,
       rooted: true,
@@ -956,7 +956,7 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     gunbc_run_shell(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       entry: ci_heal_generated_artifact_gate_entry,
       function: ci_heal_generated_artifact_regen_function,
       rooted: true,
@@ -987,7 +987,7 @@ fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
-        source_roots: witness_layer_roots,
+        source_roots: gunbc.ci_layer_roots.witness_layer_roots,
         entry: ci_heal_repo_local_git_config_entry,
         function: ci_heal_repo_local_git_config_function,
         rooted: true,
@@ -1004,7 +1004,7 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
   concat(
     "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\" GUNBC_HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\" ",
     gunbc_run_shell(
-      source_roots: witness_layer_roots,
+      source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       entry: ci_heal_dispatch_entry,
       function: ci_heal_dispatch_function,
       rooted: true,

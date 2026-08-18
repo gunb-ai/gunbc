@@ -4,7 +4,7 @@ module test.claim.compute_board_pin_chain_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match admit_board_article(a: power_interlock_article) {
+  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
   }

@@ -79,7 +79,7 @@ test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
 }
 
 test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> Bool {
-  length(xs: known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_envelope_roster()))
+  length(xs: gunbc.ci_layer_roots.known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_envelope_roster()))
 }
 
 fn synthetic_admission(f: String) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
@@ -191,14 +191,14 @@ test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool 
 data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two. The union is an IDENTITY SET, and the counting clause below is stated as one-occurrence-per-declared-row rather than as a sum of the two input lengths — a sum is only correct while the inputs happen to be disjoint, which is a property of today's population and not of the mechanism, so it would go quietly wrong exactly when a row starts reaching the ceiling through both inputs."
 
 fn long_budget_union_occurrences(w: std.realization_schedule.ScheduleWitnessEntry) -> Int {
-  fold(witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
+  fold(gunbc.ci_layer_roots.witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
     if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
   })
 }
 
 test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
   let declared = witness_long_eval_budget_roster()
-  let batch = falsifier_substrate_long_lane_entries()
+  let batch = gunbc.ci_layer_roots.falsifier_substrate_long_lane_entries()
   (length(xs: declared) > 0)
     && fold(declared, init: true, f: fn(ok, w) {
       ok
@@ -224,7 +224,7 @@ fn planted_union_occurrences(
   w: std.realization_schedule.ScheduleWitnessEntry
 ) -> Int {
   fold(
-    witness_long_eval_budget_union_in(batch: batch, declared: declared),
+    gunbc.ci_layer_roots.witness_long_eval_budget_union_in(batch: batch, declared: declared),
     init: 0,
     f: fn(n, x) { if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n } }
   )
@@ -238,7 +238,7 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
   let batch = [batch_only, overlapping]
   let declared = [overlapping, declared_only]
   (planted_union_occurrences(batch: batch, declared: declared, w: overlapping) == 1)
-    && (length(xs: witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
+    && (length(xs: gunbc.ci_layer_roots.witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
     && (planted_union_occurrences(batch: batch, declared: declared, w: absent) == 0)
     && (planted_union_occurrences(batch: batch, declared: declared, w: declared_only) == 1)
     && schedule_witness_entry_roster_contains(xs: batch, w: overlapping)
@@ -349,7 +349,7 @@ fn synthetic_assertion_false_row() -> gunbc.explicit_witness_admission.ExplicitW
 
 test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool {
   let pre_verdict_count = budget_partition_side_count(xs: known_red_pre_verdict_refusal_roster())
-  let known_red_count = budget_partition_side_count(xs: known_red_probe_roster())
+  let known_red_count = budget_partition_side_count(xs: gunbc.ci_layer_roots.known_red_probe_roster())
   explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())
     && explicit_witness_admission_is_known_red(row: synthetic_assertion_false_row())
     && (pre_verdict_count < known_red_count)

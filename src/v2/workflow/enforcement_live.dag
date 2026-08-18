@@ -110,7 +110,7 @@ fn lens_enforcement_inventory_live() -> List<v2.lens.enforcement.inventory.LensE
 
 fn witness_admission_inventory_live() -> List<v2.lens.enforcement.inventory.WitnessAdmissionInventoryRow> {
   derive_witness_admission_inventory(
-    exclusion_rows: witness_exclusion_frontier,
+    exclusion_rows: gunbc.ci_layer_roots.witness_exclusion_frontier,
     ci_entries: enforcement_ci_witness_entries(),
     prepush_entries: enforcement_prepush_witness_entries()
   )

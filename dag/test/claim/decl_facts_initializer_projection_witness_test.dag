@@ -22,24 +22,24 @@ data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.spe
 data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
 
 test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
-  match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
     Present { value: projection } => value_projection_is_not_variant_value(node: projection)
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_imported_external_authority_positive_control() -> Bool {
-  match decl_facts_reflection_plain_record_parent(qn: dimensionless_anchor_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_plain_record_parent(qn: dimensionless_anchor_qn) {
     Present { value: parent } => parent == "extdeps.external_authority.ExternalAuthority"
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool {
-  let parent_a = decl_facts_reflection_constructor_parent(qn: local_a_scaffold_qn)
-  let parent_b = decl_facts_reflection_constructor_parent(qn: local_b_scaffold_qn)
-  let variant_a = decl_facts_reflection_constructor_variant(qn: local_a_scaffold_qn)
-  let variant_b = decl_facts_reflection_constructor_variant(qn: local_b_scaffold_qn)
+  let parent_a = test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_parent(qn: local_a_scaffold_qn)
+  let parent_b = test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_parent(qn: local_b_scaffold_qn)
+  let variant_a = test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_variant(qn: local_a_scaffold_qn)
+  let variant_b = test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_variant(qn: local_b_scaffold_qn)
   match parent_a {
     Present { value: pa } =>
       match parent_b {
@@ -59,13 +59,13 @@ test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool
 }
 
 test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -> Bool {
-  match decl_facts_reflection_resolved_nullary_parent(qn: local_a_shared_nullary_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: local_a_shared_nullary_qn) {
     Present { value: pa } =>
-      match decl_facts_reflection_resolved_nullary_parent(qn: local_b_shared_nullary_qn) {
+      match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: local_b_shared_nullary_qn) {
         Present { value: pb } =>
-          match decl_facts_reflection_resolved_nullary_variant_name(qn: local_a_shared_nullary_qn) {
+          match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: local_a_shared_nullary_qn) {
             Present { value: va } =>
-              match decl_facts_reflection_resolved_nullary_variant_name(qn: local_b_shared_nullary_qn) {
+              match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: local_b_shared_nullary_qn) {
                 Present { value: vb } =>
                   va == "SharedNullaryA" && vb == "SharedNullaryB" && pa != pb
                 Absent => false
@@ -79,31 +79,31 @@ test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -
 }
 
 test fn decl_facts_reflection_disposition_scaffold_constructor_is_std_disposition() -> Bool {
-  match decl_facts_reflection_constructor_parent(qn: disposition_scaffold_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_parent(qn: disposition_scaffold_qn) {
     Present { value: parent } =>
       parent == "std.disposition.Disposition"
-        && decl_facts_reflection_constructor_variant(qn: disposition_scaffold_qn) == Present { value: "Scaffold" }
+        && test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_variant(qn: disposition_scaffold_qn) == Present { value: "Scaffold" }
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_terminal_vs_scaffold_constructors_distinct() -> Bool {
-  match decl_facts_reflection_constructor_variant(qn: terminal_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_variant(qn: terminal_specimen_qn) {
     Present { value: terminal_ctor } =>
       terminal_ctor == "Terminal"
-        && decl_facts_reflection_constructor_variant(qn: disposition_scaffold_qn) == Present { value: "Scaffold" }
+        && test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_constructor_variant(qn: disposition_scaffold_qn) == Present { value: "Scaffold" }
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct() -> Bool {
-  match decl_facts_reflection_resolved_nullary_parent(qn: mechanism_single_authority_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: mechanism_single_authority_qn) {
     Present { value: sp } =>
-      match decl_facts_reflection_resolved_nullary_variant_name(qn: mechanism_single_authority_qn) {
+      match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: mechanism_single_authority_qn) {
         Present { value: sv } =>
-          match decl_facts_reflection_resolved_nullary_parent(qn: mechanism_realization_dispatch_qn) {
+          match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: mechanism_realization_dispatch_qn) {
             Present { value: rp } =>
-              match decl_facts_reflection_resolved_nullary_variant_name(qn: mechanism_realization_dispatch_qn) {
+              match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: mechanism_realization_dispatch_qn) {
                 Present { value: rv } =>
                   sp == "std.disposition.ConstructionMechanism"
                     && rp == "std.disposition.ConstructionMechanism"
@@ -121,17 +121,17 @@ test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct(
 }
 
 test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> Bool {
-  match decl_facts_reflection_field_projection(qn: whole_declaration_bind_qn, field: "bind") {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: whole_declaration_bind_qn, field: "bind") {
     Present { value: whole_bind } =>
       match record_field_projection_optional(record: whole_bind, label: "field") {
         Present { value: whole_field } =>
-          match decl_facts_reflection_field_projection(qn: scaffold_named_field_bind_qn, field: "bind") {
+          match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_named_field_bind_qn, field: "bind") {
             Present { value: named_bind } =>
               match record_field_projection_optional(record: named_bind, label: "field") {
                 Present { value: named_field } =>
-                  match decl_facts_reflection_projection_variant_label_optional(node: whole_field) {
+                  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_projection_variant_label_optional(node: whole_field) {
                     Present { value: whole } =>
-                      match decl_facts_reflection_projection_variant_label_optional(node: named_field) {
+                      match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_projection_variant_label_optional(node: named_field) {
                         Present { value: named } => whole == "WholeDeclaration" && named == "NamedField"
                         Absent => false
                       }
@@ -148,7 +148,7 @@ test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> 
 }
 
 test fn decl_facts_reflection_scaffold_dissolves_to_resolves_single_authority() -> Bool {
-  match decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
     Present { value: projection } =>
       value_projection_is_resolved_variant(node: projection)
         && match resolved_variant_name_optional(node: projection) {
@@ -164,10 +164,10 @@ data ambiguous_shared_b_shared_bare_arm_qn: String = "test.fixture.decl_facts_re
 
 // B is in the entry closure because ambiguous_b_specimen imports SharedBareArm from B.
 test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool {
-  match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_b_arm_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_b_arm_specimen_qn) {
     Present { value: parent } =>
       parent == ambiguous_shared_b_shared_bare_arm_qn
-        && match decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_b_arm_specimen_qn) {
+        && match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_b_arm_specimen_qn) {
           Present { value: variant } => variant == "SharedArm"
           Absent => false
         }
@@ -176,11 +176,11 @@ test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool 
 }
 
 test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded() -> Bool {
-  match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
     Present { value: parent } =>
       parent == ambiguous_shared_a_shared_bare_arm_qn
         && parent != ambiguous_shared_b_shared_bare_arm_qn
-        && match decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_arm_specimen_qn) {
+        && match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_arm_specimen_qn) {
           Present { value: variant } => variant == "SharedArm"
           Absent => false
         }
@@ -190,27 +190,27 @@ test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded()
 
 // Discriminating negative: A importer must not resolve to B's parent when both modules are loaded.
 test fn decl_facts_reflection_explicit_import_does_not_resolve_to_b() -> Bool {
-  match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
     Present { value: parent } => parent != ambiguous_shared_b_shared_bare_arm_qn
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_nullary_mechanism_projection_shape() -> Bool {
-  match decl_facts_reflection_nullary_value_projection(qn: mechanism_single_authority_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_nullary_value_projection(qn: mechanism_single_authority_qn) {
     Present { value: projection } => value_projection_is_resolved_variant(node: projection)
     Absent => false
   }
 }
 
 test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates() -> Bool {
-  duplicate_qualified_identity_lookup_names_primary_and_shadow(
-    lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
+  test.claim.decl_facts_reflection_witness_support.duplicate_qualified_identity_lookup_names_primary_and_shadow(
+    lookup: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
 }
 
 test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool {
-  match decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: node } => data_initializer_is_constructor_resolution_refused_projection(node: node)
     Absent => false
   }
@@ -218,8 +218,8 @@ test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_res
 
 test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool {
   let bogus_qn: String = "test.fixture.decl_facts_reflection.specimens.nonexistent_data_row"
-  decl_fact_lookup_is_missing(lookup: decl_facts_reflection_lookup(qn: bogus_qn))
-    && match decl_facts_reflection_fact_node(qn: missing_variant_specimen_qn) {
+  decl_fact_lookup_is_missing(lookup: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_lookup(qn: bogus_qn))
+    && match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: missing_variant_specimen_qn) {
       Present { value: node } =>
         !data_initializer_is_typechecked_subject_absent_projection(node: node)
       Absent => false
@@ -227,10 +227,10 @@ test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool 
 }
 
 test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct() -> Bool {
-  match decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
+  match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: refused_node } =>
       if data_initializer_is_constructor_resolution_refused_projection(node: refused_node) {
-        match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
+        match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
           Present { value: not_variant_projection } =>
             value_projection_is_not_variant_value(node: not_variant_projection)
               && !data_initializer_is_typechecked_subject_absent_projection(node: refused_node)
@@ -244,7 +244,7 @@ test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct(
 }
 
 test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique() -> Bool {
-  duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
-    lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
+  test.claim.decl_facts_reflection_witness_support.duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
+    lookup: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
 }

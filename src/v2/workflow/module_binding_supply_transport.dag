@@ -21,7 +21,7 @@ They were removed from compiler_frontier_census_holds in the same change (fronti
 Two rows were removed here with the self-host frontier roster cut: projection_refuses_on_absent_index and transition_parity_host_index_agrees_with_hand_rows. The parity witness asserted that the derived index and the hand-authored qualified-module bindings answer identically, and the hand rows are gone, so its subject is retired rather than dropped; the refusal witness guarded the projection those rows reached. crate_layout_witnesses still needs the real index and still runs here."
 
 fn mbs_claim_source_roots(overlay_dir: String) -> List<String> {
-  concat(witness_layer_roots, [overlay_dir])
+  concat(gunbc.ci_layer_roots.witness_layer_roots, [overlay_dir])
 }
 
 fn mbs_emit_args(overlay_dir: String) -> List<String> {

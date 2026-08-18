@@ -9,7 +9,7 @@ data bundle_disposition_note: String = "The bundle entry lives outside witness_d
 
 fn live_discovery_state() -> v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState {
   fold_list(
-    xs: witness_discovery_scan_dirs,
+    xs: gunbc.ci_layer_roots.witness_discovery_scan_dirs,
     empty: floor_discovery_walk_state_zero(),
     cons: fn(acc, dir) {
       floor_discovery_walk_dir(state: acc, dir_path: dir, exclude_substrings: [])

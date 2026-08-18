@@ -46,20 +46,20 @@ fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
 }
 
 fn import_conformance_closure() -> FreeMonoid<String> {
-  import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+  import_closure_live(entry_path: conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 fn reference_conformance_closure_outcome() -> v2.std.diagnostic.Outcome<FreeMonoid<String>> {
-  v2.lens.reference_deps.reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+  v2.lens.reference_deps.reference_closure_live(entry_path: conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 test fn reference_closure_b2_safety_wall_holds() -> Bool {
   let parsed_entry_census_ok = v2.lens.reference_deps.reference_parsed_tree_facts_match_import_facts_at_path(
     rel_path: conformance_entry,
-    pool_roots: witness_layer_roots,
+    pool_roots: gunbc.ci_layer_roots.witness_layer_roots,
     exclude_substrings: module_graph_exclude_substrings
   )
-  match v2.lens.reference_deps.reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
+  match v2.lens.reference_deps.reference_closure_ingest_refusal_witness(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) {
     Rejected { diagnostics: _ } =>
       match reference_conformance_closure_outcome() {
         Accepted { value: reference_closure, diagnostics: _ } =>

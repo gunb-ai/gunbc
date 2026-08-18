@@ -30,7 +30,7 @@ fn probe_frozen_roster() -> List<gunbc.witness_deferral_freeze.FrozenPathDeferra
 }
 
 fn probe_standing(entry: String, function: String, frozen: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>) -> std.witness_admission.WitnessExecutionStanding {
-  witness_path_policy_execution_standing_in(
+  v2.workflow.witness_admission.witness_path_policy_execution_standing_in(
     entry: entry,
     function: function,
     excluded_from_discovery: true,
@@ -80,7 +80,7 @@ test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
 data frozen_is_tolerated_not_covered_note: String = "THE CLAIM THIS PAIR SEPARATES, and the defect it exists to prevent from returning. A frozen row is TOLERATED by the migration ratchet and is NOT COVERED, and those are answered by two different gates over the same standing. The first shape of this wall returned one success arm for both, so a frozen row was indistinguishable from a witness with a real cadence and the live gate going green read as evidence that every current row is admitted — while every one of those rows still executed nowhere. Here the same standing answers NO to coverage and YES to the floor, and a third claim shows the floor's YES is conditional on the baseline axis rather than unconditional."
 
 test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool {
-  !witness_has_executing_consumer(
+  !v2.workflow.witness_admission.witness_has_executing_consumer(
     standing: probe_standing(
       entry: probe_entry(),
       function: "already_frozen_holds",
@@ -97,7 +97,7 @@ test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool {
 }
 
 test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
-  witness_floor_admission_holds(
+  v2.workflow.witness_admission.witness_floor_admission_holds(
     standing: probe_standing(
       entry: probe_entry(),
       function: "already_frozen_holds",
@@ -108,7 +108,7 @@ test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
 }
 
 test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Bool {
-  !witness_floor_admission_holds(
+  !v2.workflow.witness_admission.witness_floor_admission_holds(
     standing: probe_standing(
       entry: probe_entry(),
       function: "already_frozen_holds",
@@ -125,7 +125,7 @@ test fn witness_deferral_freeze_empty_roster_refuses_the_same_row() -> Bool {
 }
 
 test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
-  witness_has_executing_consumer(
+  v2.workflow.witness_admission.witness_has_executing_consumer(
     standing: probe_standing(
       entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag",
       function: "floor_skip_control_holds",
@@ -145,8 +145,8 @@ test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bo
 }
 
 test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
-  witness_has_executing_consumer(
-    standing: witness_path_policy_execution_standing_in(
+  v2.workflow.witness_admission.witness_has_executing_consumer(
+    standing: v2.workflow.witness_admission.witness_path_policy_execution_standing_in(
       entry: probe_entry(),
       function: "relocated_matrix_holds",
       excluded_from_discovery: false,
@@ -181,14 +181,14 @@ fn probe_discovered_population() -> List<std.realization_schedule.ScheduleWitnes
 }
 
 test fn witness_deferral_freeze_live_rows_join_the_discovered_population() -> Bool {
-  frozen_path_deferrals_all_discovered(
+  v2.workflow.witness_admission.frozen_path_deferrals_all_discovered(
     rows: probe_frozen_roster(),
     discovered: probe_discovered_population()
   )
 }
 
 test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
-  !frozen_path_deferrals_all_discovered(
+  !v2.workflow.witness_admission.frozen_path_deferrals_all_discovered(
     rows: [
       gunbc.witness_deferral_freeze.FrozenPathDeferral {
         entry: "src/v2/test/claim/long/departed_test.dag",
@@ -221,7 +221,7 @@ test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
 data commit_roster_consumer_control_note: String = "THE FALSE-POSITIVE CONTROL, and it caught a real one. A CommitWitnessClaim enrollment on an executing surface makes a witness run as an explicit entry, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. The first revision of this wall did not read that authority and would have refused 31 such identities: fail-closed, and still a wrong answer. This pair is the discriminator, on a LIVE row rather than a fixture, because the defect was precisely that the live authority was unread: the identity below is admitted while being absent from the frozen population, so its admission can only be coming from its enrollment."
 
 test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
-  witness_has_executing_consumer_for_row(
+  v2.workflow.witness_admission.witness_has_executing_consumer_for_row(
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
   )

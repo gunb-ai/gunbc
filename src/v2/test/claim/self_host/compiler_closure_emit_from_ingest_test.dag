@@ -105,12 +105,12 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 }
 
 test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
-  (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
+  (length(xs: self_host_closure_witness_layer_roots) == length(xs: gunbc.ci_layer_roots.witness_layer_roots))
     && fold_list(
       xs: self_host_closure_witness_layer_roots,
       empty: true,
       cons: fn(acc, item) {
-        acc && list_contains_str(xs: witness_layer_roots, target: item)
+        acc && list_contains_str(xs: gunbc.ci_layer_roots.witness_layer_roots, target: item)
       }
     )
 }

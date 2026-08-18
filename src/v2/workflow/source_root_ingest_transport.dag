@@ -19,7 +19,7 @@ data ingest_witness_host_manifest_receipt: String = "program_assembly_real_inges
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
 fn sri_claim_source_roots(manifest_dir: String) -> List<String> {
-  concat(witness_layer_roots, [manifest_dir])
+  concat(gunbc.ci_layer_roots.witness_layer_roots, [manifest_dir])
 }
 
 fn emit_manifest_args(manifest_dir: String) -> List<String> {

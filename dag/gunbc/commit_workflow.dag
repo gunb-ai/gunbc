@@ -1604,7 +1604,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 3),
-          receipt: frontier_probe_witness_measure_receipt_read_failure
+          receipt: gunbc.ci_layer_roots.frontier_probe_witness_measure_receipt_read_failure
         },
         envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: std.witness_admission.OfflineLocalRecipe,
@@ -1630,7 +1630,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 2),
-          receipt: frontier_probe_witness_measure_receipt_hash_mismatch
+          receipt: gunbc.ci_layer_roots.frontier_probe_witness_measure_receipt_hash_mismatch
         },
         envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: std.witness_admission.OfflineLocalRecipe,
@@ -1656,7 +1656,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 3),
-          receipt: frontier_probe_witness_measure_receipt_elision_boundary
+          receipt: gunbc.ci_layer_roots.frontier_probe_witness_measure_receipt_elision_boundary
         },
         envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: std.witness_admission.OfflineLocalRecipe,
@@ -1682,7 +1682,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 784772),
-          receipt: frontier_probe_witness_measure_receipt_below_cap
+          receipt: gunbc.ci_layer_roots.frontier_probe_witness_measure_receipt_below_cap
         },
         envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: FalsifierRehomedBinWet,
@@ -1708,7 +1708,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 742109),
-          receipt: frontier_probe_witness_measure_receipt_second_root
+          receipt: gunbc.ci_layer_roots.frontier_probe_witness_measure_receipt_second_root
         },
         envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: FalsifierRehomedBinWet,

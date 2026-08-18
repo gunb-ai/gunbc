@@ -29,7 +29,7 @@ test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool 
 }
 
 test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
-  length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
+  length(xs: witness_admission_inventory_live()) == length(xs: gunbc.ci_layer_roots.witness_exclusion_frontier)
 }
 
 data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"

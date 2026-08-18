@@ -18,8 +18,8 @@ type CompileCleanShardVerdict
 
 fn compile_clean_partition_boundary() -> CompileCleanPartitionBoundary {
   CompileCleanPartitionBoundary {
-    entry_roots: witness_layer_roots,
-    pool_roots: compile_clean_source_roots()
+    entry_roots: gunbc.ci_layer_roots.witness_layer_roots,
+    pool_roots: gunbc.ci_layer_roots.compile_clean_source_roots()
   }
 }
 
@@ -69,11 +69,11 @@ fn compose_compile_clean_shard_verdicts_as_reduce(
 }
 
 fn witness_partition_entry_roots_are_witness_layer_roots() -> Bool {
-  compile_clean_partition_boundary().entry_roots == witness_layer_roots
+  compile_clean_partition_boundary().entry_roots == gunbc.ci_layer_roots.witness_layer_roots
 }
 
 fn witness_partition_pool_roots_are_compile_clean_source_roots() -> Bool {
-  compile_clean_partition_boundary().pool_roots == compile_clean_source_roots()
+  compile_clean_partition_boundary().pool_roots == gunbc.ci_layer_roots.compile_clean_source_roots()
 }
 
 fn witness_compose_all_clean_is_clean() -> Bool {

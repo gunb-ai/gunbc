@@ -56,7 +56,7 @@ fn run_cheap_claim_pool() -> Bool {
     max_per_child: cheap_gate_pool_max_claims_per_child
   )
   fold(chunks, init: true, f: fn(acc, chunk) {
-    let ok = run_gunbc_claims(source_roots: witness_layer_roots, claims: chunk)
+    let ok = run_gunbc_claims(source_roots: gunbc.ci_layer_roots.witness_layer_roots, claims: chunk)
     acc && ok
   })
 }

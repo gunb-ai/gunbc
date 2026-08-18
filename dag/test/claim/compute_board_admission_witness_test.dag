@@ -1,126 +1,78 @@
 module test.claim.compute_board_admission_witness
 
-  AnalogCircuitIntent,
-  CapacitorInstance,
-  ElectricalComponentInstance,
-  ResistorInstance,
-}
-  ComponentInstanceIdentity,
-  ElectricalDesignIdentity,
-  ElectricalNet,
-  NetIdentity,
-  TerminalIdentity,
-  component_identity_eq,
-  component_instance_identity,
-  component_local_label,
-  net_identity,
-  net_identity_eq,
-  net_local_label,
-  terminal_ref,
-}
-  Conjunction,
-  DigitalControlIntent,
-  DigitalEquation,
-  DigitalInput,
-  DigitalOutput,
-  DigitalSignal,
-  Negation,
-  SignalName,
-  SignalRef,
-}
-  BoardPowerInterfaceArticle,
-  EstablishedByBoardSignal,
-  FirmwareWriteProtection,
-  HostFirmwareStartPrecondition,
-  PlatformFirmwareContract,
-  PowerPermitAsserted,
-  ElectricalBond,
-  PowerReturnConnection,
-  board_power_interlock_bonds,
-  board_power_interlock_firmware_contract,
-  board_power_interlock_manufacturing,
-  board_power_interlock_physical,
-  BoardArticleIdentity,
-  power_interlock_article,
-}
-  BoardArticleAdmitted,
-  BoardArticleRefused,
-  admit_board_article,
-  article_refusals,
-  refusal_set_count,
-  refuses_with_exactly_named_cause,
-}
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data fixture_design: ElectricalDesignIdentity = "test.compute_board_admission.fixture" as ElectricalDesignIdentity
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // EACH FIXTURE PLANTS EXACTLY ONE DEFECT into an otherwise coherent article, and asserts the
 // cause NAMED for it rather than merely that something refused. A witness asserting only "it
 // refused" passes when every planted defect trips one over-broad cause, which is how a set of
 // distinct causes decays into a single catch-all nobody notices has swallowed the others.
 
-data a_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "a")
+data a_net: NetIdentity = net_identity(design: fixture_design, local_identity: "a")
 
-data b_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "b")
+data b_net: NetIdentity = net_identity(design: fixture_design, local_identity: "b")
 
-data r_one: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
+data r_one: ElectricalComponentInstance = ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "series resistor",
-  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
-  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
-  resistance: std.measure.Measure { count: 10 },
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  resistance: Measure { count: 10 },
 }
 
-data c_one: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
+data c_one: ElectricalComponentInstance = CapacitorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "c1"),
   part: "filter capacitor",
-  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
-  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
-  capacitance: std.measure.Measure { count: 100 },
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  capacitance: Measure { count: 100 },
 }
 
 // A resistor sharing r1's identity. Nothing distinguishes it downstream: a model binding, a net
 // member or a receipt naming "r1" cannot say which of the two it means.
-data r_one_again: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
+data r_one_again: ElectricalComponentInstance = ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "second series resistor",
-  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
-  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
-  resistance: std.measure.Measure { count: 47 },
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  resistance: Measure { count: 47 },
 }
 
-data coherent_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
+data coherent_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "admission fixture",
   components: [r_one, c_one],
   nets: [
-    product.electrical.connectivity.ElectricalNet {
+    ElectricalNet {
       identity: a_net,
       members: [
-        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "1" as TerminalIdentity),
       ],
     },
-    product.electrical.connectivity.ElectricalNet {
+    ElectricalNet {
       identity: b_net,
       members: [
-        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "2" as TerminalIdentity),
       ],
     },
   ],
 }
 
-data in_signal: product.compute_board.digital_control.SignalName = "d_in" as product.compute_board.digital_control.SignalName
+data in_signal: SignalName = "d_in" as SignalName
 
-data out_signal: product.compute_board.digital_control.SignalName = "d_out" as product.compute_board.digital_control.SignalName
+data out_signal: SignalName = "d_out" as SignalName
 
-data coherent_control: product.compute_board.digital_control.DigitalControlIntent = product.compute_board.digital_control.DigitalControlIntent {
-  block_name: "fixture_block" as product.compute_board.digital_control.SignalName,
+data coherent_control: DigitalControlIntent = DigitalControlIntent {
+  block_name: "fixture_block" as SignalName,
   signals: [
-    product.compute_board.digital_control.DigitalSignal { name: in_signal, direction: DigitalInput },
-    product.compute_board.digital_control.DigitalSignal { name: out_signal, direction: DigitalOutput },
+    DigitalSignal { name: in_signal, direction: DigitalInput },
+    DigitalSignal { name: out_signal, direction: DigitalOutput },
   ],
   equations: [
-    product.compute_board.digital_control.DigitalEquation { driven: out_signal, expression: product.compute_board.digital_control.Negation { operand: product.compute_board.digital_control.SignalRef { signal: in_signal } } },
+    DigitalEquation { driven: out_signal, expression: Negation { operand: SignalRef { signal: in_signal } } },
   ],
 }
 
@@ -128,7 +80,7 @@ data coherent_control: product.compute_board.digital_control.DigitalControlInten
 // contract names power_permit and reset_release, which this fixture's two-signal control does not
 // declare — and the join refuses exactly that, so reusing the production contract here would have
 // planted two extra causes in every fixture below.
-data fixture_firmware_contract: product.compute_board.article.PlatformFirmwareContract = product.compute_board.article.PlatformFirmwareContract {
+data fixture_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
   start_preconditions: [],
   write_protection: board_power_interlock_firmware_contract.write_protection,
   development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
@@ -136,13 +88,13 @@ data fixture_firmware_contract: product.compute_board.article.PlatformFirmwareCo
 }
 
 fn fixture_article(
-  analog: product.compute_board.analog.AnalogCircuitIntent,
-  reference: product.electrical.connectivity.NetIdentity,
-  control: product.compute_board.digital_control.DigitalControlIntent,
-  bonds: List<product.compute_board.article.ElectricalBond>
-) -> product.compute_board.article.BoardPowerInterfaceArticle {
-  product.compute_board.article.BoardPowerInterfaceArticle {
-    identity: product.compute_board.article.BoardArticleIdentity { name: "admission fixture", revision: "0" },
+  analog: AnalogCircuitIntent,
+  reference: NetIdentity,
+  control: DigitalControlIntent,
+  bonds: List<ElectricalBond>
+) -> BoardPowerInterfaceArticle {
+  BoardPowerInterfaceArticle {
+    identity: BoardArticleIdentity { name: "admission fixture", revision: "0" },
     analog: analog,
     model_bindings: [],
     reference_net: reference,
@@ -154,9 +106,9 @@ fn fixture_article(
   }
 }
 
-data coherent_fixture: product.compute_board.article.BoardPowerInterfaceArticle = fixture_article(analog: coherent_analog, reference: b_net, control: coherent_control, bonds: [])
+data coherent_fixture: BoardPowerInterfaceArticle = fixture_article(analog: coherent_analog, reference: b_net, control: coherent_control, bonds: [])
 
-fn is_admitted(a: product.compute_board.article.BoardPowerInterfaceArticle) -> Bool {
+fn is_admitted(a: BoardPowerInterfaceArticle) -> Bool {
   match admit_board_article(a: a) {
     BoardArticleAdmitted { article: _ } => true
     BoardArticleRefused { causes: _ } => false
@@ -178,7 +130,7 @@ test fn w_two_components_sharing_an_identity_refuse() -> Bool {
   )
 }
 
-data duplicate_component_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
+data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "admission fixture",
   components: [r_one, c_one, r_one_again],
   nets: coherent_analog.nets,
@@ -187,7 +139,7 @@ data duplicate_component_analog: product.compute_board.analog.AnalogCircuitInten
 data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "admission fixture",
   components: coherent_analog.components,
-  nets: concat(coherent_analog.nets, [product.electrical.connectivity.ElectricalNet { identity: a_net, members: [] }]),
+  nets: concat(coherent_analog.nets, [ElectricalNet { identity: a_net, members: [] }]),
 }
 
 test fn w_two_nets_sharing_an_identity_refuse() -> Bool {
@@ -197,15 +149,15 @@ test fn w_two_nets_sharing_an_identity_refuse() -> Bool {
   )
 }
 
-data dangling_member_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
+data dangling_member_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "admission fixture",
   components: coherent_analog.components,
   nets: [
-    product.electrical.connectivity.ElectricalNet {
+    ElectricalNet {
       identity: a_net,
-      members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r9"), terminal: "1" as product.electrical.connectivity.TerminalIdentity)],
+      members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r9"), terminal: "1" as TerminalIdentity)],
     },
-    product.electrical.connectivity.ElectricalNet { identity: b_net, members: [] },
+    ElectricalNet { identity: b_net, members: [] },
   ],
 }
 
@@ -222,15 +174,15 @@ test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
 test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
   refuses_with_exactly_named_cause(
     a: fixture_article(
-      analog: product.compute_board.analog.AnalogCircuitIntent {
+      analog: AnalogCircuitIntent {
         title: "admission fixture",
         components: coherent_analog.components,
         nets: [
-          product.electrical.connectivity.ElectricalNet {
+          ElectricalNet {
             identity: a_net,
-            members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "3" as product.electrical.connectivity.TerminalIdentity)],
+            members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "3" as TerminalIdentity)],
           },
-          product.electrical.connectivity.ElectricalNet { identity: b_net, members: [] },
+          ElectricalNet { identity: b_net, members: [] },
         ],
       },
       reference: b_net,
@@ -259,9 +211,9 @@ test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
       analog: coherent_analog,
       reference: b_net,
       control: coherent_control,
-      bonds: [product.compute_board.article.PowerReturnConnection {
+      bonds: [PowerReturnConnection {
         domain: b_net,
-        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r7"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r7"), terminal: "1" as TerminalIdentity),
       }]
     ),
     wanted: "BondTerminalNamesNoTerminal"
@@ -274,9 +226,9 @@ test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
       analog: coherent_analog,
       reference: b_net,
       control: coherent_control,
-      bonds: [product.compute_board.article.PowerReturnConnection {
+      bonds: [PowerReturnConnection {
         domain: net_identity(design: fixture_design, local_identity: "nowhere"),
-        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
       }]
     ),
     wanted: "BondNamesUndeclaredNet"
@@ -288,9 +240,9 @@ test fn w_two_signals_sharing_a_name_refuse() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
-        signals: concat(coherent_control.signals, [product.compute_board.digital_control.DigitalSignal { name: out_signal, direction: DigitalOutput }]),
+        signals: concat(coherent_control.signals, [DigitalSignal { name: out_signal, direction: DigitalOutput }]),
         equations: coherent_control.equations,
       },
       bonds: []
@@ -304,12 +256,12 @@ test fn w_driving_an_undeclared_signal_refuses() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
         signals: coherent_control.signals,
-        equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
-          driven: "ghost" as product.compute_board.digital_control.SignalName,
-          expression: product.compute_board.digital_control.SignalRef { signal: in_signal },
+        equations: concat(coherent_control.equations, [DigitalEquation {
+          driven: "ghost" as SignalName,
+          expression: SignalRef { signal: in_signal },
         }]),
       },
       bonds: []
@@ -326,12 +278,12 @@ test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
         signals: coherent_control.signals,
-        equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
+        equations: concat(coherent_control.equations, [DigitalEquation {
           driven: in_signal,
-          expression: product.compute_board.digital_control.SignalRef { signal: out_signal },
+          expression: SignalRef { signal: out_signal },
         }]),
       },
       bonds: []
@@ -345,14 +297,14 @@ test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
         signals: coherent_control.signals,
-        equations: [product.compute_board.digital_control.DigitalEquation {
+        equations: [DigitalEquation {
           driven: out_signal,
-          expression: product.compute_board.digital_control.Conjunction {
-            left: product.compute_board.digital_control.SignalRef { signal: in_signal },
-            right: product.compute_board.digital_control.SignalRef { signal: "phantom" as product.compute_board.digital_control.SignalName },
+          expression: Conjunction {
+            left: SignalRef { signal: in_signal },
+            right: SignalRef { signal: "phantom" as SignalName },
           },
         }],
       },
@@ -367,7 +319,7 @@ test fn w_an_output_nothing_drives_refuses() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
         signals: coherent_control.signals,
         equations: [],
@@ -383,12 +335,12 @@ test fn w_an_output_two_equations_drive_refuses() -> Bool {
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
-      control: product.compute_board.digital_control.DigitalControlIntent {
+      control: DigitalControlIntent {
         block_name: coherent_control.block_name,
         signals: coherent_control.signals,
-        equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
+        equations: concat(coherent_control.equations, [DigitalEquation {
           driven: out_signal,
-          expression: product.compute_board.digital_control.SignalRef { signal: in_signal },
+          expression: SignalRef { signal: in_signal },
         }]),
       },
       bonds: []
@@ -422,8 +374,8 @@ test fn w_the_production_article_carries_no_cause() -> Bool {
 // THE FIRMWARE CONTRACT'S PRECONDITIONS JOIN THE CONTROL LOGIC. These two fixtures are the reason
 // the prose fields were replaced rather than reworded: neither defect had a representation at
 // all before the establishment was typed, so neither could be refused.
-fn firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition) -> product.compute_board.article.PlatformFirmwareContract {
-  product.compute_board.article.PlatformFirmwareContract {
+fn firmware_contract_with(p: HostFirmwareStartPrecondition) -> PlatformFirmwareContract {
+  PlatformFirmwareContract {
     start_preconditions: [p],
     write_protection: board_power_interlock_firmware_contract.write_protection,
     development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
@@ -431,8 +383,8 @@ fn firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrec
   }
 }
 
-fn fixture_with_firmware(f: product.compute_board.article.PlatformFirmwareContract) -> product.compute_board.article.BoardPowerInterfaceArticle {
-  product.compute_board.article.BoardPowerInterfaceArticle {
+fn fixture_with_firmware(f: PlatformFirmwareContract) -> BoardPowerInterfaceArticle {
+  BoardPowerInterfaceArticle {
     identity: coherent_fixture.identity,
     analog: coherent_fixture.analog,
     model_bindings: coherent_fixture.model_bindings,
@@ -449,7 +401,7 @@ test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
   refuses_with_exactly_named_cause(
     a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
-      establishment: product.compute_board.article.EstablishedByBoardSignal { signal: "no_such_wire" as product.compute_board.digital_control.SignalName },
+      establishment: EstablishedByBoardSignal { signal: "no_such_wire" as SignalName },
     })),
     wanted: "PreconditionSignalUndeclared"
   )
@@ -462,16 +414,16 @@ test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
   refuses_with_exactly_named_cause(
     a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
-      establishment: product.compute_board.article.EstablishedByBoardSignal { signal: in_signal },
+      establishment: EstablishedByBoardSignal { signal: in_signal },
     })),
     wanted: "PreconditionSignalIsNotAnOutput"
   )
 }
 
 test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
-  is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
+  is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
     kind: PowerPermitAsserted,
-    establishment: product.compute_board.article.EstablishedByBoardSignal { signal: out_signal },
+    establishment: EstablishedByBoardSignal { signal: out_signal },
   })))
 }
 
@@ -481,15 +433,15 @@ test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
 // the state space. This is the loud half. The fixture is otherwise the coherent article, so the
 // only thing that changed is which design the member's component belongs to.
 test fn w_a_net_member_from_another_board_refuses() -> Bool {
-  let elsewhere: product.electrical.connectivity.ElectricalDesignIdentity = "test.compute_board_admission.other_board" as product.electrical.connectivity.ElectricalDesignIdentity
-  let foreign = product.electrical.connectivity.ElectricalTerminalRef {
+  let elsewhere: ElectricalDesignIdentity = "test.compute_board_admission.other_board" as ElectricalDesignIdentity
+  let foreign = ElectricalTerminalRef {
     component: component_instance_identity(design: elsewhere, local_identity: "r_top"),
-    terminal: "1" as product.electrical.connectivity.TerminalIdentity,
+    terminal: "1" as TerminalIdentity,
   }
-  let spliced = product.compute_board.analog.AnalogCircuitIntent {
+  let spliced = AnalogCircuitIntent {
     title: coherent_analog.title,
     components: coherent_analog.components,
-    nets: [product.electrical.connectivity.ElectricalNet {
+    nets: [ElectricalNet {
       identity: net_identity(design: fixture_design, local_identity: "spliced"),
       members: [foreign],
     }] + coherent_analog.nets,

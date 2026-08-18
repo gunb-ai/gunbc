@@ -56,7 +56,7 @@ fn declared_with_bogus() -> FreeMonoid<String> {
 }
 
 fn derived_conformance_closure() -> FreeMonoid<String> {
-  v2.lens.module_graph.import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+  v2.lens.module_graph.import_closure_live(entry_path: conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 test fn dag_import_closure_live_witness_bundle_holds() -> Bool {

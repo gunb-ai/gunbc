@@ -246,7 +246,7 @@ fn project_analog_to_spice(
 // the resulting receipt would name a board it does not describe. Taking the article closes that
 // by construction: there is one value, and both facts are read out of it here.
 fn project_article_to_spice(admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
-  let article = admitted_article(a: admitted)
+  let article = product.compute_board.admission.admitted_article(a: admitted)
   project_analog_to_spice(
     article_identity: article.identity,
     intent: article.analog,
@@ -263,7 +263,7 @@ fn project_article_to_spice(admitted: product.compute_board.admission.AdmittedBo
 // different board. There is one refusal gate and both projections are behind it; a String return
 // is what made the bypass possible, because a String has nowhere to put a refusal.
 fn project_article_to_ngspice_run(admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
-  let article = admitted_article(a: admitted)
+  let article = product.compute_board.admission.admitted_article(a: admitted)
   let intent = article.analog
   let reference = article.reference_net
   match first_refusal_or_net_spelling(intent: intent, bindings: article.model_bindings, reference: reference) {

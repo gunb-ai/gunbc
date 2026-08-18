@@ -1,32 +1,5 @@
 module test.claim.decl_facts_reflection_witness_support
 
-  decl_facts_reflection_fixture_facts,
-}
-  projection_kind_lexeme_optional,
-  projection_named_child_optional,
-  record_constructor_parent_qualified_name_optional,
-  record_constructor_variant_name_optional,
-  record_field_projection_optional,
-  resolved_variant_name_optional,
-  resolved_variant_parent_qualified_name_optional,
-  value_projection_is_ambiguous,
-  ambiguous_candidate_projection_count,
-  projection_named_child_atom_lexeme,
-  value_projection_is_resolved_variant,
-  variant_declaration_name_optional,
-  DeclFactLookup,
-  decl_fact_lookup_by_pool_declaration_identity,
-  pool_declaration_identity_from_fact,
-  decl_fact_lookup_by_qualified_name,
-  decl_fact_lookup_is_ambiguous,
-  decl_fact_lookup_candidate_count,
-  decl_fact_lookup_is_unique,
-  decl_fact_optional_by_qualified_name,
-  data_initializer_is_nullary_projection,
-  data_initializer_is_record_projection,
-  data_initializer_is_plain_record_projection,
-  plain_record_parent_qualified_name_optional,
-}
 
 // Projection of the fixture module's single `data` authority, NOT a second
 // decl_facts call over the same roots. A `data` initializer is evaluated once
@@ -37,14 +10,14 @@ fn decl_facts_reflection_witness_support_facts() -> List<DeclFact> {
   decl_facts_reflection_fixture_facts
 }
 
-fn decl_facts_reflection_lookup(qn: String) -> v2.std.data_initializer_identity.DeclFactLookup {
-  v2.std.data_initializer_identity.decl_fact_lookup_by_qualified_name(
+fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
+  decl_fact_lookup_by_qualified_name(
     qn: qn,
     facts: decl_facts_reflection_witness_support_facts()
   )
 }
 
-fn decl_fact_lookup_candidate_rel_path_contains(lookup: v2.std.data_initializer_identity.DeclFactLookup, fragment: String) -> Bool {
+fn decl_fact_lookup_candidate_rel_path_contains(lookup: DeclFactLookup, fragment: String) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: cands } =>
       fold(cands, init: false, f: fn(found, fact) {
@@ -55,9 +28,9 @@ fn decl_fact_lookup_candidate_rel_path_contains(lookup: v2.std.data_initializer_
   }
 }
 
-fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: v2.std.data_initializer_identity.DeclFactLookup) -> Bool {
-  v2.std.data_initializer_identity.decl_fact_lookup_is_ambiguous(lookup: lookup)
-    && v2.std.data_initializer_identity.decl_fact_lookup_candidate_count(lookup: lookup) == 2
+fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: DeclFactLookup) -> Bool {
+  decl_fact_lookup_is_ambiguous(lookup: lookup)
+    && decl_fact_lookup_candidate_count(lookup: lookup) == 2
     && decl_fact_lookup_candidate_rel_path_contains(
       lookup: lookup,
       fragment: "decl_facts_reflection_duplicate_qn/primary"
@@ -69,12 +42,12 @@ fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: v2.std.d
 }
 
 fn decl_fact_projection_node_for_qualified_name(
-  facts: List<v2.std.decl_index.DeclFact>,
+  facts: List<DeclFact>,
   qn: String
 ) -> Optional<Node> {
-  match v2.std.data_initializer_identity.decl_fact_optional_by_qualified_name(qn: qn, facts: facts) {
-    Present { value: fact } => v2.std.optional.optional_present(value: fact.node)
-    Absent => v2.std.optional.optional_absent()
+  match decl_fact_optional_by_qualified_name(qn: qn, facts: facts) {
+    Present { value: fact } => optional_present(value: fact.node)
+    Absent => optional_absent()
   }
 }
 
@@ -88,69 +61,69 @@ fn decl_facts_reflection_fact_node(qn: String) -> Optional<Node> {
 fn decl_facts_reflection_initializer_root(qn: String) -> Optional<Node> {
   match decl_facts_reflection_fact_node(qn: qn) {
     Present { value: node } =>
-      if v2.std.data_initializer_identity.data_initializer_is_record_projection(node: node) {
-        v2.std.optional.optional_present(value: node)
-      } else if v2.std.data_initializer_identity.data_initializer_is_plain_record_projection(node: node) {
-        v2.std.optional.optional_present(value: node)
+      if data_initializer_is_record_projection(node: node) {
+        optional_present(value: node)
+      } else if data_initializer_is_plain_record_projection(node: node) {
+        optional_present(value: node)
       } else {
-        v2.std.optional.optional_absent()
+        optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_record_projection(qn: String) -> Optional<Node> {
   match decl_facts_reflection_initializer_root(qn: qn) {
     Present { value: node } =>
-      if v2.std.data_initializer_identity.data_initializer_is_record_projection(node: node) {
-        v2.std.optional.optional_present(value: node)
+      if data_initializer_is_record_projection(node: node) {
+        optional_present(value: node)
       } else {
-        v2.std.optional.optional_absent()
+        optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_constructor_parent(qn: String) -> Optional<String> {
   match decl_facts_reflection_record_projection(qn: qn) {
-    Present { value: record } => v2.std.data_initializer_identity.record_constructor_parent_qualified_name_optional(record: record)
-    Absent => v2.std.optional.optional_absent()
+    Present { value: record } => record_constructor_parent_qualified_name_optional(record: record)
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_constructor_variant(qn: String) -> Optional<String> {
   match decl_facts_reflection_record_projection(qn: qn) {
-    Present { value: record } => v2.std.data_initializer_identity.record_constructor_variant_name_optional(record: record)
-    Absent => v2.std.optional.optional_absent()
+    Present { value: record } => record_constructor_variant_name_optional(record: record)
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_field_projection(qn: String, field: String) -> Optional<Node> {
   match decl_facts_reflection_initializer_root(qn: qn) {
-    Present { value: root } => v2.std.data_initializer_identity.projection_named_child_optional(node: root, label: field)
-    Absent => v2.std.optional.optional_absent()
+    Present { value: root } => projection_named_child_optional(node: root, label: field)
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_value_identity_projection(qn: String) -> Optional<Node> {
   match decl_facts_reflection_fact_node(qn: qn) {
-    Present { value: node } => v2.std.data_initializer_identity.projection_named_child_optional(node: node, label: "value_identity")
-    Absent => v2.std.optional.optional_absent()
+    Present { value: node } => projection_named_child_optional(node: node, label: "value_identity")
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_nullary_value_projection(qn: String) -> Optional<Node> {
   match decl_facts_reflection_value_identity_projection(qn: qn) {
-    Present { value: projection } => v2.std.optional.optional_present(value: projection)
+    Present { value: projection } => optional_present(value: projection)
     Absent =>
       match decl_facts_reflection_fact_node(qn: qn) {
         Present { value: node } =>
-          if v2.std.data_initializer_identity.data_initializer_is_nullary_projection(node: node) {
-            v2.std.data_initializer_identity.projection_named_child_optional(node: node, label: "value_identity")
+          if data_initializer_is_nullary_projection(node: node) {
+            projection_named_child_optional(node: node, label: "value_identity")
           } else {
-            v2.std.optional.optional_absent()
+            optional_absent()
           }
-        Absent => v2.std.optional.optional_absent()
+        Absent => optional_absent()
       }
   }
 }
@@ -158,72 +131,72 @@ fn decl_facts_reflection_nullary_value_projection(qn: String) -> Optional<Node> 
 fn decl_facts_reflection_resolved_nullary_parent(qn: String) -> Optional<String> {
   match decl_facts_reflection_nullary_value_projection(qn: qn) {
     Present { value: projection } =>
-      if v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection) {
-        v2.std.data_initializer_identity.resolved_variant_parent_qualified_name_optional(node: projection)
+      if value_projection_is_resolved_variant(node: projection) {
+        resolved_variant_parent_qualified_name_optional(node: projection)
       } else {
-        v2.std.optional.optional_absent()
+        optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_resolved_nullary_variant_name(qn: String) -> Optional<String> {
   match decl_facts_reflection_nullary_value_projection(qn: qn) {
     Present { value: projection } =>
-      if v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection) {
-        v2.std.data_initializer_identity.resolved_variant_name_optional(node: projection)
+      if value_projection_is_resolved_variant(node: projection) {
+        resolved_variant_name_optional(node: projection)
       } else {
-        v2.std.optional.optional_absent()
+        optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_projection_variant_label_optional(node: Node) -> Optional<String> {
-  if v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: node) {
-    v2.std.data_initializer_identity.resolved_variant_name_optional(node: node)
-  } else if v2.std.data_initializer_identity.data_initializer_is_record_projection(node: node) {
-    v2.std.data_initializer_identity.record_constructor_variant_name_optional(record: node)
-  } else if v2.std.data_initializer_identity.data_initializer_is_plain_record_projection(node: node) {
-    v2.std.optional.optional_absent()
+  if value_projection_is_resolved_variant(node: node) {
+    resolved_variant_name_optional(node: node)
+  } else if data_initializer_is_record_projection(node: node) {
+    record_constructor_variant_name_optional(record: node)
+  } else if data_initializer_is_plain_record_projection(node: node) {
+    optional_absent()
   } else {
-    v2.std.optional.optional_absent()
+    optional_absent()
   }
 }
 
 fn decl_facts_reflection_decl_field_variant_name(qn: String) -> Optional<String> {
   match decl_facts_reflection_field_projection(qn: qn, field: "bind") {
     Present { value: bind_projection } =>
-      match v2.std.data_initializer_identity.record_field_projection_optional(record: bind_projection, label: "field") {
+      match record_field_projection_optional(record: bind_projection, label: "field") {
         Present { value: field_projection } =>
           decl_facts_reflection_projection_variant_label_optional(node: field_projection)
-        Absent => v2.std.optional.optional_absent()
+        Absent => optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_plain_record_parent(qn: String) -> Optional<String> {
   match decl_facts_reflection_fact_node(qn: qn) {
     Present { value: node } =>
-      if v2.std.data_initializer_identity.data_initializer_is_plain_record_projection(node: node) {
-        v2.std.data_initializer_identity.plain_record_parent_qualified_name_optional(record: node)
+      if data_initializer_is_plain_record_projection(node: node) {
+        plain_record_parent_qualified_name_optional(record: node)
       } else {
-        v2.std.optional.optional_absent()
+        optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    Absent => optional_absent()
   }
 }
 
 fn decl_facts_reflection_plain_record_parent_eq(record: Node, want: String) -> Bool {
-  match v2.std.data_initializer_identity.plain_record_parent_qualified_name_optional(record: record) {
+  match plain_record_parent_qualified_name_optional(record: record) {
     Present { value: parent } => parent == want
     Absent => false
   }
 }
 
 fn projection_has_named_child(record: Node, label: String) -> Bool {
-  match v2.std.data_initializer_identity.projection_named_child_optional(node: record, label: label) {
+  match projection_named_child_optional(node: record, label: label) {
     Present { value: _ } => true
     Absent => false
   }
@@ -232,7 +205,7 @@ fn projection_has_named_child(record: Node, label: String) -> Bool {
 fn decl_facts_reflection_bind_is_declaration_ref_projection(qn: String) -> Bool {
   match decl_facts_reflection_field_projection(qn: qn, field: "bind") {
     Present { value: bind } =>
-      v2.std.data_initializer_identity.data_initializer_is_plain_record_projection(node: bind)
+      data_initializer_is_plain_record_projection(node: bind)
         && decl_facts_reflection_plain_record_parent_eq(
           record: bind,
           want: "std.decl_ref.DeclarationRef"
@@ -257,7 +230,7 @@ fn decl_facts_reflection_decl_field_variant_eq(qn: String, want: String) -> Bool
 fn decl_facts_reflection_named_field_projection_surfaces(qn: String) -> Bool {
   match decl_facts_reflection_fact_node(qn: qn) {
     Present { value: node } =>
-      v2.std.data_initializer_identity.data_initializer_is_plain_record_projection(node: node)
+      data_initializer_is_plain_record_projection(node: node)
         && decl_facts_reflection_plain_record_parent_eq(
           record: node,
           want: "std.decl_ref.DeclarationRef"
@@ -267,14 +240,14 @@ fn decl_facts_reflection_named_field_projection_surfaces(qn: String) -> Bool {
   }
 }
 
-fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: v2.std.data_initializer_identity.DeclFactLookup) -> Bool {
+fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: DeclFactLookup) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: cands } =>
       fold(cands, init: true, f: fn(ok, fact) {
         ok
-          && v2.std.data_initializer_identity.decl_fact_lookup_is_unique(
-            lookup: v2.std.data_initializer_identity.decl_fact_lookup_by_pool_declaration_identity(
-              identity: v2.std.data_initializer_identity.pool_declaration_identity_from_fact(fact: fact),
+          && decl_fact_lookup_is_unique(
+            lookup: decl_fact_lookup_by_pool_declaration_identity(
+              identity: pool_declaration_identity_from_fact(fact: fact),
               facts: decl_facts_reflection_witness_support_facts()
             )
           )

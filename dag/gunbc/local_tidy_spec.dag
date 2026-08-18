@@ -13,7 +13,7 @@ data githooks_pre_push_emit_scaffold: std.disposition.Disposition = Scaffold {
 }
 
 fn layer_root_glob_prefixes() -> List<String> {
-  map(witness_layer_roots, r => concat(r, "/*"))
+  map(gunbc.ci_layer_roots.witness_layer_roots, r => concat(r, "/*"))
 }
 
 fn suffix_to_glob_pattern(suffix: String) -> String {

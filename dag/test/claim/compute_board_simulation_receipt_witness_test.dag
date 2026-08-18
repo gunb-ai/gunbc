@@ -8,7 +8,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // those bytes. Without it the receipt would keep vouching for an artifact the projection stopped
 // producing, which is worse than having no receipt at all — it reads as evidence.
 fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match admit_board_article(a: power_interlock_article) {
+  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
   }
@@ -149,7 +149,7 @@ data floating_terminal_article: product.compute_board.article.BoardPowerInterfac
 }
 
 fn floating_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match admit_board_article(a: floating_terminal_article) {
+  match product.compute_board.admission.admit_board_article(a: floating_terminal_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
   }

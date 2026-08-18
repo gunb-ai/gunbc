@@ -65,7 +65,7 @@ fn hand_authored_cited_symbol_control_declaration_refs() -> List<std.decl_ref.De
 }
 
 fn hand_authored_works_resolution_pool_roots() -> List<String> {
-  compile_clean_source_roots()
+  gunbc.ci_layer_roots.compile_clean_source_roots()
 }
 
 fn hand_authored_works_refs_all_resolve() -> Bool {
