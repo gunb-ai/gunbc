@@ -16,7 +16,6 @@ import gunbc.managed_directory {
 import extdeps.tailscale.serve {
   tailscale_serve_enable_argv,
   tailscale_serve_off_argv,
-  tailscale_serve_route_key_label,
   TailscaleServeCapability,
   ScopedRemovalSupported,
   ScopedRemovalUnsupported,
@@ -410,16 +409,9 @@ data live_deploy_reconcile_binding_note: String = "apply/retract are the two deg
 
 type DeploymentStepMemberAt = NonEmptyStr
 
-fn deployment_artifact_reconcile_key(art: DeploymentArtifactStep) -> NonEmptyStr {
-  match art.serve_route_key {
-    Present { value: k } => tailscale_serve_route_key_label(key: k)
-    Absent => art.path
-  }
-}
-
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
   match step {
-    ArtifactStep { step: art } => deployment_artifact_reconcile_key(art: art)
+    ArtifactStep { step: art } => art.path
     Dependency { step: dep } => ensured_subject_identity(subject: dep.subject)
   }
 }

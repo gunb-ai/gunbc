@@ -31,11 +31,11 @@ use crate::v1_std_core::{
     foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
-    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, UnaryOpKind, VarBindingKind,
+    method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -232,6 +232,153 @@ fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
         .unwrap_or_else(|| format!("#{}", sym.0))
+}
+
+fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool {
+    qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
+}
+
+fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>> {
+    if item.connective == Connective::Disj && !item.children.is_empty() {
+        return Some(item.clone());
+    }
+    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
+        if node.connective == Connective::Disj && !node.children.is_empty() {
+            return Some(node.clone());
+        }
+    }
+    if let Some(rhs) = type_item_alias_rhs_name(ctx, item) {
+        return resolve_coproduct_type_node(ctx, &rhs);
+    }
+    None
+}
+
+fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
+    let bare = qualified_last_segment(parent_enum.to_string());
+    if let Some(item) = lookup_type_item_across_modules(ctx, parent_enum)
+        .or_else(|| lookup_type_item_across_modules(ctx, &bare))
+    {
+        if let Some(disj) = coproduct_disj_node(ctx, &item) {
+            return Some(disj);
+        }
+        return Some(item);
+    }
+    for module in ctx.modules.iter() {
+        let env = module.type_env.clone();
+        let node =
+            crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), parent_enum.to_string())
+                .or_else(|| crate::v1_compiler_infer_env::lookup_type_by_name(env, bare.clone()))?;
+        if let Some(disj) = coproduct_disj_node(ctx, &node) {
+            return Some(disj);
+        }
+        if node.connective == Connective::Disj {
+            return Some(node);
+        }
+    }
+    None
+}
+
+fn coproduct_parent_spellings_match(
+    ctx: &InterpContext,
+    value_parent: String,
+    pattern_parent: &str,
+) -> bool {
+    if value_parent == pattern_parent {
+        return true;
+    }
+    if qualified_last_segment(value_parent.clone())
+        == qualified_last_segment(pattern_parent.to_string())
+    {
+        if let (Some(value_coproduct), Some(pattern_coproduct)) = (
+            resolve_coproduct_type_node(ctx, &value_parent),
+            resolve_coproduct_type_node(ctx, pattern_parent),
+        ) {
+            if Rc::ptr_eq(&value_coproduct, &pattern_coproduct) {
+                return true;
+            }
+            let value_authored = authored_name_at(ctx.si(), value_coproduct);
+            let pattern_authored = authored_name_at(ctx.si(), pattern_coproduct);
+            if value_authored == pattern_authored {
+                return true;
+            }
+        }
+    }
+    let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
+    match coproduct {
+        Some(coproduct_node) => {
+            let authored = authored_name_at(ctx.si(), coproduct_node.clone());
+            authored == value_parent
+                || qualified_last_segment(authored) == qualified_last_segment(value_parent.clone())
+        }
+        None => false,
+    }
+}
+
+fn variant_arm_is_declared_in_coproduct(
+    ctx: &InterpContext,
+    variant_name: Symbol,
+    pattern_parent: &str,
+) -> bool {
+    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
+        Some(node) => node,
+        None => return false,
+    };
+    if coproduct.connective != Connective::Disj {
+        return false;
+    }
+    let variant_last = qualified_last_segment(resolve_sym(variant_name));
+    for child in coproduct.children.iter() {
+        if qualified_last_segment(authored_name_at(ctx.si(), child.clone())) == variant_last {
+            return true;
+        }
+    }
+    false
+}
+
+fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
+    parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
+}
+
+fn record_pattern_type_name_matches(
+    ctx: &InterpContext,
+    record_type_name: Symbol,
+    pattern_name: &str,
+    parent_enum: Option<&String>,
+) -> bool {
+    let resolved = resolve_sym(record_type_name);
+    let name_matches = record_type_name == ctx.sym(pattern_name)
+        || resolved == pattern_name
+        || type_name_compatible(resolved.clone(), pattern_name.to_string());
+    match parent_enum {
+        Some(parent) => {
+            record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
+                || variant_arm_is_declared_in_coproduct(ctx, record_type_name, parent)
+                || name_matches
+        }
+        None => name_matches,
+    }
+}
+
+fn record_nominal_is_declared_variant_of_coproduct(
+    ctx: &InterpContext,
+    record_nominal: String,
+    pattern_parent: &str,
+) -> bool {
+    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
+        Some(node) => node,
+        None => return false,
+    };
+    if coproduct.connective != Connective::Disj {
+        return false;
+    }
+    let record_last = qualified_last_segment(record_nominal.clone());
+    for child in coproduct.children.iter() {
+        let child_name = authored_name_at(ctx.si(), child.clone());
+        if child_name == record_nominal || qualified_last_segment(child_name) == record_last {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
@@ -1023,6 +1170,95 @@ struct PureCallMemo {
 }
 
 #[derive(Default)]
+struct PrepareGrammarCrossClaimMemo {
+    map: HashMap<(usize, u64), Value>,
+}
+
+thread_local! {
+    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
+        RefCell::new(PrepareGrammarCrossClaimMemo::default());
+    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<usize, Value>> =
+        RefCell::new(HashMap::new());
+    static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
+}
+
+pub fn clear_cross_claim_pure_memos() {
+    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
+        .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
+    ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow_mut().clear());
+    CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
+}
+
+fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
+    CROSS_CLAIM_FN_KEEPALIVE.with(|k| {
+        let mut keepalive = k.borrow_mut();
+        let ptr = Rc::as_ptr(fn_node) as usize;
+        if !keepalive.iter().any(|n| Rc::as_ptr(n) as usize == ptr) {
+            keepalive.push(fn_node.clone());
+        }
+    });
+}
+
+fn try_cross_claim_pure_memo(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+) -> Option<Value> {
+    // 🟡 dissolve-on: gunbc.roadmap_authority five_minute_ci_gate_program_note — a generic
+    // *cross-claim* pure memo keyed on fn-node identity + content-hashable args. `eval_call_memo`
+    // cannot be that authority: its eviction scope is the witness frame
+    // (`eval_call_memo_frame_exit`), so it cannot amortize the same pure call across the floor
+    // fold. These two name arms exist only because that lifetime gap does; a third arm is
+    // evidence the generic memo has not landed, not a reason to grow the list.
+    if func_name == "prepare_grammar" && args.len() == 1 {
+        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+        let key = eval_recompute_arg_key(&mut hash_memo, &args[0].1)?;
+        let content_hash = match key {
+            EvalRecomputeArgKey::ContentHash(h) => h,
+            _ => return None,
+        };
+        let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
+        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
+    }
+    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
+        let ptr = Rc::as_ptr(fn_node) as usize;
+        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(&ptr).cloned());
+    }
+    None
+}
+
+fn store_cross_claim_pure_memo(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    result: &Value,
+) {
+    if func_name == "prepare_grammar" && args.len() == 1 {
+        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+        if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
+            if let EvalRecomputeArgKey::ContentHash(h) = key {
+                keep_cross_claim_fn(fn_node);
+                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
+                    m.borrow_mut()
+                        .map
+                        .insert((Rc::as_ptr(fn_node) as usize, h), result.clone())
+                });
+            }
+        }
+        return;
+    }
+    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
+        keep_cross_claim_fn(fn_node);
+        ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| {
+            m.borrow_mut()
+                .insert(Rc::as_ptr(fn_node) as usize, result.clone());
+        });
+    }
+}
+
+#[derive(Default)]
 struct ParseTableMemo {
     map: HashMap<(String, String, i64, Symbol), Value>,
     keepalive: Vec<Value>,
@@ -1774,17 +2010,59 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     ) -> Rc<PreparedScopeIndexes> {
+        Self::build_scope_indexes_with_module_order(graph, source_indices, None)
+    }
+
+    /// Same walk as [`build_scope_indexes`], but when `module_order` is present the modules are
+    /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
+    /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
+    /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    ///
+    /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
+    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
+    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
+    pub fn build_scope_indexes_with_module_order(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        module_order: Option<&[String]>,
+    ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
+        let first_write_wins = module_order.is_some();
+        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
+            match module_order {
+                Some(order) => {
+                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
+                        graph
+                            .modules
+                            .iter()
+                            .map(|m| (m.func_env.name.as_str(), m))
+                            .collect();
+                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                    // `modules` from the same `order` (`in_scope` is that list), so the
+                    // filter_map cannot drop a scoped member.
+                    order
+                        .iter()
+                        .filter_map(|name| by_name.get(name.as_str()).copied())
+                        .collect()
+                }
+                None => graph.modules.iter().collect(),
+            };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
-        for module in graph.modules.iter() {
+        for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    fn_nodes.insert(name.clone(), item.clone());
+                    if first_write_wins {
+                        fn_nodes.entry(name.clone()).or_insert(item.clone());
+                    } else {
+                        fn_nodes.insert(name.clone(), item.clone());
+                    }
                     if !module_path.is_empty() {
                         let qualified = format!("{}.{}", module_path, name);
                         fn_nodes.insert(qualified.clone(), item.clone());
@@ -3602,7 +3880,7 @@ fn match_pattern(
             // verbatim; Variant payloads are excluded so the Variant arm's
             // inline raw-value handling stays authoritative.
             if name_last == "Present"
-                && parent_enum.as_deref() == Some("Optional")
+                && parent_enum_is(parent_enum.as_ref(), "Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3615,7 +3893,7 @@ fn match_pattern(
                 return Some(bindings);
             }
             if name_last == "Holds"
-                && parent_enum.as_deref() == Some("Witness")
+                && parent_enum_is(parent_enum.as_ref(), "Witness")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3627,14 +3905,42 @@ fn match_pattern(
                 }
                 return Some(bindings);
             }
+            if name_last == "Absent" && field_bindings.is_empty() {
+                return match value {
+                    Value::Null => Some(HashMap::new()),
+                    Value::Variant {
+                        type_name,
+                        variant_name,
+                        ..
+                    } => {
+                        if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                            None
+                        } else if let Some(parent) = parent_enum.as_ref() {
+                            if coproduct_parent_spellings_match(
+                                ctx,
+                                resolve_sym(*type_name),
+                                parent,
+                            ) || variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent)
+                            {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        } else {
+                            Some(HashMap::new())
+                        }
+                    }
+                    _ => None,
+                };
+            }
             match value {
                 Value::Variant {
+                    type_name,
                     variant_name,
                     fields,
-                    ..
                 } => {
                     if name_last == "Holds"
-                        && parent_enum.as_deref() == Some("Witness")
+                        && parent_enum_is(parent_enum.as_ref(), "Witness")
                         && *variant_name != ctx.sym("Holds")
                         && *variant_name != ctx.sym("Violates")
                     {
@@ -3647,7 +3953,7 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if name_last == "Present"
-                        && parent_enum.as_deref() == Some("Optional")
+                        && parent_enum_is(parent_enum.as_ref(), "Optional")
                         && *variant_name != ctx.sym("Present")
                         && *variant_name != ctx.sym("Absent")
                     {
@@ -3659,14 +3965,13 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if *variant_name != ctx.sym(name) {
-                        // Qualified PATTERN spellings (module.Variant) carry the containment
-                        // path; variant identity is the bare arm name, normalized at value
-                        // construction — so only the pattern side needs the last segment.
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *variant_name != ctx.sym(pat_last) {
+                    if let Some(parent) = parent_enum.as_ref() {
+                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
                             return None;
                         }
+                    }
+                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3682,7 +3987,12 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
-                    if *type_name != ctx.sym(name) {
+                    if !record_pattern_type_name_matches(
+                        ctx,
+                        *type_name,
+                        name_last,
+                        parent_enum.as_ref(),
+                    ) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
@@ -3804,7 +4114,8 @@ fn match_pattern(
                     _ => None,
                 },
                 Value::Null
-                    if name_last == "Violates" && parent_enum.as_deref() == Some("Witness") =>
+                    if name_last == "Violates"
+                        && parent_enum_is(parent_enum.as_ref(), "Witness") =>
                 {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3821,16 +4132,19 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Null
-                    if name_last == "None" && parent_enum.as_deref() == Some("Diagnostics") =>
+                    if name_last == "None"
+                        && parent_enum_is(parent_enum.as_ref(), "Diagnostics") =>
                 {
                     Some(HashMap::new())
                 }
                 Value::Null
-                    if name_last == "Absent" && parent_enum.as_deref() == Some("Optional") =>
+                    if name_last == "Absent"
+                        && (parent_enum.is_none()
+                            || parent_enum_is(parent_enum.as_ref(), "Optional")) =>
                 {
                     Some(HashMap::new())
                 }
-                _ if name_last == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                _ if name_last == "Present" && parent_enum_is(parent_enum.as_ref(), "Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -3842,7 +4156,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                _ if name_last == "Holds" && parent_enum.as_deref() == Some("Witness") => {
+                _ if name_last == "Holds" && parent_enum_is(parent_enum.as_ref(), "Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -4176,10 +4490,20 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
+        return Ok(v);
+    }
     let trace_on = eval_recompute_trace_enabled();
     let memo_on = ctx.eval_call_memo.borrow().enabled;
     if !trace_on && !memo_on {
-        return call_function(ctx, fn_node, args, env);
+        let effects_before = ctx.effect_dispatch_count.get();
+        let result = call_function(ctx, fn_node, args, env);
+        if let Ok(v) = &result {
+            if ctx.effect_dispatch_count.get() == effects_before {
+                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+            }
+        }
+        return result;
     }
     let started = Instant::now();
     let key = match eval_recompute_key(ctx, fn_node, args) {
@@ -4208,6 +4532,11 @@ fn eval_pure_named_call(
     }
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
+    if let Ok(v) = &result {
+        if ctx.effect_dispatch_count.get() == effects_before {
+            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+        }
+    }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
         if let Ok(v) = &result {
             eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
@@ -12545,10 +12874,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
             ))),
 
-            arm "free_call.resolution_divergence_silent_pick_gate_in_process" { "resolution_divergence_silent_pick_gate_in_process" } => Ok(Some(Value::Bool(
-                crate::cli_run::resolution_divergence_silent_pick_gate_in_process($ctx),
-            ))),
-
         }
     }};
 }
@@ -13286,13 +13611,59 @@ pub fn eval_profile_reset() {
 /// bypassing `free_monoid_to_vec`'s O(n) materialization. `parse_current_position`
 /// (v2 02_parse.dag) calls `length` on the full token stream every parse
 /// attempt; without this fast path that is an O(n) clone per attempt, an
-/// O(n^2) tax the compiled (Rust-emitted) realization never pays.
+/// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
+/// `.length()` on native `Value::Str` routes through `string_length_ascii_aware`
+/// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
+/// materialize OOM). Free-call `length`/`string_length` already avoided
+/// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
+/// method-call gap only.
 pub(crate) fn native_len(val: &Value) -> Option<i64> {
     match val {
         Value::List(items) => Some(items.len() as i64),
         Value::Map(m) => Some(m.len() as i64),
         Value::Set(s) => Some(s.len() as i64),
+        // Method-call `.length()` on a native `Value::Str` must not fall through to
+        // `free_monoid_to_vec` (which materializes one `Value` per codepoint). JSON
+        // parsing alone calls `.length()` O(n) times on the input buffer; without this
+        // arm that is O(n^2) allocations and pins multi-gigabyte RSS on ~500KB inputs
+        // (srv1 materialize_codex_runtime_bundle bisect, 2026-08-14).
+        //
+        // LIMIT: non-ASCII .length()/.count() remains O(n) per call via the chars() walk.
+        // REASON: the ASCII fast path covers the dominant repeated-query case, and genuinely
+        // non-ASCII strings in this corpus are constructed-then-queried-once-or-never, so
+        // precomputing a codepoint count at construction would not amortize. Flag the
+        // ASCII-in-practice half explicitly AS AN ASSUMPTION about workloads, not a modeled
+        // fact — §6 is clear that "n is small here" is not time-stable.
+        // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
+        // string. If that appears, the amortization argument inverts and a carried count
+        // becomes correct.
+        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(&s, s.is_ascii())),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod native_len_tests {
+    use super::*;
+
+    #[test]
+    fn native_len_str_avoids_free_monoid_materialization() {
+        let big = str_value(&"a".repeat(50_000));
+        let (calls_before, items_before) = flatten_counters_snapshot();
+        let n = native_len(&big).expect("native Str length");
+        assert_eq!(n, 50_000);
+        let (calls_after, items_after) = flatten_counters_snapshot();
+        assert_eq!(
+            (calls_after, items_after),
+            (calls_before, items_before),
+            "native_len on Value::Str must not call free_monoid_to_vec"
+        );
+    }
+
+    #[test]
+    fn native_len_str_counts_unicode_scalar_length() {
+        let s = str_value("é"); // one scalar, two UTF-8 bytes
+        assert_eq!(native_len(&s), Some(1));
     }
 }
 

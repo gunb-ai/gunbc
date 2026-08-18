@@ -106,12 +106,6 @@ data compiler_tests_rust_hand_assertion_scaffold_trigger: Disposition = Scaffold
   }
 }
 
-data compiler_tests_rust_hand_assertion_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
-  carrier_module: "v1.compiler.compiler_tests_rust",
-  blob_decl: "ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test",
-  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
-}
-
 data runtime_rust_host_intrinsic_kernel_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -494,8 +488,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   rust_dry_run_mode_scaffold_row,
   runtime_rust_trace_mark_scaffold_row,
   runtime_rust_kernel_opcode_scaffold_row,
-  runtime_rust_hash_ops_terminal_row,
-  compiler_tests_rust_hand_assertion_row
+  runtime_rust_hash_ops_terminal_row
 ]
 
 fn language_source_scaffold_row_is_dispositioned(row: LanguageSourceScaffoldRow) -> Bool {

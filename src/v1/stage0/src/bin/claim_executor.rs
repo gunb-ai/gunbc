@@ -15,15 +15,12 @@ use v1_compiler::cli_run::{
     compute_histogram_data, discover_floor_witness_roster_with_snapshot,
     enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
-    resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
+    make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
     ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles, WitnessRowCost,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::derived_realization_schedule::{RealizationConcurrency, RealizationSlot};
 use v1_compiler::memory_governor::{
@@ -37,12 +34,10 @@ use v1_compiler::v1_interpreter::{
 
 /// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
 /// roster so a batch draws exactly the ceiling its lane declares. Self-host wet (green +
-/// known-red quarantine) share the 600s wall budget; silent-pick owns
-/// `gunbc_falsifier_silent_pick_gate_receipt_wall_budget` (900s); the Hermetic substrate
-/// long lane owns `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane
-/// inherits another's ceiling — the prior mis-scopes reddened silent-pick against the
-/// 600s self-host wall (2026-07-25) and the substrate long lane against the 5s per-PR
-/// fast-lane eval budget (run 30176416535, 7 of 10 rows killed at ~5001ms).
+/// known-red quarantine) share the 600s wall budget; the Hermetic substrate long lane owns
+/// `gunbc_falsifier_substrate_long_lane_witness_eval_budget`. No lane inherits another's
+/// ceiling — the substrate long lane must not inherit the 5s per-PR fast-lane eval budget
+/// (run 30176416535, 7 of 10 rows killed at ~5001ms).
 #[derive(Clone, Default)]
 struct FalsifierSelfHostWetBudgets {
     wall_budget_ms: Option<u64>,
@@ -54,8 +49,6 @@ struct FalsifierSelfHostWetBudgets {
     /// witness's; the path-grain hermetic twin of this field was deleted when function-grain
     /// expectation replaced it, rather than left beside its successor.
     known_red_entry_paths: Vec<String>,
-    silent_pick_wall_budget_ms: Option<u64>,
-    silent_pick_entry_paths: Vec<String>,
     /// Paths requiring the long eval ceiling (`witness_long_eval_budget_entries`) — the
     /// UNION of the long-lane batch roster and every admission row declaring
     /// `SubstrateLongLaneEvalBudget`.
@@ -2096,7 +2089,31 @@ impl ExpectedRedDisposition {
         match outcome {
             ClaimOutcome::Fail => Self::AgreementAssertionReturnedFalse,
             ClaimOutcome::Pass => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::TimedOut { .. } => Self::BudgetFailure,
+            // SPLIT ON completion, because the two arms differ in whether a verdict exists.
+            // An INTERRUPTED row produced none — budget failure is the honest reading. A
+            // CompletedOverBudget row RAN TO COMPLETION AND PASSED (both converters match only
+            // `ClaimOutcome::Pass`), so reporting "no verdict" about it is the same
+            // state-space conflation this PR removes on the required-floor path, left standing
+            // one function away.
+            //
+            // It maps to the stale-quarantine arm rather than a new one deliberately. The
+            // verdict-bearing half — the enrolled claim is passing and the roster row is stale
+            // — is exactly what that arm means, and it is the half a consumer of this tally
+            // acts on. The cost half is NOT represented here: this surface has one channel per
+            // row, where `run_required_floor` reports such a row to both `stale_quarantine`
+            // and `budget_refused`. Minting a `StaleAndOverBudget` arm to carry it would be
+            // growth on a surface the floor cut is retiring — `--required-floor` returns
+            // before any caller of `run_batch_unit`, so CI does not execute this path at all.
+            // Losing a cost signal on a retiring surface is the right trade; reporting a
+            // passing row as undecided is not.
+            ClaimOutcome::TimedOut {
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
+                ..
+            } => Self::BudgetFailure,
+            ClaimOutcome::TimedOut {
+                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
+                ..
+            } => Self::StaleQuarantineAssertionReturnedTrue,
             ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
                 Self::InfrastructureOrReferentFailure
             }
@@ -2306,6 +2323,11 @@ struct BudgetRefusal {
     elapsed_ms: u64,
     budget_ms: u64,
     kind: BudgetKind,
+    /// Carried, not dropped. Without it the erasure the classifier just stopped doing simply
+    /// moves one layer down: this carrier feeds the durable component and alert path, so a
+    /// completed-and-passed row would arrive there as an indistinguishable "budget refusal"
+    /// and its exact elapsed would be read as a ceiling.
+    completion: v1_compiler::cli_run::BudgetCompletion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2634,21 +2656,37 @@ fn claim_result_for_outcome(
             elapsed_ms,
             budget_ms,
             kind,
+            completion,
         } => ClaimResult {
             function,
             entry: entry.clone(),
             ok: false,
-            // The detail still names the budget in prose for the human reading a log, but
-            // `budget_refusal` beside it is what classification reads — so the mode no
-            // longer depends on this wording. "ceiling" is deliberate: the row was killed
-            // AT the budget, so elapsed bounds the cost, it does not measure it.
-            detail: format!(
-                "killed at its {} budget: {}ms elapsed > {}ms budget (elapsed is a ceiling, \
-                 not a completed duration)",
-                kind.label(),
-                elapsed_ms,
-                budget_ms
-            ),
+            // The detail names the budget in prose for the human reading a log; `budget_refusal`
+            // beside it is what classification reads, so the mode does not depend on this
+            // wording. What the wording MUST get right is whether the number is a bound or a
+            // measurement, and it used to say "killed ... elapsed is a ceiling" unconditionally.
+            // That is true of an interrupted row and FALSE of a completed one: a
+            // `CompletedOverBudget` row ran to completion, passed, and has an exact elapsed, so
+            // asserting it was killed and censored is a fabricated fact in a durable receipt.
+            // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
+            // survived — a considered-looking justification for a claim that only held on one
+            // arm.
+            detail: match completion {
+                v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
+                    "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                     (interrupted, so elapsed bounds the cost and does not measure it)",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+                v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
+                    "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
+                     (ran to completion and passed, then was reclassified on cost)",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+            },
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -2661,6 +2699,7 @@ fn claim_result_for_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             }),
             host_dependency_refusal: None,
             resolve_realization,
@@ -3908,13 +3947,6 @@ fn select_discovery_batch_budgets(
             wet_interp_budget_ms: budgets.interp_eval_budget_ms,
         };
     }
-    if discovery_entries_intersect_roster(explicit_entries, &budgets.silent_pick_entry_paths) {
-        return DiscoveryBatchBudgets {
-            eval_budget_ms: None,
-            wet_wall_budget_ms: budgets.silent_pick_wall_budget_ms,
-            wet_interp_budget_ms: None,
-        };
-    }
     DiscoveryBatchBudgets {
         eval_budget_ms: None,
         wet_wall_budget_ms: None,
@@ -4017,10 +4049,12 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => Some(BudgetRefusal {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             }),
             _ => None,
         })
@@ -4092,13 +4126,23 @@ fn scoped_witness_summary_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             } => (
-                "budget-killed",
+                // "budget-killed" was unconditional and is only true of an interrupted row; a
+                // completed one passed and was reclassified on an exact cost. The tag is what
+                // downstream reads, so a wrong tag is worse than wrong prose.
+                match completion {
+                    v1_compiler::cli_run::BudgetCompletion::Interrupted => "budget-killed",
+                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => {
+                        "budget-exceeded-completed"
+                    }
+                },
                 format!(
-                    "{} elapsed_ms={} budget_ms={}",
+                    "{} elapsed_ms={} budget_ms={} elapsed_is={}",
                     kind.label(),
                     elapsed_ms,
-                    budget_ms
+                    budget_ms,
+                    completion.elapsed_reading()
                 ),
             ),
         });
@@ -10375,18 +10419,35 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={}",
+                     known_red_held={} failed={} stale_quarantine={} budget_refused={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
                     outcome.passed,
                     outcome.known_red_held,
-                    outcome.failures.len()
+                    outcome.failures.len(),
+                    outcome.stale_quarantine.len(),
+                    outcome.budget_refused.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                if outcome.failures.is_empty() {
+                // THREE CAUSES, THREE COUNTS, ONE STOPPED LINE. All three refuse the run, and
+                // they are reported apart because their remedies differ: a FAIL is a defect to
+                // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
+                // delete, a BUDGET-REFUSED is a cost to reduce. Summing them into `failed`
+                // would make an un-quarantine indistinguishable from a regression in the alert
+                // signature, which is the conflation `std.witness_admission` rules out.
+                for stale in &outcome.stale_quarantine {
+                    eprintln!("required-floor: STALE-QUARANTINE {stale}");
+                }
+                for refused in &outcome.budget_refused {
+                    eprintln!("required-floor: BUDGET-REFUSED {refused}");
+                }
+                if outcome.failures.is_empty()
+                    && outcome.stale_quarantine.is_empty()
+                    && outcome.budget_refused.is_empty()
+                {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))
@@ -10525,45 +10586,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
         // spawn width (wet) from the same resolved graph — this resolve was previously
         // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
-        let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
-        if resolution_divergence_receipt_armed {
-            if let Err(e) = reset_resolution_divergence_phase_receipt()
-                .and_then(|()| {
-                    record_resolution_divergence_phase(
-                        ResolutionDivergencePhase::ParentPlanResolve,
-                        ResolutionDivergencePhaseState::Started,
-                        &format!("{plan_entry}::{plan_function}"),
-                    )
-                })
-                .and_then(|()| resolution_divergence_parent_plan_capture_begin())
-            {
-                eprintln!("claim_executor: {e}");
-                return Err(ExitCode::from(1));
-            }
-        }
         let (plan_graph, plan_indices) =
             match resolve_entry_graph_shared(&source_roots, &plan_entry) {
                 Ok(resolved) => resolved,
                 Err(msg) => {
-                    if resolution_divergence_receipt_armed {
-                        let _ = resolution_divergence_parent_plan_capture_finish();
-                    }
                     eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
                     return Err(ExitCode::from(1));
                 }
             };
-        if resolution_divergence_receipt_armed {
-            if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
-                record_resolution_divergence_phase(
-                    ResolutionDivergencePhase::ParentPlanResolve,
-                    ResolutionDivergencePhaseState::Completed,
-                    &format!("{plan_entry}::{plan_function}"),
-                )
-            }) {
-                eprintln!("claim_executor: {e}");
-                return Err(ExitCode::from(1));
-            }
-        }
         phase_mark("plan resolve");
 
         let plan_ctx =
@@ -10841,26 +10871,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             known_red_entry_paths: match read_schedule_witness_entry_paths(
                 plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_known_red_roster",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
-            silent_pick_wall_budget_ms: match read_positive_budget_ms(
-                plan_ctx_or_refuse!("falsifier budget"),
-                "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
-            silent_pick_entry_paths: match read_schedule_witness_entry_paths(
-                plan_ctx_or_refuse!("plan read"),
-                "falsifier_silent_pick_gate_roster",
             ) {
                 Ok(v) => v,
                 Err(msg) => {
@@ -11294,6 +11304,15 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
 /// names BudgetExceeded{wall,budget} vs WitnessRed{claims} vs Infra{spawn/toolchain/eviction}
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
+// STALE SIGNAL, NOT MERELY DEAD CODE. These substrings matched a budget refusal back when a
+// raised one reached the claim seam as a `RuntimeError` carrying the refusal as prose. It now
+// arrives as `ClaimOutcome::TimedOut` with the pair typed, so nothing renders this text on the
+// required-floor path any more. That matters more for the RESTORE than for today: this function
+// sits past the required-floor early return, on the falsifier lane whose workflows the floor cut
+// deleted, and a dead `.contains` does not fail loudly when a lane comes back — it matches
+// nothing and reports NO budget findings, which says "there are none" where it should say "I
+// cannot tell". Whoever re-adds this lane reads the variant, not the prose; the classification
+// is deletion population otherwise.
 fn falsifier_failure_mode(details: &[String]) -> &'static str {
     if details.iter().any(|d| {
         d.contains("BudgetExceeded{")
@@ -13008,6 +13027,11 @@ mod tests {
             elapsed_ms: 5001,
             budget_ms: 5000,
             kind: BudgetKind::Cpu,
+            // Interrupted, so 5001 is a lower bound. Named rather than defaulted: the
+            // CompletedOverBudget row is a DIFFERENT case with its own arm, and a fixture that
+            // did not say which one it built would be asserting about whichever the compiler
+            // picked.
+            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         });
         assert!(
             t.agreements.is_empty(),
@@ -13085,6 +13109,7 @@ mod tests {
                 elapsed_ms: 1,
                 budget_ms: 1,
                 kind: BudgetKind::Wall,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             },
             ClaimOutcome::RuntimeError {
                 message: "boom".into(),
@@ -13473,12 +13498,11 @@ mod tests {
             )],
             &roster
         ));
-        // Silent-pick is Wet but not on the self-host roster — must not inherit
-        // the 600s whole-receipt ceiling (mis-scope receipt 2026-07-25).
+        // A non-self-host wet witness must not inherit the 600s whole-receipt ceiling.
         assert!(!discovery_entries_intersect_roster(
             &[(
-                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
-                "resolution_divergence_silent_pick_gate_keystone_holds".into()
+                "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                "materialize_codex_runtime_bundle_produces_native_executable_holds".into()
             )],
             &roster
         ));
@@ -13489,26 +13513,6 @@ mod tests {
                 "self_host_logic_behavioral_receipt_holds".into()
             )],
             &[]
-        ));
-    }
-
-    #[test]
-    fn silent_pick_roster_intersection_scopes_own_wall_budget() {
-        let silent_pick =
-            vec!["dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into()];
-        assert!(discovery_entries_intersect_roster(
-            &[(
-                "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag".into(),
-                "resolution_divergence_silent_pick_gate_keystone_holds".into()
-            )],
-            &silent_pick
-        ));
-        assert!(!discovery_entries_intersect_roster(
-            &[(
-                "dag/test/claim/self_host_logic_behavioral_witness_test.dag".into(),
-                "self_host_logic_behavioral_receipt_holds".into()
-            )],
-            &silent_pick
         ));
     }
 
@@ -13552,6 +13556,7 @@ mod tests {
                 elapsed_ms: 900_001,
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             }),
             host_dependency_refusal: None,
             resolve_realization: None,
@@ -13664,13 +13669,13 @@ mod tests {
         );
         assert_eq!(
             falsifier_failure_mode(&[
-                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+                "batch=3 fn=expensive_wet_witness detail=witness receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
         assert_eq!(
             falsifier_failure_mode(&[
-                "batch=3 fn=resolution_divergence_silent_pick_gate_keystone_holds detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
+                "batch=3 fn=expensive_wet_witness detail=wet self-host receipt wall budget exceeded: 707687ms elapsed > 600000ms whole-receipt budget".into()
             ]),
             "BudgetExceeded"
         );
@@ -14674,6 +14679,194 @@ mod tests {
         assert_eq!(
             begin_mirror,
             "🔄 started typecheck v2.compiler.normalized_tree"
+        );
+    }
+
+    fn run_seed_witness_claim_result_text(
+        source_roots: &[String],
+        subject: &str,
+        function: &str,
+        passed: bool,
+        wall_nanos: u128,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_ci_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let wall = run_in_context_with_args(
+            &ctx,
+            "nanosecond",
+            &[(Some("count".to_string()), Value::Int(wall_nanos as i64))],
+            false,
+        )
+        .ok()?;
+        let out = run_in_context_with_args(
+            &ctx,
+            "ci_witness_claim_result_text",
+            &[
+                (Some("subject".to_string()), str_value(subject.to_string())),
+                (
+                    Some("function".to_string()),
+                    str_value(function.to_string()),
+                ),
+                (Some("passed".to_string()), Value::Bool(passed)),
+                (Some("wall".to_string()), wall),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    fn run_seed_witness_budget_warn_text(
+        source_roots: &[String],
+        qualified: &str,
+        wall_ms: u64,
+        warn_ms: u64,
+        budget_ms: u64,
+    ) -> Option<String> {
+        let entry = source_roots
+            .iter()
+            .map(|r| Path::new(r).join("gunbc/observation_ci_render.dag"))
+            .find(|p| p.exists())?
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let wall = millisecond_value(&ctx, u128::from(wall_ms)).ok()?;
+        let warn = millisecond_value(&ctx, u128::from(warn_ms)).ok()?;
+        let budget = millisecond_value(&ctx, u128::from(budget_ms)).ok()?;
+        let out = run_in_context_with_args(
+            &ctx,
+            "ci_witness_budget_warn_text",
+            &[
+                (
+                    Some("qualified".to_string()),
+                    str_value(qualified.to_string()),
+                ),
+                (Some("wall".to_string()), wall),
+                (Some("warn".to_string()), warn),
+                (Some("budget".to_string()), budget),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    // Wiring flip: the Rust mirror is proven byte-equal to the `.dag` oracle. The hot path
+    // cannot call the interpreter per line (~800 anomaly rows); this pin is what keeps the
+    // mirror honest. RED: changing the mirror token, padding, or bracket family fails the
+    // byte-equal assert or the legacy-shape asserts below.
+    #[test]
+    fn render_witness_claim_result_text_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.observation_ci_render_witness_test",
+            "w_witness_claim_line_from_module_path_holds",
+            true,
+            230_000_000,
+        )
+        .expect("ci_witness_claim_result_text must resolve and render");
+        let mirror = v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+            "test.claim.observation_ci_render_witness_test",
+            "w_witness_claim_line_from_module_path_holds",
+            230_000_000,
+            true,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "witness claim-result mirror must be byte-equal to the .dag oracle"
+        );
+        assert!(
+            mirror.contains("PASSED in 230ms") && !mirror.contains("PASS in "),
+            "drift control: legacy PASS token must not return: {mirror:?}"
+        );
+        assert!(
+            mirror.starts_with("//test/claim/observation_ci_render_witness_test:"),
+            "drift control: Bazel label prefix required: {mirror:?}"
+        );
+
+        let under_boundary = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.foo",
+            "w_bar",
+            true,
+            89_000_000_000,
+        )
+        .expect("89s boundary oracle");
+        let at_boundary = run_seed_witness_claim_result_text(
+            &roots,
+            "test.claim.foo",
+            "w_bar",
+            true,
+            90_000_000_000,
+        )
+        .expect("90s boundary oracle");
+        assert_eq!(
+            v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                89_000_000_000,
+                true,
+            ),
+            under_boundary,
+            "89s minute-switch boundary must match oracle"
+        );
+        assert_eq!(
+            v1_compiler::cli_run::render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                90_000_000_000,
+                true,
+            ),
+            at_boundary,
+            "90s minute-switch boundary must match oracle"
+        );
+        assert!(
+            under_boundary.contains("89 seconds") && at_boundary.contains("1 minutes"),
+            "minute-switch drift control: {under_boundary:?} vs {at_boundary:?}"
+        );
+    }
+
+    #[test]
+    fn render_witness_budget_warn_text_mirror_matches_seed_oracle() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let oracle =
+            run_seed_witness_budget_warn_text(&roots, "test.claim.foo.w_bar", 600, 500, 1000)
+                .expect("ci_witness_budget_warn_text must resolve and render");
+        let mirror = v1_compiler::cli_run::render_witness_budget_warn_text_mirror(
+            "test.claim.foo.w_bar",
+            600,
+            500,
+            1000,
+        );
+        assert_eq!(
+            oracle, mirror,
+            "witness budget-warn mirror must be byte-equal to the .dag oracle"
+        );
+        assert!(
+            mirror.contains("(ceiling 1000ms)") && mirror.starts_with("[floor-witness-slow]"),
+            "drift control: ceiling clause and marker required: {mirror:?}"
         );
     }
 
@@ -16602,15 +16795,7 @@ mod tests {
         assert_eq!(wet_witness_row_outcome_label("Refused"), "failed");
     }
 
-    /// Discovery is THE falsifier path — `resolution_divergence_silent_pick_gate_keystone_holds`
-    /// is a discovery row — so a budget kill there must classify structurally like any other.
-    ///
-    /// RED control for review 45220, which caught this as a live regression: a discovery batch
-    /// flattens N witness outcomes into one `ok`/`detail`, and this result previously hardcoded
-    /// `budget_refusal: None`. Combined with the new detail wording (which deliberately contains
-    /// none of `falsifier_failure_mode`'s substrings), a budget kill on the primary path fell
-    /// through to `WitnessRed` — the exact misclassification this change exists to remove, in
-    /// new prose. The assertion below on the string classifier keeps the control non-vacuous.
+    /// Discovery budget kills must classify structurally like any other batch.
     #[test]
     fn discovery_budget_kill_classifies_structurally_on_the_falsifier_path() {
         use v1_compiler::cli_run::{
@@ -16618,7 +16803,7 @@ mod tests {
             ResolveStageNanos,
         };
         let killed_detail =
-            "1 of 1 discovery witness(es) failed: fn=silent_pick killed at its wall budget: \
+            "1 of 1 discovery witness(es) failed: fn=expensive_witness killed at its wall budget: \
              900001ms elapsed > 900000ms budget";
         assert_eq!(
             falsifier_failure_mode(&[killed_detail.to_string()]),
@@ -16634,10 +16819,9 @@ mod tests {
             divergences: Vec::new(),
             failures: vec![killed_detail.into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
-                entry: "dag/test/claim/resolution_divergence_silent_pick_gate_witness_test.dag"
-                    .into(),
-                module_path: "test.claim.resolution_divergence_silent_pick_gate".into(),
-                function: "resolution_divergence_silent_pick_gate_keystone_holds".into(),
+                entry: "dag/test/claim/expensive_wet_witness_test.dag".into(),
+                module_path: "test.claim.expensive_wet_witness".into(),
+                function: "expensive_witness_keystone_holds".into(),
                 outcome,
                 execution_leg: "InterpretedLeg".into(),
             }],
@@ -16654,6 +16838,7 @@ mod tests {
             elapsed_ms: 900_001,
             budget_ms: 900_000,
             kind: BudgetKind::Wall,
+            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         };
 
         // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must
