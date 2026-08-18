@@ -32,10 +32,17 @@ as data, same pattern as `docs/plans/measurements/`.
 
 ## Derivation authority (not a reconstruction)
 
-Two steps; only the second is reproducible from this tree today.
+Two links with different epistemic status:
+
+| artifact | status | recourse if numbers look wrong |
+| --- | --- | --- |
+| `census.tsv` | **receipt** — one-shot observation | run a **new** census (transport deleted; cannot re-run) |
+| `partition.tsv` | **reproducible** — derived from census | re-run `partition.py` on `census.tsv` |
 
 1. **`census.tsv`** — produced by the one-shot `required_floor_failure_census` run on GHA
-   `32080685910` (Rust transport since deleted; receipt is the committed TSV + run id).
+   `32080685910`. The Rust transport that produced it was scaffolding and is deleted from
+   this tree; **`census.tsv` cannot be regenerated from source here.** Trust the committed
+   file and run id, or commission a new census — not a re-run of this one.
    Each row records witness module, bare name, selected decl module, candidate decl modules,
    failure class, and error message as observed at eval time.
 
