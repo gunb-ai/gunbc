@@ -135,7 +135,7 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
   let p = placement_of_endpoint_observation(
     observed: gunbc.build_cache_instance.EndpointObservationUnavailable {
       instance: srv1_ci_instance_fixture(),
-      reason: ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as std.types.NonEmptyStr },
+      reason: extdeps.network.reach.ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as std.types.NonEmptyStr },
     },
   )
   match p {

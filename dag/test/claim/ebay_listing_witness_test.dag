@@ -4,7 +4,7 @@ module test.claim.ebay_listing_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_condition_new_roundtrip() -> Bool {
-  condition_wire_label(c: New) == "NEW"
+  condition_wire_label(c: extdeps.ebay.inventory.New) == "NEW"
 }
 
 test fn witness_condition_used_excellent_decodes() -> Bool {

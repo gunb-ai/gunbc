@@ -120,6 +120,6 @@ test fn witness_wrong_case_conclusion_does_not_decode() -> Bool {
 }
 
 test fn witness_check_conclusion_roundtrip_timed_out() -> Bool {
-  check_conclusion_wire_label(c: TimedOut) == "timed_out"
+  check_conclusion_wire_label(c: extdeps.github.checks.TimedOut) == "timed_out"
 }
 

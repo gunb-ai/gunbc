@@ -89,7 +89,7 @@ test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
   match classify_nbd_serve_readiness(
     process: ServeProcessesPresent,
     port: gunbc.srv3_os_install_diagnostic.ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
-    session: TokenPresent,
+    session: gunbc.srv3_os_install_diagnostic.TokenPresent,
     iso: gunbc.srv3_os_install_diagnostic.IsoPresent { observed_content_hash: content_hash_of_value(value: "wrong-hash") },
     intent: srv3_os_install_attempt_intent,
   ) {

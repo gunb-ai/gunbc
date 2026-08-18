@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 
 fn getrandom_octets(count: Int) -> List<std.integer.UInt8>? {
-  base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
+  base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: std.encoding.Standard)
 }
 
 pattern mint_base64url_credential(byte_count: Int) -> { credential: String }

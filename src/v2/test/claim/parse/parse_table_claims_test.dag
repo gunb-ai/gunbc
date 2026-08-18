@@ -87,7 +87,7 @@ fn parse_table_projection_grammar() -> v2.std.grammar.ParseGrammar {
             left: v2.std.grammar.Terminal { token_class: ^pt_proj_tok_a, stamp: StampClass },
             right: v2.std.grammar.Choice {
               left: v2.std.grammar.Nonterminal { production: ^pt_proj_nt_b },
-              right: Optional { element: Repeat { element: v2.std.grammar.Terminal { token_class: ^pt_proj_tok_c, stamp: StampClass } } }
+              right: Optional { element: v2.std.grammar.Repeat { element: v2.std.grammar.Terminal { token_class: ^pt_proj_tok_c, stamp: StampClass } } }
             }
           },
           emitted: grammar_atom(identity: ^pt_proj_start)

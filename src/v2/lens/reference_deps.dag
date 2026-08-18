@@ -678,7 +678,7 @@ fn reference_closure_bfs_parsed_walk(
       } else {
         match map_lookup_where_rejected_unreachable(m: census_cache, key: path) {
           Present { value: census } =>
-            if is_empty(xs: census.refusals) {
+            if v2.std.algebra.is_empty(xs: census.refusals) {
               let neighbors = reference_neighbor_paths_from_facts(
                 facts: census.facts,
                 module_to_path: module_to_path,

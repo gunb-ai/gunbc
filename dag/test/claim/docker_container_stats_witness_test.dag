@@ -266,7 +266,7 @@ test fn container_state_wire_label_exited() -> Bool {
 
 test fn container_state_roundtrip_preserves_value() -> Bool {
   let roundtrip_running = (parse_container_state(container_state_wire_label(extdeps.docker.container_inspect.Running))) == Present { value: extdeps.docker.container_inspect.Running }
-  let roundtrip_paused = (parse_container_state(container_state_wire_label(Paused))) == Present { value: extdeps.docker.container_inspect.Paused }
+  let roundtrip_paused = (parse_container_state(container_state_wire_label(extdeps.docker.container_inspect.Paused))) == Present { value: extdeps.docker.container_inspect.Paused }
   let roundtrip_exited = (parse_container_state(container_state_wire_label(extdeps.docker.container_inspect.Exited))) == Present { value: extdeps.docker.container_inspect.Exited }
   let roundtrip_dead = (parse_container_state(container_state_wire_label(Dead))) == Present { value: Dead }
   let roundtrip_restarting = (parse_container_state(container_state_wire_label(Restarting))) == Present { value: Restarting }
