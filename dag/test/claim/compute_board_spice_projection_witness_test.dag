@@ -1,6 +1,9 @@
 module test.claim.compute_board_spice_projection_witness
 
 
+data fixture_design: product.electrical.connectivity.ElectricalDesignIdentity = "test.compute_board_spice_projection.fixture" as product.electrical.connectivity.ElectricalDesignIdentity
+
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a

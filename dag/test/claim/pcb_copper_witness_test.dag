@@ -1,6 +1,9 @@
 module test.claim.pcb_copper_witness
 
 
+data fixture_design: product.electrical.connectivity.ElectricalDesignIdentity = "test.pcb_copper.fixture" as product.electrical.connectivity.ElectricalDesignIdentity
+
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data sig: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: product.pcb.stackup.SignalLayer, thickness: std.measure.micrometer(count: 17) }

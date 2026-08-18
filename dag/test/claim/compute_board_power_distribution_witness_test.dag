@@ -1,6 +1,9 @@
 module test.claim.compute_board_power_distribution_witness
 
 
+data fixture_design: product.electrical.connectivity.ElectricalDesignIdentity = product.compute_board.power_distribution.reference_power_design
+
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn admits(i: product.compute_board.power_distribution.BoardPowerIntent) -> Bool {
