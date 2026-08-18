@@ -1702,7 +1702,23 @@ pub struct InterpContext {
     // — "assuming the infra isn't the problem" is exactly the CPU-vs-wall gap. The stored
     // pair is (cpu_baseline_nanos, budget_ms).
     eval_deadline: std::cell::Cell<Option<(u128, u64)>>,
-    eval_deadline_stride: std::cell::Cell<u32>,
+    /// EVALUATION STEPS since the budget was armed — one increment per `eval_expr`.
+    ///
+    /// `u64`, not `u32`. A witness measured at 70 seconds of thread CPU plausibly runs past
+    /// 4.29e9 steps, and the increment is `wrapping_add`, so the counter could silently
+    /// restart mid-witness. That mattered little while this was only a sampling phase
+    /// (`% 4096` is unaffected by wrapping) and matters a great deal now that the count is
+    /// read as a quantity.
+    ///
+    /// WHY THIS QUANTITY EXISTS SEPARATELY FROM THE CLOCKS: it is a property of the PROGRAM,
+    /// not of the machine. The same witness over the same tree performs the same number of
+    /// `eval_expr` calls on a fast host and a slow one, so a threshold applied to it produces
+    /// the same verdict everywhere — where a millisecond threshold produced a verdict that
+    /// varied with runner speed (`emit_host_module_add` measured 242ms and 502ms on two runs
+    /// of one claim). It does NOT bound time: an evaluation blocked inside a single native
+    /// primitive never returns here and is never counted, which is why the clocks survive as
+    /// a hang guard rather than being deleted.
+    eval_deadline_stride: std::cell::Cell<u64>,
     /// Entry identity the armed budget belongs to, so the neutral `EvaluationBudgetExceeded`
     /// can name what crossed rather than leaving the caller to infer it.
     budget_entry: std::cell::RefCell<Option<String>>,
@@ -1983,6 +1999,24 @@ impl InterpContext {
 
     pub fn clear_eval_deadline(&self) {
         self.eval_deadline.set(None);
+    }
+
+    /// Begin a step census for one witness. Separate from `arm_eval_deadline` on purpose: the
+    /// step count must be measurable for EVERY witness, including those with no time budget
+    /// and those currently passing, because the calibration this quantity needs is a census
+    /// over the whole population and not over the rows that already fail.
+    pub fn begin_step_census(&self) {
+        self.eval_deadline_stride.set(0);
+    }
+
+    /// Evaluation steps since the last `begin_step_census` (or budget arming).
+    ///
+    /// This is a LOWER BOUND on the program's work in exactly one direction and it is a
+    /// different direction from the clocks': it undercounts evaluation that never re-enters
+    /// `eval_expr` (native primitives), and it is exact for everything that does. Unlike an
+    /// interrupted elapsed reading it does not depend on when a poll happened to fire.
+    pub fn step_census(&self) -> u64 {
+        self.eval_deadline_stride.get()
     }
 
     /// Milliseconds left on the armed CPU deadline, or `None` when none is armed.
@@ -2693,7 +2727,7 @@ pub struct EvaluationBudgetScope<'a> {
     ctx: &'a InterpContext,
     prior_eval: Option<(u128, u64)>,
     prior_wall: Option<(Instant, u64)>,
-    prior_stride: u32,
+    prior_stride: u64,
     prior_entry: Option<String>,
 }
 
@@ -2743,9 +2777,14 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // budget, is what bounds the listener unconditionally.
     let cpu_armed = ctx.eval_deadline.get();
     let wall_armed = ctx.witness_wall_deadline.get().is_some();
+    // COUNTED UNCONDITIONALLY, polled conditionally. The increment used to sit inside the
+    // armed-clock guard, which made the step count observable only for rows that already had
+    // a time budget — so the quantity that is supposed to REPLACE the clocks could only be
+    // measured where the clocks were. Counting always costs one increment per eval and makes
+    // the census available for every witness, including the ones currently passing.
+    let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
+    ctx.eval_deadline_stride.set(stride);
     if cpu_armed.is_some() || wall_armed {
-        let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
-        ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
             if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
                 let elapsed_nanos = thread_cpu_nanos().saturating_sub(cpu_baseline_nanos);

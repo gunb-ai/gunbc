@@ -16054,6 +16054,11 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    // BEFORE arming, and unconditionally: the step census must cover every witness, not only
+    // the ones a clock is armed for. Calibrating a step threshold from the rows that already
+    // blow a time budget would select the population by the very instrument the threshold is
+    // meant to replace.
+    ctx.begin_step_census();
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
@@ -16070,6 +16075,9 @@ pub fn run_claim_measured(
     // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
     let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
+    // Read BEFORE clearing the deadlines: `EvaluationBudgetScope` restores the prior stride on
+    // drop, so a count read after teardown is the caller's, not this witness's.
+    let steps = ctx.step_census();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
@@ -16085,6 +16093,18 @@ pub fn run_claim_measured(
         function,
         wall_nanos,
         cpu_nanos,
+    );
+    // THE CENSUS LINE, and it is deliberately emitted for every witness rather than only for
+    // rows that cross something. The question this PR exists to answer — is a step count
+    // stable across two runs of one tree, where a millisecond count is not — cannot be
+    // answered from a sample of the rows that failed. `wall_ms` rides along so the two
+    // quantities can be correlated per row without joining two artifacts.
+    eprintln!(
+        "[floor-witness-steps] {} steps={} wall_ms={} cpu_ms={}",
+        function,
+        steps,
+        wall_nanos / 1_000_000,
+        cpu_nanos / 1_000_000
     );
     (outcome, receipt)
 }
