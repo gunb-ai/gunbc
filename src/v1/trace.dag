@@ -4,17 +4,17 @@ module v1.compiler.trace
 
 type SpanMapping {
   generated_line: Int
-  source_span: v1.std.core.SourceSpan
+  source_span: std.types.SourceSpan
 }
 
 type TraceEvent
-  = TraceEnter { node_id: String, span: v1.std.core.SourceSpan, inputs: Map<String, String> }
-  | TraceExit { node_id: String, span: v1.std.core.SourceSpan, output: String }
-  | TraceError { node_id: String, span: v1.std.core.SourceSpan, message: String }
+  = TraceEnter { node_id: String, span: std.types.SourceSpan, inputs: Map<String, String> }
+  | TraceExit { node_id: String, span: std.types.SourceSpan, output: String }
+  | TraceError { node_id: String, span: std.types.SourceSpan, message: String }
 
 type TraceFrame {
   func_name: String
-  span: v1.std.core.SourceSpan
+  span: std.types.SourceSpan
   bindings: Map<String, String>
 }
 

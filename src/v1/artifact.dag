@@ -67,7 +67,7 @@ type DagNodeId = String
 type DagInferredRecord
   = ResolvedRef { node: DagNodeId }
   | TypeVariableRef { id: String }
-  | CompilerErrorRecord { message: String, span: v1.std.core.SourceSpan }
+  | CompilerErrorRecord { message: String, span: std.types.SourceSpan }
 
 type DagModuleRef {
   module: DagNodeId
@@ -78,7 +78,7 @@ type DagModuleRef {
 type DagDiagnosticRecord {
   severity: String
   message: String
-  span: v1.std.core.SourceSpan
+  span: std.types.SourceSpan
   module_name: String?
   category: String?
 }
