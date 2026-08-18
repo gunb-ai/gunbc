@@ -1,0 +1,49 @@
+module gunbc.test.claim.zz_budget_probe_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { length }
+import v2.std.grammar { GrammarRoot, ParseGrammar, ModeledGrammar, VoidGrammar }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
+
+data zz_probe_source: String = "module zz_probe\n\ntype AlgX = AlphaX | BetaX\n"
+
+fn zz_grammar_nonempty(g: ParseGrammar) -> Bool {
+  match g {
+    ModeledGrammar { root: r } => length(xs: r.productions) > 0
+    VoidGrammar => false
+  }
+}
+
+test fn zz_probe_grammar_build_once() -> Bool {
+  zz_grammar_nonempty(g: dag_grammar())
+}
+
+test fn zz_probe_grammar_build_twice() -> Bool {
+  zz_grammar_nonempty(g: dag_grammar()) && zz_grammar_nonempty(g: dag_grammar())
+}
+
+test fn zz_probe_lex_rules_only() -> Bool {
+  length(xs: dag_lex_rules().rules) > 0
+}
+
+test fn zz_probe_lex_only() -> Bool {
+  match lex_walk_artifact(source: zz_probe_source, file: ^zz_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn zz_probe_full_parse() -> Bool {
+  match lex_walk_artifact(source: zz_probe_source, file: ^zz_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
