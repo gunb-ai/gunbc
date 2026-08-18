@@ -543,3 +543,95 @@ of the runner, and a single-run quarantine decision inherits it too.
 attempts — they are poll-pinned censored values, not measurements, so they cannot
 cross by construction. Including them makes the instrument look far steadier than
 it is. Every figure above excludes them.
+
+### Rule, not caveat: exclude censored values before computing any distribution
+
+Three shapes of one class turned up in a single day on this log — `cost is at
+least` vs `cost is exactly`, the `BUDGET-REFUSED` third channel, and the
+poll-pinned 1553ms band inside a paired distribution. Each one flatters: it
+makes the instrument look steadier, or the population smaller, than it is. So
+this is a standing step rather than a thing to remember when suspicious:
+**before computing any statistic over floor timings, drop every right-censored
+value and say how many were dropped.** An interrupt is not a measurement, and a
+pinned value cannot move by construction, so neither can answer a question about
+movement in either direction — they are unmeasured, which is a third state from
+pass and fail.
+
+## Is the noise relative or absolute? It is relative — so a flip radius scales
+
+This decides whether the 1552ms result transfers to a lower ceiling. Mean paired
+movement, bucketed by row magnitude over the 672 genuine rows:
+
+```
+magnitude      n     mean |rel|   mean |abs|
+100-250ms    391        4.9%         7.9ms
+250-500ms    142        5.4%        19.3ms
+500-1000ms   109        4.3%        29.7ms
+1000-2000ms   30        2.6%        30.4ms
+```
+
+Absolute movement grows nearly 4x across the range while relative movement stays
+flat. The noise is therefore **proportional**, and a flip radius must be computed
+as a fraction of the ceiling rather than carried across as a fixed millisecond
+figure. Carrying the 1552ms p95 radius (210ms) down to a 500ms ceiling would
+overstate that band by more than 3x.
+
+## What each candidate ceiling costs, measured
+
+p95 relative movement is 13.5%, so the flip radius at ceiling C is 0.135*C.
+Over the 672 genuine paired rows:
+
+| ceiling | p95 radius | rows in band | CROSSINGS observed | rows already over |
+|---|---|---|---|---|
+| 500ms  | 67.7ms  | 53 | **11** | 139 |
+| 750ms  | 101.5ms | 40 | **9**  | 62 |
+| 1000ms | 135.3ms | 24 | **3**  | 30 |
+| 1552ms | 210.0ms |  4 | **0**  | 0 |
+
+The crossings are observed, not modelled: each is a row that landed on opposite
+sides of the ceiling in two runs of one identical subject.
+
+**And they are not scattered coin flips — they cluster by module.** Six of the
+eleven 500ms crossings are one module (`generic_item_clone_bound_witness`, every
+row 476-491ms then 502-528ms), two more are `where_refinement_enforcement_witness`,
+two are the python round-trip pair. Rows in a module share a closure, so they
+move together: a ceiling in a crowded band refuses a whole module at a time on a
+runner's luck, not one unlucky row.
+
+**So the answer to a 500ms ceiling is that it is not a marginal adjustment.** It
+refuses 139 rows on the first run for being over, and puts 53 more in a band
+where 11 were observed changing sides between two runs of the same tree. A
+build's outcome would then be partly a property of which runner picked it up.
+1000ms is the first candidate where the band thins out (24 rows, 3 crossings) and
+1552ms is empty of crossings entirely.
+
+This does not say the corpus should stay slow — it says the ceiling cannot lead
+the cost work. Rows have to leave the band before the ceiling descends onto it,
+which is the same ordering #8470 demonstrated: the 45941ms row became 844ms by
+moving a shared fill into preparation, and nothing about the ceiling changed.
+
+## Audit of the two quarantine-decision runs
+
+Both logs retrieved complete (terminal counter line present in each, so this is
+not the CLI-truncation class):
+
+```
+run 32189985063  planned=8995 executed=8995 passed=8636 failed=1 budget_refused=0
+  FAIL  emitted_lib_rs_module_declaration_witness_test.small_crate_lib_rs_omits_unemitted_dispatch_module
+        cost is exactly 42545ms against 1552ms          (27.4x the ceiling)
+
+run 32193032348  planned=8997 executed=8997 passed=8638 failed=1 budget_refused=0
+  FAIL  emitter_nested_refinement_cast_witness_test.single_refinement_carrier_emits_no_unsupported_cast
+        cost is exactly 45826ms against 1552ms          (29.5x the ceiling)
+```
+
+Neither decision is marginal: flipping a 42545ms observation needs a 96.4% drop
+against a measured p99 of 17.7%. Both quarantines are clean on the evidence, and
+both rows are the first-touch fill carriers this note is about — the second is the
+row #8470 later brought to 844ms without touching the witness.
+
+One discrepancy is recorded rather than resolved: each run's own terminal counters
+report `failed=1, budget_refused=0`, so these two logs contain two measured
+verdicts, not the eight-plus-one this audit was scoped to. The remaining
+identities are not in these runs' counters and their provenance needs naming
+before they can be audited or cleared.
