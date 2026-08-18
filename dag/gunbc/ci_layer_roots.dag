@@ -20,7 +20,7 @@ import gunbc.explicit_witness_admission {
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
   known_red_probe_execution_roster,
-  witness_long_eval_budget_roster
+  witness_long_eval_budget_roster,
   explicit_witness_admission_substrate_long_lane_roster
 }
 import std.witness_admission {
