@@ -14,11 +14,11 @@ fn rust_literal_bind_inferred_tree_for(root: Node) -> v2.compiler.infer.Inferred
   }
 }
 
-fn rust_literal_bind_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_literal_bind_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: rust_literal_bind_inferred_tree_for(root: root), target: target)
 }
 
-fn rust_literal_bind_int_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_literal_bind_int_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: table_fixture_bind_arrow_with_body(),
     f: fn(root) {
@@ -27,7 +27,7 @@ fn rust_literal_bind_int_emit_from_producer(target: v2.std.compilers.target_mode
   )
 }
 
-fn rust_literal_bind_int_wrong_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_literal_bind_int_wrong_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: table_fixture_bind_wrong_value_arrow_with_body(),
     f: fn(root) {

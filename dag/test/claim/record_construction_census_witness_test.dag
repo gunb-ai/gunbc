@@ -8,21 +8,21 @@ type CensusConstructionCount {
   self_is_target_atom: Bool
 }
 
-fn census_edge_is_construction(e: Edge) -> Bool {
+fn census_edge_is_construction(e: v2.std.node.Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }
 
-fn census_spelling_names_target(spelling: String, target: Symbol) -> Bool {
+fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) -> Bool {
   spelling == (target as String) || ends_with(spelling, "." + (target as String))
 }
 
-fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount {
+fn census_construction_fold(n: Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } =>
@@ -40,7 +40,7 @@ fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount 
   )
 }
 
-fn census_construction_count(n: Node, target: Symbol) -> Int {
+fn census_construction_count(n: Node, target: v2.std.node.Symbol) -> Int {
   census_construction_fold(n: n, target: target).constructions
 }
 
@@ -49,9 +49,9 @@ data census_fixture_pool_roots: List<String> = ["dag/test/fixture/record_constru
 // Hoisted to a `data` initializer: evaluated once per interpreter context and
 // cached, where the previous in-body call re-scanned the fixture pool once per
 // row. Same facts, one scan for the module instead of one per row.
-data census_fixture_facts: List<DeclFact> = decl_facts(pool_roots: census_fixture_pool_roots)
+data census_fixture_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: census_fixture_pool_roots)
 
-fn census_count_for_decl(name: String, target: Symbol) -> Int {
+fn census_count_for_decl(name: String, target: v2.std.node.Symbol) -> Int {
   fold(census_fixture_facts, init: 0 - 1, f: fn(acc, fact) {
     if fact.name == name {
       census_construction_count(n: fact.node, target: target)

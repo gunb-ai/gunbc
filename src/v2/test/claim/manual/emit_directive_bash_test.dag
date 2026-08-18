@@ -27,7 +27,7 @@ data emit_directive_other_expected: String = "'echo' 'cache corruption' >&2"
 
 data emit_directive_error_to_stdout_wrong_expected: String = "'echo' 'build verification failed'"
 
-fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
@@ -68,7 +68,7 @@ test fn emit_directive_bash_message_flows_holds() -> Bool {
   }
 }
 
-fn emit_directive_bash_emit_to_stdout_wrong(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_bash_emit_to_stdout_wrong(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,

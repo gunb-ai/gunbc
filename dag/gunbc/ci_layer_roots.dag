@@ -23,9 +23,9 @@ data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test
 
 type WitnessExclusionRow {
   pattern: String
-  classification: WitnessConsumerCadence
+  classification: std.witness_admission.WitnessConsumerCadence
   reason: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data excl_bin_wet_reason: String = "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs) the hermetic envelope refuses by construction; they run every PR as the declared bin-witness wet batch via bin_witness_wet_entries (bin_witness_wet_note)"
@@ -1003,7 +1003,7 @@ type RehomedBinWetRow {
   entry: String
   function: String
   reason: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
@@ -1113,7 +1113,7 @@ type SubstrateLongLaneRow {
   entry: String
   function: String
   reason: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) but are not wet integration — the live-grain half of the provenance-producer Class C split (fixture fail-closed walls stay per-PR via hand-built rows in affected_set_provenance_producer_test.dag and sg_claims_test.dag selectivity receipts). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed). Local recipe until enrolled: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."

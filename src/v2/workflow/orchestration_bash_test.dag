@@ -7,7 +7,7 @@ fn orch_bash_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts
   optional_absent()
 }
 
-fn orch_emit_bash(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn orch_emit_bash(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: root,

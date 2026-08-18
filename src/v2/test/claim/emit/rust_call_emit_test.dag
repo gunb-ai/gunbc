@@ -184,7 +184,7 @@ fn rust_call_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn rust_call_emit_from_arrow(arrow: Node, authority: String) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_call_emit_from_arrow(arrow: Node, authority: String) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: rust_call_inferred_tree_for(root: arrow),
     target: rust_call_target_model(authority_source_text: authority)

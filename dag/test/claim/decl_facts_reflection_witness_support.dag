@@ -6,18 +6,18 @@ module test.claim.decl_facts_reflection_witness_support
 // per interpreter context and cached; a `fn` body re-runs the whole-pool scan
 // at every call site, which this cluster's rows make once each. Same facts,
 // one scan for the module instead of one per row.
-fn decl_facts_reflection_witness_support_facts() -> List<DeclFact> {
+fn decl_facts_reflection_witness_support_facts() -> List<v2.std.decl_index.DeclFact> {
   decl_facts_reflection_fixture_facts
 }
 
-fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
+fn decl_facts_reflection_lookup(qn: String) -> v2.std.data_initializer_identity.DeclFactLookup {
   decl_fact_lookup_by_qualified_name(
     qn: qn,
     facts: decl_facts_reflection_witness_support_facts()
   )
 }
 
-fn decl_fact_lookup_candidate_rel_path_contains(lookup: DeclFactLookup, fragment: String) -> Bool {
+fn decl_fact_lookup_candidate_rel_path_contains(lookup: v2.std.data_initializer_identity.DeclFactLookup, fragment: String) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: cands } =>
       fold(cands, init: false, f: fn(found, fact) {
@@ -28,7 +28,7 @@ fn decl_fact_lookup_candidate_rel_path_contains(lookup: DeclFactLookup, fragment
   }
 }
 
-fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: DeclFactLookup) -> Bool {
+fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: v2.std.data_initializer_identity.DeclFactLookup) -> Bool {
   decl_fact_lookup_is_ambiguous(lookup: lookup)
     && decl_fact_lookup_candidate_count(lookup: lookup) == 2
     && decl_fact_lookup_candidate_rel_path_contains(
@@ -42,7 +42,7 @@ fn duplicate_qualified_identity_lookup_names_primary_and_shadow(lookup: DeclFact
 }
 
 fn decl_fact_projection_node_for_qualified_name(
-  facts: List<DeclFact>,
+  facts: List<v2.std.decl_index.DeclFact>,
   qn: String
 ) -> Optional<Node> {
   match decl_fact_optional_by_qualified_name(qn: qn, facts: facts) {
@@ -240,7 +240,7 @@ fn decl_facts_reflection_named_field_projection_surfaces(qn: String) -> Bool {
   }
 }
 
-fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: DeclFactLookup) -> Bool {
+fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: v2.std.data_initializer_identity.DeclFactLookup) -> Bool {
   match lookup {
     DeclFactAmbiguous { candidates: cands } =>
       fold(cands, init: true, f: fn(ok, fact) {

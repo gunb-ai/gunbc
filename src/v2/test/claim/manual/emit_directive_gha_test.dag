@@ -26,7 +26,7 @@ data emit_directive_gha_error_expected: String = "'echo' '::error::build verific
 data emit_directive_gha_warning_expected: String = "'echo' '::warning::build verification failed' >&2"
 data emit_directive_gha_other_expected: String = "'echo' '::error::cache corruption' >&2"
 
-fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
@@ -36,7 +36,7 @@ fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnos
   )
 }
 
-fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,

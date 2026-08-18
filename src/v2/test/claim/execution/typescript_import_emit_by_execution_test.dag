@@ -162,7 +162,7 @@ fn ts_import_value_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<v2.s
   )
 }
 
-fn ts_emit_import_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn ts_emit_import_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: ts_import_value_from_carrier(carrier: carrier),
     f: fn(import_value) {

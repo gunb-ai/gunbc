@@ -38,7 +38,7 @@ fn rust_conditional_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.O
   }
 }
 
-fn rust_conditional_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_conditional_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_conditional_emit_producer_inferred_tree(),
     f: fn(tree) {
@@ -47,7 +47,7 @@ fn rust_conditional_emit_from_tree(target: v2.std.compilers.target_model.TargetM
   )
 }
 
-fn rust_conditional_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_conditional_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_conditional_emit_swapped_producer_inferred_tree(),
     f: fn(tree) {

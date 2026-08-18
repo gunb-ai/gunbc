@@ -40,7 +40,7 @@ fn rust_body_add_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v
   }
 }
 
-fn rust_body_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_body_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_body_add_producer_inferred_tree(),
     f: fn(tree) {
@@ -49,7 +49,7 @@ fn rust_body_add_emit_from_tree(target: v2.std.compilers.target_model.TargetMode
   )
 }
 
-fn rust_body_add_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_body_add_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_body_add_producer_swapped_inferred_tree(),
     f: fn(tree) {

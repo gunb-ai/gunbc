@@ -101,14 +101,14 @@ data typescript_record_task_emit_receipt: Outcome<Medium<String>> = anchor_types
 data typescript_record_task_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
 test fn typescript_record_task_emit_receipt_decided() -> Bool {
   match typescript_record_task_emit_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 test fn typescript_record_task_compile_inferred_receipt_decided() -> Bool {
   match typescript_record_task_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

@@ -325,7 +325,7 @@ fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.
   }
 }
 
-fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: add_body_ts_producer_inferred_tree(),
     f: fn(tree) {
@@ -334,7 +334,7 @@ fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.Tar
   )
 }
 
-fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: add_body_ts_producer_swapped_inferred_tree(),
     f: fn(tree) {

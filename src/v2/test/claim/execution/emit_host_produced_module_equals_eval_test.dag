@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data produced_module_two_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 
-fn produced_add_module_source() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn produced_add_module_source() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   match ingested_add_decl_node(fn_name: ^rust_binding_fn_add) {
     Accepted { value: d1, diagnostics: _ } =>
       match ingested_add_decl_node(fn_name: ^rust_binding_fn_add2) {

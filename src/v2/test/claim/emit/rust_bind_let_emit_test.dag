@@ -81,7 +81,7 @@ fn rust_bind_let_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.com
   }
 }
 
-fn rust_bind_let_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_bind_let_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_bind_let_producer_tree(),
     f: fn(tree) {
@@ -90,7 +90,7 @@ fn rust_bind_let_emit_from_producer(target: v2.std.compilers.target_model.Target
   )
 }
 
-fn rust_bind_let_emit_wrong_value_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_bind_let_emit_wrong_value_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_bind_let_wrong_value_producer_tree(),
     f: fn(tree) {

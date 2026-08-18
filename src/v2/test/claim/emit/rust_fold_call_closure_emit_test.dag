@@ -14,7 +14,7 @@ fn rust_fold_call_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.Inferr
   }
 }
 
-fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: v2.std.diagnostic.Accepted {
       value: rust_fold_call_emit_inferred_tree_for(root: root),

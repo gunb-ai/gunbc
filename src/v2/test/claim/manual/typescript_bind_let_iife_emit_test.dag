@@ -37,7 +37,7 @@ fn ts_bind_let_expr() -> v2.std.compilers.target_model.TargetValueExpression {
 
 fn ts_bind_let_emit_with_projection(
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection
-) -> v2.std.diagnostic.Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_bind_let_expr(),

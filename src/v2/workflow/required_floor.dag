@@ -95,8 +95,8 @@ type RequiredFloorAttempt {
 // reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
 // the seam would put a unit change between the authority and the mechanism that enforces it.
 type RequiredFloorClaim {
-  declaration: WitnessIdentity
-  execution_mode: ExecutionMode
+  declaration: v2.workflow.floor2_prepared_subject.WitnessIdentity
+  execution_mode: std.execution_mode.ExecutionMode
   budget_ms: Int
   warn_ms: Int
 }
@@ -400,8 +400,8 @@ fn scan_site_list(
 // and once conflicting it stays conflicting — so a declaration enrolled Hermetic, Hermetic, Wet
 // reports the conflict rather than reporting agreement from a prefix.
 type QualifiedEnrollment
-  = FirstEnrollment { mode: ExecutionMode }
-  | RepeatedSameMode { mode: ExecutionMode }
+  = FirstEnrollment { mode: std.execution_mode.ExecutionMode }
+  | RepeatedSameMode { mode: std.execution_mode.ExecutionMode }
   | RepeatedConflictingModes
 
 fn enrollment_after(prior: QualifiedEnrollment, mode: ExecutionMode) -> QualifiedEnrollment {

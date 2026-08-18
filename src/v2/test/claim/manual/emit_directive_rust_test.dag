@@ -31,7 +31,7 @@ data emit_directive_rust_error_expected: String = "eprintln!(\"build verificatio
 data emit_directive_rust_other_expected: String = "eprintln!(\"cache corruption\")"
 data emit_directive_rust_quoted_expected: String = "eprintln!(\"say \\\"hi\\\"\")"
 
-fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: rust_emit_directive_emitted_call,
@@ -41,7 +41,7 @@ fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagno
   )
 }
 
-fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,

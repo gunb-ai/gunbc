@@ -12,7 +12,7 @@ fn rust_record_construct_emit_facts_miss(key: Node) -> Optional<v2.compiler.infe
   optional_absent()
 }
 
-fn rust_record_construct_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_record_construct_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: rust_record_construct_emit_inferred_tree, target: target)
 }
 

@@ -45,7 +45,7 @@ fn rust_field_access_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.Inf
   }
 }
 
-fn rust_field_access_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_field_access_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 

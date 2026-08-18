@@ -141,13 +141,13 @@ test fn loop_emit_matches_serialize_holds() -> Bool {
     target: loop_target_model,
     emitted: loop_emitted_root
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
       match loop_emit_receipt {
-        Accepted { value: source, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -156,8 +156,8 @@ test fn loop_grammar_inverse_holds() -> Bool {
     target: loop_target_model,
     emitted: loop_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -167,11 +167,11 @@ test fn loop_ingest_via_coerce_matches_canonical() -> Bool {
     tree: loop_inferred_tree,
     target: loop_target_model
   ) {
-    Accepted { value: result, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_loop_fn)
         && loop_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -53,7 +53,7 @@ fn ts_record_construct_expr() -> v2.std.compilers.target_model.TargetValueExpres
 
 fn ts_record_construct_emit_accepts(
   record_literal_names_type: v2.std.compilers.target_model.RecordLiteralTypeNaming
-) -> v2.std.diagnostic.Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_record_construct_expr(),

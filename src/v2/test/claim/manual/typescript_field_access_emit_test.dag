@@ -30,7 +30,7 @@ fn ts_field_access_expr() -> v2.std.compilers.target_model.TargetValueExpression
   )
 }
 
-fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_field_access_expr(),

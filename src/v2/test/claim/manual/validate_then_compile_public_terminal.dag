@@ -39,7 +39,7 @@ fn grounding_sanity_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnos
 
 data grounding_sanity_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: grounding_sanity_gate }
 
-fn anchor_validate_then_compile_empty_lenses() -> v2.std.diagnostic.Outcome<Validated<v2.compiler.compile.CompileOutput>> {
+fn anchor_validate_then_compile_empty_lenses() -> v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],
@@ -47,7 +47,7 @@ fn anchor_validate_then_compile_empty_lenses() -> v2.std.diagnostic.Outcome<Vali
   )
 }
 
-fn anchor_validate_then_compile_rejecting_lens() -> v2.std.diagnostic.Outcome<Validated<v2.compiler.compile.CompileOutput>> {
+fn anchor_validate_then_compile_rejecting_lens() -> v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [rejecting_lens],
@@ -56,7 +56,7 @@ fn anchor_validate_then_compile_rejecting_lens() -> v2.std.diagnostic.Outcome<Va
 }
 
 fn claim_empty_lenses_matches_compile_core_outcome(
-  actual: v2.std.diagnostic.Outcome<Validated<v2.compiler.compile.CompileOutput>>
+  actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
@@ -69,7 +69,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
 }
 
 fn claim_rejecting_lens_is_compile_lens_gate_rejected(
-  actual: v2.std.diagnostic.Outcome<Validated<v2.compiler.compile.CompileOutput>>
+  actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>

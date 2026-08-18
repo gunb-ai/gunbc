@@ -36,7 +36,7 @@ fn rust_loop_emit_wrong_value_producer_inferred_tree() -> v2.std.diagnostic.Outc
   }
 }
 
-fn rust_loop_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_loop_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_loop_emit_producer_inferred_tree(),
     f: fn(tree) {
@@ -45,7 +45,7 @@ fn rust_loop_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -
   )
 }
 
-fn rust_loop_emit_from_wrong_value_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_loop_emit_from_wrong_value_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: rust_loop_emit_wrong_value_producer_inferred_tree(),
     f: fn(tree) {

@@ -4,21 +4,21 @@ module product.compute_board.admission
 data admission_note: String = "WHOLE-ARTICLE ADMISSION, BEFORE ANY PROJECTION READS A FIELD. Every projection in this product was checking the facts it personally needed and no more, which meant the ARTICLE's own coherence was nobody's: duplicate component identities, a net member naming a terminal no component owns, a bond attached to a nonexistent node, an output nothing drives, two equations driving one output — each is well-formed to every individual projection and each makes the article describe a board that cannot exist. THE SPLIT IS DELIBERATE AND IS NOT A DUPLICATED CHECK: what lives here is article-level structure — identity uniqueness and referential integrity across the analog, bonding and digital halves. What stays in a projection is target-specific: which terminals need a node (SPICE), which spellings a target's lexer admits (Verilog). A digital-only target has no opinion about whether a capacitor terminal sits on a net, so that fact is not an article-level admission. THE LINE WAS DRAWN WRONG ONCE AND THE CORRECTION IS INSTRUCTIVE: the Verilog projection also checked that every driven signal is a declared output and that no equation references an undeclared one. Those are article-level, they are refused here, and keeping them there was one concept under two names in two modules — plus, once the projection took the sealed wrapper, arms that no production call could reach. They were deleted rather than left as a second opinion. REFUSALS ARE COLLECTED, NOT FIRST-WINS. A first-refusal fold reports one cause per edit cycle, which turns a coherent set of related defects into a queue discovered one at a time; and it makes the reported cause depend on authoring order, which is the same list-order accident this article has now closed three times."
 
 type BoardArticleRefusal
-  = DuplicateComponentIdentity { component: NonEmptyStr }
-  | DuplicateNetIdentity { net: NonEmptyStr }
-  | DuplicateSignalName { signal: NonEmptyStr }
-  | NetMemberNamesNoTerminal { net: NonEmptyStr, component: NonEmptyStr, terminal: NonEmptyStr }
-  | NetMemberBelongsToAnotherDesign { net: NonEmptyStr, net_design: NonEmptyStr, member_design: NonEmptyStr }
-  | BondTerminalNamesNoTerminal { component: NonEmptyStr, terminal: NonEmptyStr }
-  | BondNamesUndeclaredNet { net: NonEmptyStr }
-  | ReferenceNetNotDeclared { net: NonEmptyStr }
-  | DrivenSignalUndeclared { signal: NonEmptyStr }
-  | DrivenSignalIsAnInput { signal: NonEmptyStr }
-  | EquationReferencesUndeclaredSignal { driven: NonEmptyStr }
-  | OutputWithNoDriver { signal: NonEmptyStr }
-  | OutputWithMultipleDrivers { signal: NonEmptyStr }
-  | PreconditionSignalUndeclared { signal: NonEmptyStr }
-  | PreconditionSignalIsNotAnOutput { signal: NonEmptyStr }
+  = DuplicateComponentIdentity { component: std.types.NonEmptyStr }
+  | DuplicateNetIdentity { net: std.types.NonEmptyStr }
+  | DuplicateSignalName { signal: std.types.NonEmptyStr }
+  | NetMemberNamesNoTerminal { net: std.types.NonEmptyStr, component: std.types.NonEmptyStr, terminal: std.types.NonEmptyStr }
+  | NetMemberBelongsToAnotherDesign { net: std.types.NonEmptyStr, net_design: std.types.NonEmptyStr, member_design: std.types.NonEmptyStr }
+  | BondTerminalNamesNoTerminal { component: std.types.NonEmptyStr, terminal: std.types.NonEmptyStr }
+  | BondNamesUndeclaredNet { net: std.types.NonEmptyStr }
+  | ReferenceNetNotDeclared { net: std.types.NonEmptyStr }
+  | DrivenSignalUndeclared { signal: std.types.NonEmptyStr }
+  | DrivenSignalIsAnInput { signal: std.types.NonEmptyStr }
+  | EquationReferencesUndeclaredSignal { driven: std.types.NonEmptyStr }
+  | OutputWithNoDriver { signal: std.types.NonEmptyStr }
+  | OutputWithMultipleDrivers { signal: std.types.NonEmptyStr }
+  | PreconditionSignalUndeclared { signal: std.types.NonEmptyStr }
+  | PreconditionSignalIsNotAnOutput { signal: std.types.NonEmptyStr }
 
 // Nonempty by construction — a refusal arm carrying an empty cause list is the shape that lets a
 // refusal report nothing, so head-and-tail rather than a List anyone can hand [] to.
@@ -32,7 +32,7 @@ type BoardArticleRefusalSet {
 // to have asked; a projection taking this type cannot be reached with an unchecked article at all,
 // because admit_board_article is the only declaration that constructs one.
 type AdmittedBoardPowerInterfaceArticle sole_constructor {
-  article: BoardPowerInterfaceArticle
+  article: product.compute_board.article.BoardPowerInterfaceArticle
 }
 
 fn admitted_article(a: AdmittedBoardPowerInterfaceArticle) -> BoardPowerInterfaceArticle {

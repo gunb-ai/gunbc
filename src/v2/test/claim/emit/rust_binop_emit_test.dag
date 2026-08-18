@@ -36,7 +36,7 @@ fn rust_binop_arrow_with_operator(operator_token: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn rust_binop_producer_emit(operator_token: v2.std.node.Symbol, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn rust_binop_producer_emit(operator_token: v2.std.node.Symbol, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
     tree: rust_binop_inferred_tree_for(root: rust_binop_arrow_with_operator(operator_token: operator_token)),
     target: target
