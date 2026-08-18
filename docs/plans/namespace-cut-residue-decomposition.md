@@ -931,3 +931,57 @@ failure is equally silent: bound the peel against cycles of ANY length
 fixture -- two names each resolving to the other -- so the assertion can
 discriminate the class rather than the instance. The bound alone would fix
 today's crash and leave the evidence unable to see tomorrow's.
+
+## The cycle bound lands, and it retracts this document's zero-residue claim
+
+`peel_alias_once_for_field_access` now carries a `seen: Map<String, Bool>` and
+refuses on revisit. Verified locally on the real floor subject
+(`claim_executor --required-floor`, both roots, `ulimit -s 2048`):
+
+```
+overflow:  0        was 1
+exit:      1        was 134 (abort)
+dag/std/machine_shape.dag:15:20: error: internal: alias expansion cycle
+  reached 'List' - two or more declarations of that name resolve to each
+  other; peel refuses rather than recursing
+```
+
+A seen-set rather than a depth bound, because a depth threshold cannot say
+whether it found a cycle or a legitimately deep chain -- section 5's smuggled
+heuristic. It reuses the `emit_map_has`/`map_insert` mechanism already
+threaded through the outer `expand_alias_chain_for_field_access` rather than
+minting a second one.
+
+**RETRACTION.** This document recorded "the unresolved-type population is
+cleared" and "zero diagnostics -- not a reduced count". That reading was
+wrong. `compile.frontend` and `compile.normalize` do not resolve names;
+resolution happens in reconcile, which crashed before printing anything. Zero
+diagnostics from those two phases was never evidence about the corpus, and
+the crash masked the real population the whole time. With the crash converted
+to a refusal, the run reaches the end and reports:
+
+```
+48,512  total error rows
+  38,562  unresolved type
+   4,300  no field
+   2,140  variant
+   2,077  undefined variable
+   1,220  function
+```
+
+Like-for-like, same subject and same code path:
+
+```
+pre-Round-2   CI @ 9d93db0    51,672 unresolved-type rows
+post-Round-2  local @ fix     38,562 unresolved-type rows
+```
+
+Round 2 removed ~13,100 rows while applying 39,277 qualifications. **Those two
+numbers do not reconcile and no explanation is offered here.** The candidates
+-- qualifications that did not take at the reconcile stage, unmasking of rows
+previously unreachable, or a third instrument error -- are distinguished by a
+set diff of the two diagnostic populations, not by choosing the flattering
+one. Given this lane's record, assume the instrument until shown otherwise.
+
+The `List` fork itself is unchanged and remains a modeling decision:
+`dag/std/types.dag:105` and `src/v2/std/collection.dag:16`.

@@ -39552,6 +39552,7 @@ mod peel_alias_fixpoint_termination {
                 n.clone(),
                 env.clone(),
                 "peel_fixpoint_probe".to_string(),
+                crate::v1_rt::rc_empty_map(),
             );
             let termination_probe = (out.resolved.name.clone(), out.resolved == n);
             let refusal_count = out
@@ -39582,6 +39583,7 @@ mod peel_alias_fixpoint_termination {
                 plain_int,
                 env.clone(),
                 "peel_quiet_probe".to_string(),
+                crate::v1_rt::rc_empty_map(),
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 

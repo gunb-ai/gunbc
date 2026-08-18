@@ -8483,6 +8483,7 @@ pub fn peel_alias_once_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
+    seen: Rc<HashMap<String, bool>>,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let once = resolve_node(n.clone(), env.clone(), module_name.clone());
@@ -8500,18 +8501,49 @@ pub fn peel_alias_once_for_field_access(
                     once
                 } else {
                     {
-                        let rest = peel_alias_once_for_field_access(
-                            resolved_once.clone(),
-                            env.clone(),
-                            module_name.clone(),
-                        );
-                        Rc::new(NodeResolveResult {
-                            resolved: rest.resolved.clone(),
-                            diagnostics: v1_rt::concat(
-                                once.diagnostics.clone(),
-                                rest.diagnostics.clone(),
-                            ),
-                        })
+                        let step_name = if resolved_once.name.clone() != "".to_string() {
+                            resolved_once.name.clone()
+                        } else {
+                            crate::v1_compiler_infer_env::authored_name_at(
+                                env.source_indices.clone(),
+                                resolved_once.clone(),
+                            )
+                        };
+                        if step_name != "".to_string()
+                            && crate::v1_compiler_infer_types::emit_map_has(
+                                seen.clone(),
+                                step_name.clone(),
+                            )
+                        {
+                            Rc::new(NodeResolveResult {
+                                resolved: n.clone(),
+                                diagnostics: Rc::new(vec![inference_error(
+                                    v1_rt::concat(
+                                        "internal: alias expansion cycle reached '".to_string(),
+                                        v1_rt::concat(
+                                            step_name.clone(),
+                                            "' - two or more declarations of that name resolve to each other; peel refuses rather than recursing".to_string(),
+                                        ),
+                                    ),
+                                    n.span.clone(),
+                                    module_name.clone(),
+                                )]),
+                            })
+                        } else {
+                            let rest = peel_alias_once_for_field_access(
+                                resolved_once.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                                v1_rt::rc_map_insert(seen.clone(), step_name.clone(), true),
+                            );
+                            Rc::new(NodeResolveResult {
+                                resolved: rest.resolved.clone(),
+                                diagnostics: v1_rt::concat(
+                                    once.diagnostics.clone(),
+                                    rest.diagnostics.clone(),
+                                ),
+                            })
+                        }
                     }
                 }
             } else {
@@ -8706,7 +8738,12 @@ pub fn expand_alias_chain_for_field_access(
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peel_result = if needs_alias_field_expansion(n.clone(), env.clone()) {
-            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
+            peel_alias_once_for_field_access(
+                n.clone(),
+                env.clone(),
+                module_name.clone(),
+                seen.clone(),
+            )
         } else {
             Rc::new(NodeResolveResult {
                 resolved: n.clone(),

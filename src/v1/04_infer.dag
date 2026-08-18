@@ -4414,7 +4414,7 @@ data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig loo
 
 data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
 
-fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   let once = resolve_node(n: n, env: env, module_name: module_name)
   let resolved_once = once.resolved
   if (resolved_once.connective == Conj || resolved_once.connective == Disj) {
@@ -4422,8 +4422,16 @@ fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) 
   } else if resolved_once.connective == NoConnective && resolved_once.children |> count > 0 && resolved_once.inferred == none {
     if resolved_once == n { once }
     else {
-      let rest = peel_alias_once_for_field_access(n: resolved_once, env: env, module_name: module_name)
-      NodeResolveResult { resolved: rest.resolved, diagnostics: concat(once.diagnostics, rest.diagnostics) }
+      let step_name = if resolved_once.name != "" { resolved_once.name } else { authored_name_at(source_indices: env.source_indices, node: resolved_once) }
+      if step_name != "" && emit_map_has(m: seen, key: step_name) {
+        NodeResolveResult {
+          resolved: n,
+          diagnostics: [inference_error(message: concat("internal: alias expansion cycle reached '", concat(step_name, "' - two or more declarations of that name resolve to each other; peel refuses rather than recursing")), span: n.span, module_name: module_name)]
+        }
+      } else {
+        let rest = peel_alias_once_for_field_access(n: resolved_once, env: env, module_name: module_name, seen: map_insert(seen, step_name, true))
+        NodeResolveResult { resolved: rest.resolved, diagnostics: concat(once.diagnostics, rest.diagnostics) }
+      }
     }
   } else {
     once
@@ -4510,7 +4518,7 @@ fn alias_chain_carrier(n: Node) -> Node {
 
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> NodeResolveResult {
   let peel_result = if needs_alias_field_expansion(n: n, env: env) {
-    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
+    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name, seen: seen)
   } else {
     NodeResolveResult { resolved: n, diagnostics: [] }
   }
