@@ -336,6 +336,9 @@ fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
 
 // Cause labels are authored beside the coproduct so cross-module witnesses compare strings
 // instead of matching imported variant patterns through the prepared-subject scope.
+// dissolve-on: substrate cross-module variant-pattern matching (or variant_tag_name
+// reflection) works in the prepared-subject scope; then delete this helper and match
+// BoardArticleRefusal directly in witnesses again.
 fn board_article_refusal_cause_name(r: BoardArticleRefusal) -> String {
   match r {
     DuplicateComponentIdentity { component: _ } => "DuplicateComponentIdentity"
