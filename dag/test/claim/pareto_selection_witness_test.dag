@@ -1,0 +1,184 @@
+module test.claim.pareto_selection_witness
+
+import std.types { Bool, List, NonEmptyStr, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.pareto {
+  AxisGoal, HigherIsBetter, LowerIsBetter,
+  SelectionAxis, AxisReading, ParetoEntry, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, IncomparablePendingEvidence,
+  PairStanding, PairDominates, PairNoDominance, PairRefused,
+  compare_pair, pair_dominates, entry_standing, pareto_label, standing_is_dominated,
+}
+
+// SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
+// and asserts exact standings - including the refusal arms a real corpus may not exercise
+// on the day the wall matters.
+
+data axis_cost: SelectionAxis = SelectionAxis { name: "cost", goal: LowerIsBetter }
+data axis_power: SelectionAxis = SelectionAxis { name: "power", goal: HigherIsBetter }
+
+data both_axes: List<SelectionAxis> = [axis_cost, axis_power]
+data cost_only: List<SelectionAxis> = [axis_cost]
+data power_only: List<SelectionAxis> = [axis_power]
+
+data no_missing: List<NonEmptyStr> = []
+
+data entry_cheap_strong: ParetoEntry = ParetoEntry {
+  label: "cheap-strong",
+  readings: [
+    AxisReading { axis_name: "cost", value_micro: 100 },
+    AxisReading { axis_name: "power", value_micro: 500 },
+  ],
+  missing_inputs: no_missing,
+}
+
+data entry_dear_weak: ParetoEntry = ParetoEntry {
+  label: "dear-weak",
+  readings: [
+    AxisReading { axis_name: "cost", value_micro: 200 },
+    AxisReading { axis_name: "power", value_micro: 400 },
+  ],
+  missing_inputs: no_missing,
+}
+
+data entry_dear_strong: ParetoEntry = ParetoEntry {
+  label: "dear-strong",
+  readings: [
+    AxisReading { axis_name: "cost", value_micro: 200 },
+    AxisReading { axis_name: "power", value_micro: 600 },
+  ],
+  missing_inputs: no_missing,
+}
+
+data entry_quote_pending: ParetoEntry = ParetoEntry {
+  label: "quote-pending",
+  readings: [
+    AxisReading { axis_name: "cost", value_micro: 1 },
+    AxisReading { axis_name: "power", value_micro: 1 },
+  ],
+  missing_inputs: ["a written quote is outstanding"],
+}
+
+data entry_reading_hole: ParetoEntry = ParetoEntry {
+  label: "reading-hole",
+  readings: [
+    AxisReading { axis_name: "cost", value_micro: 50 },
+  ],
+  missing_inputs: no_missing,
+}
+
+// The CLEAN field for the domination and trade-off controls, and the poisoned field that
+// adds the reading-hole entry for the fail-closed control. One planted defect per control:
+// the hole entry deliberately poisons every standing computed against its field (the spine
+// blames the offender by name), so it must not share a field with the controls that assert
+// clean verdicts.
+data clean_field: List<ParetoEntry> = [
+  entry_cheap_strong,
+  entry_dear_weak,
+  entry_dear_strong,
+  entry_quote_pending,
+]
+
+data holed_field: List<ParetoEntry> = [
+  entry_cheap_strong,
+  entry_dear_weak,
+  entry_dear_strong,
+  entry_quote_pending,
+  entry_reading_hole,
+]
+
+data spine_sensitivities: List<NonEmptyStr> = ["a planted sensitivity so frontier survivors carry their caveat"]
+
+// CONTROL 1. Strict domination lands DominatedBy with the winning axes named, and the label
+// derivation says so in words.
+test fn witness_dominated_entry_names_its_dominator() -> Bool {
+  let standing = entry_standing(subject: entry_dear_weak, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let names_dominator = match standing {
+    DominatedBy { candidate, axes } => candidate == "cheap-strong" && count(axes) == 2,
+    ProvisionallyNonDominated { sensitivities } => false,
+    IncomparablePendingEvidence { missing } => false,
+  }
+  names_dominator && pareto_label(s: standing) == "dominated by cheap-strong"
+}
+
+// CONTROL 2. A genuine trade-off keeps both entries on the frontier with the sensitivities
+// attached - the spine refuses to rank what the axes do not decide.
+test fn witness_tradeoff_pair_both_survive() -> Bool {
+  let cheap = entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let strong = entry_standing(subject: entry_dear_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let cheap_carries_sensitivities = match cheap {
+    ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
+    DominatedBy { candidate, axes } => false,
+    IncomparablePendingEvidence { missing } => false,
+  }
+  standing_is_dominated(s: cheap) == false && standing_is_dominated(s: strong) == false
+    && cheap_carries_sensitivities
+}
+
+// CONTROL 3. Declared-missing inputs land incomparable, never dominated and never dominating:
+// the quote-pending entry's too-good-to-be-true planted readings must not knock anything off
+// the frontier, and its own standing must name the outstanding quote.
+test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
+  let pending = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let pending_incomparable = match pending {
+    IncomparablePendingEvidence { missing } => true,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { candidate, axes } => false,
+  }
+  let cheap_unmoved = standing_is_dominated(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)) == false
+  pending_incomparable && cheap_unmoved && pareto_label(s: pending) == "not computable"
+}
+
+// CONTROL 4 - THE FAIL-CLOSED DISCRIMINATOR. An entry that claims complete inputs while
+// lacking a compared reading REFUSES the pair, and the refusal reaches the standing as
+// incomparable rather than being skipped: a partial comparison never silently survives.
+test fn witness_absent_reading_refuses_the_pair() -> Bool {
+  let pair = compare_pair(a: entry_cheap_strong, b: entry_reading_hole, axes: both_axes)
+  let pair_refuses = match pair {
+    PairRefused { cause } => true,
+    PairDominates { winning_axes } => false,
+    PairNoDominance => false,
+  }
+  let standing_surfaces_it = match entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    IncomparablePendingEvidence { missing } => true,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { candidate, axes } => false,
+  }
+  let hole_never_dominates = pair_dominates(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) == false
+  let hole_poisons_the_field = match entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    IncomparablePendingEvidence { missing } => true,
+    ProvisionallyNonDominated { sensitivities } => false,
+    DominatedBy { candidate, axes } => false,
+  }
+  pair_refuses && standing_surfaces_it && hole_never_dominates && hole_poisons_the_field
+}
+
+// CONTROL 5. Orientation: the same pair flips winner when the axis flips direction, so
+// the axis goal orientation is provably consulted rather than decorative.
+test fn witness_axis_orientation_is_consulted() -> Bool {
+  pair_dominates(a: entry_cheap_strong, b: entry_dear_strong, axes: cost_only)
+    && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: power_only)
+    && pair_dominates(a: entry_dear_strong, b: entry_cheap_strong, axes: cost_only) == false
+}
+
+fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+fn pareto_witness_report() -> NonEmptyStr {
+  join([
+    "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
+    " tradeoff_both_survive=", flag(b: witness_tradeoff_pair_both_survive()),
+    " missing_neither_dominates_nor_dies=", flag(b: witness_missing_inputs_neither_dominate_nor_die()),
+    " absent_reading_refuses=", flag(b: witness_absent_reading_refuses_the_pair()),
+    " orientation_consulted=", flag(b: witness_axis_orientation_is_consulted()),
+  ], "")
+}
+
+fn pareto_witness_main() -> ProcessExit {
+  let report = pareto_witness_report()
+  let all_pass = witness_dominated_entry_names_its_dominator()
+    && witness_tradeoff_pair_both_survive()
+    && witness_missing_inputs_neither_dominate_nor_die()
+    && witness_absent_reading_refuses_the_pair()
+    && witness_axis_orientation_is_consulted()
+  if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}

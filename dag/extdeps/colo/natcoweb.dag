@@ -2,7 +2,7 @@ module extdeps.colo.natcoweb
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyPerHour, money_amount_micro }
+import std.measure { MoneyPerMonth, MoneyPerHour, money_amount_micro, ampere, bandwidth, rack_unit }
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
@@ -34,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data natcoweb_provenance_note: NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a bandwidth-upgrade quote."
+data natcoweb_provenance_note: NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a bandwidth-upgrade quote. STALENESS FLAG (operator concern, re-verified 2026-08-18): a second same-day fetch of the operator page confirms the 1/10 Mbps figures are what the LIVE page says, publishes no gigabit upgrade price, and carries no last-updated date - so the rows are an accurate reading of a possibly stale surface, and the quote must confirm every figure before any is treated as current."
 
 data natcoweb_clifton: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Natcoweb",
@@ -49,9 +49,9 @@ data natcoweb_clifton: ColoFacilityRow = ColoFacilityRow {
 
 data natcoweb_plan_1u: RetailPlanRow = RetailPlanRow {
   plan_label: "1U RackSpace",
-  rack_units: 1,
-  power: FeedAmpsVoltsUnstated { amps: 1, voltage_obligation: "page states 1 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { megabits_per_second: 1 },
+  rack_units: rack_unit(count: 1),
+  power: FeedAmpsVoltsUnstated { amps: ampere(count: 1), voltage_obligation: "page states 1 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 1000000) },
   ipv4: Ipv4Usable { usable_addresses: 1, block_note: "1 IP address included per plan table" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 65000000), currency: Usd },
   setup: SetupWaived,
@@ -61,9 +61,9 @@ data natcoweb_plan_1u: RetailPlanRow = RetailPlanRow {
 
 data natcoweb_plan_10u: RetailPlanRow = RetailPlanRow {
   plan_label: "10U RackSpace (10 Mbps committed)",
-  rack_units: 10,
-  power: FeedAmpsVoltsUnstated { amps: 10, voltage_obligation: "page states 10 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { megabits_per_second: 10 },
+  rack_units: rack_unit(count: 10),
+  power: FeedAmpsVoltsUnstated { amps: ampere(count: 10), voltage_obligation: "page states 10 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
   ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 460000000), currency: Usd },
   setup: SetupWaived,
@@ -73,9 +73,9 @@ data natcoweb_plan_10u: RetailPlanRow = RetailPlanRow {
 
 data natcoweb_plan_20u: RetailPlanRow = RetailPlanRow {
   plan_label: "20U RackSpace (10 Mbps committed)",
-  rack_units: 20,
-  power: FeedAmpsVoltsUnstated { amps: 15, voltage_obligation: "page states 15 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { megabits_per_second: 10 },
+  rack_units: rack_unit(count: 20),
+  power: FeedAmpsVoltsUnstated { amps: ampere(count: 15), voltage_obligation: "page states 15 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
   ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 870000000), currency: Usd },
   setup: SetupWaived,
@@ -85,9 +85,9 @@ data natcoweb_plan_20u: RetailPlanRow = RetailPlanRow {
 
 data natcoweb_plan_full_cabinet: RetailPlanRow = RetailPlanRow {
   plan_label: "Full Cabinet (10 Mbps committed)",
-  rack_units: 42,
-  power: FeedAmpsVoltsUnstated { amps: 20, voltage_obligation: "page states 20 Amp with no voltage; confirm circuit voltage, phase, and continuous-load policy in quote" },
-  transit: UnmeteredPort { megabits_per_second: 10 },
+  rack_units: rack_unit(count: 42),
+  power: FeedAmpsVoltsUnstated { amps: ampere(count: 20), voltage_obligation: "page states 20 Amp with no voltage; confirm circuit voltage, phase, and continuous-load policy in quote" },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
   ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 1250000000), currency: Usd },
   setup: SetupWaived,

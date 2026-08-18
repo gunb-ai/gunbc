@@ -2,7 +2,10 @@ module extdeps.colo.types
 
 import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour }
+import std.measure {
+  MoneyPerMonth, MoneyOnce, MoneyPerHour,
+  Watt, Ampere, Volt, RackUnit, Bandwidth, ByteSize,
+}
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -49,14 +52,14 @@ type ColoFacilityRow {
 // stating amps with no voltage keeps its amp reading and carries the voltage as a typed
 // obligation, because multiplying by an assumed voltage would fabricate the wattage.
 type PowerAllocation
-  = AllocatedWatts { watts: Nat }
-  | FeedAmps { amps: Nat, volts: Nat }
-  | FeedAmpsVoltsUnstated { amps: Nat, voltage_obligation: NonEmptyStr }
+  = AllocatedWatts { allocation: Watt }
+  | FeedAmps { amps: Ampere, volts: Volt }
+  | FeedAmpsVoltsUnstated { amps: Ampere, voltage_obligation: NonEmptyStr }
   | PowerUnread { obligation: NonEmptyStr }
 
 type TransitAllocation
-  = UnmeteredPort { megabits_per_second: Nat }
-  | MeteredTransfer { port_megabits_per_second: Nat, included_terabytes_per_month: Nat }
+  = UnmeteredPort { port_speed: Bandwidth }
+  | MeteredTransfer { port_speed: Bandwidth, included_transfer_per_month: ByteSize }
   | TransitUnread { obligation: NonEmptyStr }
 
 type Ipv4Allocation
@@ -73,7 +76,7 @@ type SetupCharge
 // withdrawal note on the provider module, not by deleting the reading's history.
 type RetailPlanRow {
   plan_label: NonEmptyStr
-  rack_units: Nat
+  rack_units: RackUnit
   power: PowerAllocation
   transit: TransitAllocation
   ipv4: Ipv4Allocation

@@ -1,6 +1,6 @@
 module std.pareto
 
-import std.types { Int, List }
+import std.types { Int, List, NonEmptyStr }
 import std.logic { Bool }
 import std.algebra { Ordering }
 
@@ -103,4 +103,200 @@ fn any_dominates(verdicts: List<DominanceVerdict>) -> Bool {
 
 fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
   !any_dominates(verdicts: verdicts)
+}
+
+// PARETO SELECTION OVER PARTIALLY OBSERVED EVIDENCE - the entry/field layer over the
+// dominance kernel above (hoisted from the private strategy tree 2026-08-18, operator
+// directive: the spine is a universal framework and its authority belongs here). A domain
+// projects its candidates into ParetoEntry rows, one reading per funded axis, and gets
+// standings back; the fold knows nothing about the domain.
+//
+// FAIL-CLOSED RULE, and the reason readings are looked up by axis name rather than zipped
+// by position: a reading that is absent for a compared axis REFUSES the pair - the fold
+// never compares the intersection, because surviving a partial comparison would be mistaken
+// for surviving the question (the absorbing-fallback shape). A refused pair surfaces on the
+// subject's standing with the axis named; it is never silently skipped. Per-axis
+// orientation is the AxisGoal vocabulary above; per-axis comparison is axis_comparison_int,
+// so the selection layer adds partial observation and standings, never a second ordering.
+
+type SelectionAxis {
+  name: NonEmptyStr
+  goal: AxisGoal
+}
+
+type AxisReading {
+  axis_name: NonEmptyStr
+  value_micro: Int
+}
+
+// One candidate as the spine sees it: a label, its funded-axis readings, and the inputs it
+// is missing. A nonempty missing_inputs list makes the entry incomparable BY ITS OWN
+// declaration - the projector states what is absent instead of substituting a zero or an
+// average, the same rule the node-build model already enforces for missing rates.
+type ParetoEntry {
+  label: NonEmptyStr
+  readings: List<AxisReading>
+  missing_inputs: List<NonEmptyStr>
+}
+
+type ParetoStanding
+  = ProvisionallyNonDominated { sensitivities: List<NonEmptyStr> }
+  | DominatedBy { candidate: NonEmptyStr, axes: List<NonEmptyStr> }
+  | IncomparablePendingEvidence { missing: NonEmptyStr }
+
+type ReadingLookup
+  = ReadingFound { value_micro: Int }
+  | ReadingAbsent { absent_axis: NonEmptyStr }
+
+type PairStanding
+  = PairDominates { winning_axes: List<NonEmptyStr> }
+  | PairNoDominance
+  | PairRefused { cause: NonEmptyStr }
+
+fn reading_for(e: ParetoEntry, wanted: NonEmptyStr) -> ReadingLookup {
+  fold(e.readings, init: ReadingAbsent { absent_axis: wanted }, f: fn(acc, r) {
+    match acc {
+      ReadingFound { value_micro } => acc,
+      ReadingAbsent { absent_axis } =>
+        if r.axis_name == absent_axis { ReadingFound { value_micro: r.value_micro } } else { acc },
+    }
+  })
+}
+
+// The per-pair accumulator: refused_axes collects axes where either side has no reading,
+// a_worse_somewhere kills dominance, winning_axes names where a is strictly better.
+type PairAccum {
+  refused_axes: List<NonEmptyStr>
+  a_worse_somewhere: Bool
+  winning_axes: List<NonEmptyStr>
+}
+
+data no_axis_names: List<NonEmptyStr> = []
+
+fn one_axis_name(name: NonEmptyStr) -> List<NonEmptyStr> { [name] }
+
+fn accum_refusal(acc: PairAccum, axis: SelectionAxis) -> PairAccum {
+  PairAccum {
+    refused_axes: concat(acc.refused_axes, one_axis_name(name: axis.name)),
+    a_worse_somewhere: acc.a_worse_somewhere,
+    winning_axes: acc.winning_axes,
+  }
+}
+
+fn accum_both_read(acc: PairAccum, axis: SelectionAxis, a_value: Int, b_value: Int) -> PairAccum {
+  let cmp = axis_comparison_int(goal: axis.goal, a: a_value, b: b_value)
+  PairAccum {
+    refused_axes: acc.refused_axes,
+    a_worse_somewhere: acc.a_worse_somewhere || accum_cmp_is_worse(cmp: cmp),
+    winning_axes: if accum_cmp_is_better(cmp: cmp) {
+      concat(acc.winning_axes, one_axis_name(name: axis.name))
+    } else { acc.winning_axes },
+  }
+}
+
+fn accum_cmp_is_better(cmp: AxisComparison) -> Bool {
+  match cmp {
+    Better => true,
+    Same => false,
+    Worse => false,
+  }
+}
+
+fn accum_cmp_is_worse(cmp: AxisComparison) -> Bool {
+  match cmp {
+    Worse => true,
+    Same => false,
+    Better => false,
+  }
+}
+
+fn accum_with_a(acc: PairAccum, axis: SelectionAxis, a_value: Int, b_read: ReadingLookup) -> PairAccum {
+  match b_read {
+    ReadingAbsent { absent_axis } => accum_refusal(acc: acc, axis: axis),
+    ReadingFound { value_micro } => accum_both_read(acc: acc, axis: axis, a_value: a_value, b_value: value_micro),
+  }
+}
+
+fn axis_pair_step(acc: PairAccum, axis: SelectionAxis, a: ParetoEntry, b: ParetoEntry) -> PairAccum {
+  let a_read = reading_for(e: a, wanted: axis.name)
+  match a_read {
+    ReadingAbsent { absent_axis } => accum_refusal(acc: acc, axis: axis),
+    ReadingFound { value_micro } => accum_with_a(acc: acc, axis: axis, a_value: value_micro, b_read: reading_for(e: b, wanted: axis.name)),
+  }
+}
+
+fn pair_from_accum(folded: PairAccum) -> PairStanding {
+  if count(folded.refused_axes) > 0 {
+    PairRefused { cause: join(["a compared axis has no reading on one side: ", join(folded.refused_axes, ", ")], "") }
+  } else {
+    if folded.a_worse_somewhere {
+      PairNoDominance
+    } else {
+      if count(folded.winning_axes) > 0 { PairDominates { winning_axes: folded.winning_axes } } else { PairNoDominance }
+    }
+  }
+}
+
+fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
+  pair_from_accum(folded: fold(axes, init: PairAccum { refused_axes: no_axis_names, a_worse_somewhere: false, winning_axes: no_axis_names }, f: fn(acc, axis) {
+    axis_pair_step(acc: acc, axis: axis, a: a, b: b)
+  }))
+}
+
+fn pair_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Bool {
+  match compare_pair(a: a, b: b, axes: axes) {
+    PairDominates { winning_axes } => true,
+    PairNoDominance => false,
+    PairRefused { cause } => false,
+  }
+}
+
+// One challenger's effect on a provisional subject. A refused pair against a subject that
+// declared complete inputs is a projector contradiction; it lands as incomparable, loudly,
+// rather than being skipped.
+fn challenge(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis>, keep: ParetoStanding) -> ParetoStanding {
+  match compare_pair(a: other, b: subject, axes: axes) {
+    PairDominates { winning_axes } => DominatedBy { candidate: other.label, axes: winning_axes },
+    PairNoDominance => keep,
+    PairRefused { cause } => IncomparablePendingEvidence { missing: join(["comparison against ", other.label, " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], "") },
+  }
+}
+
+fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
+  other.label != subject.label && count(other.missing_inputs) == 0
+}
+
+fn standing_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis>, acc: ParetoStanding) -> ParetoStanding {
+  match acc {
+    DominatedBy { candidate, axes } => acc,
+    IncomparablePendingEvidence { missing } => acc,
+    ProvisionallyNonDominated { sensitivities } =>
+      if challenger_applies(subject: subject, other: other) { challenge(subject: subject, other: other, axes: axes, keep: acc) } else { acc },
+  }
+}
+
+fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
+  if count(subject.missing_inputs) > 0 {
+    IncomparablePendingEvidence { missing: join(subject.missing_inputs, " ; ") }
+  } else {
+    fold(field, init: ProvisionallyNonDominated { sensitivities: sensitivities }, f: fn(acc, other) {
+      standing_step(subject: subject, other: other, axes: axes, acc: acc)
+    })
+  }
+}
+
+fn pareto_label(s: ParetoStanding) -> NonEmptyStr {
+  match s {
+    ProvisionallyNonDominated { sensitivities } => "on the frontier",
+    DominatedBy { candidate, axes } => join(["dominated by ", candidate], ""),
+    IncomparablePendingEvidence { missing } => "not computable",
+  }
+}
+
+fn standing_is_dominated(s: ParetoStanding) -> Bool {
+  match s {
+    DominatedBy { candidate, axes } => true,
+    ProvisionallyNonDominated { sensitivities } => false,
+    IncomparablePendingEvidence { missing } => false,
+  }
 }
