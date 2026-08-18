@@ -895,7 +895,7 @@ pub fn check_match_exhaustiveness(
                                     variant_pattern_coverage_key(v.clone()),
                                 ) == false)
                                 {
-                                    __result.push(v);
+                                    __result.push(variant_pattern_coverage_key(v.clone()));
                                 }
                             }
                             __result

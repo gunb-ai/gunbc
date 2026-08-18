@@ -1159,15 +1159,9 @@ fn coproduct_exhaustiveness_missing_arm_names_only_gap() {
     match diags[0].diagnostic.as_ref() {
         CompilerDiagnostic::NonExhaustiveMatch { missing, .. } => {
             assert_eq!(missing.len(), 1, "missing roster must name only the gap");
-            assert!(
-                missing[0].ends_with("Beta"),
-                "missing must identify Beta, got {:?}",
-                missing
-            );
-            assert!(
-                !missing[0].ends_with("Alpha"),
-                "covered Alpha must not appear in missing, got {:?}",
-                missing
+            assert_eq!(
+                missing[0], "Beta",
+                "missing must name the bare uncovered variant"
             );
         }
         other => panic!("expected NonExhaustiveMatch, got {:?}", other),
