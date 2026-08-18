@@ -281,11 +281,11 @@ data no_seen_qualified_names: List<String> = []
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
 // ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
-// shared CI hosts under floor load; trait_derive witnesses measured 1200-1204ms on
-// the same commit are not growing in logic — the ceiling needs headroom above jitter
-// once the full roster runs in one fold.
+// shared CI hosts under floor load; witnesses scrubbed from expected-red because they
+// now pass measured 1323-1398ms on the same commit — logic unchanged, the full fold
+// is the load — so the ceiling needs headroom above jitter, not per-witness rewrites.
 fn required_floor_claim_budget_ms() -> Int {
-  1300
+  1500
 }
 
 fn required_floor_claim_warn_ms() -> Int {
