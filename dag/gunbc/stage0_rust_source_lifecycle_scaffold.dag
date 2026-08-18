@@ -336,7 +336,15 @@ fn stage0_src_repo_path(filename: String) -> String {
 }
 
 fn derived_generated_stage0_repo_paths() -> List<String> {
-  generated_artifact_stage0_src_repo_paths()
+  filter(
+    xs: generated_artifact_stage0_src_repo_paths(),
+    predicate: fn(path) {
+      !path_in_list(
+        path: replace(path: path, pattern: stage0_src_repo_prefix, replacement: ""),
+        paths: hand_maintained_stage0_filenames()
+      )
+    }
+  )
 }
 
 fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
