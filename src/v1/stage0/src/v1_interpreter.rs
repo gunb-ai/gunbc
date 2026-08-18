@@ -31,11 +31,11 @@ use crate::v1_std_core::{
     foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
-    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
-    StringPart, UnaryOpKind, VarBindingKind,
+    method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -232,6 +232,153 @@ fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
         .unwrap_or_else(|| format!("#{}", sym.0))
+}
+
+fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool {
+    qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
+}
+
+fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>> {
+    if item.connective == Connective::Disj && !item.children.is_empty() {
+        return Some(item.clone());
+    }
+    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
+        if node.connective == Connective::Disj && !node.children.is_empty() {
+            return Some(node.clone());
+        }
+    }
+    if let Some(rhs) = type_item_alias_rhs_name(ctx, item) {
+        return resolve_coproduct_type_node(ctx, &rhs);
+    }
+    None
+}
+
+fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
+    let bare = qualified_last_segment(parent_enum.to_string());
+    if let Some(item) = lookup_type_item_across_modules(ctx, parent_enum)
+        .or_else(|| lookup_type_item_across_modules(ctx, &bare))
+    {
+        if let Some(disj) = coproduct_disj_node(ctx, &item) {
+            return Some(disj);
+        }
+        return Some(item);
+    }
+    for module in ctx.modules.iter() {
+        let env = module.type_env.clone();
+        let node =
+            crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), parent_enum.to_string())
+                .or_else(|| crate::v1_compiler_infer_env::lookup_type_by_name(env, bare.clone()))?;
+        if let Some(disj) = coproduct_disj_node(ctx, &node) {
+            return Some(disj);
+        }
+        if node.connective == Connective::Disj {
+            return Some(node);
+        }
+    }
+    None
+}
+
+fn coproduct_parent_spellings_match(
+    ctx: &InterpContext,
+    value_parent: String,
+    pattern_parent: &str,
+) -> bool {
+    if value_parent == pattern_parent {
+        return true;
+    }
+    if qualified_last_segment(value_parent.clone())
+        == qualified_last_segment(pattern_parent.to_string())
+    {
+        if let (Some(value_coproduct), Some(pattern_coproduct)) = (
+            resolve_coproduct_type_node(ctx, &value_parent),
+            resolve_coproduct_type_node(ctx, pattern_parent),
+        ) {
+            if Rc::ptr_eq(&value_coproduct, &pattern_coproduct) {
+                return true;
+            }
+            let value_authored = authored_name_at(ctx.si(), value_coproduct);
+            let pattern_authored = authored_name_at(ctx.si(), pattern_coproduct);
+            if value_authored == pattern_authored {
+                return true;
+            }
+        }
+    }
+    let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
+    match coproduct {
+        Some(coproduct_node) => {
+            let authored = authored_name_at(ctx.si(), coproduct_node.clone());
+            authored == value_parent
+                || qualified_last_segment(authored) == qualified_last_segment(value_parent.clone())
+        }
+        None => false,
+    }
+}
+
+fn variant_arm_is_declared_in_coproduct(
+    ctx: &InterpContext,
+    variant_name: Symbol,
+    pattern_parent: &str,
+) -> bool {
+    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
+        Some(node) => node,
+        None => return false,
+    };
+    if coproduct.connective != Connective::Disj {
+        return false;
+    }
+    let variant_last = qualified_last_segment(resolve_sym(variant_name));
+    for child in coproduct.children.iter() {
+        if qualified_last_segment(authored_name_at(ctx.si(), child.clone())) == variant_last {
+            return true;
+        }
+    }
+    false
+}
+
+fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
+    parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
+}
+
+fn record_pattern_type_name_matches(
+    ctx: &InterpContext,
+    record_type_name: Symbol,
+    pattern_name: &str,
+    parent_enum: Option<&String>,
+) -> bool {
+    let resolved = resolve_sym(record_type_name);
+    let name_matches = record_type_name == ctx.sym(pattern_name)
+        || resolved == pattern_name
+        || type_name_compatible(resolved.clone(), pattern_name.to_string());
+    match parent_enum {
+        Some(parent) => {
+            record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
+                || variant_arm_is_declared_in_coproduct(ctx, record_type_name, parent)
+                || name_matches
+        }
+        None => name_matches,
+    }
+}
+
+fn record_nominal_is_declared_variant_of_coproduct(
+    ctx: &InterpContext,
+    record_nominal: String,
+    pattern_parent: &str,
+) -> bool {
+    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
+        Some(node) => node,
+        None => return false,
+    };
+    if coproduct.connective != Connective::Disj {
+        return false;
+    }
+    let record_last = qualified_last_segment(record_nominal.clone());
+    for child in coproduct.children.iter() {
+        let child_name = authored_name_at(ctx.si(), child.clone());
+        if child_name == record_nominal || qualified_last_segment(child_name) == record_last {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
@@ -1863,17 +2010,59 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     ) -> Rc<PreparedScopeIndexes> {
+        Self::build_scope_indexes_with_module_order(graph, source_indices, None)
+    }
+
+    /// Same walk as [`build_scope_indexes`], but when `module_order` is present the modules are
+    /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
+    /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
+    /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    ///
+    /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
+    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
+    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
+    pub fn build_scope_indexes_with_module_order(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        module_order: Option<&[String]>,
+    ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
+        let first_write_wins = module_order.is_some();
+        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
+            match module_order {
+                Some(order) => {
+                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
+                        graph
+                            .modules
+                            .iter()
+                            .map(|m| (m.func_env.name.as_str(), m))
+                            .collect();
+                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                    // `modules` from the same `order` (`in_scope` is that list), so the
+                    // filter_map cannot drop a scoped member.
+                    order
+                        .iter()
+                        .filter_map(|name| by_name.get(name.as_str()).copied())
+                        .collect()
+                }
+                None => graph.modules.iter().collect(),
+            };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
-        for module in graph.modules.iter() {
+        for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    fn_nodes.insert(name.clone(), item.clone());
+                    if first_write_wins {
+                        fn_nodes.entry(name.clone()).or_insert(item.clone());
+                    } else {
+                        fn_nodes.insert(name.clone(), item.clone());
+                    }
                     if !module_path.is_empty() {
                         let qualified = format!("{}.{}", module_path, name);
                         fn_nodes.insert(qualified.clone(), item.clone());
@@ -3691,7 +3880,7 @@ fn match_pattern(
             // verbatim; Variant payloads are excluded so the Variant arm's
             // inline raw-value handling stays authoritative.
             if name_last == "Present"
-                && parent_enum.as_deref() == Some("Optional")
+                && parent_enum_is(parent_enum.as_ref(), "Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3704,7 +3893,7 @@ fn match_pattern(
                 return Some(bindings);
             }
             if name_last == "Holds"
-                && parent_enum.as_deref() == Some("Witness")
+                && parent_enum_is(parent_enum.as_ref(), "Witness")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3716,14 +3905,42 @@ fn match_pattern(
                 }
                 return Some(bindings);
             }
+            if name_last == "Absent" && field_bindings.is_empty() {
+                return match value {
+                    Value::Null => Some(HashMap::new()),
+                    Value::Variant {
+                        type_name,
+                        variant_name,
+                        ..
+                    } => {
+                        if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                            None
+                        } else if let Some(parent) = parent_enum.as_ref() {
+                            if coproduct_parent_spellings_match(
+                                ctx,
+                                resolve_sym(*type_name),
+                                parent,
+                            ) || variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent)
+                            {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        } else {
+                            Some(HashMap::new())
+                        }
+                    }
+                    _ => None,
+                };
+            }
             match value {
                 Value::Variant {
+                    type_name,
                     variant_name,
                     fields,
-                    ..
                 } => {
                     if name_last == "Holds"
-                        && parent_enum.as_deref() == Some("Witness")
+                        && parent_enum_is(parent_enum.as_ref(), "Witness")
                         && *variant_name != ctx.sym("Holds")
                         && *variant_name != ctx.sym("Violates")
                     {
@@ -3736,7 +3953,7 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if name_last == "Present"
-                        && parent_enum.as_deref() == Some("Optional")
+                        && parent_enum_is(parent_enum.as_ref(), "Optional")
                         && *variant_name != ctx.sym("Present")
                         && *variant_name != ctx.sym("Absent")
                     {
@@ -3748,14 +3965,13 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if *variant_name != ctx.sym(name) {
-                        // Qualified PATTERN spellings (module.Variant) carry the containment
-                        // path; variant identity is the bare arm name, normalized at value
-                        // construction — so only the pattern side needs the last segment.
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *variant_name != ctx.sym(pat_last) {
+                    if let Some(parent) = parent_enum.as_ref() {
+                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
                             return None;
                         }
+                    }
+                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3771,15 +3987,13 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
-                    // Qualified pattern spellings carry the containment path; record
-                    // literals use the bare variant/type segment — mirror the Variant
-                    // arm's last-segment fallback (cross-module match arms cite the
-                    // imported constructor path; values stay short).
-                    if *type_name != ctx.sym(name) {
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *type_name != ctx.sym(pat_last) {
-                            return None;
-                        }
+                    if !record_pattern_type_name_matches(
+                        ctx,
+                        *type_name,
+                        name_last,
+                        parent_enum.as_ref(),
+                    ) {
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3900,7 +4114,8 @@ fn match_pattern(
                     _ => None,
                 },
                 Value::Null
-                    if name_last == "Violates" && parent_enum.as_deref() == Some("Witness") =>
+                    if name_last == "Violates"
+                        && parent_enum_is(parent_enum.as_ref(), "Witness") =>
                 {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3917,16 +4132,19 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Null
-                    if name_last == "None" && parent_enum.as_deref() == Some("Diagnostics") =>
+                    if name_last == "None"
+                        && parent_enum_is(parent_enum.as_ref(), "Diagnostics") =>
                 {
                     Some(HashMap::new())
                 }
                 Value::Null
-                    if name_last == "Absent" && parent_enum.as_deref() == Some("Optional") =>
+                    if name_last == "Absent"
+                        && (parent_enum.is_none()
+                            || parent_enum_is(parent_enum.as_ref(), "Optional")) =>
                 {
                     Some(HashMap::new())
                 }
-                _ if name_last == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                _ if name_last == "Present" && parent_enum_is(parent_enum.as_ref(), "Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -3938,7 +4156,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                _ if name_last == "Holds" && parent_enum.as_deref() == Some("Witness") => {
+                _ if name_last == "Holds" && parent_enum_is(parent_enum.as_ref(), "Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -11357,6 +11575,52 @@ macro_rules! v1_builtin_arms {
                 .map(Some)
             },
 
+            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
+            // It parses cli_run::regen_input_sources through the module-binding authority path;
+            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
+            // v2.compiler.source_authority.ModuleStorageIndex.
+            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
+                if !$positional.is_empty() {
+                    return Err(InterpError::TypeError {
+                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
+                    });
+                }
+                let workspace = crate::cli_run::workspace_root();
+                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
+                    .map_err(|msg| InterpError::TypeError { msg })?;
+                let items = identities
+                    .into_iter()
+                    .map(|identity| Value::Record {
+                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module_path"), str_value(identity.module_path)),
+                            (
+                                $ctx.sym("provenance"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
+                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            (
+                                $ctx.sym("source_tree"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceTree"),
+                                    variant_name: $ctx.sym(identity.source_tree),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            ($ctx.sym("storage_path"), str_value(identity.storage_path)),
+                        ])),
+                    })
+                    .collect::<Vec<_>>();
+                Ok(Some(Value::Variant {
+                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
+                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
+                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                }))
+            },
+
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
@@ -12442,6 +12706,17 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
+            ))),
+
+            arm "free_call.record_regen_verify_gate_failure_detail" { "record_regen_verify_gate_failure_detail" } => {
+                if let [Value::Str(detail)] = $positional.as_slice() {
+                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.to_string());
+                }
+                Ok(Some(Value::Unit))
+            },
+
+            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(str_value(
+                crate::cli_run::consume_regen_verify_gate_failure_detail(),
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {

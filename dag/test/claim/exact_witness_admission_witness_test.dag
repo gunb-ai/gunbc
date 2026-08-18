@@ -303,17 +303,21 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
     && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
 }
 
-test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {
+test fn declared_long_budget_row_is_known_red_or_executing_green() -> Bool {
   fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
     if explicit_witness_admission_requires_long_eval_budget(row: row) {
-      ok && explicit_witness_admission_is_known_red(row: row)
+      ok
+        && (
+          explicit_witness_admission_is_known_red(row: row)
+            || explicit_witness_admission_is_executing_witness(row: row)
+        )
     } else {
       ok
     }
   })
 }
 
-data both_axes_on_one_row_note: String = "every_declared_long_budget_row_is_also_expected_red_today is the live receipt that the previously inexpressible combination — expensive AND known-red — is now carried on ONE row. It is an observation of today's population, not a law: a green witness may declare a long budget, and when one does this claim retires rather than being relaxed."
+data both_axes_on_one_row_note: String = "RETIRED CLAIM: every_declared_long_budget_row_is_also_expected_red_today observed that every SubstrateLongLaneEvalBudget row was also known-red — true until #8395 landed infer_transform_add_vertical_witness_holds (ExpectWitnessHolds). Replacement: declared_long_budget_row_is_known_red_or_executing_green — a declared-long row is either known-red OR an executing green witness on explicit_witness_admission_executing_witness_roster, never batch-roster-only."
 
 data budget_partition_witness_note: String = "THE RECUT CLAIM. Two facts have to hold together and neither alone is enough: the two batches must PARTITION the lane (every known-red corpus row on exactly one side, nothing invented, nothing dropped) and each side must be HOMOGENEOUS in declared budget. A partition alone would be satisfied by any split, including the mixed batch this replaces; homogeneity alone would be satisfied by dropping every row that does not fit. The population is derived, so these hold at any roster size including an empty long side."
 
