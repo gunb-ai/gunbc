@@ -1,7 +1,7 @@
 module product.fabric.budget
 
 import std.types { NonEmptyStr, Int, Timestamp }
-import std.measure { MoneyAmountMicro }
+import std.measure { MoneyAmountMicro, Currency, Micro }
 import std.currency { CurrencyCode }
 import extdeps.accounting.encumbrance {
   EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
