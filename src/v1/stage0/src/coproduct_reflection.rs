@@ -566,6 +566,18 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 }
 
 /// The authored declared-type head name of a top-level `data` declaration.
+///
+/// `decl_facts` marshals a `DataItem`'s node through the initializer projection, which drops
+/// `type_annotation` entirely — so the declared type is not reachable from that producer at
+/// all. This projects the annotation's head name (`String`, `NonEmptyStr`, `List`, ...). Head
+/// name is sufficient and deliberately not a full type rendering: the only consumer asks
+/// whether a declaration is still a bare string, and a second type-printer would be a
+/// nickname for a rendering the emitter already owns.
+///
+/// An absent annotation yields the empty string rather than a guess. `data` requires an
+/// annotation, so empty means the parse did not carry one, and a consumer that treated
+/// unknown as "not a string" would silently under-report exactly the survivors a census
+/// exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
     match decl.item.type_annotation.as_ref() {
         Some(ann) => {
@@ -580,6 +592,12 @@ fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
     }
 }
 
+/// Corpus-wide top-level `data` declarations with their declared type, keyed at declaration
+/// identity (`module_path` + `decl_name`).
+///
+/// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
+/// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
+/// cannot be un-stripped back into a module identity.
 pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
