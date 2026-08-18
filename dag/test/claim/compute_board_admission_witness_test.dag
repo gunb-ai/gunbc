@@ -8,12 +8,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // refused" passes when every planted defect trips one over-broad cause, which is how a set of
 // distinct causes decays into a single catch-all nobody notices has swallowed the others.
 
-data a_net: NetIdentity = "a" as NetIdentity
+data a_net: NetIdentity = net_identity(design: fixture_design, local_identity: "a")
 
-data b_net: NetIdentity = "b" as NetIdentity
+data b_net: NetIdentity = net_identity(design: fixture_design, local_identity: "b")
 
 data r_one: ElectricalComponentInstance = ResistorInstance {
-  identity: "r1" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "series resistor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -21,7 +21,7 @@ data r_one: ElectricalComponentInstance = ResistorInstance {
 }
 
 data c_one: ElectricalComponentInstance = CapacitorInstance {
-  identity: "c1" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "c1"),
   part: "filter capacitor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -31,7 +31,7 @@ data c_one: ElectricalComponentInstance = CapacitorInstance {
 // A resistor sharing r1's identity. Nothing distinguishes it downstream: a model binding, a net
 // member or a receipt naming "r1" cannot say which of the two it means.
 data r_one_again: ElectricalComponentInstance = ResistorInstance {
-  identity: "r1" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "second series resistor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -45,15 +45,15 @@ data coherent_analog: AnalogCircuitIntent = AnalogCircuitIntent {
     ElectricalNet {
       identity: a_net,
       members: [
-        terminal_ref(component: "r1" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "c1" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "1" as TerminalIdentity),
       ],
     },
     ElectricalNet {
       identity: b_net,
       members: [
-        terminal_ref(component: "r1" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "c1" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "2" as TerminalIdentity),
       ],
     },
   ],
@@ -123,6 +123,7 @@ fn refusal_is(r: BoardArticleRefusal, wanted: String) -> Bool {
   match r {
     DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
     DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
+    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
     DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
     NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
     BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
@@ -180,7 +181,7 @@ data dangling_member_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   nets: [
     ElectricalNet {
       identity: a_net,
-      members: [terminal_ref(component: "r9" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity)],
+      members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r9"), terminal: "1" as TerminalIdentity)],
     },
     ElectricalNet { identity: b_net, members: [] },
   ],
@@ -205,7 +206,7 @@ test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
         nets: [
           ElectricalNet {
             identity: a_net,
-            members: [terminal_ref(component: "r1" as ComponentInstanceIdentity, terminal: "3" as TerminalIdentity)],
+            members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "3" as TerminalIdentity)],
           },
           ElectricalNet { identity: b_net, members: [] },
         ],
@@ -222,7 +223,7 @@ test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
   refuses_with_exactly(
     a: fixture_article(
       analog: coherent_analog,
-      reference: "not_a_net" as NetIdentity,
+      reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
       control: coherent_control,
       bonds: []
     ),
@@ -238,7 +239,7 @@ test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
       control: coherent_control,
       bonds: [PowerReturnConnection {
         domain: b_net,
-        terminal: terminal_ref(component: "r7" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r7"), terminal: "1" as TerminalIdentity),
       }]
     ),
     wanted: "BondTerminalNamesNoTerminal"
@@ -252,8 +253,8 @@ test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
       reference: b_net,
       control: coherent_control,
       bonds: [PowerReturnConnection {
-        domain: "nowhere" as NetIdentity,
-        terminal: terminal_ref(component: "r1" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        domain: net_identity(design: fixture_design, local_identity: "nowhere"),
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
       }]
     ),
     wanted: "BondNamesUndeclaredNet"
@@ -379,7 +380,7 @@ test fn w_an_output_two_equations_drive_refuses() -> Bool {
 test fn w_two_defects_are_both_reported() -> Bool {
   let a = fixture_article(
     analog: duplicate_component_analog,
-    reference: "not_a_net" as NetIdentity,
+    reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
     control: coherent_control,
     bonds: []
   )
@@ -450,4 +451,29 @@ test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
     kind: PowerPermitAsserted,
     establishment: EstablishedByBoardSignal { signal: out_signal },
   })))
+}
+
+// A NET MEMBER FROM ANOTHER BOARD, WHICH THE DESIGN AXIS ALONE DOES NOT CATCH. Scoped identities
+// make the two boards' terminals unequal, so a foreign member is never FOUND on this net -- and a
+// membership question that always answers no, for a reason nothing states, is the silent half of
+// the state space. This is the loud half. The fixture is otherwise the coherent article, so the
+// only thing that changed is which design the member's component belongs to.
+test fn w_a_net_member_from_another_board_refuses() -> Bool {
+  let elsewhere: ElectricalDesignIdentity = "test.compute_board_admission.other_board" as ElectricalDesignIdentity
+  let foreign = ElectricalTerminalRef {
+    component: component_instance_identity(design: elsewhere, local_identity: "r_top"),
+    terminal: "1" as TerminalIdentity,
+  }
+  let spliced = AnalogCircuitIntent {
+    title: coherent_analog.title,
+    components: coherent_analog.components,
+    nets: [ElectricalNet {
+      identity: net_identity(design: fixture_design, local_identity: "spliced"),
+      members: [foreign],
+    }] + coherent_analog.nets,
+  }
+  refuses_with_exactly(
+    a: fixture_article(analog: spliced, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "NetMemberBelongsToAnotherDesign"
+  )
 }

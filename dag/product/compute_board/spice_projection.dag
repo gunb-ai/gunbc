@@ -50,10 +50,10 @@ fn component_node(
   match net_of_terminal(intent: intent, t: t) {
     Absent => Ground
     Present { value: n } =>
-      if (n as String) == (reference as String) {
+      if net_identity_eq(a: n, b: reference) {
         Ground
       } else {
-        Named { node: NamedNode { name: n as String } }
+        Named { node: NamedNode { name: net_local_label(n: n) as String } }
       }
   }
 }
@@ -65,7 +65,7 @@ fn spice_component(
 ) -> Component {
   let plus = component_node(intent: intent, reference: reference, c: c, positive: true)
   let minus = component_node(intent: intent, reference: reference, c: c, positive: false)
-  let name = component_identity(c: c) as String
+  let name = component_local_label(c: component_identity(c: c)) as String
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
       Resistor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceKilo) }
@@ -90,7 +90,7 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
-        if (b.component as String) == (component_identity(c: c) as String) { Present { value: b.standing } } else { none }
+        if component_identity_eq(a: b.component, b: component_identity(c: c)) { Present { value: b.standing } } else { none }
     }
   })
 }
@@ -102,7 +102,7 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
 // and is refused rather than resolved.
 fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
-    if (b.component as String) == (component_identity(c: c) as String) { acc + 1 } else { acc }
+    if component_identity_eq(a: b.component, b: component_identity(c: c)) { acc + 1 } else { acc }
   })
 }
 
@@ -155,7 +155,7 @@ fn component_refusal(
   c: ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
   if binding_count(bindings: bindings, c: c) > 1 {
-    Present { value: DuplicateModelBinding { component: component_identity(c: c) as NonEmptyStr } }
+    Present { value: DuplicateModelBinding { component: component_local_label(c: component_identity(c: c)) } }
   } else {
     match binding_for(bindings: bindings, c: c) {
       Absent => Present { value: ComponentModelBindingMissing { part: component_part(c: c) } }
@@ -185,10 +185,10 @@ fn first_refusal(
 // so the refusal has to happen here, before a line is built, or a component silently loses its
 // name and the deck describes a different circuit.
 fn spelling_refusal(c: ElectricalComponentInstance) -> SpiceProjectionRefusal? {
-  if spice_identifier_is_admissible(spelling: component_identity(c: c) as String) {
+  if spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
     none
   } else {
-    Present { value: IdentityNotSpellableInTarget { component: component_identity(c: c) as NonEmptyStr } }
+    Present { value: IdentityNotSpellableInTarget { component: component_local_label(c: component_identity(c: c)) } }
   }
 }
 
@@ -197,10 +197,10 @@ fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> 
     match acc {
       Present { value: r } => Present { value: r }
       Absent =>
-        if (net.identity as String) == (reference as String) || spice_identifier_is_admissible(spelling: net.identity as String) {
+        if net_identity_eq(a: net.identity, b: reference) || spice_identifier_is_admissible(spelling: net_local_label(n: net.identity) as String) {
           none
         } else {
-          Present { value: NetNotSpellableInTarget { net: net.identity as NonEmptyStr } }
+          Present { value: NetNotSpellableInTarget { net: net_local_label(n: net.identity) } }
         }
     }
   })

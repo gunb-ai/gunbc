@@ -8,12 +8,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // crosses exactly one modelled boundary, per the witness-cost rule.
 data fixture_identity: NonEmptyStr = "synthetic fixture rev 0"
 
-data rail_net: NetIdentity = "rail" as NetIdentity
+data rail_net: NetIdentity = net_identity(design: fixture_design, local_identity: "rail")
 
-data return_net: NetIdentity = "rtn" as NetIdentity
+data return_net: NetIdentity = net_identity(design: fixture_design, local_identity: "rtn")
 
 data sense_resistor: ElectricalComponentInstance = ResistorInstance {
-  identity: "sense" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -21,7 +21,7 @@ data sense_resistor: ElectricalComponentInstance = ResistorInstance {
 }
 
 data decoupling_capacitor: ElectricalComponentInstance = CapacitorInstance {
-  identity: "decap" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "decap"),
   part: "bulk decoupling capacitor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -29,7 +29,7 @@ data decoupling_capacitor: ElectricalComponentInstance = CapacitorInstance {
 }
 
 data rail_supply: ElectricalComponentInstance = IndependentVoltageSourceInstance {
-  identity: "rail_src" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "rail_src"),
   part: "standby rail source",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -116,7 +116,7 @@ test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
 // PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
 // above an oracle rather than a pinned constant: the emission is a function of the model.
 data perturbed_resistor: ElectricalComponentInstance = ResistorInstance {
-  identity: "sense" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -288,7 +288,7 @@ fn shorted_circuit() -> AnalogCircuitIntent {
     components: [sense_resistor],
     nets: append(nets_for(components: [sense_resistor]), items: [
       ElectricalNet {
-        identity: "shorting_net" as NetIdentity,
+        identity: net_identity(design: fixture_design, local_identity: "shorting_net"),
         members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
       },
     ]),

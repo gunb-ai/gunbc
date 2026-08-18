@@ -67,7 +67,7 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
 // measuring nothing.
 fn perturbed_bindings() -> List<ComponentModelBinding> {
   fold(power_interlock_article.model_bindings, init: [], f: fn(acc, b) {
-    if (b.component as String) == "pg_top" {
+    if component_local_label(c: b.component) == "pg_top" {
       concat(acc, [ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
     } else {
       concat(acc, [b])
@@ -168,8 +168,8 @@ test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
   fold(power_interlock_article.bonds, init: false, f: fn(acc, b) {
     acc || match b {
       PowerReturnConnection { domain: d, terminal: t } =>
-        (d as String) == "power_return"
-          && (t.component as String) == "logic_in"
+        net_local_label(n: d) == "power_return"
+          && component_local_label(c: t.component) == "logic_in"
           && (t.terminal as String) == "2"
       ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
       SignalReferenceConnection { signal_class: _, terminal: _ } => false

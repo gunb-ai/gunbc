@@ -1,6 +1,10 @@
 module product.compute_board.article
 
 
+// THE DESIGN THIS ARTICLE'S IDENTITIES BELONG TO. Every component and net below is scoped to it,
+// so a projection admitted against this board cannot be replayed against another whose labels agree.
+data board_power_interlock_design: ElectricalDesignIdentity = "compute_board.power_interlock" as ElectricalDesignIdentity
+
 data article_note: String = "ONE ARTICLE IDENTITY FEEDING EVERY INTERFACE. The analog slice, the digital control, the bonding topology, the platform-firmware contract and the physical and manufacturing standings are fields of ONE root, so a projection cannot quietly acquire its own private copy of the board. That is the property the whole design turns on and it is the one that decays silently: two projections each holding their own fixture agree until someone edits one of them, and nothing reports the divergence because there was never a shared referent to disagree with. THE ARTICLE IS DELIBERATELY SMALL — a two-rail power-good and reset interlock — and is a real future motherboard subassembly rather than a demonstration. It does not claim to implement the Altra power sequence; it crosses every interface that sequence will need, which is a different and more useful thing to have finished."
 
 // ELECTRICAL REFERENCES ARE NOT ONE THING, and fusing them into a single `Ground` is the
@@ -324,7 +328,7 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // values decide both the level AND the time constant — which is why they are a design pair rather
 // than one resistor with a second added beside it.
 data pg_divider_top: ElectricalComponentInstance = ResistorInstance {
-  identity: "pg_top" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
   part: "power-good divider, upper leg",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -332,7 +336,7 @@ data pg_divider_top: ElectricalComponentInstance = ResistorInstance {
 }
 
 data pg_divider_bottom: ElectricalComponentInstance = ResistorInstance {
-  identity: "pg_bot" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
   part: "power-good divider, lower leg",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -340,7 +344,7 @@ data pg_divider_bottom: ElectricalComponentInstance = ResistorInstance {
 }
 
 data pg_conditioning_capacitor: ElectricalComponentInstance = CapacitorInstance {
-  identity: "pg_filt" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
   part: "power-good conditioning capacitor",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
@@ -348,21 +352,21 @@ data pg_conditioning_capacitor: ElectricalComponentInstance = CapacitorInstance 
 }
 
 data logic_supply_source: ElectricalComponentInstance = IndependentVoltageSourceInstance {
-  identity: "logic_in" as ComponentInstanceIdentity,
+  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
   part: "logic supply input",
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
   potential_difference: Measure { count: 12 },
 }
 
-data pg_raw_net: NetIdentity = "pg_raw" as NetIdentity
+data pg_raw_net: NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "pg_raw")
 
 // THE NODE THE WHOLE ARTICLE IS ABOUT, and it did not previously exist. This is what the divider
 // produces, what the capacitor filters, and what the digital interlock's conditioned_good input
 // observes — one net joining the analog and digital halves that were formerly unconnected.
-data pg_conditioned_net: NetIdentity = "pg_cond" as NetIdentity
+data pg_conditioned_net: NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "pg_cond")
 
-data power_return_net: NetIdentity = "power_return" as NetIdentity
+data power_return_net: NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "power_return")
 
 data power_good_conditioning_intent: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "power-good conditioning network",
@@ -371,24 +375,24 @@ data power_good_conditioning_intent: AnalogCircuitIntent = AnalogCircuitIntent {
     ElectricalNet {
       identity: pg_raw_net,
       members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "1" as TerminalIdentity),
       ],
     },
     ElectricalNet {
       identity: pg_conditioned_net,
       members: [
-        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "1" as TerminalIdentity),
       ],
     },
     ElectricalNet {
       identity: power_return_net,
       members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "2" as TerminalIdentity),
       ],
     },
   ],
@@ -396,19 +400,19 @@ data power_good_conditioning_intent: AnalogCircuitIntent = AnalogCircuitIntent {
 
 data power_good_model_bindings: List<ComponentModelBinding> = [
   ComponentModelBinding {
-    component: "logic_in" as ComponentInstanceIdentity,
+    component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
     standing: ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: IdealLumped },
   },
   ComponentModelBinding {
-    component: "pg_top" as ComponentInstanceIdentity,
+    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
     standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
   ComponentModelBinding {
-    component: "pg_bot" as ComponentInstanceIdentity,
+    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
     standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
   ComponentModelBinding {
-    component: "pg_filt" as ComponentInstanceIdentity,
+    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
     standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
 ]
