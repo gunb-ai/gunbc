@@ -16,14 +16,11 @@ Every identity in `v2.workflow.floor_expected_red` receives exactly one:
 | --- | --- |
 | `still_red` | witness ran and failed on its subject |
 | `now_passes` | witness ran and returned true — **retire the enrollment, keep the witness** |
-| `not_evaluated` | no subject verdict (not in manifest, host tool missing, …) |
+| `not_evaluated` | no subject verdict (not in manifest, host tool missing, budget interrupted, …) |
 
-`not_evaluated` is load-bearing for rows with **no subject verdict** (infra gaps, not-in-manifest).
-Budget kills and other witness failures classify as `still_red` — 675ms is a **hard cutoff**
-(`v2.workflow.required_floor` `required_floor_claim_budget_ms`, operator 2026-08-17, raised
-to 550 then 675 on 2026-08-18 for shared-runner contention in the single-fold prepared-subject
-job; receipts runs 32116564202 and 32123958902);
-a witness near that line is over-large regardless of host-load jitter.
+`not_evaluated` is load-bearing for rows with **no subject verdict** (infra gaps, not-in-manifest,
+budget interruption). Completed-over-budget passes classify as `now_passes` (stale roster).
+Subject failures (`Bool(false)`, runtime errors) classify as `still_red`.
 
 ## Witness cost (operator ruling, 2026-08-18)
 
@@ -54,7 +51,9 @@ Environment:
 
 - `GUNBC_EXPECTED_RED_ROSTER_JOIN=<path>` — write TSV receipt
 - `GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY=1` — evaluate only enrolled identities present in
-  the manifest (set by the bin)
+  the manifest (set by the bin together with `GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER=
+  expected_red_roster_join_bin`; refused on the witnesses CI path if `_ONLY` is set without
+  the caller marker)
 
 **Sequencing:** eight identities that passed on CI run 32103473552 were removed from
 `v2.workflow.floor_expected_red` (2026-08-18). Further pruning waits until host-tool

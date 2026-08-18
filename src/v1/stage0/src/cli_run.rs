@@ -16118,6 +16118,9 @@ enum ExpectedRedArm {
     /// only `ClaimOutcome::Pass`, so `CompletedOverBudget` cannot occur for a failing witness.
     /// The arm therefore means "passed, then reclassified on cost", not merely "completed".
     PassedOverBudget,
+    /// Enrolled but the host tool chain could not resolve a required binary. NOT a budget
+    /// refusal — no subject verdict, no cost lower bound, remedy is infra not witness cost.
+    HostToolUnresolved,
 }
 
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
@@ -16134,7 +16137,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
             ExpectedRedArm::Held
         }
-        ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
     }
 }
 
@@ -30021,11 +30024,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -39088,6 +39091,8 @@ pub struct RequiredFloorOutcome {
     /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
     /// roster edit and not a bug fix. Three causes with three remedies get three counts.
     pub budget_refused: Vec<String>,
+    /// Host tool could not be resolved — infra undecided, not budget-refused.
+    pub host_tool_unresolved: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
@@ -39604,6 +39609,22 @@ pub fn run_required_floor(
     commit: &str,
     style: ShardStyle,
 ) -> Result<RequiredFloorOutcome, String> {
+    const EXPECTED_RED_ROSTER_JOIN_ONLY_BIN: &str = "expected_red_roster_join_bin";
+    let roster_join_only_requested = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if roster_join_only_requested
+        && std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER").as_deref()
+            != Ok(EXPECTED_RED_ROSTER_JOIN_ONLY_BIN)
+    {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterJoinOnlyUnauthorized — \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY is admitted only from the \
+             expected_red_roster_join stop-line-audit bin; witnesses CI must set \
+             GUNBC_EXPECTED_RED_ROSTER_JOIN without _ONLY"
+                .to_string(),
+        );
+    }
     floor_cgroup_envelope("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
@@ -40094,6 +40115,7 @@ pub fn run_required_floor(
         known_red_held: 0,
         stale_quarantine: Vec::new(),
         budget_refused: Vec::new(),
+        host_tool_unresolved: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -40157,6 +40179,7 @@ pub fn run_required_floor(
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
+    let mut known_red_host_tool_unresolved: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -40411,6 +40434,24 @@ pub fn run_required_floor(
                     ));
                     continue;
                 }
+                ExpectedRedArm::HostToolUnresolved => {
+                    known_red_host_tool_unresolved += 1;
+                    let detail = match &result {
+                        ClaimOutcome::HostToolUnresolved { name, probed } => format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        ),
+                        other => format!("{other:?}"),
+                    };
+                    outcome.host_tool_unresolved.push(format!(
+                        "{} is enrolled as expected-red but HOST-TOOL-UNRESOLVED, not failed \
+                         and not budget-refused: {}. Enrollment asserts an expected verdict; \
+                         missing host tooling produces none. Fix the tool chain or run on a host \
+                         that provides it — do not chase witness cost on an infra gap.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -40508,11 +40549,13 @@ pub fn run_required_floor(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
-         budget (stale roster row AND a real cost debt)",
+         budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
+         not budget)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
-        known_red_passed_over_budget
+        known_red_passed_over_budget,
+        known_red_host_tool_unresolved
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -40582,16 +40625,19 @@ pub fn run_required_floor(
             + known_red_now_passing
             + known_red_budget_refused
             + known_red_passed_over_budget
+            + known_red_host_tool_unresolved
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             budget_refused={} passed_over_budget={} roster={} — every enrolled identity must \
-             be exactly one of held, now-passing, budget-refused or passed-over-budget",
+             budget_refused={} passed_over_budget={} host_tool_unresolved={} roster={} — every \
+             enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, or host-tool-unresolved",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
+            known_red_host_tool_unresolved,
             expected_red_roster.len()
         ));
     }
@@ -40641,11 +40687,19 @@ fn witness_eval_verdict_from_claim_outcome(
             elapsed_ms,
             budget_ms,
             kind,
-            completion: _,
+            completion,
         } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms: *elapsed_ms,
             budget_ms: *budget_ms,
             kind: kind.label(),
+            completion: match completion {
+                BudgetCompletion::Interrupted => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::Interrupted
+                }
+                BudgetCompletion::CompletedOverBudget => {
+                    crate::expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
+                }
+            },
         },
     }
 }

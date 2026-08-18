@@ -25,7 +25,16 @@ pub enum WitnessEvalVerdict {
         elapsed_ms: u64,
         budget_ms: u64,
         kind: &'static str,
+        /// Interrupted = no subject verdict (floor `budget_refused`); completed-over-budget =
+        /// witness passed then was reclassified on cost (floor `passed_over_budget` / stale roster).
+        completion: BudgetVerdictCompletion,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetVerdictCompletion {
+    Interrupted,
+    CompletedOverBudget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,11 +168,26 @@ pub fn classify_verdict(verdict: &WitnessEvalVerdict) -> (ExpectedRedJoinDisposi
             elapsed_ms,
             budget_ms,
             kind,
+            completion: BudgetVerdictCompletion::Interrupted,
         } => (
-            ExpectedRedJoinDisposition::StillRed,
+            ExpectedRedJoinDisposition::NotEvaluated {
+                reason: "budget_refused".to_string(),
+            },
             format!(
-                "exceeded {kind} budget ({elapsed_ms}ms elapsed against {budget_ms}ms hard \
-                 cutoff)"
+                "exceeded {kind} budget ({elapsed_ms}ms elapsed against {budget_ms}ms; \
+                 interrupted — no subject verdict)"
+            ),
+        ),
+        WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms,
+            budget_ms,
+            kind,
+            completion: BudgetVerdictCompletion::CompletedOverBudget,
+        } => (
+            ExpectedRedJoinDisposition::NowPasses,
+            format!(
+                "passed then exceeded {kind} budget ({elapsed_ms}ms against {budget_ms}ms; \
+                 stale roster row — prune enrollment, cost debt is separate)"
             ),
         ),
     }
@@ -250,26 +274,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn budget_exceeded_at_hard_cutoff_is_still_red() {
+    fn budget_interrupted_is_not_evaluated() {
         let verdict = WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms: 509,
             budget_ms: 500,
             kind: "wall",
+            completion: BudgetVerdictCompletion::Interrupted,
         };
         let (disp, detail) = classify_verdict(&verdict);
-        assert_eq!(disp, ExpectedRedJoinDisposition::StillRed);
-        assert!(detail.contains("hard cutoff"));
+        assert!(matches!(
+            disp,
+            ExpectedRedJoinDisposition::NotEvaluated {
+                ref reason
+            } if reason == "budget_refused"
+        ));
+        assert!(detail.contains("interrupted"));
     }
 
     #[test]
-    fn substantive_budget_overrun_is_still_red() {
+    fn budget_completed_over_budget_is_now_passes() {
         let verdict = WitnessEvalVerdict::BudgetExceeded {
-            elapsed_ms: 600,
-            budget_ms: 500,
+            elapsed_ms: 1600,
+            budget_ms: 1500,
             kind: "cpu",
+            completion: BudgetVerdictCompletion::CompletedOverBudget,
         };
-        let (disp, _) = classify_verdict(&verdict);
-        assert_eq!(disp, ExpectedRedJoinDisposition::StillRed);
+        let (disp, detail) = classify_verdict(&verdict);
+        assert_eq!(disp, ExpectedRedJoinDisposition::NowPasses);
+        assert!(detail.contains("stale roster"));
     }
 
     #[test]

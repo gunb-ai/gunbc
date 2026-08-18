@@ -24,6 +24,10 @@ fn main() -> ExitCode {
         .unwrap_or_else(|| "docs/probes/expected_red_roster_join.tsv".to_string());
     std::env::set_var("GUNBC_EXPECTED_RED_ROSTER_JOIN", &join_path);
     std::env::set_var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY", "1");
+    std::env::set_var(
+        "GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY_CALLER",
+        "expected_red_roster_join_bin",
+    );
 
     let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
     eprintln!("expected_red_roster_join: writing to {join_path}");
