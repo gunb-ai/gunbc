@@ -680,7 +680,7 @@ fn qualify_borrowed_type_names(n: v1.std.core.Node, owner_module_path: String, e
         node_with_children(n: n, children: qualified_children)
       } else {
         let qname = concat(mp, ".", name)
-        Node {
+        v1.std.core.Node {
           name: qname, span: n.span, ident_span: Present { value: v1.std.core.kernel_span(name: qname) },
           children: qualified_children, connective: n.connective, params: n.params,
           inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
@@ -695,7 +695,7 @@ fn qualify_borrowed_type_names(n: v1.std.core.Node, owner_module_path: String, e
 }
 
 fn node_with_children(n: v1.std.core.Node, children: List<v1.std.core.Node>) -> v1.std.core.Node {
-  Node {
+  v1.std.core.Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: children, connective: n.connective, params: n.params,
     inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
@@ -707,7 +707,7 @@ fn node_with_children(n: v1.std.core.Node, children: List<v1.std.core.Node>) -> 
 }
 
 fn node_with_inferred(n: v1.std.core.Node, inferred: InferredNode?) -> v1.std.core.Node {
-  Node {
+  v1.std.core.Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: n.children, connective: n.connective, params: n.params,
     inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses,

@@ -59,7 +59,7 @@ type SourceRef {
 }
 
 fn make_token(text: String, span: std.types.SourceSpan, shape: v1.std.core.TokenShape) -> v1.std.core.Token {
-  Token { text: text, span: span, shape: shape }
+  v1.std.core.Token { text: text, span: span, shape: shape }
 }
 
 fn source_char(source: SourceRef, pos: Int) -> String {

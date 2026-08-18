@@ -1559,7 +1559,7 @@ fn leaf_node_with_span(name: String, span: std.types.SourceSpan) -> Node {
 }
 
 fn kernel_span(name: String) -> std.types.SourceSpan {
-  SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+  std.types.SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
 data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1573,11 +1573,11 @@ data tuple_type_name: String = "Tuple"
 data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> std.types.SourceSpan {
-  SourceSpan { file: "<synthetic>", start: start, end: end }
+  std.types.SourceSpan { file: "<synthetic>", start: start, end: end }
 }
 
 fn make_file_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 fn no_span() -> std.types.SourceSpan {

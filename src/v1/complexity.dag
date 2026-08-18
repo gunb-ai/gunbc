@@ -3143,7 +3143,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
     }
   )
   let cx_l2_param = scc_descending_param(members: members, func_index: func_index, si: si)
-  let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
+  let cx_l2_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
   if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
     Present { value: cx_l2_proof }
   } else {
@@ -3154,7 +3154,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  let tree_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  let tree_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }] }
   if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tree_proof, members: members, edges: tree_edges) == false {
     Present { value: tree_proof }
   } else {
@@ -3165,7 +3165,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         _ => true
       }
     )
-    let list_proof = TerminationProof { dimensions: [ListLength { param: "scc" }] }
+    let list_proof = std.termination.TerminationProof { dimensions: [ListLength { param: "scc" }] }
     if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
       Present { value: list_proof }
     } else {
@@ -3177,7 +3177,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           _ => true
         }
       )
-      let parser_proof = TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
+      let parser_proof = std.termination.TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
       if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: parser_proof, members: members, edges: parser_edges) == false {
         Present { value: parser_proof }
       } else {
@@ -3189,7 +3189,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
             Absent => false
           }
         )
-        let lex_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.ListLength { param: "scc" }] }
+        let lex_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.ListLength { param: "scc" }] }
         if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
           Present { value: lex_proof }
         } else {
@@ -3201,7 +3201,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
               Absent => false
             }
           )
-          let tp_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.TokenPosition { param: "scc" }] }
+          let tp_proof = std.termination.TerminationProof { dimensions: [TreeSize { param: "scc" }, std.termination.TokenPosition { param: "scc" }] }
           if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tp_proof, members: members, edges: tree_parser_edges) == false {
             Present { value: tp_proof }
           } else {

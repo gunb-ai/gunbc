@@ -240,7 +240,7 @@ fn build_item_inductive_fields(items: List<v1.std.core.Node>, recursive_type_set
 }
 
 fn nominal_ref_node(name: String, span: std.types.SourceSpan, ident_span: std.types.SourceSpan?) -> v1.std.core.Node {
-  Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
     inferred: Present { value: v1.std.core.Resolved { node: nominal_leaf_type(name: name) } },
@@ -825,7 +825,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: v1.std.core.Node
                   )
                   let template_fields = decl.children
                   Present { value: template_fields |> map(sf =>
-                    Node {
+                    v1.std.core.Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
                       inferred: Present { value: v1.std.core.Resolved { node: substitute_generics(n: field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
@@ -2545,7 +2545,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: std.
 }
 
 fn type_variable_node(id: String) -> v1.std.core.Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  v1.std.core.Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -2817,7 +2817,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<v1.std.co
         make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
         make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
-      let fold_callable = Node {
+      let fold_callable = v1.std.core.Node {
         name: "", span: no_span(), ident_span: none, children: [],
         connective: NoConnective, params: fold_params, inferred: none,
         return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none,
@@ -3362,7 +3362,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
             }
           }
           let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type, source_indices: scope.type_env.source_indices) && !is_fully_resolved(n: first_arg_type, source_indices: scope.type_env.source_indices) {
-            Node {
+            v1.std.core.Node {
               name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
               children: bridge_result_type.children,
               connective: receiver.connective, params: receiver.params,
@@ -4093,7 +4093,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           Present { value: binding } => Present { value: v1.std.core.Resolved { node: binding.resolved } }
           Absent => none
         }
-        Node {
+        v1.std.core.Node {
           name: pn.name, ident: pn.ident, span: pn.span, ident_span: pn.ident_span, children: pn.children,
           connective: pn.connective, params: pn.params, inferred: param_type,
           return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
@@ -4967,14 +4967,14 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
   if type_name == none {
     let child_nodes = fi_infer_results |> map(fir =>
-      Node {
+      v1.std.core.Node {
         name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: v1.std.core.Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
     )
-    let anon_node = Node {
+    let anon_node = v1.std.core.Node {
       name: "", span: no_span(), ident_span: none,
       children: child_nodes, connective: Conj,
            params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [],
@@ -5975,7 +5975,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
           _ => make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
         }
       )
-      Node {
+      v1.std.core.Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -6160,7 +6160,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
-      Node {
+      v1.std.core.Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: concat([annotated_scrut], annotated_arms),
         connective: body.connective, params: body.params,
@@ -6213,7 +6213,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         Present { value: body_child } => [annotated_value, annotate_descent(body: body_child, ctx: inner_ctx)]
         Absent => [annotated_value]
       }
-      Node {
+      v1.std.core.Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -6267,7 +6267,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         }
         BlockAnnotateAcc { ctx: next_ctx, children: concat(acc.children, [annotated]) }
       )
-      Node {
+      v1.std.core.Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: threaded.children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -6377,7 +6377,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
             make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
           }
         )
-        Node {
+        v1.std.core.Node {
           name: body.name, span: body.span, ident_span: body.ident_span,
           children: concat([annotated_receiver], annotated_args),
           connective: body.connective, params: body.params,
@@ -6419,7 +6419,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
       let annotated_body = annotate_descent(body: fe_body, ctx: inner_ctx)
-      Node {
+      v1.std.core.Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: [annotated_coll, annotated_body], connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -7536,7 +7536,7 @@ fn substitute_generics_apply(n: v1.std.core.Node, subst: Map<String, v1.std.core
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
       n
     } else {
-      Node {
+      v1.std.core.Node {
         name: n.name, span: n.span, ident_span: n.ident_span,
         children: new_children,
         connective: n.connective,
@@ -7553,7 +7553,7 @@ fn substitute_generics_apply(n: v1.std.core.Node, subst: Map<String, v1.std.core
 }
 
 fn kernel_span(name: String) -> std.types.SourceSpan {
-  SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+  std.types.SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
 fn deps_excluding_leaf_self(b: v1.compiler.infer_env.TypeBinding, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
@@ -7834,7 +7834,7 @@ fn local_binding_for_item(item: v1.std.core.Node, source_indices: Map<String, v1
   } else {
   let has_structure = item.connective != NoConnective
   if has_structure {
-    let type_node = Node {
+    let type_node = v1.std.core.Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
@@ -7843,7 +7843,7 @@ fn local_binding_for_item(item: v1.std.core.Node, source_indices: Map<String, v1
     }
     Present { value: v1.compiler.infer_env.TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
   } else if item.body != none && item.transport == none {
-    let fn_node = Node {
+    let fn_node = v1.std.core.Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -7852,7 +7852,7 @@ fn local_binding_for_item(item: v1.std.core.Node, source_indices: Map<String, v1
     }
     Present { value: v1.compiler.infer_env.TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-    let alias_node = Node {
+    let alias_node = v1.std.core.Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -7864,7 +7864,7 @@ fn local_binding_for_item(item: v1.std.core.Node, source_indices: Map<String, v1
     let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
     Present { value: v1.compiler.infer_env.TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
-    let bare_node = Node {
+    let bare_node = v1.std.core.Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -8266,7 +8266,7 @@ fn census_with_resolved_fn_sigs(index: v1.compiler.infer_env.SymbolIndex, source
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
+  v1.compiler.infer_env.SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
 }
 
 fn build_symbol_index_census(modules: List<v1.compiler.resolve.ResolvedModule>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
@@ -8286,7 +8286,7 @@ data underlay_fill_direction_note: String = "Fill composition overlays the CLOSU
 fn symbol_index_with_bare_fill(closure: v1.compiler.infer_env.SymbolIndex, tree: v1.compiler.infer_env.SymbolIndex) -> v1.compiler.infer_env.SymbolIndex {
   let global2 = map_merge(tree.global_bare, closure.global_bare)
   let services2 = map_merge(tree.services, closure.services)
-  SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
+  v1.compiler.infer_env.SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
 }
 
 fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
@@ -8321,7 +8321,7 @@ fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_ind
 
 fn symbol_index_with_qualified_fill(closure: v1.compiler.infer_env.SymbolIndex, fill: v1.compiler.infer_env.SymbolIndex) -> v1.compiler.infer_env.SymbolIndex {
   let entries2 = map_merge(fill.entries, closure.entries)
-  SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
+  v1.compiler.infer_env.SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
@@ -8358,10 +8358,10 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
     resolved: v1.std.core.Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
 
   let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
@@ -8499,10 +8499,10 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, v1.compiler.infer_env.TypeBinding { name: name, resolved: v1.std.core.Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 
@@ -8515,10 +8515,10 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let type_node = v1.std.core.Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, v1.compiler.infer_env.TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = v1.std.core.Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, v1.compiler.infer_env.TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
@@ -8968,7 +8968,7 @@ fn typecheck_module(resolved: v1.compiler.resolve.ResolvedModule, parent_index: 
   )
   let reannotated_items = map(typed_items, item =>
     if item.is_self_recursive && item.body != none {
-      Node {
+      v1.std.core.Node {
         name: item.name, span: item.span, ident_span: item.ident_span,
         children: item.children, params: item.params,
         inferred: item.inferred, return_cardinality: item.return_cardinality,
@@ -9329,10 +9329,10 @@ fn compiler_kernel_type_env(source_indices: Map<String, v1.std.core.NewlineIndex
     resolved: v1.std.core.Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = v1.std.core.Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: "present_value" } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = v1.std.core.Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
   let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
