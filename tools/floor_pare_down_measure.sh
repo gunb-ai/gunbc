@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
-# Extract in-floor witness wall times from a witnesses workflow log and rank pare-down targets.
+# SCAFFOLD — dissolve-on: a modeled floor gantt census in .dag retires this hand-shell
+# log classifier; until then it projects per-witness in-floor wall from witnesses workflow
+# logs (PreparedSubject leg). dissolve-on alt: prepared-subject reuse / in-floor cost
+# attribution (#8426) plus a typed witness_row_cost consumer for pare-down ranking.
 #
-# Population: witnesses with eval_wall >= 500ms (hard cutoff) and the 500-525ms
-# pollable marginal band ("censored at the wall" for pare-down ranking).
+# Authority (thresholds — consumed, never re-minted): v2.workflow.required_floor
+#   `required_floor_claim_budget_ms` / `required_floor_claim_warn_ms`
+#   (`src/v2/workflow/required_floor.dag`).
+# Authority (cost disclosure note): gunbc.witness_row_cost
+#   `witness_row_cost_migration_threshold_note` (derived 500ms = fast-lane / 10).
+# Frozen output receipt (not authority): tools/floor_pare_down_measure_receipt.txt
+#   and pinned tools/floor_pare_down_*_run_*.tsv quarry rows.
+# Inline python avoids a committed .py file (gitignore models *.py as local-dev-only).
 #
 # Usage:
 #   gh run view <run-id> --log > /tmp/floor.log
@@ -12,6 +21,29 @@
 #   tools/floor_pare_down_measure.sh --run <run-id>
 
 set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REQUIRED_FLOOR_DAG="$ROOT/src/v2/workflow/required_floor.dag"
+
+read_dag_int_fn() {
+  local fn="$1"
+  awk -v fn="$fn" '
+    $0 ~ "^fn " fn "\\(\\)" { found = 1; next }
+    found && /^[[:space:]]+[0-9]+[[:space:]]*$/ { print $1; exit }
+    found && /^}/ { exit }
+  ' "$REQUIRED_FLOOR_DAG"
+}
+
+HARD_CUTOFF_MS="$(read_dag_int_fn required_floor_claim_budget_ms)"
+WARN_MS="$(read_dag_int_fn required_floor_claim_warn_ms)"
+if [[ -z "$HARD_CUTOFF_MS" || -z "$WARN_MS" ]]; then
+  echo "error: could not read floor thresholds from $REQUIRED_FLOOR_DAG" >&2
+  exit 2
+fi
+
+# Pare-down marginal band (operator ~148 witnesses): hard cutoff through cutoff+25ms.
+# Not a second budget authority — analysis window for ranking censored-at-wall rows.
+CENSORED_BAND_HI_MS=$((HARD_CUTOFF_MS + 25))
 
 if [[ "${1:-}" == "--run" ]]; then
   run_id="${2:?run id required}"
@@ -25,9 +57,14 @@ log_path="${1:?usage: $0 <floor-workflow.log> [run-id]}"
 run_tag="${2:-floor_log}"
 out_dir="$(cd "$(dirname "$0")" && pwd)"
 
+export FLOOR_PARE_DOWN_HARD_CUTOFF_MS="$HARD_CUTOFF_MS"
+export FLOOR_PARE_DOWN_WARN_MS="$WARN_MS"
+export FLOOR_PARE_DOWN_CENSORED_BAND_HI_MS="$CENSORED_BAND_HI_MS"
+
 python3 - "$log_path" "$run_tag" "$out_dir" <<'PY'
 from __future__ import annotations
 
+import os
 import re
 import sys
 from collections import defaultdict
@@ -38,9 +75,9 @@ GANTT_RE = re.compile(
     r"\^\[\[2m\(([^)]+)\)\^?\[\[0m ([\d.]+)ms"
 )
 
-HARD_CUTOFF_MS = 500
-WARN_MS = 100
-CENSORED_BAND_HI_MS = 525
+HARD_CUTOFF_MS = int(os.environ["FLOOR_PARE_DOWN_HARD_CUTOFF_MS"])
+WARN_MS = int(os.environ["FLOOR_PARE_DOWN_WARN_MS"])
+CENSORED_BAND_HI_MS = int(os.environ["FLOOR_PARE_DOWN_CENSORED_BAND_HI_MS"])
 
 
 def classify(entry: str, function: str) -> str:

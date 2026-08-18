@@ -1,6 +1,10 @@
 FLOOR PARE-DOWN MEASUREMENT RECEIPT (stern-carp-716)
 Authority run: GitHub Actions witnesses workflow 32097006674 (main, 2026-08-18)
 Clock basis: in-floor gantt wall ms (PreparedSubject leg) — true pollable wall for completed rows
+Threshold authority: v2.workflow.required_floor `required_floor_claim_budget_ms` (500) /
+  `required_floor_claim_warn_ms` (100) — src/v2/workflow/required_floor.dag
+Cost disclosure note: gunbc.witness_row_cost `witness_row_cost_migration_threshold_note`
+  (500ms derived as fast-lane eval budget / 10; not a second hand-maintained constant)
 
 POPULATION (reconciles tidy-lark-471 correction on this run)
   over_500ms_hard_cutoff: 267 witnesses
@@ -38,5 +42,6 @@ ARTIFACTS (same directory)
   floor_censored_band_500_525ms_run_32097006674.tsv
   floor_pare_down_groups_ge_500ms_run_32097006674.tsv
 
-REPRODUCE
+REPRODUCE (SCAFFOLD harness — dissolve-on modeled floor gantt census)
   tools/floor_pare_down_measure.sh --run 32097006674
+  Thresholds read from required_floor.dag at runtime; pinned TSVs are quarry, not authority.
