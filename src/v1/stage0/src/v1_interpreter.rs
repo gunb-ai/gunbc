@@ -3771,8 +3771,15 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
+                    // Qualified pattern spellings carry the containment path; record
+                    // literals use the bare variant/type segment — mirror the Variant
+                    // arm's last-segment fallback (cross-module match arms cite the
+                    // imported constructor path; values stay short).
                     if *type_name != ctx.sym(name) {
-                        return None;
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        if *type_name != ctx.sym(pat_last) {
+                            return None;
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
