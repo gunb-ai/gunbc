@@ -124,7 +124,7 @@ fn is_witness_type_name(name: String) -> Bool {
 
 type NodeLookupResult {
   status: NodeLookupStatus
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type NodeLookupStatus
@@ -133,7 +133,7 @@ type NodeLookupStatus
 
 type PatternSubject
   = PatternResolved { node: Node }
-  | PatternDynamic { span: SourceSpan }
+  | PatternDynamic { span: std.types.SourceSpan }
   | PatternLookupBlocked
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -202,7 +202,7 @@ fn node_lookup_resolved(node: Node) -> NodeLookupResult {
   }
 }
 
-fn node_lookup_failed(diagnostics: List<ErrorNode>) -> NodeLookupResult {
+fn node_lookup_failed(diagnostics: List<v1.std.core.ErrorNode>) -> NodeLookupResult {
   NodeLookupResult {
     status: LookupFailed,
     diagnostics: diagnostics
@@ -323,9 +323,9 @@ fn check_match_exhaustiveness(
   scrutinee_type: Node,
   arms: List<Node>,
   env: TypeEnv,
-  span: SourceSpan,
+  span: std.types.SourceSpan,
   module_name: String
-) -> List<ErrorNode> {
+) -> List<v1.std.core.ErrorNode> {
   let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
   let has_structure = scrutinee_type.connective != NoConnective
   let resolved_raw = if has_structure {

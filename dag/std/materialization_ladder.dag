@@ -72,7 +72,7 @@ type CacheProvider {
   scope: List<Frame>
   coverage: CacheCoverage
   tier: ProviderTier
-  retention: ProviderRetention
+  retention: std.cache_interface.ProviderRetention
 }
 
 data vacuity_lens_design_doc_provenance: String = "docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens carrier's link): its load-bearing review correction is about THIS file's AuthoredDuplication verdict — share f(x) in f(x)==f(x) makes the test MORE tautological; vacuity needs its own VacuityEvidence, not LadderVerdict. Migrates to the vacuity lens .dag carrier when it lands."
@@ -136,12 +136,12 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
 // by its frame, but that is NOT a general peak-memory guarantee for the frame's
 // interior — the 2026-07-10 20GiB incident happened inside a live scope — so
 // the capacity fact travels beside it rather than being implied away.
-fn scope_released_retention(capacity: CapacityPolicy) -> ProviderRetention {
-  ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
+fn scope_released_retention(capacity: CapacityPolicy) -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
 }
 
-fn persistent_retention(capacity: CapacityPolicy) -> ProviderRetention {
-  ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
+fn persistent_retention(capacity: CapacityPolicy) -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
 }
 
 fn provider_row(
@@ -149,7 +149,7 @@ fn provider_row(
   scope: List<Frame>,
   coverage: CacheCoverage,
   tier: ProviderTier,
-  retention: ProviderRetention
+  retention: std.cache_interface.ProviderRetention
 ) -> CacheProvider {
   CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, retention: retention }
 }
@@ -441,7 +441,7 @@ type RefusedProvider {
   reason: RetentionRefusalReason
 }
 
-fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
+fn retention_admission(r: std.cache_interface.ProviderRetention) -> RetentionAdmission {
   match r.release_policy {
     ReleasedAtProviderScopeExit => RetentionAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
@@ -457,7 +457,7 @@ fn capacity_admission(c: CapacityPolicy) -> RetentionAdmission {
   }
 }
 
-fn retention_is_admitted(r: ProviderRetention) -> Bool {
+fn retention_is_admitted(r: std.cache_interface.ProviderRetention) -> Bool {
   match retention_admission(r: r) {
     RetentionAdmitted => true
     RetentionRefused { reason: _ } => false

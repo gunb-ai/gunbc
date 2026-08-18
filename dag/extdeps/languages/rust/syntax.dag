@@ -1,46 +1,46 @@
 module extdeps.languages.rust.syntax
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/reference/"
   }
 }
 
-data rust_item_forms: List<ItemForm> = [
-  ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
+data rust_item_forms: List<std.syntax.ItemForm> = [
+  std.syntax.ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { kind: StructForm, keyword: "struct", has_type_params: true, has_params: false,
+  std.syntax.ItemForm { kind: StructForm, keyword: "struct", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
-  ItemForm { kind: EnumForm, keyword: "enum", has_type_params: true, has_params: false,
+  std.syntax.ItemForm { kind: EnumForm, keyword: "enum", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
-  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
+  std.syntax.ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: NoBody },
-  ItemForm { kind: OtherForm, keyword: "trait", has_type_params: true, has_params: false,
+  std.syntax.ItemForm { kind: OtherForm, keyword: "trait", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { kind: OtherForm, keyword: "impl", has_type_params: true, has_params: false,
+  std.syntax.ItemForm { kind: OtherForm, keyword: "impl", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { kind: OtherForm, keyword: "const", has_type_params: false, has_params: false,
+  std.syntax.ItemForm { kind: OtherForm, keyword: "const", has_type_params: false, has_params: false,
     has_return_type: true, return_required: true,
     has_uses: false, body_kind: ExprBody },
-  ItemForm { kind: OtherForm, keyword: "static", has_type_params: false, has_params: false,
+  std.syntax.ItemForm { kind: OtherForm, keyword: "static", has_type_params: false, has_params: false,
     has_return_type: true, return_required: true,
     has_uses: false, body_kind: ExprBody },
-  ItemForm { kind: ModuleForm, keyword: "mod", has_type_params: false, has_params: false,
+  std.syntax.ItemForm { kind: ModuleForm, keyword: "mod", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody }
 ]
 
-data rust_keyword_literals: Map<String, LiteralValue> = {
-  "true": LitBool { value: true },
-  "false": LitBool { value: false }
+data rust_keyword_literals: Map<String, std.syntax.LiteralValue> = {
+  "true": std.syntax.LitBool { value: true },
+  "false": std.syntax.LitBool { value: false }
 }
 
 data rust_keyword_set: Map<String, Bool> = {
@@ -54,24 +54,24 @@ data rust_keyword_set: Map<String, Bool> = {
   "true": true, "false": true
 }
 
-data rust_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
-  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
-  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
-  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
-  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
-  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
-  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
-  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
-  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
-  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
-  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
-  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none },
-  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
+data rust_operators: List<std.syntax.OperatorSpec> = [
+  std.syntax.OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
 
-data rust_syntax_spec: SyntaxSpec = SyntaxSpec {
+data rust_syntax_spec: std.syntax.SyntaxSpec = std.syntax.SyntaxSpec {
   item_forms: rust_item_forms,
   operators: rust_operators,
   keyword_literals: rust_keyword_literals,

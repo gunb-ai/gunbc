@@ -1,15 +1,15 @@
 module extdeps.units.iso_80000_3
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.iso.org/standard/64974.html"
   }
 }
 
-data iso_80000_3_amendment_1_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data iso_80000_3_amendment_1_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.iso.org/standard/87100.html"
   }
@@ -25,9 +25,9 @@ type Iso80000Part3
 
 data iso_80000_3_standard: Iso80000Part3 = Iso80000Part3Standard
 
-data iso_80000_3_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data iso_80000_3_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.units.iso_80000_3",
       decl_name: "iso_80000_3_standard",
       field: WholeDeclaration
@@ -37,7 +37,7 @@ data iso_80000_3_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [iso_80000_3_amendment_1_authority]
 }
 
-data extdeps_model_scope: ExternalModelScope = iso_80000_3_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = iso_80000_3_model_scope
 
 data iso_80000_3_version_note: String = "ISO 80000-3 (Quantities and units - Part 3: Space and time): the quantity definitions for length, area, volume, plane angle and solid angle. This module grounds ONLY the exact unit relations the spatial substrate needs; it is not a general physics authority, and no generic extdeps.physics hub is created for it. THE PIN, WITH ITS EVIDENCE STANDING STATED: base edition 2, ISO 80000-3:2019, published October 2019 (catalogue 64974), amended by ISO 80000-3:2019/Amd 1:2025 (catalogue 87100), which is why the amendment is a SECOND citation of this one subject rather than a second subject. HOW THAT WAS ESTABLISHED, and how it was not: iso.org returns HTTP 403 to every automated fetch from this environment, so the NORMATIVE TEXT HAS NOT BEEN READ HERE and no claim in this repository may rest on its exact wording. What was verified is the designation-to-catalogue mapping, from the iso.org page titles as indexed by search plus independent resellers agreeing on both ids. An earlier revision carried www.iso.org/standard/31887.html, which review reported is ISO 80000-2 (mathematical signs and symbols); a later one removed the locator entirely and left the edition unstated, on the ground that an unverifiable numeric id is worse than none. The correction to THAT is the distinction between a paywall and an unknown: a paywall lowers evidence standing, and a mutable search-results URL is not a terminal pin. The relations carried below are in any case not edition-sensitive - they are definitional and independently checkable (a turn is 360 degrees by definition of the degree; a square metre is the area of a square of side one metre)."
 

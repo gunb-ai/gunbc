@@ -2,7 +2,7 @@ module std.cache_interface
 
 
 
-type StorageSurface = NonEmptyStr where brand("StorageSurface")
+type StorageSurface = std.types.NonEmptyStr where brand("StorageSurface")
 
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
 
@@ -31,11 +31,11 @@ type PersistenceLocality
 // Those are independent, so they are separate levels.
 type CapacityValue<T>
   = ExactLimit { value: T }
-  | RuntimeDerivedLimit { authority: DeclarationRef }
+  | RuntimeDerivedLimit { authority: std.decl_ref.DeclarationRef }
   | EffectiveLimitUnobserved
 
 type CapacityLimit
-  = ByteCapacity { limit: CapacityValue<ByteSize> }
+  = ByteCapacity { limit: CapacityValue<std.measure.ByteSize> }
   | EntryCountCapacity { limit: CapacityValue<Int> }
 
 type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
@@ -154,7 +154,7 @@ type CacheRejectReason
 
 type CacheLookupSemantics
   = ExactKeyOnly
-  | PrefixFallback { ordered_prefixes: List<NonEmptyStr> }
+  | PrefixFallback { ordered_prefixes: List<std.types.NonEmptyStr> }
   | NativeInternalLookup
   | ContentAddressLookup
 
@@ -169,11 +169,11 @@ type CacheMissSemantics
   | ProviderNativeFallback
 
 type CacheLayerPlan {
-  layers: List<CacheInterfaceId>
+  layers: List<std.cache_identity.CacheInterfaceId>
 }
 
 type CacheDeploymentBackends {
-  available: List<CacheInterfaceId>
+  available: List<std.cache_identity.CacheInterfaceId>
 }
 
 type KeyDerivationClass
@@ -189,10 +189,10 @@ type VisibilityScope = Repo | Org | Network | World
 // (hermetic_fixture's Ttl { days: 30 }) and left the number surviving only in an
 // evidence prose string. A de-fork that drops the fact it was consolidating has
 // not consolidated it, and prose is not a carrier a machine can read (§4c). The
-// window is Second rather than days because the cited seed constant is
+// window is std.measure.Second rather than days because the cited seed constant is
 // FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
 type InvalidationTrigger
-  = TtlExpiry { window: Second }
+  = TtlExpiry { window: std.measure.Second }
   | ManualPurge
   | ToolchainChange
   | DependencyChange
@@ -208,13 +208,13 @@ type KeyDerivationFacts {
 }
 
 type CacheRowEvidence
-  = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
-  | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
-  | OperatorObserved { note: NonEmptyStr, observed_at: LogicalTime }
-  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
+  = VendorCitation { source: std.types.NonEmptyStr, url: std.types.NonEmptyStr }
+  | RunnerObserved { receipt: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
+  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
+  | CiReceiptCitation { workflow_run_id: std.types.NonEmptyStr, step_id: std.types.NonEmptyStr }
 
 type CacheEvidence {
-  field: NonEmptyStr
+  field: std.types.NonEmptyStr
   evidence: CacheRowEvidence
 }
 
@@ -224,7 +224,7 @@ type ProviderKeyEncoding
   | NativeInternalEncoding
 
 type CacheInterfaceFacts {
-  identity: CacheInterfaceId
+  identity: std.cache_identity.CacheInterfaceId
   backing_surface: StorageSurface
   transport_encoding: ProviderKeyEncoding
 
@@ -248,16 +248,16 @@ type CacheStoreView {
 }
 
 type ArtifactIdentity<T> {
-  subject_digest: ContentHash
-  artifact_kind: ArtifactKindId
+  subject_digest: std.content_hash.ContentHash
+  artifact_kind: std.cache_identity.ArtifactKindId
 }
 
 type ProviderKey
-  = OpaqueStringKey { key: NonEmptyStr }
-  | CasContentDigest { digest: ContentHash }
+  = OpaqueStringKey { key: std.types.NonEmptyStr }
+  | CasContentDigest { digest: std.content_hash.ContentHash }
 
 type BackendCacheKey {
-  store: CacheInterfaceId
+  store: std.cache_identity.CacheInterfaceId
   key: ProviderKey
 }
 
@@ -267,19 +267,19 @@ type CacheKeyProjection<T> {
 }
 
 type ExecutionReceiptRef<T> {
-  receipt_digest: ExecutionReceiptDigest
+  receipt_digest: std.cache_identity.ExecutionReceiptDigest
 }
 
 type ProducerReceipt<T>
   = InternalExecution { receipt: ExecutionReceiptRef<T> }
-  | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
-  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+  | VendorArtifact { evidence: CacheRowEvidence, content_digest: std.content_hash.ContentHash }
+  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: std.content_hash.ContentHash }
 
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
   producer: ProducerReceipt<T>
-  content_digest: ContentHash
+  content_digest: std.content_hash.ContentHash
 }
 
 type CacheLookupResult<T>
@@ -315,7 +315,7 @@ fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
 
 fn classify_write<T>(
   existing: CacheLookupResult<T>,
-  offered_content: ContentHash,
+  offered_content: std.content_hash.ContentHash,
   fresh_receipt: CachedArtifactReceipt<T>,
 ) -> CacheWriteResult<T> {
   match existing {
@@ -349,7 +349,7 @@ fn read_latency_rank(latency: ReadLatencyClass) -> Int {
   }
 }
 
-fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
+fn read_latency_cost(facts: CacheInterfaceFacts) -> std.verification.NanosecondDuration {
   match facts.read_latency {
     InProcessNs => nanosecond_duration(count: 1)
     LocalDiskUs => nanosecond_duration(count: 1000)
@@ -359,10 +359,10 @@ fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
 }
 
 type CacheReachCandidate {
-  layer: CacheInterfaceId?
-  fetch_cost: NanosecondDuration
-  recompute_saved: NanosecondDuration
-  latency: NanosecondDuration
+  layer: std.cache_identity.CacheInterfaceId?
+  fetch_cost: std.verification.NanosecondDuration
+  recompute_saved: std.verification.NanosecondDuration
+  latency: std.verification.NanosecondDuration
 }
 
 fn cache_reach_candidate_recompute() -> CacheReachCandidate {
@@ -375,7 +375,7 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
 }
 
 fn cache_reach_candidate_probe(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> CacheReachCandidate {
@@ -414,7 +414,7 @@ fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> Domi
 }
 
 fn cache_layer_cost_justified(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
@@ -422,7 +422,7 @@ fn cache_layer_cost_justified(
 }
 
 fn cache_layer_beats_recompute_path(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
@@ -437,8 +437,8 @@ fn cache_layer_beats_recompute_path(
 }
 
 fn cache_interface_id_available(
-  id: CacheInterfaceId,
-  available: List<CacheInterfaceId>,
+  id: std.cache_identity.CacheInterfaceId,
+  available: List<std.cache_identity.CacheInterfaceId>,
 ) -> Bool {
   available
     |> fold(
@@ -447,7 +447,7 @@ fn cache_interface_id_available(
     )
 }
 
-fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> Bool {
+fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: std.cache_identity.CacheInterfaceId) -> Bool {
   plan.layers
     |> fold(
       init: false,
@@ -459,7 +459,7 @@ fn plan_cache_layers(
   deployment: CacheDeploymentBackends,
   recompute: CostAccount<Nano>,
   catalog: List<CacheInterfaceFacts>,
-  default_order: List<CacheInterfaceId>,
+  default_order: List<std.cache_identity.CacheInterfaceId>,
 ) -> CacheLayerPlan {
   CacheLayerPlan {
     layers: default_order
@@ -468,22 +468,22 @@ fn plan_cache_layers(
   }
 }
 
-fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> std.cache_identity.CacheInterfaceId {
   plan.layers.first()
 }
 
-fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> std.cache_identity.CacheInterfaceId {
   plan.layers.skip(n: 1).first()
 }
 
-fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
+fn cache_facts_for_id(id: std.cache_identity.CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
   catalog
     |> filter(facts => facts.identity == id)
     |> first()
 }
 
 fn cache_layer_ids_respect_locality(
-  layers: List<CacheInterfaceId>,
+  layers: List<std.cache_identity.CacheInterfaceId>,
   catalog: List<CacheInterfaceFacts>,
   last_rank: Int,
 ) -> Bool {

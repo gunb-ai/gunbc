@@ -13,7 +13,7 @@ type EdgeClassification {
 
 type BindingUsage {
   name: String
-  binding_kind: VarBindingKind?
+  binding_kind: v1.std.core.VarBindingKind?
   consumers: List<EdgeClassification>
 }
 
@@ -63,7 +63,7 @@ fn empty_usage_accum() -> UsageAccum {
   UsageAccum { bindings: empty_map(), fold_call_nodes: [], touched: [] }
 }
 
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: v1.std.core.VarBindingKind?, span_start: Int) -> UsageAccum {
   let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
   let existing = match map_get(accum.bindings, name) {
     Present { value: usage } => usage
@@ -292,7 +292,7 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
   }
 }
 
-fn is_owned_local(kind: VarBindingKind?) -> Bool {
+fn is_owned_local(kind: v1.std.core.VarBindingKind?) -> Bool {
   match kind {
     Present { value: LocalValueBinding } => true
     _ => false

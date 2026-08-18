@@ -2,7 +2,7 @@ module product.pcb.physical
 
 
 // THE BOARD AS A BODY-LEVEL SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN
-// FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect,
+// FOR. That standing admitted an outline as a std.types.NonEmptyStr — a shape no consumer can intersect,
 // measure or test for containment, so nothing could ask the two questions a board layout actually
 // has to answer: is every part on the board, and does any part's BODY sit on top of another. This
 // module answers both from geometry, and answers NOTHING about pads: a package body envelope is
@@ -32,9 +32,9 @@ module product.pcb.physical
 // why the admission arm below is named for what it checked and not for a clearance it did not
 // establish.
 type PackageBodyEnvelope {
-  package_designator: NonEmptyStr
-  body_width: Micrometer
-  body_height: Micrometer
+  package_designator: std.types.NonEmptyStr
+  body_width: std.measure.Micrometer
+  body_height: std.measure.Micrometer
 }
 
 fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
@@ -49,26 +49,26 @@ fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
 // footprint rather than authored beside it — an authored extent is a second answer to how big the
 // part is, and the one that disagrees with the package is the one nobody notices.
 type ComponentPlacement {
-  identity: NonEmptyStr
+  identity: std.types.NonEmptyStr
   body_envelope: PackageBodyEnvelope
-  origin: Point2
+  origin: std.affine_space.Point2
 }
 
 type BoardPhysicalArticle {
-  frame: CoordinateFrameIdentity
-  outline: AxisAlignedRectangle2
+  frame: std.coordinate_frame.CoordinateFrameIdentity
+  outline: std.orthogonal_geometry.AxisAlignedRectangle2
   placements: List<ComponentPlacement>
 }
 
 type PhysicalRefusal
-  = BoardFrameUnregistered { frame: CoordinateFrameIdentity }
-  | BoardFrameRegistrationRefused { cause: FrameRegistrationRefusal }
-  | BoardFrameIsNotSubMillimetre { frame: CoordinateFrameIdentity }
-  | PlacementFrameDiffersFromBoard { placement: NonEmptyStr }
-  | PlacementExtentNotPositive { placement: NonEmptyStr }
-  | PlacementNotWithinOutline { placement: NonEmptyStr }
-  | PlacementsOverlap { first: NonEmptyStr, second: NonEmptyStr }
-  | PlacementIdentityRepeated { placement: NonEmptyStr }
+  = BoardFrameUnregistered { frame: std.coordinate_frame.CoordinateFrameIdentity }
+  | BoardFrameRegistrationRefused { cause: std.spatial_frame.FrameRegistrationRefusal }
+  | BoardFrameIsNotSubMillimetre { frame: std.coordinate_frame.CoordinateFrameIdentity }
+  | PlacementFrameDiffersFromBoard { placement: std.types.NonEmptyStr }
+  | PlacementExtentNotPositive { placement: std.types.NonEmptyStr }
+  | PlacementNotWithinOutline { placement: std.types.NonEmptyStr }
+  | PlacementsOverlap { first: std.types.NonEmptyStr, second: std.types.NonEmptyStr }
+  | PlacementIdentityRepeated { placement: std.types.NonEmptyStr }
 
 type PhysicalRefusalSet {
   first: PhysicalRefusal
@@ -102,7 +102,7 @@ fn physical_refusal_count(s: PhysicalRefusalSet) -> std.nat.Nat {
 // The rectangle a placement occupies. It is a construction rather than a record because a footprint
 // with a zero extent has no rectangle at all, and the geometry layer already refuses that — this
 // module does not get to decide the degenerate case differently from every other consumer.
-fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAlignedRectangle2> {
+fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: p.origin,
     max: point2(
@@ -117,23 +117,23 @@ fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAligned
 // millimetre package pitch cannot be drawn in whole millimetres at all, so a millimetre-registered
 // frame is refused rather than accepted and quietly rounded. This is the article's
 // RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check rather than by a claim.
-fn frame_is_sub_millimetre(registry: SpatialFrameRegistry, frame: CoordinateFrameIdentity) -> Bool {
+fn frame_is_sub_millimetre(registry: SpatialFrameRegistry, frame: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match frame_length_scale(r: registry, identity: frame) {
     Absent => false
     Present { value: s } => scales_agree(a: s, b: Micro)
   }
 }
 
-fn identity_occurrences(ps: List<ComponentPlacement>, id: NonEmptyStr) -> std.nat.Nat {
+fn identity_occurrences(ps: List<ComponentPlacement>, id: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(ps, init: 0, f: fn(acc, p) { if (p.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
-fn seen_identity(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn seen_identity(seen: List<std.types.NonEmptyStr>, id: std.types.NonEmptyStr) -> Bool {
   fold(seen, init: false, f: fn(acc, k) { acc || (k as String) == (id as String) })
 }
 
 type PlacementScan {
-  seen: List<NonEmptyStr>
+  seen: List<std.types.NonEmptyStr>
   causes: List<PhysicalRefusal>
 }
 

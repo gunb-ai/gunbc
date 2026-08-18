@@ -10,15 +10,15 @@ data occurrence_binding_resolve_duplicate_identity_law: String = "A supplied can
 type OccurrenceCategoryBindingVerdict
   = OccurrenceCategoryBindingAdmissible
   | OccurrenceCategoryBindingInadmissible {
-      reference: OccurrenceCategory,
-      declaration: OccurrenceCategory,
+      reference: std.occurrence_identity.OccurrenceCategory,
+      declaration: std.occurrence_identity.OccurrenceCategory,
     }
 
 data occurrence_category_binding_verdict_note: String = "Canonical namespace-binding reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. Occurrence identity carries each category; this binding authority alone decides their admissibility relation."
 
 fn occurrence_category_binding_verdict(
-  reference: OccurrenceCategory,
-  declaration: OccurrenceCategory
+  reference: std.occurrence_identity.OccurrenceCategory,
+  declaration: std.occurrence_identity.OccurrenceCategory
 ) -> OccurrenceCategoryBindingVerdict {
   match reference {
     TypeOccurrence =>
@@ -114,7 +114,7 @@ fn binding_candidate_from_declaration(
 type OccurrenceCandidatePopulationBuild {
   candidates: FreeMonoid<BindingCandidate<std.occurrence_identity.OccurrenceId>>
   seen_candidate_ids: Map<Int, std.occurrence_identity.OccurrenceId>
-  refusal: OccurrenceTransportRefusal?
+  refusal: std.occurrence_identity.OccurrenceTransportRefusal?
 }
 
 fn binding_candidates_from_supplied_declarations(
@@ -240,7 +240,7 @@ type OccurrenceReferenceBindingOutcome
       result: OccurrenceBindingResult<std.occurrence_identity.OccurrenceId>,
     }
   | OccurrenceReferenceBindingTransportRefused {
-      refusal: OccurrenceTransportRefusal,
+      refusal: std.occurrence_identity.OccurrenceTransportRefusal,
     }
 
 fn reference_occurrence_by_id(

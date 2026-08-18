@@ -16,7 +16,7 @@ type VariantEncoding
   | TaggedVariant
 
 type CoproductWireContract {
-  coproduct: DeclarationRef
+  coproduct: std.decl_ref.DeclarationRef
   encoding: VariantEncoding
 }
 

@@ -12,9 +12,9 @@ type TypeEnv {
   parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
-  inductive_fields: Map<String, List<InductiveField>>
-  source_indices: Map<String, NewlineIndex>
-  intern_table: InternTable
+  inductive_fields: Map<String, List<std.induction.InductiveField>>
+  source_indices: Map<String, v1.std.core.NewlineIndex>
+  intern_table: v1.std.core.InternTable
   source_visible_names: Map<String, Bool>
   symbol_index: SymbolIndex
   module_path: String
@@ -23,7 +23,7 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: Node
-  provenance: SubValueRelation
+  provenance: std.induction.SubValueRelation
 }
 
 data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
@@ -47,7 +47,7 @@ type ImportBinding {
 type ScopeBinding {
   name: String
   resolved: Node
-  provenance: SubValueRelation
+  provenance: std.induction.SubValueRelation
 }
 
 type ServiceCensusEntry {
@@ -182,7 +182,7 @@ type TypeEnvCacheMergeConflict {
   import_path: String
   existing_site: String
   incoming_site: String
-  span: SourceSpan
+  span: std.types.SourceSpan
   same_tree: Bool
 }
 
@@ -602,7 +602,7 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
   }
 }
 
-fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> CompilerDiagnostic {
+fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: std.types.SourceSpan) -> CompilerDiagnostic {
   let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
   if cands |> count > 0 {
     AmbiguousReference { name: name, candidates: cands, span: span }
@@ -631,11 +631,11 @@ fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: Strin
   }
 }
 
-fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: binding.resolved) == name
 }
 
-fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Bool> {
   fold(params, init: empty_map(), f: (acc, p) =>
     let pt = param_node_type_expr(n: p)
     let pname = param_node_name_at(n: p, source_indices: source_indices)
@@ -928,7 +928,7 @@ fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
   }
 }
 
-fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
+fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<std.induction.InductiveField> {
   let local = match map_get(env.inductive_fields, type_name) {
     Present { value: fields } => fields
     Absent => []
@@ -953,7 +953,7 @@ fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, fie
 
 data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
 
-fn append_inductive_field_absent(existing: List<InductiveField>, incoming: InductiveField) -> List<InductiveField> {
+fn append_inductive_field_absent(existing: List<std.induction.InductiveField>, incoming: std.induction.InductiveField) -> List<std.induction.InductiveField> {
   if existing |> any(f => inductive_field_key(f: f) == inductive_field_key(f: incoming)) {
     existing
   } else {
@@ -961,20 +961,20 @@ fn append_inductive_field_absent(existing: List<InductiveField>, incoming: Induc
   }
 }
 
-fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
+fn put_inductive_field(fields: Map<String, List<std.induction.InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<std.induction.InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: std.induction.InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
 }
 
-fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
+fn put_inductive_field_cross(fields: Map<String, List<std.induction.InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<std.induction.InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: std.induction.InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
 }
 
 data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
@@ -989,11 +989,11 @@ fn recursion_shape_key(shape: RecursionShape) -> String {
   }
 }
 
-fn inductive_field_key(f: InductiveField) -> String {
+fn inductive_field_key(f: std.induction.InductiveField) -> String {
   concat(concat(concat(concat(concat(concat(f.variant_name, "|"), f.field_name), "|"), recursion_shape_key(shape: f.shape)), "|"), f.element_type)
 }
 
-fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+fn merge_inductive_fields(left: Map<String, List<std.induction.InductiveField>>, right: Map<String, List<std.induction.InductiveField>>) -> Map<String, List<std.induction.InductiveField>> {
   right |> map_keys |> fold(init: left, f: (acc, type_name) =>
     match map_get(right, type_name) {
       Present { value: incoming } =>
@@ -1017,7 +1017,7 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
   )
 }
 
-fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
+fn inductive_fields_list_to_map(fields: List<std.induction.InductiveField>) -> Map<String, List<std.induction.InductiveField>> {
   fields |> fold(init: empty_map(), f: (acc, field) =>
     let existing = match map_get(acc, field.type_name) {
       Present { value: fs } => fs

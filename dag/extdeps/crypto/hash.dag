@@ -13,26 +13,26 @@ type HashAlgorithm =
   | Sha256
   | Sha512
 
-data sha256_authority_note: NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
+data sha256_authority_note: std.types.NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
 
-data sha512_authority_note: NonEmptyStr = "SHA-512 per FIPS 180-4 (Secure Hash Standard, same NIST anchor); the hex form is the lowercase hexadecimal rendering of the 64-byte output as sha512sum(1) prints it. npm package-lock SRI and OCI digests consume std.content_hash.Sha512Digest; this module cites the algorithm itself so npm's use of SHA-512 does not ground the cryptographic primitive."
+data sha512_authority_note: std.types.NonEmptyStr = "SHA-512 per FIPS 180-4 (Secure Hash Standard, same NIST anchor); the hex form is the lowercase hexadecimal rendering of the 64-byte output as sha512sum(1) prints it. npm package-lock SRI and OCI digests consume std.content_hash.Sha512Digest; this module cites the algorithm itself so npm's use of SHA-512 does not ground the cryptographic primitive."
 
 type Digest {
   algorithm: HashAlgorithm
-  hex: NonEmptyStr
+  hex: std.types.NonEmptyStr
 }
 
-fn sha256_digest(hex: NonEmptyStr) -> Digest {
+fn sha256_digest(hex: std.types.NonEmptyStr) -> Digest {
   Digest { algorithm: Sha256, hex: hex }
 }
 
-fn sha512_digest(hex: NonEmptyStr) -> Digest {
+fn sha512_digest(hex: std.types.NonEmptyStr) -> Digest {
   Digest { algorithm: Sha512, hex: hex }
 }
 
-data digest_shell_verify_line_legacy_note: NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
+data digest_shell_verify_line_legacy_note: std.types.NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
 
-fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
+fn digest_shell_verify_line(digest: Digest, file_path: std.types.NonEmptyStr) -> String {
   match digest.algorithm {
     Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
     Sha512 =>

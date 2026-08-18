@@ -5,8 +5,8 @@ data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk 
 
 type ParsedOccurrenceBindingSource
   = ParsedOccurrenceBindingSourceReady {
-      transport: OccurrenceTransport,
-      module_path: NonEmptyStr,
+      transport: std.occurrence_identity.OccurrenceTransport,
+      module_path: std.types.NonEmptyStr,
     }
   | ParsedOccurrenceBindingSourceRefused
 
@@ -25,7 +25,7 @@ fn parse_authored_occurrence_binding_source(
     Present { value: module_path } =>
       ParsedOccurrenceBindingSourceReady {
         transport: parsed.occurrence_transport,
-        module_path: module_path as NonEmptyStr,
+        module_path: module_path as std.types.NonEmptyStr,
       }
   }
 }
@@ -44,8 +44,8 @@ fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRo
 data occurrence_binding_inputs_accumulator_note: String = "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6)."
 
 fn occurrence_binding_inputs_from_transport(
-  module_path: NonEmptyStr,
-  transport: OccurrenceTransport
+  module_path: std.types.NonEmptyStr,
+  transport: std.occurrence_identity.OccurrenceTransport
 ) -> OccurrenceBindingCandidateInputs {
   OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
@@ -86,7 +86,7 @@ fn occurrence_binding_inputs_from_transport(
 data structural_binding_walk_refusal_note: String = "structural_binding_walk / StructuralBindingWalk / StructuralBindingIndexRefusal are the single authority in std.occurrence_binding_candidates (N3-B0) — StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515)."
 
 fn reference_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> ReferenceOccurrence? {
   match references_named(transport: transport, name: name) |> first {
@@ -96,7 +96,7 @@ fn reference_named(
 }
 
 fn references_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> List<ReferenceOccurrence> {
   fold(
@@ -118,7 +118,7 @@ fn references_named(
 }
 
 fn declarations_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> List<DeclarationOccurrence> {
   fold(
@@ -140,7 +140,7 @@ fn declarations_named(
 }
 
 fn index_entry_for_occurrence(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceIndexEntry? {
   fold(
@@ -159,7 +159,7 @@ fn index_entry_for_occurrence(
 }
 
 fn occurrence_id_for_authored_name(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> std.occurrence_identity.OccurrenceId? {
   match fold(

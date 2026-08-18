@@ -8,9 +8,9 @@ data occurrence_binding_parser_walk_offline_recipe: String = "OFFLINE LOCAL RECI
 
 type ObcpwParsed
   = ObcpwParsedReady {
-      transport: OccurrenceTransport,
-      inputs: OccurrenceBindingCandidateInputs,
-      module_path: NonEmptyStr,
+      transport: std.occurrence_identity.OccurrenceTransport,
+      inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+      module_path: std.types.NonEmptyStr,
     }
   | ObcpwParsedRefused
 
@@ -29,7 +29,7 @@ fn obcpw_parse(file: String, source: String) -> ObcpwParsed {
   }
 }
 
-fn obcpw_same_module(left: NonEmptyStr, right: NonEmptyStr) -> Bool {
+fn obcpw_same_module(left: std.types.NonEmptyStr, right: std.types.NonEmptyStr) -> Bool {
   left == right
 }
 
@@ -58,7 +58,7 @@ fn obcpw_greeter_source() -> String {
 }
 
 fn obcpw_declarations_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> List<DeclarationOccurrence> {
   fold(
@@ -77,7 +77,7 @@ fn obcpw_declarations_named(
 }
 
 fn index_entry_for_declaration(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   declaration: DeclarationOccurrence
 ) -> OccurrenceIndexEntry? {
   fold(
@@ -96,7 +96,7 @@ fn index_entry_for_declaration(
 }
 
 fn obcpw_references_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> List<ReferenceOccurrence> {
   fold(
@@ -115,7 +115,7 @@ fn obcpw_references_named(
 }
 
 fn index_entry_for_reference(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   reference: ReferenceOccurrence
 ) -> OccurrenceIndexEntry? {
   fold(
@@ -134,8 +134,8 @@ fn index_entry_for_reference(
 }
 
 fn obcpw_reference_binds_to_declaration(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: ReferenceOccurrence,
   declaration: DeclarationOccurrence
 ) -> Bool {
@@ -163,8 +163,8 @@ fn obcpw_reference_with_occurrence(
 }
 
 fn obcpw_reference_unbound_exactly(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: ReferenceOccurrence
 ) -> Bool {
   match resolve_reference_binding_via_structural_candidates(
@@ -179,8 +179,8 @@ fn obcpw_reference_unbound_exactly(
 }
 
 fn obcpw_unknown_occurrence_transport_refuses(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: ReferenceOccurrence
 ) -> Bool {
   match resolve_reference_binding_via_structural_candidates(
@@ -393,8 +393,8 @@ data parser_repeated_bindings_projection_law_note: String = "Case 6 — projecti
 data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
 
 fn obcpw_bound_providers_named(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   name: String
 ) -> List<BoundReferenceProvider> {
   reverse(fold(
@@ -526,7 +526,7 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
 }
 
 fn obcpw_declaration_for_occurrence(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> DeclarationOccurrence? {
   fold(
@@ -545,16 +545,16 @@ fn obcpw_declaration_for_occurrence(
 }
 
 fn obcpw_inputs_with_lexical_fn_a(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   match occurrence_id_for_authored_name(transport: transport, name: "fn_a") {
     Absent => inputs
     Present { value: fn_a_id } =>
       match obcpw_declaration_for_occurrence(transport: transport, occurrence: fn_a_id) {
         Absent => inputs
         Present { value: fn_a_declaration } =>
-          OccurrenceBindingCandidateInputs {
+          std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
             module_paths: inputs.module_paths,
             authored_order_rows: inputs.authored_order_rows,
             exposure_rows: reverse(fold(
@@ -580,13 +580,13 @@ fn obcpw_inputs_with_lexical_fn_a(
 }
 
 fn obcpw_inputs_without_fn_a_exposure(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   match occurrence_id_for_authored_name(transport: transport, name: "fn_a") {
     Absent => inputs
     Present { value: fn_a_id } =>
-      OccurrenceBindingCandidateInputs {
+      std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
         module_paths: inputs.module_paths,
         authored_order_rows: inputs.authored_order_rows,
         exposure_rows: fold(
@@ -603,11 +603,11 @@ fn obcpw_inputs_without_fn_a_exposure(
 }
 
 fn obcpw_inputs_without_reference_authored_order(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: ReferenceOccurrence
-) -> OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: inputs.module_paths,
     exposure_rows: inputs.exposure_rows,
     authored_order_rows: fold(

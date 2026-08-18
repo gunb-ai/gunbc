@@ -2,8 +2,8 @@ module extdeps.languages.rust.emit
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/reference/"
   }
@@ -22,7 +22,7 @@ data rust_container_templates: Map<String, String> = {
   "boolean_algebra": "bool"
 }
 
-data rust_simple_method_specs: List<SimpleMethodSpec> = [
+data rust_simple_method_specs: List<std.emit_model.SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
   { method_name: "join",      template: "\{recv\}.join(&\{arg\})",                                                                    wraps_result: false },
   { method_name: "split",     template: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",                         wraps_result: true },
@@ -67,7 +67,7 @@ data rust_enum_derives: String = rust_trait_derive_attr_from_traits(payload_copr
 
 data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
 
-fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String {
+fn rust_trait_derive_spelling(derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait) -> String {
   match derive_trait {
     ReprDeriveDebug => "Debug"
     ReprDeriveClone => "Clone"
@@ -88,7 +88,7 @@ fn rust_trait_derive_spelling(derive_trait: ReprGroundingDeriveTrait) -> String 
   }
 }
 
-fn rust_trait_derive_attr_from_traits(traits: List<ReprGroundingDeriveTrait>) -> String {
+fn rust_trait_derive_attr_from_traits(traits: List<std.trait_derive_shape.ReprGroundingDeriveTrait>) -> String {
   concat(
     "#[derive(",
     traits |> map(t => rust_trait_derive_spelling(t)) |> join(separator: ", "),
@@ -289,7 +289,7 @@ data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
 
 data rust_pair_completion_op_key_totality_note: String = "Total over ReprGroundingDeriveTrait by construction, with no wildcard arm (DESIGN §6 non-fold residue; caught by v2.lens.non_fold_residue on the first floor run that was not superseded). The first draft matched the five arithmetic variants and swept the other ten into `_ => \"\"`, which is two defects in one line: a new unrostered residue site, and a FABRICATED key — an empty string is not the key of any trait, it is the absence of an answer wearing a String. It also made the coproduct's growth silent, which is the actual cost: a sixteenth ReprGroundingDeriveTrait variant would have landed as \"\" and been read as a legitimate lookup that simply missed. Every variant now returns its own key. Ten of the fifteen have no pair-completion spelling row and are not expected to — a pair completion has no Debug or Ord operator, and Rem is arithmetic but is not one of the five Grothendieck ops — so they resolve to Absent in rust_pair_completion_spelling_for and surface through the compile_error! arm NAMED, which is strictly better than the empty key: the diagnostic says which trait was asked for. Adding a variant to the coproduct now forces an edit here rather than defaulting, and that is enforced rather than hoped for: with no wildcard the match is non-exhaustive the moment a sixteenth variant lands, which is a hard diagnostic from the batch-1 dag_compile_clean_gate_passes gate (extdeps/ is not one of the excluded paths). The wildcard was what made the coproduct extensible-in-silence; removing it is the construction, and the gate is the thing that notices."
 
-fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
+fn rust_pair_completion_op_key(op: std.trait_derive_shape.ReprGroundingDeriveTrait) -> String {
   match op {
     ReprDeriveAdd => "add"
     ReprDeriveSub => "sub"
@@ -310,13 +310,13 @@ fn rust_pair_completion_op_key(op: ReprGroundingDeriveTrait) -> String {
   }
 }
 
-fn rust_pair_completion_spelling_for(op: ReprGroundingDeriveTrait) -> RustPairCompletionSpelling? {
+fn rust_pair_completion_spelling_for(op: std.trait_derive_shape.ReprGroundingDeriveTrait) -> RustPairCompletionSpelling? {
   rust_pair_completion_spellings
     |> filter(s => s.method == rust_pair_completion_op_key(op))
     |> first
 }
 
-fn rust_pair_completion_factor_source(factor: PairCompletionFactor) -> String {
+fn rust_pair_completion_factor_source(factor: std.trait_derive_shape.PairCompletionFactor) -> String {
   concat(
     match factor.operand {
       PairCompletionSelf => "self"
@@ -330,13 +330,13 @@ fn rust_pair_completion_factor_source(factor: PairCompletionFactor) -> String {
   )
 }
 
-fn rust_pair_completion_arm_sources(arm: PairCompletionArm) -> List<String> {
+fn rust_pair_completion_arm_sources(arm: std.trait_derive_shape.PairCompletionArm) -> List<String> {
   arm.terms |> flat_map(term => term.factors |> map(f => rust_pair_completion_factor_source(f)))
 }
 
 fn rust_pair_completion_factor_render(
-  factor: PairCompletionFactor,
-  term: PairCompletionTerm,
+  factor: std.trait_derive_shape.PairCompletionFactor,
+  term: std.trait_derive_shape.PairCompletionTerm,
   later_sources: List<String>
 ) -> String {
   let src = rust_pair_completion_factor_source(factor)
@@ -349,7 +349,7 @@ fn rust_pair_completion_factor_render(
 }
 
 fn rust_pair_completion_term_render(
-  term: PairCompletionTerm,
+  term: std.trait_derive_shape.PairCompletionTerm,
   later_sources: List<String>
 ) -> String {
   term.factors
@@ -358,7 +358,7 @@ fn rust_pair_completion_term_render(
 }
 
 fn rust_pair_completion_arm_render(
-  arm: PairCompletionArm,
+  arm: std.trait_derive_shape.PairCompletionArm,
   later_sources: List<String>
 ) -> String {
   arm.terms
@@ -370,7 +370,7 @@ fn rust_pair_completion_no_later_sources() -> List<String> {
   []
 }
 
-fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
+fn rust_pair_completion_body_render(body: std.trait_derive_shape.PairCompletionBody) -> String {
   match body {
     PairCompletionSumOfProducts { pos: pos, neg: neg } =>
       concat(
@@ -397,7 +397,7 @@ fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
   }
 }
 
-fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
+fn rust_pair_completion_impl_render(row: std.trait_derive_shape.PairCompletionOpRow) -> String {
   match rust_pair_completion_spelling_for(row.op) {
     Present { value: spelling } =>
       concat(
@@ -447,6 +447,6 @@ fn rust_supplemental_impls_bool_coproduct() -> String {
   )
 }
 
-data rust_pair_completion_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
+data rust_pair_completion_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
 
-data rust_pair_completion_nonpolynomial_body_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")
+data rust_pair_completion_nonpolynomial_body_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")

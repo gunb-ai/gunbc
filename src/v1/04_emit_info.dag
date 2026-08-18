@@ -13,7 +13,7 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 type TypeSummary {
   name: String
   repr: TypeRepr
-  field_summaries: Map<String, FieldSummary>
+  field_summaries: Map<String, v1.std.core.FieldSummary>
   field_type_map: Map<String, String>
   field_import_surface_names: List<String>
   variant_name_set: Map<String, Bool>
@@ -76,7 +76,7 @@ type EmitGraphInfo {
 
 
   fn_generic_param_names: List<String>
-  fn_type_env: TypeEnv
+  fn_type_env: v1.compiler.infer_env.TypeEnv
   fn_return_type: Node?
 }
 
@@ -111,7 +111,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
+fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: v1.compiler.infer_env.TypeEnv) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -248,7 +248,7 @@ fn is_tuple_type(n: Node) -> Bool {
   n.connective == Conj && n.ident_span == none && n.children |> count == 2
 }
 
-fn build_struct_field_summaries(parent: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
+fn build_struct_field_summaries(parent: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let is_pair = is_tuple_type(n: parent)
   fold(parent.children |> enumerate, init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
@@ -258,7 +258,7 @@ fn build_struct_field_summaries(parent: Node, source_indices: Map<String, Newlin
     } else {
       let style = if is_pair { if idx == 0 { TupleFirst } else { TupleSecond } } else { StoredField }
       let key = authored_name_at(source_indices: source_indices, node: child)
-      map_insert(acc, key, FieldSummary {
+      map_insert(acc, key, v1.std.core.FieldSummary {
         access_style: style,
         value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch: child))
       })
@@ -292,7 +292,7 @@ fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected
   )
 }
 
-fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
+fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let first_field_names = match variants |> first {
     Present { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_indices: source_indices, node: f))
     Absent => []
@@ -310,7 +310,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   fold(consistent, init: empty_map(), f: (acc, field_name) =>
     match find_first_enum_field_node(variants: variants, field_name: field_name, source_indices: source_indices) {
       Present { value: first_field } =>
-        map_insert(acc, field_name, FieldSummary {
+        map_insert(acc, field_name, v1.std.core.FieldSummary {
           access_style: EnumAccessor,
           value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch:first_field))
         })

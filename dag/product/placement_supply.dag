@@ -1,13 +1,13 @@
 module product.placement_supply
 
 
-type HostIdentity = NonEmptyStr where brand("HostIdentity")
-type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
-type SiteIdentity = NonEmptyStr where brand("SiteIdentity")
-type RoomIdentity = NonEmptyStr where brand("RoomIdentity")
-type RackIdentity = NonEmptyStr where brand("RackIdentity")
-type RackShelfIdentity = NonEmptyStr where brand("RackShelfIdentity")
-type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIdentity")
+type HostIdentity = std.types.NonEmptyStr where brand("HostIdentity")
+type PhysicalAssetIdentity = std.types.NonEmptyStr where brand("PhysicalAssetIdentity")
+type SiteIdentity = std.types.NonEmptyStr where brand("SiteIdentity")
+type RoomIdentity = std.types.NonEmptyStr where brand("RoomIdentity")
+type RackIdentity = std.types.NonEmptyStr where brand("RackIdentity")
+type RackShelfIdentity = std.types.NonEmptyStr where brand("RackShelfIdentity")
+type ProcurementReceiptIdentity = std.types.NonEmptyStr where brand("ProcurementReceiptIdentity")
 
 // SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
 // sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
@@ -25,12 +25,12 @@ type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIde
 // A rack POSITION and a rack HEIGHT are different quantities, the affine split DESIGN cites
 // for Temperature vs TemperatureDifference: first_u is an ordinal 1-based slot index (which U
 // the asset starts at), height is a cardinal magnitude (how many U it occupies). Only the
-// second is a length, so only the second takes the std.measure RackUnit carrier. Adding two
+// second is a length, so only the second takes the std.measure std.measure.RackUnit carrier. Adding two
 // positions is meaningless; adding two heights is not, and measure_add admits only the latter.
 type RackUnitPosition = Int
 
 type RackPositionStanding
-  = RackUnitsObserved { first_u: RackUnitPosition, height: RackUnit }
+  = RackUnitsObserved { first_u: RackUnitPosition, height: std.measure.RackUnit }
   | RackPositionUnobserved
 
 type RackResidence
@@ -52,17 +52,17 @@ type PhysicalContainment
 
 type PhysicalAsset {
   identity: PhysicalAssetIdentity
-  catalog: DeclarationRef
-  physical_serial: NonEmptyStr?
+  catalog: std.decl_ref.DeclarationRef
+  physical_serial: std.types.NonEmptyStr?
   procurement: ProcurementReceiptIdentity?
 }
 
 type StationModeStanding
-  = StationModeObserved { mode: NonEmptyStr }
+  = StationModeObserved { mode: std.types.NonEmptyStr }
   | StationModeUnobserved
 
 type WirelessAdapterStanding
-  = WirelessAdapterPresent { interface: NonEmptyStr, station_mode: StationModeStanding }
+  = WirelessAdapterPresent { interface: std.types.NonEmptyStr, station_mode: StationModeStanding }
   | WirelessAdapterAbsent
   | WirelessAdapterUnobserved
 
@@ -78,19 +78,19 @@ type WirelessReachStanding
   = TargetSsidObserved {
       controller: HostIdentity,
       target: HostIdentity,
-      interface: NonEmptyStr,
+      interface: std.types.NonEmptyStr,
       bssid: extdeps.dhcp.v4.MacAddress,
       signal: SignalStrength?,
     }
   | TargetAssociationObserved {
       controller: HostIdentity,
       target: HostIdentity,
-      interface: NonEmptyStr,
+      interface: std.types.NonEmptyStr,
       management_path_preserved: Bool,
     }
   | TargetNotObserved
   | WirelessReachUnobserved
-  | WirelessReachRefused { cause: NonEmptyStr }
+  | WirelessReachRefused { cause: std.types.NonEmptyStr }
 
 type WifiRelayProvision
   = RelayProvisioned
@@ -113,7 +113,7 @@ type WifiBootstrapChain {
 
 type WifiBootstrapAdmissibility
   = WifiBootstrapAdmissible
-  | WifiBootstrapRefused { cause: NonEmptyStr }
+  | WifiBootstrapRefused { cause: std.types.NonEmptyStr }
 
 type HostSpatialFacts {
   host: HostIdentity
@@ -244,33 +244,33 @@ fn wifi_bootstrap_step_admissible(
   reach_standings: List<WirelessReachStanding>,
 ) -> WifiBootstrapAdmissibility {
   if step.bootstrapper == step.target {
-    WifiBootstrapRefused { cause: "bootstrapper_equals_target" as NonEmptyStr }
+    WifiBootstrapRefused { cause: "bootstrapper_equals_target" as std.types.NonEmptyStr }
   } else {
     match host_spatial_facts_for(facts: facts, host: step.bootstrapper) {
-      Absent => WifiBootstrapRefused { cause: "bootstrapper_facts_absent" as NonEmptyStr }
+      Absent => WifiBootstrapRefused { cause: "bootstrapper_facts_absent" as std.types.NonEmptyStr }
       Present { value: bootstrapper } =>
         match host_spatial_facts_for(facts: facts, host: step.target) {
-          Absent => WifiBootstrapRefused { cause: "target_facts_absent" as NonEmptyStr }
+          Absent => WifiBootstrapRefused { cause: "target_facts_absent" as std.types.NonEmptyStr }
           Present { value: target } =>
             match wifi_relay_can_bootstrap(
               relay: bootstrapper.relay,
               wireless: bootstrapper.wireless,
             ) {
               Absent =>
-                WifiBootstrapRefused { cause: "bootstrapper_wireless_unobserved" as NonEmptyStr }
+                WifiBootstrapRefused { cause: "bootstrapper_wireless_unobserved" as std.types.NonEmptyStr }
               Present { value: relay_ok } =>
                 if !relay_ok {
-                  WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as NonEmptyStr }
+                  WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as std.types.NonEmptyStr }
                 } else if match wifi_target_needs_bootstrap(need: target.bootstrap_need) {
                   Absent => true
                   Present { value: _ } => false
                 } {
-                  WifiBootstrapRefused { cause: "target_bootstrap_need_unobserved" as NonEmptyStr }
+                  WifiBootstrapRefused { cause: "target_bootstrap_need_unobserved" as std.types.NonEmptyStr }
                 } else if match wifi_target_needs_bootstrap(need: target.bootstrap_need) {
                   Absent => false
                   Present { value: needs } => !needs
                 } {
-                  WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as NonEmptyStr }
+                  WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as std.types.NonEmptyStr }
                 } else {
                   match wifi_probe_is_candidate(
                     bootstrapper_residence: bootstrapper.residence,
@@ -278,16 +278,16 @@ fn wifi_bootstrap_step_admissible(
                     bootstrapper_wireless: bootstrapper.wireless,
                   ) {
                     Absent =>
-                      WifiBootstrapRefused { cause: "wifi_probe_residence_unobserved" as NonEmptyStr }
+                      WifiBootstrapRefused { cause: "wifi_probe_residence_unobserved" as std.types.NonEmptyStr }
                     Present { value: is_candidate } =>
                       if !is_candidate {
-                        WifiBootstrapRefused { cause: "wifi_probe_not_candidate" as NonEmptyStr }
+                        WifiBootstrapRefused { cause: "wifi_probe_not_candidate" as std.types.NonEmptyStr }
                       } else if !wireless_reach_established(
                         bootstrapper: step.bootstrapper,
                         target: step.target,
                         standings: reach_standings,
                       ) {
-                        WifiBootstrapRefused { cause: "wireless_reach_unobserved" as NonEmptyStr }
+                        WifiBootstrapRefused { cause: "wireless_reach_unobserved" as std.types.NonEmptyStr }
                       } else {
                         WifiBootstrapAdmissible
                       }

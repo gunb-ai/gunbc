@@ -2,21 +2,21 @@ module extdeps.dns.domain_name
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc1035"
   }
 }
 
-data rfc1123_host_name_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data rfc1123_host_name_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc1123#section-2.1"
   }
 }
 
-type DnsLabel = NonEmptyStr where brand("DnsLabel")
+type DnsLabel = std.types.NonEmptyStr where brand("DnsLabel")
 
 data empty_dns_labels: List<DnsLabel> = []
 
@@ -96,20 +96,20 @@ fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
   let folded = fold_dns_case_string(s: raw)
   let len = string_length(s: folded)
   if len == 0 {
-    Err { value: EmptyName }
+    std.error_primitives.Err { value: EmptyName }
   } else if len > 63 {
-    Err { value: LabelTooLong }
+    std.error_primitives.Err { value: LabelTooLong }
   } else {
     let first_cp = code_point_int(ch: char_at(folded, 0))
     let last_cp = code_point_int(ch: char_at(folded, len - 1))
     if !is_ldh_leading_code_point(cp: first_cp) {
-      Err { value: BadLabelChar }
+      std.error_primitives.Err { value: BadLabelChar }
     } else if !is_ldh_trailing_code_point(cp: last_cp) {
-      Err { value: EdgeHyphen }
+      std.error_primitives.Err { value: EdgeHyphen }
     } else if label_has_invalid_ldh_at(s: folded, i: 0, len: len) {
-      Err { value: BadLabelChar }
+      std.error_primitives.Err { value: BadLabelChar }
     } else {
-      Ok { value: folded as DnsLabel }
+      std.error_primitives.Ok { value: folded as DnsLabel }
     }
   }
 }
@@ -125,17 +125,17 @@ fn domain_name_wire_octet_count(labels: List<DnsLabel>) -> Int {
 fn parse_dns_label_list(segments: List<String>) -> Result<List<DnsLabel>, DomainNameParseError> {
   fold(
     segments,
-    init: Ok { value: empty_dns_labels },
+    init: std.error_primitives.Ok { value: empty_dns_labels },
     f: (acc, seg) =>
       match acc {
-        Err { value: e } => Err { value: e }
-        Ok { value: labels } =>
+        std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+        std.error_primitives.Ok { value: labels } =>
           if seg == "" {
-            Err { value: EmptyName }
+            std.error_primitives.Err { value: EmptyName }
           } else {
             match parse_dns_label_raw(raw: seg) {
-              Err { value: e } => Err { value: e }
-              Ok { value: label } => Ok { value: labels |> list_push(label) }
+              std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+              std.error_primitives.Ok { value: label } => std.error_primitives.Ok { value: labels |> list_push(label) }
             }
           }
       },
@@ -144,19 +144,19 @@ fn parse_dns_label_list(segments: List<String>) -> Result<List<DnsLabel>, Domain
 
 fn parse_host_name(raw: String) -> Result<HostName, DomainNameParseError> {
   if raw == "" {
-    Err { value: EmptyName }
+    std.error_primitives.Err { value: EmptyName }
   } else if ends_with(s: raw, suffix: ".") {
     let body = substring(s: raw, start: 0, end: string_length(s: raw) - 1)
     if body == "" {
-      Err { value: EmptyName }
+      std.error_primitives.Err { value: EmptyName }
     } else {
       match parse_dns_label_list(segments: body |> split(delimiter: ".")) {
-        Err { value: e } => Err { value: e }
-        Ok { value: labels } =>
+        std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+        std.error_primitives.Ok { value: labels } =>
           if domain_name_wire_octet_count(labels: labels) > 255 {
-            Err { value: NameTooLong }
+            std.error_primitives.Err { value: NameTooLong }
           } else {
-            Ok {
+            std.error_primitives.Ok {
               value: HostName {
                 name: DomainName { labels: labels },
                 qualification: FullyQualified,
@@ -167,12 +167,12 @@ fn parse_host_name(raw: String) -> Result<HostName, DomainNameParseError> {
     }
   } else {
     match parse_dns_label_list(segments: raw |> split(delimiter: ".")) {
-      Err { value: e } => Err { value: e }
-      Ok { value: labels } =>
+      std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+      std.error_primitives.Ok { value: labels } =>
         if domain_name_wire_octet_count(labels: labels) > 255 {
-          Err { value: NameTooLong }
+          std.error_primitives.Err { value: NameTooLong }
         } else {
-          Ok {
+          std.error_primitives.Ok {
             value: HostName {
               name: DomainName { labels: labels },
               qualification: PartiallyQualified,

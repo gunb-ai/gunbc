@@ -30,13 +30,13 @@ data min_cargo_version: CargoToolVersionFloor = ">= 1.56"
 
 type CargoPackage {
   name: String
-  version: CargoPackageVersion
+  version: extdeps.cargo_version.CargoPackageVersion
   edition: RustEdition
   path: String
 }
 
 type CargoDepSource
-  = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
+  = RegistryDep  { version: extdeps.cargo_version.CargoVersionRequirement, features: List<String> }
   | LocalPathDep { path: String }
 
 type CargoDependency {

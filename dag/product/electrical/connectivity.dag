@@ -27,11 +27,11 @@ module product.electrical.connectivity
 // construction over validation): with the design inside the identity, two boards' nets are unequal
 // by the same structural equality every join already performs, and there is no separate
 // same-board predicate for a consumer to forget.
-type ElectricalDesignIdentity = NonEmptyStr where brand("ElectricalDesignIdentity")
+type ElectricalDesignIdentity = std.types.NonEmptyStr where brand("ElectricalDesignIdentity")
 
 type ComponentInstanceIdentity {
   design: ElectricalDesignIdentity
-  local_identity: NonEmptyStr
+  local_identity: std.types.NonEmptyStr
 }
 
 // A TERMINAL IDENTITY GETS NO DESIGN AXIS, deliberately. A terminal is not board-global to begin
@@ -39,18 +39,18 @@ type ComponentInstanceIdentity {
 // carries the design. Adding a second design field here would let a terminal disagree with its own
 // component about which board it is on -- a state with no meaning and, worse, one a consumer would
 // have to check for. Scope comes from containment, not from repetition.
-type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
+type TerminalIdentity = std.types.NonEmptyStr where brand("TerminalIdentity")
 
 type NetIdentity {
   design: ElectricalDesignIdentity
-  local_identity: NonEmptyStr
+  local_identity: std.types.NonEmptyStr
 }
 
-fn component_instance_identity(design: ElectricalDesignIdentity, local_identity: NonEmptyStr) -> ComponentInstanceIdentity {
+fn component_instance_identity(design: ElectricalDesignIdentity, local_identity: std.types.NonEmptyStr) -> ComponentInstanceIdentity {
   ComponentInstanceIdentity { design: design, local_identity: local_identity }
 }
 
-fn net_identity(design: ElectricalDesignIdentity, local_identity: NonEmptyStr) -> NetIdentity {
+fn net_identity(design: ElectricalDesignIdentity, local_identity: std.types.NonEmptyStr) -> NetIdentity {
   NetIdentity { design: design, local_identity: local_identity }
 }
 
@@ -69,11 +69,11 @@ fn net_identity_eq(a: NetIdentity, b: NetIdentity) -> Bool {
 // The local label, for diagnostics and for target syntax that has no notion of a design. Never used
 // to decide whether two identities are the same -- that is what the _eq functions above are for, and
 // comparing through this would restore exactly the cross-board collision the design axis closes.
-fn component_local_label(c: ComponentInstanceIdentity) -> NonEmptyStr {
+fn component_local_label(c: ComponentInstanceIdentity) -> std.types.NonEmptyStr {
   c.local_identity
 }
 
-fn net_local_label(n: NetIdentity) -> NonEmptyStr {
+fn net_local_label(n: NetIdentity) -> std.types.NonEmptyStr {
   n.local_identity
 }
 

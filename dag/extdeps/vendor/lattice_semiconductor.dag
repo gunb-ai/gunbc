@@ -11,8 +11,8 @@ module extdeps.vendor.lattice_semiconductor
 //
 // Pulled 2026-08-13: CIK 0000855658, ticker LSCC, SIC 3674 Semiconductors and Related Devices,
 // incorporated in Delaware.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "data.sec.gov/submissions/CIK0000855658.json"
   }
@@ -33,9 +33,9 @@ data lattice_semiconductor_vendor: Vendor<extdeps.hardware.Hardware> = Vendor { 
 // beside some rows. Its absence is what the floor's placement gate refused: a new extdeps module
 // that cites without declaring its scope has an authority pointing at the module rather than at
 // a fact, which is the floating-island shape this repository already names.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.lattice_semiconductor",
       decl_name: "lattice_semiconductor_vendor",
       field: WholeDeclaration

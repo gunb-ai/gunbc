@@ -78,7 +78,7 @@ type Grant {
 }
 
 type Envelope {
-  frame: Frame
+  frame: std.materialization_ladder.Frame
   grants: List<Grant>
 }
 
@@ -111,7 +111,7 @@ fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
 
 type CoveringGrant
   = CoveredBy { grant: Grant }
-  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: Frame }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame }
 
 type GrantCoverage
   = GrantCoveredBy { grant: Grant }
@@ -147,7 +147,7 @@ fn grant_coverage(grants: List<Grant>, verb: Verb, target: NamespacePosition) ->
   grant_coverage_go(grants: grants, verb: verb, target: target)
 }
 
-fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame) -> CoveringGrant {
   grant_coverage_fold(
     coverage: grant_coverage(grants: grants, verb: verb, target: target),
     on_covered: fn(grant) { CoveredBy { grant: grant } },
@@ -172,7 +172,7 @@ fn effect_target_label(target: NamespacePosition) -> String {
 }
 
 fn effect_grant_decide(
-  request: AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
+  request: AccessRequest<std.materialization_ladder.Frame, EffectAuthorizationAction<Verb>, NamespacePosition, std.materialization_ladder.Frame, Envelope>,
 ) -> AccessDecision {
   match covering_grant(
     env: request.evidence.value,
@@ -194,7 +194,7 @@ fn effect_grant_decide(
   }
 }
 
-data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope> = AccessPolicy { decide: effect_grant_decide }
+data effect_grant_policy: AccessPolicy<std.materialization_ladder.Frame, EffectAuthorizationAction<Verb>, NamespacePosition, std.materialization_ladder.Frame, Envelope> = AccessPolicy { decide: effect_grant_decide }
 
 fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessDecision {
   effect_grant_policy.decide(effect_access_request(request: std.authorization_profile.EffectRequest {

@@ -2,18 +2,18 @@ module extdeps.cargo_version
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/cargo/reference/manifest.html"
   }
 }
 
-type CargoPackageVersion = SemVerIdentity
+type CargoPackageVersion = extdeps.version.semver.SemVerIdentity
 
-type CargoVersionRequirement = SemVerConstraint
+type CargoVersionRequirement = extdeps.version.semver.SemVerConstraint
 
-type CargoToolVersionFloor = SemVerConstraint where brand("CargoToolVersionFloor")
+type CargoToolVersionFloor = extdeps.version.semver.SemVerConstraint where brand("CargoToolVersionFloor")
 
 data default_stage0_package_version: CargoPackageVersion = "0.1.0"
 

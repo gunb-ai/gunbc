@@ -119,8 +119,8 @@ type OciOtherDigestBody {
 }
 
 type OciContentDigest
-  = OciSha256Digest(Sha256Digest)
-  | OciSha512Digest(Sha512Digest)
+  = OciSha256Digest(std.content_hash.Sha256Digest)
+  | OciSha512Digest(std.content_hash.Sha512Digest)
   | OciOtherDigest(OciOtherDigestBody)
 
 fn oci_content_digest_wire_algorithm(d: OciContentDigest) -> String {
@@ -216,6 +216,6 @@ fn oci_sha256_content_digest(hex: String) -> OciContentDigest? {
   }
 }
 
-fn oci_content_digest_from_validated_sha256(digest: Sha256Digest) -> OciContentDigest {
+fn oci_content_digest_from_validated_sha256(digest: std.content_hash.Sha256Digest) -> OciContentDigest {
   OciSha256Digest(digest)
 }

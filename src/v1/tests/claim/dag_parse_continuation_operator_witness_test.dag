@@ -5,8 +5,8 @@ data dag_parse_continuation_operator_witness_note: String = "Hermetic parse witn
 
 data dag_parse_continuation_operator_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/dag_parse_continuation_operator_witness_test.dag --functions w_leading_or,w_leading_eq,w_null_coalesce_newline_continuation,w_comparison_operator_newline_family,w_arithmetic_operator_newline_family,w_dot_newline_continuation,w_pipe_newline_continuation,w_dual_role_minus_still_two_statements,w_dual_role_exclusion_intersection_is_singleton_minus"
 
-fn newline_parse_ctx(file: String, source: String) -> ParseContext {
-  ParseContext {
+fn newline_parse_ctx(file: String, source: String) -> v1.compiler.parse.ParseContext {
+  v1.compiler.parse.ParseContext {
     source_indices: map_insert(
       empty_map(),
       file,
@@ -50,7 +50,7 @@ fn module_fn_item(module: Node, name: String) -> Node? {
   }
 }
 
-fn let_init_is_var_named(let_expr: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn let_init_is_var_named(let_expr: Node, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match let_expr.expr_data {
     ExprLet =>
       let val = let_value(texpr: let_expr)

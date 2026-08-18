@@ -24,10 +24,10 @@ module std.euclidean_geometry
 // Which of the two reasons applies is a fact about the vector, and a later kernel with an integer
 // square root splits them.
 type ExactLength
-  = LengthExact { value: Millimeter }
+  = LengthExact { value: std.measure.Millimeter }
   | LengthRootUnresolvedInExactKernel {
-      squared: SquareMillimeter
-      reason: NonEmptyStr
+      squared: std.measure.SquareMillimeter
+      reason: std.types.NonEmptyStr
     }
 
 
@@ -48,14 +48,14 @@ type ExactLength
 // its extents. The length half is reachable today through FrameExtent; the area half needs a
 // frame-relative area carrier, which nothing in the corpus consumes yet - so it is named here
 // rather than invented ahead of a consumer.
-fn frame_is_millimetre(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Bool {
+fn frame_is_millimetre(registry: SpatialFrameRegistry, identity: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match frame_length_scale(r: registry, identity: identity) {
     Absent => false
     Present { value: s } => scales_agree(a: s, b: Milli)
   }
 }
 
-fn metric_frame_refusal(op: SpatialOperationIdentity, frame: CoordinateFrameIdentity) -> SpatialFrameRefusal {
+fn metric_frame_refusal(op: SpatialOperationIdentity, frame: std.coordinate_frame.CoordinateFrameIdentity) -> SpatialFrameRefusal {
   SpatialFrameRefusal { operation: op, left_frame: frame, right_frame: frame, relation: MillimetreFrameRequired }
 }
 
@@ -63,7 +63,7 @@ fn metric_frame_refusal(op: SpatialOperationIdentity, frame: CoordinateFrameIden
 // is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
 // erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
 // negative dot product means the displacements point away from each other.
-fn dot3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult<SignedSquareMillimeter> {
+fn dot3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult<std.measure.SignedSquareMillimeter> {
   if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDot3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
@@ -89,10 +89,10 @@ fn dot3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult
 // rather than merely wrong, and it is deliberately NOT an alias of Vector3: sharing three numeric
 // components is not sharing a dimension.
 type AreaVector3 {
-  frame: CoordinateFrameIdentity
-  x: SignedSquareMillimeter
-  y: SignedSquareMillimeter
-  z: SignedSquareMillimeter
+  frame: std.coordinate_frame.CoordinateFrameIdentity
+  x: std.measure.SignedSquareMillimeter
+  y: std.measure.SignedSquareMillimeter
+  z: std.measure.SignedSquareMillimeter
 }
 
 // THREE LABELS RATHER THAN ONE, which is why leaving this unguarded was worse than the scalar
@@ -132,7 +132,7 @@ fn cross3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResu
 // area carrier. It is not shared with that one: these components are millimetre SQUARED, and the
 // whole reason AreaVector3 is a separate type from Vector3 is that three numbers of a different
 // dimension are a different thing (this module's own cross3 comment, one dimension up).
-fn area_vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<AreaVector3> {
+fn area_vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<AreaVector3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -162,7 +162,7 @@ fn area_vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: C
 //
 // Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
 // Nat-backed area carrier is a magnitude read rather than a clamp.
-fn norm_squared3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<SquareMillimeter> {
+fn norm_squared3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<std.measure.SquareMillimeter> {
   if !frame_is_millimetre(registry: registry, identity: v.frame) {
     SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNormSquared3, frame: v.frame) }
   } else {
@@ -235,7 +235,7 @@ fn distance3(registry: SpatialFrameRegistry, from: Point3, to: Point3) -> Spatia
 }
 
 // Squared distance takes no root, and is what a comparison should use.
-fn distance_squared3(registry: SpatialFrameRegistry, from: Point3, to: Point3) -> SpatialResult<SquareMillimeter> {
+fn distance_squared3(registry: SpatialFrameRegistry, from: Point3, to: Point3) -> SpatialResult<std.measure.SquareMillimeter> {
   match displacement_between3(from: from, to: to) {
     SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
     SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
@@ -332,11 +332,11 @@ fn axis_direction_of(axis: Axis3, negative: Bool) -> AxisDirection3 {
 }
 
 type Direction3Result
-  = DirectionExact { frame: CoordinateFrameIdentity, direction: AxisDirection3 }
+  = DirectionExact { frame: std.coordinate_frame.CoordinateFrameIdentity, direction: AxisDirection3 }
   | DirectionZeroVectorHasNone
   | DirectionUnresolvedInAxisKernel {
-      squared_magnitude: SquareMillimeter
-      reason: NonEmptyStr
+      squared_magnitude: std.measure.SquareMillimeter
+      reason: std.types.NonEmptyStr
     }
 
 // Normalization refuses the zero vector because zero has magnitude but no direction - that is a

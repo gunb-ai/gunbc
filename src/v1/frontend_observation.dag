@@ -18,9 +18,9 @@ type FrontendPhaseReceipt {
 }
 
 type OrdinaryFrontendObservation {
-  subject: List<SourceFile>
-  occurrence_transport: OccurrenceTransport
-  diagnostics: List<ErrorNode>
+  subject: List<v1.compiler.compile.SourceFile>
+  occurrence_transport: std.occurrence_identity.OccurrenceTransport
+  diagnostics: List<v1.std.core.ErrorNode>
   receipt: FrontendPhaseReceipt
 }
 
@@ -41,7 +41,7 @@ fn frontend_phase_receipt(frontend: FrontendResult) -> FrontendPhaseReceipt {
 // it calls front_end_sources and nothing downstream of it — so the observation
 // never has to assert that resolve-and-beyond did not run (§5: construction
 // over validation).
-fn observe_ordinary_frontend(sources: List<SourceFile>) -> OrdinaryFrontendObservation {
+fn observe_ordinary_frontend(sources: List<v1.compiler.compile.SourceFile>) -> OrdinaryFrontendObservation {
   let frontend = front_end_sources(sources: sources)
   OrdinaryFrontendObservation {
     subject: sources,
