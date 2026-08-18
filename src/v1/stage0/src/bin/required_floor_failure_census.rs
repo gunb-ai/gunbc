@@ -1,12 +1,21 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Expected-red failure census for the floor-cut name-resolution partition.
+//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / issue 11) — host transport for the
+//! expected-red failure identity-grain census (Wave 1 read-only partition).
 //!
-//! Runs the required-floor preparation once, then evaluates only the enrolled
-//! expected-red witnesses (not the full ~9,400-claim fold) and writes an
-//! identity-grain TSV for operator review.
+//! Runs `run_required_floor` once, evaluates only enrolled expected-red witnesses
+//! (`GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY=1`), and writes a TSV for operator review
+//! before qualification vs binding-wall (#8282).
 //!
-//! NOT floor-enrolled — run standalone for migration planning only.
+//! NOT floor-enrolled — run standalone for migration planning only (whole-subject prep OOM
+//! risk in cargo test). Carrier: `CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER`
+//! in `cli_run.rs`.
+//!
+//! DISSOLUTION: delete this bin and the marker-gated helpers when Wave 1 name-resolution
+//! debt is repaid (qualification or binding-wall lands and `floor_expected_red` shrinks) OR
+//! a floor-enrolled census lens subsumes this host transport. Receipt:
+//! `rg required_floor_failure_census src/v1/stage0` == 1 until deletion. Authority:
+//! `docs/probes/floor_cut_name_resolution_partition.md`.
 
 use std::process::ExitCode;
 

@@ -1,3 +1,10 @@
+# SCAFFOLD — foreign-executor workflow for Wave 1 expected-red failure census.
+# dissolve-on: Wave 1 name-resolution debt repaid OR floor-enrolled census lens subsumes
+# `required_floor_failure_census` host transport (same trigger as
+# CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER in cli_run.rs).
+# Authority: docs/probes/floor_cut_name_resolution_partition.md;
+#   src/v1/stage0/src/bin/required_floor_failure_census.rs.
+# Receipt: `rg required-floor-census.yml .github/workflows` == 1 until deletion.
 name: required-floor-census
 on:
   workflow_dispatch:
@@ -23,8 +30,13 @@ jobs:
           fetch-depth: 0
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      # 🟡 dissolve-on: required_floor_failure_census hand-Rust build — DISSOLVES WHEN
+      # census transport is modeled in .dag or subsumed by a floor-enrolled lens
+      # (CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER).
       - name: Build census binary
         run: cargo build --release -p v1-compiler --bin required_floor_failure_census
+      # 🟡 dissolve-on: inline hand-shell census + partition post-process — same trigger as
+      # docs/probes/run_floor_cut_name_resolution_census.sh; authority partition.md.
       - name: Run expected-red failure census
         run: |
           ROOT=$(git rev-parse --show-toplevel)

@@ -1079,6 +1079,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn required_floor_failure_census_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER,
+            "cli_run_required_floor_failure_census"
+        );
+    }
+
+    #[test]
     fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
@@ -41107,6 +41115,17 @@ pub struct RequiredFloorOutcome {
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
+
+// DELETE WHEN dissolved: `required_floor_failure_census` bin,
+// `RequiredFloorFailureCensusRow`, `classify_witness_failure_message`,
+// `build_required_floor_failure_census_row`, and related census helpers (~125 LOC).
+// Receipt: `rg required_floor_failure_census src/v1/stage0` == 1 until deletion;
+// Wave 1 partition lane (`docs/probes/floor_cut_name_resolution_partition.md`).
+pub(crate) const CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER: &str =
+    "cli_run_required_floor_failure_census";
+
+// INTERIM hand-Rust scaffold (issue 11 / §7): host transport for expected-red failure
+// identity-grain census before qualification vs binding-wall decision (#8282).
 
 /// One row of the identity-grain failure census for expected-red witnesses.
 pub struct RequiredFloorFailureCensusRow {

@@ -278,6 +278,12 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
 
+# SCAFFOLD — host transport for Wave 1 expected-red failure identity-grain census;
+# carrier `CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER` in cli_run.rs.
+# NOT floor-enrolled — run standalone (whole-subject prep OOM risk in cargo test).
+# DISSOLVES WHEN Wave 1 name-resolution debt is repaid or a floor-enrolled census lens
+# subsumes this transport. Receipt: `rg required_floor_failure_census src/v1/stage0` == 1
+# until deletion. Authority: docs/probes/floor_cut_name_resolution_partition.md.
 [[bin]]
 name = "required_floor_failure_census"
 path = "src/bin/required_floor_failure_census.rs"
