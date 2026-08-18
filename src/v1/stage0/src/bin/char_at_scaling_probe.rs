@@ -26,10 +26,10 @@
 //! no dissolution condition by construction). If the property later becomes structurally
 //! guaranteed, this bin's role transitions to a permanent regression control rather than being
 //! deleted.
-//! Receipt: `rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER src/v1/stage0`.
+//! Receipt: `rg CHAR_AT_SCALING_PROBE_IDENTITY_MARKER src/v1/stage0`.
 
-/// Grep receipt for this probe's identity (`rg CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`).
-pub const CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER: &str =
+/// Grep receipt for this probe's identity (`rg CHAR_AT_SCALING_PROBE_IDENTITY_MARKER`).
+pub const CHAR_AT_SCALING_PROBE_IDENTITY_MARKER: &str =
     "CHARAT-0 char_at_scaling_probe measurement transport (not floor-enrolled)";
 
 use std::process::ExitCode;

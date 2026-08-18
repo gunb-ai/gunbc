@@ -1,15 +1,18 @@
 module test.claim.string_length_char_count_witness
 
-// LIST-CARRIER-0: native_len has no Value::Str arm, so .length()/.count() on a
-// string currently routes through free_monoid_to_vec, which materializes
-// CHARACTERS (not bytes). This witness pins that character-count contract so
-// a future fast-path arm (reading an ASCII flag for O(1) byte-length) cannot
-// silently regress to byte length on multibyte input. A naive
-// `Value::Str(s) => Some(s.len())` (Rust byte length) arm would report 3 for
-// a single-codepoint multibyte string here, not 1 -- that is the exact wrong
-// answer this witness exists to catch. (`.size()` is not a registered String
-// method -- only `.length()` and `.count()` are -- so this witness covers
-// those two.)
+// CONTRACT: `.length()`, `.count()` and `.size()` on a String report the
+// CHARACTER (codepoint) count, never the UTF-8 BYTE count. All three spellings
+// are one arm -- `method_call.length { "length" | "count" | "size" }` in
+// `v1_interpreter.rs`, registered as three authored spellings in
+// `gunbc.v1_interpreter_primitive_surface` -- so they share a single
+// implementation and a single regression exposure, and this witness covers all
+// three rather than the two an earlier revision of this header claimed.
+//
+// The discriminating risk is a fast-path arm that reads a byte length: a naive
+// `Value::Str(s) => Some(s.len())` (Rust byte length) would answer 3 for the
+// single-codepoint CJK string below, not 1. Any future O(1) fast path -- an
+// ASCII-flag read included -- must keep answering the character count on
+// multibyte input, and these cases go red if it does not.
 
 test fn ascii_string_length_is_char_count() -> Bool {
   "hello".length() == 5
@@ -41,4 +44,15 @@ test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool {
 
 test fn multibyte_string_count_matches_length() -> Bool {
   "\u{4e2d}\u{6587}".count() == 2
+}
+
+// `.size()` is the third authored spelling of the same arm. It carries the same
+// byte-vs-character exposure, so it gets the same discriminating multibyte input
+// rather than an ASCII-only case that a byte-length arm would also pass.
+test fn multibyte_string_size_is_char_count() -> Bool {
+  "\u{4e2d}\u{6587}".size() == 2
+}
+
+test fn mixed_ascii_and_multibyte_size_counts_chars_not_bytes() -> Bool {
+  "na\u{ef}ve".size() == 5
 }
