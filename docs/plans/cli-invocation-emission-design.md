@@ -181,14 +181,18 @@ List<PosixArgument>             argument boundaries structural; no quoting
 type JqProgram { source: NonEmptyStr }        // opaque, upstream-grounded, for now
 
 type JqBinding
-  = JqJsonBinding { name: NonEmptyStr, value: Json }
-  | JqTextBinding { name: NonEmptyStr, value: String }
+  = JqJsonBinding { name: JqBindingName, value: Json }
+  | JqTextBinding { name: JqBindingName, value: String }
+
+// JqBindingName is jq-owned, not a bare NonEmptyStr. Duplicate-name policy is declared,
+// not left to jq's last-wins behaviour: the admission fold refuses a repeated name.
 
 type JqInput
   = JqInputFile  { path: FilePath }
   | JqInputStdin { content: String }
 
-type JqOutputEncoding = JqJsonText | JqRawText
+type JqOutputEncoding = JqJsonOutput | JqRawOutput   // -r writes STRING results raw;
+                                                     // non-string results stay JSON-formatted
 
 type JqExitPolicy = JqProgramExit | JqLastResultTruthiness
 
@@ -205,22 +209,69 @@ type JqInvocation {
 operand, `JqInputStdin` produces **no operand** and sets process stdin. That split is load-bearing
 here — the four local sites are stdin-fed, the seventeen remote ones are file-operand.
 
-### 4b. Observation, decoded once
+### 4b. Observation, decoded **policy-indexed** — not once
+
+An earlier revision of this section put `JqProducedNoResult` as a general arm on every jq
+execution. That was wrong, and wrong in the exact direction #8454 had just corrected: it claims a
+distinction the selected exit mode cannot supply.
+
+Verified against `jqlang.org/manual/`:
 
 ```
-type JqExit
-  = JqExitedZero
-  | JqLastResultFalseOrNull
-  | JqProducedNoResult
-  | JqExecutionRefused { code: Int }
-
-type JqObservation { exit: JqExit, exit_code: Int, stdout: String, stderr: String }
+default             exit 0 when the program runs successfully, REGARDLESS of output —
+                    emitting nothing is still exit 0
+--exit-status / -e  exit 0  last output value neither false nor null
+                    exit 1  last output value false or null
+                    exit 4  no valid result was ever produced
+halt_error          program-chosen code, default 5
+usage/system 2      compile error 3
 ```
 
-`JqProducedNoResult` is its own arm because of the `OpenBmcSensorValueAbsent` specimen: absence
-is a live, witnessed, modeled value. jq owns exit-code *decoding*; the domain owns whether that
-outcome satisfies its contract. "Exactly one nonempty string" is a domain decode, not a jq flag —
-and it is strictly stronger than `-e`, which still admits the empty string.
+So "no result was produced" is **observable only under `JqLastResultExit`**. Under
+`JqProgramExit`, exit zero means the program completed and says nothing about whether the output
+stream was empty. Decoding is therefore indexed by the policy the caller selected:
+
+```
+type JqExitPolicy = JqProgramExit | JqLastResultExit
+
+type JqExecution
+  = JqProgramCompleted      { stdout, stderr, exit_code }   // no claim about results produced
+  | JqLastResultFalseOrNull { stdout, stderr }              // JqLastResultExit only
+  | JqProducedNoResult      { stdout, stderr }              // JqLastResultExit only
+  | JqExecutionRefused      { exit_code: Int, stderr }
+```
+
+```
+JqProgramExit    + exit 0  -> JqProgramCompleted
+JqLastResultExit + exit 1  -> JqLastResultFalseOrNull
+JqLastResultExit + exit 4  -> JqProducedNoResult
+```
+
+The raw `exit_code` is preserved alongside the decoded arm, so decoding known meanings never
+discards the observation. Spawn failure and signal termination belong to the **process layer**,
+not to jq exit decoding — jq cannot report an exit code it never reached.
+
+**Why this matters concretely.** `SensorIntegerValue` runs under `JqProgramExit`. Its
+`OpenBmcSensorValueAbsent` fact is derived by the OpenBMC domain decoder from *successful, empty
+stdout over that exact program* — **not** from a jq exit code. Putting a general
+`JqProducedNoResult` arm on jq would invite exactly the `Absent → Refused` collapse that the
+blanket `-e` sweep was withdrawn for.
+
+**A stdout `String` cannot generically prove "exactly one nonempty raw string".** jq emits a
+*stream* of results; under `--raw-output` a raw string may itself contain newlines, which is why
+`--raw-output0` exists ("Like `-r` but jq will print NUL instead of newline after each output…
+When the output value contains NUL, jq exits with non-zero code"). So `foo\nbar\n` is ambiguous
+between one string containing a newline and two results, and once the process boundary has
+collapsed stdout into one `String` no generic decoder can separate them.
+
+This does not block the first vertical — an integer has an unambiguous textual grammar, empty is
+distinguishable from one integer, and multiple numeric results produce multi-line text a
+`parse_int` refuses. It does mean **this note promises no generic
+`decode_exactly_one_nonempty_string`.** For the credential path later, one of three honest
+framings must land first: a single JSON envelope parsed as JSON; `--raw-output0` once jq
+version/capability is modeled; or a program collecting its result into a one-result container the
+domain decoder checks. Until then a decoder may enforce "nonempty observed stdout" and must not
+claim "exactly one jq string result".
 
 **No `success: Bool`.** The seed derives it as exactly `exit_code == 0`, so the pair carries one
 fact twice and makes a contradiction writable — a caller can pass `success: true` beside a nonzero
@@ -283,9 +334,51 @@ subcommand, option value, mode word or operand. Fusing them makes `OptionValue �
 unrepresentable, and expanding to `WorkspacePathOptionValue`, `WorkspacePathOperand`, … is exactly
 the combinatorial growth the grammar exists to remove.
 
+**`CliOption { values: List<CliValue> }` is too permissive as a *public* carrier.** Freely
+constructible, it admits `--argjson` with zero, one or three values; a flag receiving a value; a
+non-repeatable option used twice; options in an illegal order; an option belonging to a different
+tool; operands before options where the tool forbids it. The cited row must therefore carry
+option identity, canonical spelling, aliases, argument arity, repeatability, placement discipline
+and joining discipline — and the emitter must accept only a **normalized, admitted** tree:
+
+```
+type CliOptionSchema {
+  option: CliOptionRef
+  arguments: CliArgumentSchema
+  repeatability: CliOptionRepeatability
+  spelling: CliCanonicalSpelling
+  placement: CliOptionPlacement
+}
+
+type AdmittedCliInvocation { tool: CliToolRef, options: List<AdmittedCliOptionUse>, operands: List<CliOperand> }
+```
+
+Domain callers receive **no constructor** for `AdmittedCliOptionUse`. The jq semantic-to-syntax
+projection selects the row and supplies values; the admission fold checks the schema. This is the
+`sole_constructor` + `admit_callers` shape that already sealed `TransportScript` in this corpus,
+and it is what raises the rung for the migrated path — see §9.
+
 Roles are then **deliberately erased** at emission, because the operating system receives an
 ordered vector of strings. That erasure is emission, not anemia. The present defect is only that
 no preceding tree exists — authors write the vector directly.
+
+### 4e-bis. The process plan is not the CLI grammar
+
+`CliSyntax` owns how options and operands become argument boundaries. It owns **nothing else**:
+standard input, environment, working directory and descriptor routing belong to the *process
+plan*.
+
+```
+type JqProcessPlan { command: CliCommandSurface, stdin: ProcessInput }
+
+JqInputFile(path)     -> one CLI operand,  no jq-data stdin
+JqInputStdin(content) -> no file operand,  stdin = content
+```
+
+This is why `SensorIntegerValue` is a good first proof: the input content must stay **outside
+argv** while the jq program must stay **one argv argument**. Two properties an argv-only model
+cannot even state — and precisely the gap `extdeps.llm.cursor_cli` hit when an argv-shaped
+carrier could not hold an environment-passed credential.
 
 ### 4f. Carrier: argv is native, text is the derived special case
 
@@ -350,6 +443,16 @@ because that type already exists. The honest longer-term cleanup is renaming it 
 `EmitHostArgumentMaterialization`), which is a separate replacement migration and explicitly not
 bundled here.
 
+**Generalizing that subsystem is NOT a prerequisite for the first vertical.** Making stdin, cwd
+and fd mapping land on `Command`/`SpawnProcessRequest` before any jq migration turns one proof
+vertical into a process-runtime project. The stable boundary is `CliCommandSurface + ProcessInput`;
+it binds first through one narrow local jq realization whose entire content is the jq executable
+identity, a splice of already-emitted arguments, and the process channel wiring — **no option
+spelling and no domain filter**. That is an honest realization boundary, not another argv
+authority. Its dissolution trigger is explicit: it dissolves when the same emitted surface binds
+to `extdeps.posix` `Command`. Emit a `CliToolRef` and let each realization resolve `"jq"` or an
+absolute path.
+
 `v2.extdeps.posix` `Command` is the right conceptual layer, with four bounded deficiencies:
 
 1. `program: AbsolutePath` — a semantic invocation names a *tool*; resolution must produce the
@@ -371,6 +474,15 @@ bundled here.
 | `extdeps.bmc.*` | programs projecting a documented OpenBMC response or config field |
 | realization | local vs SSH vs another handler |
 | **no caller** | `-e`, `-r`, `--argjson`, `--`, or their positions |
+
+The split is by **what fact the program encodes**, not by the fact that jq executes it.
+`ProjectFanConfig` embeds `TEMP_SOC`, the aggregate fan PID entry, desired inputs, minimum and
+failsafe duties, hysteresis and exact-one-controller policy — gunbc's chosen topology, so it moves.
+`SensorIntegerValue`, `ObjectMapperServiceCount` and `ObjectMapperServiceAt` interpret **upstream
+OpenBMC response shapes**; they stay under `extdeps.bmc` even though jq currently realizes them.
+The several *remote* fan-query programs carrying a literal `TEMP_SOC` are the ambiguous middle:
+they belong beside the projection authority, or should derive that value from it, rather than
+keeping the literal in `extdeps`.
 
 Filters leave both `extdeps.tools.jq` (business policy in extdeps is a layer inversion) and
 `openbmc.PasswordSshTransport` (SSH does not own what the remote program means). They do not all
@@ -405,6 +517,46 @@ Per the §3 replacement-migration rule, stated at exact identity grain.
 **Root consumer × subject population:** the four live `openbmc.JsonProjection` operations
 (`ProjectFanConfig`, `ObjectMapperServiceCount`, `ObjectMapperServiceAt`, `SensorIntegerValue`)
 plus the seventeen `openbmc_password_ssh_transport` remote jq operations.
+
+**Canonical first vertical: `SensorIntegerValue`.** Chosen because it has two live consumers; its
+three-way domain contract is already explicit and witnessed; it exercises stdin as a *process
+channel* rather than an argument; it proves `JqProgramExit` must emit **no** `--exit-status`; it
+proves empty output can be a valid domain observation rather than a transport failure; its integer
+output sidesteps the raw-string framing problem above; its program is small enough that the
+architecture stays visible; and deleting its old operation is an exact, countable cut.
+
+Acceptance population for it:
+
+```
+{"data": 41.6}      -> Observed 42        {"data": "41"}     -> Absent
+{"data": 41}        -> Observed 41        {"data": null}     -> Absent
+{}                  -> Absent             invalid JSON       -> Refused
+two numeric inputs  -> Refused, never first-pick              jq nonzero -> Refused
+```
+
+Emission side, proven separately from semantics:
+
+```
+JqRawOutput selects the raw-output option identity
+that identity selects its canonical spelling
+JqProgramExit emits NO exit-status option
+the jq program is exactly one argument
+stdin content appears NOWHERE in argv
+argument order is stable
+```
+
+**Wave order after the proof.** Slice A `SensorIntegerValue` (above). Slice B
+`ObjectMapperServiceCount` + `ObjectMapperServiceAt` together — adds `JqLastResultExit`,
+`JqJsonBinding`, the two-argument `--argjson name JSON-text` row, canonical JSON serialization of
+`index`. Slice C `ProjectFanConfig` — adds file input, JSON output, the `desired` binding, and
+relocation of the policy-bearing program to `gunbc.bmc_fan_projection`. Slice D one remote
+file-input scalar query — adds the password-SSH handler, arguments embedded through the shell
+grammar, and an explicit stdin-input refusal for the `sshpass -d 0` channel. Each slice deletes
+its old operations in the same cut. After D the remainder is repetitive migration, not
+architecture.
+
+**Do not make the first vertical solve SSH.** Local exemplar and transport composition are
+separate proofs.
 
 **First vertical (smallest complete):**
 
@@ -453,15 +605,28 @@ Semantics and serialization are witnessed separately:
 
 ## 9. Rung, honestly
 
-At the end of the first vertical the class sits at **mechanically preventable**, not structural:
-a caller can still construct a raw `List<String>` elsewhere in the corpus, and nothing yet
-refuses it.
+The rung is **two different rungs for two different subjects**, and stating one number for both
+was too coarse.
 
-The ceiling is **structurally impossible**, and its named trigger is application-argument
-typechecking in `04_infer`. `v2.std.compilers.target_model` `target_text_carrier_scaffold_note`
+**For the migrated jq path: structurally guaranteed is reachable now.** If
+`AdmittedCliOptionUse` is a `sole_constructor` record whose single mint is `admit_callers`-sealed
+to the jq semantic-to-syntax projection, then no domain module can form an option use at all —
+the same construction wall that already closed `TransportScript`, which needed both the record
+seal and the cast judgement in `04_infer` `sole_constructor_construction_diags`. A migrated
+caller cannot author `-e`, omit a required option, or mis-arity `--argjson`, because it holds no
+constructor for any of them.
+
+**For the corpus at large: mechanically preventable at best.** A caller can still write a raw
+`List<String>` in any of the other 575 argv lines, and nothing refuses it. That is the weaker
+claim, and it does not climb until the population is migrated and a construction guard rejects
+raw argv authoring outside a declared foreign/bootstrap escape.
+
+The ceiling for the *nominal-carrier* half remains **structurally impossible**, and its named
+trigger is application-argument typechecking in `04_infer`. `v2.std.compilers.target_model` `target_text_carrier_scaffold_note`
 records — proven by execution — that neither the v1 seed nor v2 `04_infer` typechecks
 function-application argument types, so a raw `String` passed where a nominal carrier is declared
-compiles clean. **A nominal `CliArgument` newtype alone therefore makes nothing unwritable today.**
+compiles clean. **A nominal `CliArgument` newtype alone therefore makes nothing unwritable today** — which is
+exactly why the wall must be the sealed constructor, not the type name.
 Until that frontier closes, this design's guarantee rests on executing witnesses, and the
 construction wall rejecting raw argv authoring — except an explicitly modeled escape population
 at genuine foreign/bootstrap boundaries — is a later rung.
@@ -487,6 +652,22 @@ Claiming otherwise would be rung inflation.
    contain spaces, pipes, brackets, parentheses and quotes — outside that alphabet. The shell leg
    must own canonical shell-word serialization with injection controls, or refuse.
 4. Which of the 315 computed-head argv lines hide further wrappers.
+5. **The remote jq rows may already be broken — live, unverified.** The seventeen
+   `openbmc_password_ssh_transport` operations place the jq filter after the SSH destination as
+   though its local argv boundary survived remotely. It does not: the local `ssh` client joins its
+   command words with spaces into RFC 4254's single `command` string, and OpenSSH's server runs
+   that through the user's login shell, which re-parses it. Those filters contain spaces, pipes,
+   brackets, parentheses and double quotes — `[.zones[].pids[] | select(.name == "TEMP_SOC" …)] |
+   length` would reach the remote shell with `|` as a pipe operator and the quotes consumed.
+   **This is a transport-correctness risk, not a proven defect** — no executed control has been
+   run, and something upstream may be quoting. It must be settled by execution before Slice D, and
+   it is an argument for the design rather than a consequence of it: the current representation
+   cannot even express the question.
+6. The SSH slice needs a discriminating program containing spaces, a pipe, quotes, brackets and a
+   value containing a single quote, and must reuse the grammar-owned quoting the effect-plan Bash
+   path already demonstrates rather than retaining `shell_quote`.
+7. Reverse ingestion — reading argv back through the same rows — is the terminal second reading
+   and is **not a prerequisite for the first emitter cut**.
 
 ---
 
@@ -507,3 +688,14 @@ Claims asserted during this design and refuted by measurement, kept so they are 
   `ExtractRaw` is zero-consumer.
 - The plan's census (262 lines / 37 files; 148/51 success/exit_code) is **stale**; measured
   597/129 and 173/69.
+- *"`JqProducedNoResult` is a general arm on every jq execution."* **False** — verified against
+  `jqlang.org/manual/`: default jq exits 0 regardless of output, and only `--exit-status` yields
+  exit 4 for "no valid result was ever produced". Claiming the arm unconditionally would have
+  reintroduced the `Absent → Refused` collapse #8454 had just withdrawn.
+- *"'Exactly one nonempty string' is a decode the domain can perform."* **Over-claimed** — jq emits
+  a stream and `-r` permits newlines inside a raw string, so a collapsed stdout `String` is
+  ambiguous. `--raw-output0` exists precisely because of this.
+- *"The class sits at mechanically preventable."* **Too coarse** — that is the corpus-wide claim;
+  the migrated path can reach structurally guaranteed now via a sealed constructor.
+- *"Filters move to `gunbc.bmc_fan_projection`."* **Needed splitting** — only policy-bearing
+  programs move; OpenBMC wire decoders stay in `extdeps.bmc`.
