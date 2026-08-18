@@ -88,8 +88,8 @@ fn ten_unit_lot() -> ProcurementLot {
   ProcurementLot {
     identity: first_lot_identity(),
     receipt: "receipt-a" as ProcurementReceiptIdentity,
-    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q80_30") },
-    display_label: "Ampere Altra Q80-30, tray" as NonEmptyStr,
+    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 10,
     landed_cost: usd_micros(count: 1000003),
   }
@@ -470,16 +470,16 @@ test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
   let sibling = ProcurementLot {
     identity: second_lot_identity(),
     receipt: "receipt-b" as ProcurementReceiptIdentity,
-    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q80_30") },
-    display_label: "Ampere Altra Q80-30, tray" as NonEmptyStr,
+    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 5,
     landed_cost: usd_micros(count: 500000),
   }
   let euro_lot = ProcurementLot {
     identity: second_lot_identity(),
     receipt: "receipt-c" as ProcurementReceiptIdentity,
-    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q80_30") },
-    display_label: "Ampere Altra Q80-30, tray" as NonEmptyStr,
+    catalog: CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    display_label: "Ampere Altra Max M128-30, tray" as NonEmptyStr,
     quantity_acquired: 5,
     landed_cost: MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur },
   }
@@ -550,7 +550,7 @@ test fn w_relabelled_lot_keeps_its_identity() -> Bool {
     identity: a.identity,
     receipt: a.receipt,
     catalog: a.catalog,
-    display_label: "AMPERE ALTRA Q80-30 (renamed line item)" as NonEmptyStr,
+    display_label: "AMPERE ALTRA MAX M128-30 (renamed line item)" as NonEmptyStr,
     quantity_acquired: a.quantity_acquired,
     landed_cost: a.landed_cost,
   }
@@ -565,7 +565,7 @@ test fn w_unread_catalog_yields_no_exact_row_and_names_its_obligation() -> Bool 
     observed_family: "Xeon Gold, 32C" as NonEmptyStr,
     read_obligation: "read the vendor invoice part number and cite the extdeps.cpu row" as NonEmptyStr,
   }
-  let exact = CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q80_30") }
+  let exact = CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") }
   !lot_catalog_is_read(catalog: unread)
     && lot_catalog_is_read(catalog: exact)
     && match lot_catalog_exact_row(catalog: unread) {
