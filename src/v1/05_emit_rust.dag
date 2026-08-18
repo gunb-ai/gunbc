@@ -53,6 +53,7 @@ import v1.compiler.languages {
   sharing_for_target,
   is_string_like
 }
+import v1.compiler.realization_contract { PureMemoRealizationContract, pure_memo_realization_contracts }
 import v1.compiler.runtime_rust { rust_runtime_source }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
@@ -5738,6 +5739,60 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
   }
 }
 
+fn rust_pure_memo_subject_matches(module_path: String, name: String) -> Bool {
+  (pure_memo_realization_contracts
+    |> filter(c => (c.subject.module_path as String) == module_path && (c.subject.decl_name as String) == name)
+    |> count) > 0
+}
+
+fn rust_pure_memo_inner_name(name: String) -> String {
+  concat(name, "__unmemoized")
+}
+
+// Emits the memoized wrapper for a contract subject. The shape assumption is
+// deliberate and narrow: the realization proves "same input" from the FIRST
+// parameter's allocation, binds the SECOND as the scope environment, and treats
+// the THIRD as the scope discriminator. That is the one subject the contract
+// carries. A future row of a different shape must not be emitted silently against
+// this assumption, so it refuses at compile time rather than producing a wrapper
+// whose key omits an input (DESIGN section 5: a failure arm refuses, never widens).
+fn rust_pure_memo_wrapper(
+  name: String, value_params: List<Node>, params_str: String, ret_str: String,
+  generic_param_names: List<String>, shared_types: Set<String>, emit_info: EmitGraphInfo, env: TypeEnv,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if (value_params |> count) != 3 || (generic_param_names |> count) != 0 {
+    concat("compile_error!(\"pure-memo realization contract subject '", name,
+      "' does not have the (input, environment, scope) shape this realization emits; add the shape it needs rather than widening this one\");\n\n")
+  } else {
+    let p0 = value_params |> at(0)
+    let p1 = value_params |> at(1)
+    let p2 = value_params |> at(2)
+    let n0 = p0.name
+    let n1 = p1.name
+    let n2 = p2.name
+    let ty0 = emit_inferred(inferred: param_node_type_expr(n: p0), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+    let ty1 = emit_inferred(inferred: param_node_type_expr(n: p1), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+    concat(
+      rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+      "    thread_local! {\n",
+      "        static PURE_MEMO: std::cell::RefCell<v1_rt::ScopedPtrMemo<", ty0, ", ", ty1, ">> =\n",
+      "            std::cell::RefCell::new(v1_rt::ScopedPtrMemo::new());\n",
+      "    }\n",
+      "    let memo_key = v1_rt::rc_ptr_id(&", n0, ");\n",
+      "    let memo_hit = PURE_MEMO.with(|cell| {\n",
+      "        let mut memo = cell.borrow_mut();\n",
+      "        memo.enter_scope(v1_rt::rc_ptr_id(&", n1, "), &", n1, ", &", n2, ");\n",
+      "        memo.lookup(memo_key)\n",
+      "    });\n",
+      "    if let Some(hit) = memo_hit { return hit; }\n",
+      "    let memo_value = ", rust_pure_memo_inner_name(name: name), "(", n0, ".clone(), ", n1, ".clone(), ", n2, ".clone());\n",
+      "    PURE_MEMO.with(|cell| cell.borrow_mut().insert(memo_key, ", n0, ", memo_value.clone()));\n",
+      "    memo_value\n",
+      "}\n\n")
+  }
+}
+
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let host_text_op = rust_host_string_op_fn_emit(name: name)
@@ -5795,17 +5850,27 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
+  let is_pure_memo_subject = rust_pure_memo_subject_matches(module_path: module_path, name: name)
+  // Only the EMITTED SYMBOL is renamed. Self-call detection below keeps the
+  // authored name, so a recursive subject routes its own recursion through the
+  // wrapper rather than bypassing it.
+  let emit_name = if is_pure_memo_subject { rust_pure_memo_inner_name(name: name) } else { name }
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
-  if use_tco {
+  let core_def = if use_tco {
     let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: body_emit_info)
     let kw = rust_items().func_keyword
-    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: emit_name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+    emit_fn_def_non_tco(name: emit_name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+  }
+  if is_pure_memo_subject {
+    concat(core_def, rust_pure_memo_wrapper(name: name, value_params: value_params, params_str: params_str, ret_str: ret_str, generic_param_names: generic_param_names, shared_types: shared_types, emit_info: emit_info, env: scope.type_env, source_indices: si))
+  } else {
+    core_def
   }
     }
   }
