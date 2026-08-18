@@ -13,6 +13,8 @@
 #                           for per-error census (e0599_census_extract.sh). Emit/assemble always
 #                           use a fresh mktemp OUT per invocation — never reuse this dir as OUT
 #                           (gunbc compile does not clear stale emitted .rs across runs).
+#                           Clears any prior <module>.cargo.log at invocation so a missing log
+#                           after a refuse path is observable (not a stale prior run).
 #   shim_lib_rel (arg 2)  — ONLY the lane's own lib.rs from dag/tools/self_host_<lane>_shims/
 #                           when that lane provides one (see behavioral_transport shim_lib_rel).
 #   Empty = raw cssl-assembled lib.rs (correct default when no lane shim).
@@ -23,14 +25,18 @@
 #   When verdicts flip between runs, diff INVOCATION first (shim path, CSSL_STD_SEED_LINK).
 #   FAIL-CLOSED (2026-08-17): HARNESS_REFUSE and EMIT_REFUSE exit non-zero after printing the
 #   TSV row — a recorded refusal must stop the line; exit 0 on harness down zeroed deficit frequency.
-#   STALE-LOG (2026-08-17): PROBE_KEEP_LOG_DIR is not cleared per module — a refusing run must
-#   rm -f the prior <module>.cargo.log or downstream greps read an unstated time (nonzero survives
-#   only when the log was written by THIS invocation). Use a fresh log dir per orchestrated sweep.
+#   STALE-LOG (2026-08-17): clear_probe_keep_log rm -f's <dir>/<module>.cargo.log at invocation
+#   and on harness refuse so a missing log after refuse is observable (not a prior run's file).
+#   Use a fresh PROBE_KEEP_LOG_DIR per orchestrated sweep when switching cohorts.
 #   PAIRED READING: publish a count beside any zero — a bare zero from this instrument is suspect.
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
 #   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
+#   Exit codes: 0 = measurement completed (emit reached cargo — including cargo refuse rows);
+#               1 = line-stop refuse (HARNESS_REFUSE or EMIT_REFUSE; HARNESS_REFUSE sets
+#                   residual_histogram instrument_down:1);
+#               2 = usage error.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -81,6 +87,7 @@ publish_probe_keep_log() {
 
 if [[ -n "${PROBE_KEEP_LOG_DIR:-}" ]]; then
   mkdir -p "$PROBE_KEEP_LOG_DIR"
+  clear_probe_keep_log
 fi
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
 cleanup() { rm -rf "$OUT"; }
@@ -164,6 +171,14 @@ print(" ".join(parts))
 PY
 }
 
+emit_harness_refuse_row_and_exit() {
+  ERROR_HISTOGRAM="instrument_down:1"
+  clear_probe_keep_log
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+  exit 1
+}
+
 if [[ "$EMIT_OK" -eq 1 ]]; then
   RAW_DUP_PUB_USE="$(measure_raw_dup_pub_use "$OUT/src")"
   if [[ "$STD_SEED_LINK" == "1" ]]; then
@@ -172,10 +187,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
-      clear_probe_keep_log
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-      exit 1
+      emit_harness_refuse_row_and_exit
     fi
   fi
 
@@ -195,10 +207,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     FIRST_ERROR="cssl harness authority unavailable"
     MAPPED_GATE="HARNESS_MISSING"
     VERDICT="HARNESS_REFUSE"
-    clear_probe_keep_log
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
-    exit 1
+    emit_harness_refuse_row_and_exit
   fi
 
   BUILD_LOG="$OUT/cargo.log"
