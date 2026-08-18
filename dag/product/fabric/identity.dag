@@ -1,6 +1,6 @@
 module product.fabric.identity
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr }
 
 // Identity shell for every fabric carrier. The principal is PART of the identity
 // rather than metadata beside it, so that two principals asking for the same

@@ -1,6 +1,6 @@
 module product.fabric.work
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, WorkKey }

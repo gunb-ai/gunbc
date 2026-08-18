@@ -1,11 +1,9 @@
 module product.fabric.execution
 
-import std.types { NonEmptyStr, String, Timestamp, List, Int, Bool }
+import std.types { NonEmptyStr, Timestamp, List, Int, Bool }
 import std.measure { MoneyAmountMicro, Second }
 import std.content_hash { ContentHash }
-import product.fabric.identity {
-  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey,
-}
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.supply { MonetaryQuote }
 

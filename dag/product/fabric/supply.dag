@@ -1,6 +1,6 @@
 module product.fabric.supply
 
-import std.types { NonEmptyStr, String, Timestamp, Int }
+import std.types { Timestamp, Int }
 import std.measure { MoneyAmountMicro }
 import std.currency { CurrencyCode }
 import product.compute_fabric { Shape }
