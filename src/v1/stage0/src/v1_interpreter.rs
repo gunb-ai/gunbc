@@ -238,10 +238,44 @@ fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool 
     qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
 }
 
+fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>> {
+    if item.connective == Connective::Disj && !item.children.is_empty() {
+        return Some(item.clone());
+    }
+    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
+        if node.connective == Connective::Disj && !node.children.is_empty() {
+            return Some(node.clone());
+        }
+    }
+    if let Some(rhs) = type_item_alias_rhs_name(ctx, item) {
+        return resolve_coproduct_type_node(ctx, &rhs);
+    }
+    None
+}
+
 fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
-    lookup_type_item_across_modules(ctx, parent_enum).or_else(|| {
-        lookup_type_item_across_modules(ctx, &qualified_last_segment(parent_enum.to_string()))
-    })
+    let bare = qualified_last_segment(parent_enum.to_string());
+    if let Some(item) = lookup_type_item_across_modules(ctx, parent_enum)
+        .or_else(|| lookup_type_item_across_modules(ctx, &bare))
+    {
+        if let Some(disj) = coproduct_disj_node(ctx, &item) {
+            return Some(disj);
+        }
+        return Some(item);
+    }
+    for module in ctx.modules.iter() {
+        let env = module.type_env.clone();
+        let node =
+            crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), parent_enum.to_string())
+                .or_else(|| crate::v1_compiler_infer_env::lookup_type_by_name(env, bare.clone()))?;
+        if let Some(disj) = coproduct_disj_node(ctx, &node) {
+            return Some(disj);
+        }
+        if node.connective == Connective::Disj {
+            return Some(node);
+        }
+    }
+    None
 }
 
 fn coproduct_parent_spellings_match(
@@ -317,15 +351,9 @@ fn record_pattern_type_name_matches(
         || type_name_compatible(resolved.clone(), pattern_name.to_string());
     match parent_enum {
         Some(parent) => {
-            if record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
+            record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
                 || variant_arm_is_declared_in_coproduct(ctx, record_type_name, parent)
-            {
-                return true;
-            }
-            // Parent scoping was requested but the coproduct authority is not visible in this
-            // scope's module population — fall back to the same last-segment reconciliation the
-            // Variant arm uses, rather than refusing every Record-shaped coproduct value.
-            name_matches && resolve_coproduct_type_node(ctx, parent).is_none()
+                || name_matches
         }
         None => name_matches,
     }
