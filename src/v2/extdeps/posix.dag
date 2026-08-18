@@ -124,7 +124,7 @@ type ProcessResources {
   filesystem: v2.extdeps.file_system.Filesystem
 }
 
-type CapturedByteStream = FreeMonoid<v2.std.machine.Byte>
+type CapturedByteStream = FreeMonoid<std.bit.Byte>
 
 type CapturedOutputPipes {
   stdout: CapturedByteStream

@@ -26,7 +26,7 @@ type EvaluationEnvironment {
 
 type RuntimePrimitiveValue {
   primitive_type: Node
-  bytes: List<v2.std.machine.Byte>
+  bytes: List<std.bit.Byte>
 }
 
 type RuntimeAggregateValue {

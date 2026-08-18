@@ -86,7 +86,7 @@ fn repr_grounding_derive_traits_for_collection_witness(
             head: ReprDeriveEq,
             tail: std.algebra.Cons {
               head: ReprDerivePartialEq,
-              tail: std.algebra.Cons { head: ReprDeriveClone, tail: v2.std.algebra.Empty }
+              tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
             }
           }
         }
@@ -96,7 +96,7 @@ fn repr_grounding_derive_traits_for_collection_witness(
         head: ReprDeriveEq,
         tail: std.algebra.Cons {
           head: ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: ReprDeriveClone, tail: v2.std.algebra.Empty }
+          tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
         }
       }
     TargetCollectionWitnessEq { type_param: _ } =>
@@ -104,7 +104,7 @@ fn repr_grounding_derive_traits_for_collection_witness(
         head: ReprDeriveEq,
         tail: std.algebra.Cons {
           head: ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: ReprDeriveClone, tail: v2.std.algebra.Empty }
+          tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
         }
       }
   }

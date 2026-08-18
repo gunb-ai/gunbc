@@ -11,8 +11,8 @@ fn lazy_arm_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   }
 }
 
-fn lazy_arm_byte() -> v2.std.machine.Byte {
-  v2.std.machine.Byte { bits: [true] }
+fn lazy_arm_byte() -> std.bit.Byte {
+  std.bit.Byte { bits: [true] }
 }
 
 fn lazy_arm_bool_type() -> v2.std.node.Node {

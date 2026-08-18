@@ -10,8 +10,8 @@ fn loop_eval_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   }
 }
 
-fn loop_eval_byte() -> v2.std.machine.Byte {
-  v2.std.machine.Byte { bits: [true] }
+fn loop_eval_byte() -> std.bit.Byte {
+  std.bit.Byte { bits: [true] }
 }
 
 fn loop_eval_i64() -> v2.std.node.Node {

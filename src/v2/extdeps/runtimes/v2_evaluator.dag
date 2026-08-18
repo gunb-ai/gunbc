@@ -24,8 +24,8 @@ data v2_eval_bool_literal_pin: Node = v2.std.node.Node {
 
 data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
 
-fn v2_eval_bool_true_byte() -> v2.std.machine.Byte {
-  v2.std.machine.Byte { bits: [true] }
+fn v2_eval_bool_true_byte() -> std.bit.Byte {
+  std.bit.Byte { bits: [true] }
 }
 
 fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
@@ -120,9 +120,9 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: if is_true {
-        [v2.std.machine.Byte { bits: [true, false, false, false, false, false, false, false] }]
+        [std.bit.Byte { bits: [true, false, false, false, false, false, false, false] }]
       } else {
-        [v2.std.machine.Byte { bits: [false, false, false, false, false, false, false, false] }]
+        [std.bit.Byte { bits: [false, false, false, false, false, false, false, false] }]
       }
     }
   }

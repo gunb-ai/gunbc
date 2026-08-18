@@ -203,14 +203,14 @@ fn emit_complement_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestCla
   )
 }
 
-fn emit_complement_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue> {
+fn emit_complement_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_complement_eval_subject(tree: tree),
     target: rust_logic_complement_target_model_staging()
   )
 }
 
-fn emit_complement_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue>) -> Bool {
+fn emit_complement_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -220,7 +220,7 @@ fn emit_complement_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.st
   }
 }
 
-fn emit_complement_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue>) -> Bool {
+fn emit_complement_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false

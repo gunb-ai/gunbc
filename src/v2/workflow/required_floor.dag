@@ -163,7 +163,7 @@ fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
       head: "v2.test.long.",
       tail: std.algebra.Cons {
         head: "v2.test.claim.long.",
-        tail: v2.std.algebra.Empty {}
+        tail: std.algebra.Empty {}
       }
     }
   }

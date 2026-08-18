@@ -44,7 +44,7 @@ fn posix_class_bits(perms: extdeps.access.posix.FilePermissions, subject: PosixS
   }
 }
 
-fn posix_decide(request: std.access.AccessRequest<PosixSubject, PosixAction, FilePermissions, TestAccessContext, TestAccessEvidence>) -> std.access.AccessDecision {
+fn posix_decide(request: std.access.AccessRequest<PosixSubject, PosixAction, extdeps.access.posix.FilePermissions, TestAccessContext, TestAccessEvidence>) -> std.access.AccessDecision {
   if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
     Permit
   } else {
@@ -113,7 +113,7 @@ fn rbac_user_has_permission(policy: extdeps.access.rbac.RbacPolicy, user: std.ty
   })
 }
 
-fn rbac_decide(policy: extdeps.access.rbac.RbacPolicy, request: std.access.AccessRequest<NonEmptyStr, NonEmptyStr, NonEmptyStr, TestAccessContext, TestAccessEvidence>) -> std.access.AccessDecision {
+fn rbac_decide(policy: extdeps.access.rbac.RbacPolicy, request: std.access.AccessRequest<std.types.NonEmptyStr, std.types.NonEmptyStr, std.types.NonEmptyStr, TestAccessContext, TestAccessEvidence>) -> std.access.AccessDecision {
   if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
     Permit
   } else {

@@ -33,7 +33,7 @@ fn cost_account_measured_from_time<S>(time: Measure<Time, S, std.nat.Nat>) -> Co
   cost_account_measured(time: time)
 }
 
-fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> CostAccount<S> {
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.Nat>, space: std.measure.ByteSize) -> CostAccount<std.types.S> {
   std.realization_schedule.CostAccount {
     time: time
     space: space
@@ -121,7 +121,7 @@ fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, std.na
 
 fn cost_account_measured_from_schedule_critical_path<S>(
   batch_times: List<List<Measure<Time, S, std.nat.Nat>>>
-) -> CostAccount<S> {
+) -> CostAccount<std.types.S> {
   cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
 }
 

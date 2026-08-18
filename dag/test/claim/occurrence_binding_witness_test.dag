@@ -3,7 +3,7 @@ module test.claim.occurrence_binding_witness_test
 
 fn ob_root_path(terminal: v2.std.node.Symbol) -> std.occurrence_binding.ContainmentPath<v2.std.node.Symbol> {
   std.occurrence_binding.ContainmentPath {
-    ancestors: Empty,
+    ancestors: std.algebra.Empty,
     terminal: terminal,
   }
 }

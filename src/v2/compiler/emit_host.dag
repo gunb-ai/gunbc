@@ -255,8 +255,8 @@ fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
   ((octet / place) % 2) == 1
 }
 
-fn emit_host_byte_from_octet(octet: Int) -> v2.std.machine.Byte {
-  v2.std.machine.Byte {
+fn emit_host_byte_from_octet(octet: Int) -> std.bit.Byte {
+  std.bit.Byte {
     bits: [
       emit_host_octet_bit(octet: octet, place: 1),
       emit_host_octet_bit(octet: octet, place: 2),

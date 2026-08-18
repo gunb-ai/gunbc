@@ -27,11 +27,11 @@ fn converge_knob_values_equal(a: gunbc.host_converge.ConvergeKnob, b: gunbc.host
   a.desired == b.desired && a.target == b.target
 }
 
-fn converge_knob_row(knob: gunbc.host_converge.ConvergeKnob) -> std.keyed_row.KeyedRow<ConvergeKnobKey, ConvergeKnob> {
+fn converge_knob_row(knob: gunbc.host_converge.ConvergeKnob) -> std.keyed_row.KeyedRow<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob> {
   std.keyed_row.KeyedRow { row_key: converge_knob_key(knob: knob), value: knob }
 }
 
-fn converge_knobs_to_rows(knobs: List<gunbc.host_converge.ConvergeKnob>) -> List<std.keyed_row.KeyedRow<ConvergeKnobKey, ConvergeKnob>> {
+fn converge_knobs_to_rows(knobs: List<gunbc.host_converge.ConvergeKnob>) -> List<std.keyed_row.KeyedRow<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob>> {
   fold(knobs, init: [], f: fn(acc, knob) { concat(acc, [converge_knob_row(knob: knob)]) })
 }
 
@@ -55,7 +55,7 @@ fn host_converge_three_way_patch(
   base: List<gunbc.host_converge.ConvergeKnob>,
   observed: List<gunbc.host_converge.ConvergeKnob>,
   desired: List<gunbc.host_converge.ConvergeKnob>,
-) -> std.change.KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob> {
+) -> std.change.KeyedThreeWayPatch<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob> {
   keyed_three_way_fold(
     base: converge_knobs_to_rows(knobs: base),
     observed: converge_knobs_to_rows(knobs: observed),
@@ -90,13 +90,13 @@ fn host_converge_patch_hunk_count(
 }
 
 fn host_converge_three_way_entry_count(
-  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob>,
 ) -> Int {
   keyed_three_way_entry_count(patch: patch)
 }
 
 fn host_converge_knob_in_patch(
-  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob>,
   key: ConvergeKnobKey,
 ) -> Bool {
   fold(patch.entries, init: false, f: fn(acc, entry) {
@@ -105,7 +105,7 @@ fn host_converge_knob_in_patch(
 }
 
 fn host_converge_knob_verdict(
-  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+  patch: std.change.KeyedThreeWayPatch<ConvergeKnobKey, gunbc.host_converge.ConvergeKnob>,
   key: ConvergeKnobKey,
 ) -> KeyedLeafVerdict<gunbc.host_converge.ConvergeKnob>? {
   fold(patch.entries, init: none, f: fn(acc, entry) {

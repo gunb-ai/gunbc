@@ -382,8 +382,8 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
 
 test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool {
   match effect_plan_bash_materialize(plan: v2.std.effect_plan.EffectPlan {
-    steps: [Do { effect: id_invocation(operation: "Uid") }],
-    on_failure: Continue
+    steps: [v2.std.effect_plan.Do { effect: id_invocation(operation: "Uid") }],
+    on_failure: v2.std.orchestration.Continue
   }) {
     EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == -1

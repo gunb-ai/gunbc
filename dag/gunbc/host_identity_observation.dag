@@ -50,7 +50,7 @@ fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.No
 fn host_identity_observation_apply(
   target: gunbc.host_effect.NodeControlPlane,
   transport: gunbc.host_effect.HostEffectTransport,
-) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   host_effect_apply(
     target: target,
     effect: HostIdentityShortHostnameRead,
@@ -60,7 +60,7 @@ fn host_identity_observation_apply(
 }
 
 fn host_identity_observation_from_apply(
-  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
   probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {

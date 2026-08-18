@@ -85,7 +85,7 @@ type SelectedLogicVerdicts {
   complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
-fn selected_verdict_for_byte(actual: Optional<v2.std.machine.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
+fn selected_verdict_for_byte(actual: Optional<std.bit.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
     Present { value: value } => if value == emit_host_byte_from_octet(octet: expected_octet) {
       SelectedWitnessPassed

@@ -9,8 +9,8 @@ fn program_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   }
 }
 
-fn program_byte() -> v2.std.machine.Byte {
-  v2.std.machine.Byte { bits: [true] }
+fn program_byte() -> std.bit.Byte {
+  std.bit.Byte { bits: [true] }
 }
 
 fn program_bool_type() -> v2.std.node.Node {

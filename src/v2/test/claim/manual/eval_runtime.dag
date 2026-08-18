@@ -2,8 +2,8 @@ module v2.test.manual.eval_runtime
 
 
 
-fn eval_byte() -> v2.std.machine.Byte {
-  v2.std.machine.Byte { bits: [true] }
+fn eval_byte() -> std.bit.Byte {
+  std.bit.Byte { bits: [true] }
 }
 
 fn eval_i64_node() -> Node {
@@ -41,7 +41,7 @@ fn eval_add_subgraph() -> Node {
   eval_add_subgraph_node
 }
 
-fn eval_runtime_value(bytes: List<v2.std.machine.Byte>) -> v2.std.runtime.RuntimeValue {
+fn eval_runtime_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: eval_i64_node(),

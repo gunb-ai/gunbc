@@ -165,7 +165,7 @@ fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) 
   }
 }
 
-fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> std.realization_reconcile.Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
+fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match read {
     std.realization_reconcile.ReadAbsent { reason: why } =>
       reconcile_grounded(
@@ -182,7 +182,7 @@ fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiv
   }
 }
 
-fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
+fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match r {
     std.realization_reconcile.Converged { evidence: e, applied: _ } => e
     std.realization_reconcile.NotConverged { reason: _, applied: _ } => OomdUnverified

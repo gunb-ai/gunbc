@@ -3,7 +3,7 @@ module v2.test.std_grounding.terminal_gate
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn terminal_gate_empty_bytes() -> List<v2.std.machine.Byte> {
+fn terminal_gate_empty_bytes() -> List<std.bit.Byte> {
   []
 }
 

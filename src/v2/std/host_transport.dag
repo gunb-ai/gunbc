@@ -1,7 +1,7 @@
 module v2.std.host_transport
 
 
-type ByteString = List<v2.std.machine.Byte>
+type ByteString = List<std.bit.Byte>
 
 type RelPath = String
 

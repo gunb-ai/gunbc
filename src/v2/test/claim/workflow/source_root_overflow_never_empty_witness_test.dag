@@ -15,6 +15,6 @@ test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool
   }
   !source_root_overflow_never_empty_population_holds(
     receipt: bad_receipt,
-    refs: v2.std.algebra.Empty
+    refs: std.algebra.Empty
   )
 }

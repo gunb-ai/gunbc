@@ -23,7 +23,7 @@ fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
 
 fn srv3_host_effect_apply(
   effect: gunbc.host_effect.HostEffect,
-) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   host_effect_apply(
     target: srv3_actuator_target(),
     effect: effect,
@@ -32,11 +32,11 @@ fn srv3_host_effect_apply(
   )
 }
 
-fn srv3_install_media_fetch_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_install_media_fetch_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3InstallMediaFetch)
 }
 
-fn srv3_seeded_install_media_toolchain_ensure_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_seeded_install_media_toolchain_ensure_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   host_effect_apply_gated(
     access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
     target: srv3_actuator_target(),
@@ -47,23 +47,23 @@ fn srv3_seeded_install_media_toolchain_ensure_apply() -> std.realization_reconci
   )
 }
 
-fn srv3_seeded_install_media_remaster_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_seeded_install_media_remaster_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
 }
 
-fn srv3_bmcweb_session_login_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_bmcweb_session_login_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin)
 }
 
-fn srv3_bmcweb_token_extract_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_bmcweb_token_extract_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3BmcwebTokenExtract)
 }
 
-fn srv3_nbd_proxy_serve_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_nbd_proxy_serve_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect())
 }
 
-fn srv3_boot_once_read_back_sleep_apply() -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_boot_once_read_back_sleep_apply() -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: Srv3BootOnceReadBackSleep)
 }
 
@@ -75,12 +75,12 @@ fn srv3_typed_receipt_from_lines(lines: List<String>) -> Srv3TypedReceipt {
   Srv3TypedReceipt { lines: lines }
 }
 
-fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_host_effect_apply(effect: gunbc.host_effect.Srv3ReceiptEmit { lines: receipt.lines })
 }
 
 fn srv3_shell_stdout_from_apply(
-  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String? {
   match r {
     std.realization_reconcile.Converged { evidence: e, applied: _ } =>
@@ -93,7 +93,7 @@ fn srv3_shell_stdout_from_apply(
 }
 
 fn srv3_reconciliation_failure_reason(
-  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String? {
   match r {
     std.realization_reconcile.Converged { evidence: _, applied: _ } => none
@@ -102,7 +102,7 @@ fn srv3_reconciliation_failure_reason(
 }
 
 fn srv3_reconciliation_to_process_exit(
-  r: std.realization_reconcile.Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
   failure_prefix: String,
 ) -> std.process.ProcessExit {
   if reconciliation_converged(r: r) {

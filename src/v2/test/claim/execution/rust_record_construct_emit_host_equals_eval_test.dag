@@ -257,14 +257,14 @@ fn rust_rec_nine_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaim
 fn rust_rec_nine_eval_run(
   tree: v2.compiler.infer.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue> {
+) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: rust_rec_nine_eval_subject(tree: tree),
     target: target
   )
 }
 
-fn rust_rec_nine_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue>) -> Bool {
+fn rust_rec_nine_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -274,7 +274,7 @@ fn rust_rec_nine_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.
   }
 }
 
-fn rust_rec_nine_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, RuntimeValue>) -> Bool {
+fn rust_rec_nine_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false

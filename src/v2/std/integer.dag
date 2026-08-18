@@ -1077,8 +1077,8 @@ fn integer_u8_unit_to_bit(value: Int, shift: Int) -> Bool {
   (value / shift) % 2 == 1
 }
 
-fn integer_u8_to_byte(value: Int) -> v2.std.machine.Byte {
-  v2.std.machine.Byte {
+fn integer_u8_to_byte(value: Int) -> std.bit.Byte {
+  std.bit.Byte {
     bits: [
       integer_u8_unit_to_bit(value: value, shift: 1),
       integer_u8_unit_to_bit(value: value, shift: 2),
@@ -1110,7 +1110,7 @@ fn integer_int_normalize_i32_wire_unsigned(value: Int) -> Int {
   }
 }
 
-fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<v2.std.machine.Byte> {
+fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<std.bit.Byte> {
   let wire = integer_int_normalize_i32_wire_unsigned(value: value)
   [
     integer_u8_to_byte(value: wire % 256),
@@ -1120,14 +1120,14 @@ fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<v2.std.machine.Byte> {
   ]
 }
 
-fn integer_byte_bit_at(b: v2.std.machine.Byte, shift: Int) -> Int {
+fn integer_byte_bit_at(b: std.bit.Byte, shift: Int) -> Int {
   match list_at_optional(xs: b.bits, index: shift) {
     Present { value: bit } => if bit { 1 } else { 0 }
     Absent => 0
   }
 }
 
-fn integer_u8_from_byte(b: v2.std.machine.Byte) -> Int {
+fn integer_u8_from_byte(b: std.bit.Byte) -> Int {
   int_add(
     a: int_add(
       a: int_add(
@@ -1240,7 +1240,7 @@ fn integer_decimal_magnitude_node_to_int(node: v2.std.node.Node) -> v2.std.diagn
   }
 }
 
-fn integer_signed_i32_le_bytes_to_int(bytes: List<v2.std.machine.Byte>) -> v2.std.diagnostic.Outcome<Int> {
+fn integer_signed_i32_le_bytes_to_int(bytes: List<std.bit.Byte>) -> v2.std.diagnostic.Outcome<Int> {
   if length(xs: bytes) == 4 {
     match list_at_optional(xs: bytes, index: 0) {
       Present { value: b0 } =>

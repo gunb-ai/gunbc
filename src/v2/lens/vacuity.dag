@@ -422,7 +422,7 @@ fn vacuity_bool_witness_evidence(witness: v2.std.verification.BoolWitness) -> Va
     v2.std.diagnostic.Rejected { diagnostics: _ } => Unknown
     v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
       match vacuity_find_fn_decl_by_name(
-        decls: vacuity_collect_fn_decls(root: module_root.root, acc: v2.std.algebra.Empty),
+        decls: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),
         name: witness.function
       ) {
         Absent => Unknown

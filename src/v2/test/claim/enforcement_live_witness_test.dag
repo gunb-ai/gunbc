@@ -35,7 +35,7 @@ test fn roster_read_liveness_discriminates() -> Bool {
     )
     && consumer_kind_eq(
       a: consumer_enrolled_for(binding: NoConsumerWitness, ci_entries: [synthetic_binding_witness], prepush_entries: []),
-      b: NoConsumer
+      b: std.witness_admission.NoConsumer
     )
 }
 

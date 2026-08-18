@@ -3,7 +3,7 @@ module v2.test.runtimes.effect_io_host_mode
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn mode_resource_arg(bytes: List<v2.std.machine.Byte>) -> v2.std.runtime.RuntimeValue {
+fn mode_resource_arg(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: effect_io_pure_unit_type_node(),
@@ -17,11 +17,11 @@ fn mode_resource_a() -> v2.std.runtime.RuntimeValue {
 }
 
 fn mode_resource_b() -> v2.std.runtime.RuntimeValue {
-  mode_resource_arg(bytes: [v2.std.machine.Byte { bits: [true] }])
+  mode_resource_arg(bytes: [std.bit.Byte { bits: [true] }])
 }
 
 fn mode_payload() -> v2.std.runtime.RuntimeValue {
-  mode_resource_arg(bytes: [v2.std.machine.Byte { bits: [true] }, v2.std.machine.Byte { bits: [false] }])
+  mode_resource_arg(bytes: [std.bit.Byte { bits: [true] }, std.bit.Byte { bits: [false] }])
 }
 
 fn mode_populated_http_fixture() -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {

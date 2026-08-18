@@ -4,7 +4,7 @@ module product.budget_tree
 type BudgetPriority = Guaranteed | Burstable | BestEffort
 
 type BudgetClaim {
-  item: extdeps.accounting.budget.LineItem<Memory, One>
+  item: extdeps.accounting.budget.LineItem<std.measure.Memory, std.measure.One>
   priority: BudgetPriority
 }
 

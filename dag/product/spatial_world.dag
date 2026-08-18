@@ -138,7 +138,7 @@ fn world_total_volume(registry: std.spatial_frame.SpatialFrameRegistry, w: World
 // unable to express one.
 type WorldVariant sole_constructor {
   base: World
-  delta: std.change.KeyedPatch<product.placement_supply.RoomIdentity, EnclosedSpace>
+  delta: std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>
 }
 
 fn world_variant(base: World, delta: std.change.KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {

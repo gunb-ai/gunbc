@@ -172,7 +172,7 @@ fn effect_target_label(target: NamespacePosition) -> String {
 }
 
 fn effect_grant_decide(
-  request: std.access.AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
+  request: std.access.AccessRequest<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<Verb>, NamespacePosition, std.materialization_ladder.Frame, Envelope>,
 ) -> std.access.AccessDecision {
   match covering_grant(
     env: request.evidence.value,

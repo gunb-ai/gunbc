@@ -4,8 +4,8 @@ module v2.test.self_host.frontier_probe_overlap_detail
 fn sample_overlap_row() -> v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
   v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
     production: ^dag_production_expr,
-    left_first_terminals: std.algebra.Cons { head: ^dag_token_ident, tail: v2.std.algebra.Empty },
-    right_first_terminals: std.algebra.Cons { head: ^dag_token_kw_fn, tail: v2.std.algebra.Empty },
+    left_first_terminals: std.algebra.Cons { head: ^dag_token_ident, tail: std.algebra.Empty },
+    right_first_terminals: std.algebra.Cons { head: ^dag_token_kw_fn, tail: std.algebra.Empty },
     overlap_terminals: Empty,
     both_nullable: true
   }
@@ -167,7 +167,7 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
       at: port_locus(port: ^parse_stage_locus_port),
       correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     },
-    tail: v2.std.algebra.Empty
+    tail: std.algebra.Empty
   }
   let located = frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
   located == ^parse_grammar_choice_overlap_residue

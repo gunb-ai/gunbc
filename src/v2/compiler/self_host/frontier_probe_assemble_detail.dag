@@ -8,7 +8,7 @@ fn non_empty_symbol_chain_from_non_empty_parse_stage(
     head: d.head.diagnostic.reason,
     tail: fold_list(
       xs: d.tail,
-      empty: v2.std.algebra.Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, item) { list_snoc_item(xs: acc, item: item.diagnostic.reason) }
     )
   }
@@ -21,7 +21,7 @@ fn non_empty_symbol_chain_from_non_empty_diagnostics(
     head: d.head.reason,
     tail: fold_list(
       xs: d.tail,
-      empty: v2.std.algebra.Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
     )
   }
@@ -87,7 +87,7 @@ fn non_empty_symbol_chain_from_parse_stage_head(
     head: head.diagnostic.reason,
     tail: fold_list(
       xs: tail,
-      empty: v2.std.algebra.Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, item) { list_snoc_item(xs: acc, item: item.diagnostic.reason) }
     )
   }
@@ -160,7 +160,7 @@ fn overlap_row_queue_tail_after_pop(
   row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match list_tail(xs: row_queue) {
-    TailAbsent => v2.std.algebra.Empty
+    TailAbsent => std.algebra.Empty
     TailFound { tail: rest } => rest
   }
 }
@@ -202,7 +202,7 @@ fn parse_stage_tail_from_overlap_row_queue_and_diagnostics(
 ) -> FreeMonoid<v2.compiler.parse_diagnostic.ParseStageDiagnostic> {
   fold_list(
     xs: tail,
-    empty: OverlapQueueMergeAcc { stages: v2.std.algebra.Empty, row_queue: row_queue },
+    empty: OverlapQueueMergeAcc { stages: std.algebra.Empty, row_queue: row_queue },
     cons: fn(acc, diag) { overlap_queue_merge_acc_step(acc: acc, diag: diag) }
   ).stages
 }
@@ -294,7 +294,7 @@ fn non_empty_symbol_chain_from_diagnostic_list(
     head: head_diag.reason,
     tail: fold_list(
       xs: tail,
-      empty: v2.std.algebra.Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
     )
   }
@@ -309,7 +309,7 @@ fn list_head_value_or_self(head: v2.std.diagnostic.Diagnostic, tail: FreeMonoid<
 
 fn list_tail_or_empty_diagnostics(tail: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> FreeMonoid<v2.std.diagnostic.Diagnostic> {
   match list_tail(xs: tail) {
-    TailAbsent => v2.std.algebra.Empty
+    TailAbsent => std.algebra.Empty
     TailFound { tail: rest } => rest
   }
 }

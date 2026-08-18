@@ -177,14 +177,14 @@ fn emit_loop_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEval
   )
 }
 
-fn emit_loop_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<Node, RuntimeValue> {
+fn emit_loop_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_loop_eval_subject(tree: tree),
     target: rust_loop_target_model_staging()
   )
 }
 
-fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
@@ -194,7 +194,7 @@ fn emit_loop_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<Node, Runti
   }
 }
 
-fn emit_loop_eval_verdict_is_fail(run: v2.compiler.eval.TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn emit_loop_eval_verdict_is_fail(run: v2.compiler.eval.TestClaimRun<Node, v2.std.runtime.RuntimeValue>) -> Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false

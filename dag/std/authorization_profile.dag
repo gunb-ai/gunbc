@@ -58,7 +58,7 @@ type EffectRequest<S, A, O, C, E> {
 
 fn effect_access_request<S, A, O, C, E>(
   request: EffectRequest<S, A, O, C, E>,
-) -> AccessRequest<S, EffectAuthorizationAction<A>, O, C, E> {
+) -> AccessRequest<std.types.S, EffectAuthorizationAction<A>, O, extdeps.languages.c.subject.C, E> {
   std.access.AccessRequest {
     subject: request.subject,
     action: EffectAuthorizationAction { effect: request.effect },
@@ -84,7 +84,7 @@ type ReferenceRequest<R, C, E> {
 
 fn reference_access_request<R, C, E>(
   request: ReferenceRequest<R, C, E>,
-) -> AccessRequest<R, ReferenceAction, R, ReferenceContext<R, C>, E> {
+) -> AccessRequest<R, ReferenceAction, R, ReferenceContext<R, extdeps.languages.c.subject.C>, E> {
   std.access.AccessRequest {
     subject: request.referrer,
     action: ReferenceAction {},
@@ -117,7 +117,7 @@ type PublicationAdmissionRequest<S, Source, R, C, E, P> {
 
 fn publication_access_request<S, Source, R, C, E, P>(
   request: PublicationAdmissionRequest<S, Source, R, C, E, P>,
-) -> AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<C, P>, E> {
+) -> AccessRequest<std.types.S, PublicationAdmissionAction<Source>, R, PublicationContext<extdeps.languages.c.subject.C, P>, E> {
   std.access.AccessRequest {
     subject: request.subject,
     action: PublicationAdmissionAction { source: request.source },
@@ -150,7 +150,7 @@ type DisclosureRequest<P, R, F, C, E> {
 
 fn disclosure_access_request<P, R, F, C, E>(
   request: DisclosureRequest<P, R, F, C, E>,
-) -> AccessRequest<P, DisclosureAction<F>, R, DisclosureContext<C, P>, E> {
+) -> AccessRequest<P, DisclosureAction<F>, R, DisclosureContext<extdeps.languages.c.subject.C, P>, E> {
   std.access.AccessRequest {
     subject: request.principal,
     action: DisclosureAction { fields: request.fields },
@@ -177,7 +177,7 @@ type SealedExecutionRequest<P, O, R, C, E> {
 
 fn sealed_execution_access_request<P, O, R, C, E>(
   request: SealedExecutionRequest<P, O, R, C, E>,
-) -> AccessRequest<P, SealedExecutionAction<O>, R, C, E> {
+) -> AccessRequest<P, SealedExecutionAction<O>, R, extdeps.languages.c.subject.C, E> {
   std.access.AccessRequest {
     subject: request.principal,
     action: SealedExecutionAction { operation: request.operation },
