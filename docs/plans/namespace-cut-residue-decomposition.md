@@ -536,3 +536,50 @@ Any census over this corpus keys on module path, never on file name.
 The choice is not "27 diagnostics versus 2,373". It is "27 diagnostics, of which an unknown
 number are silently wrong bindings that regen cannot see" versus "578 located edits, ~97% of
 them mechanically derivable, plus 3 or so genuine modeling gaps that were previously invisible".
+
+## The rising diagnostic count is progress, not damage (2026-08-18)
+
+Two bulk qualification passes were reverted tonight on a rising total. **Both reverts were
+wrong.** The mechanism, established by controlled measurement rather than inference:
+
+Clean baseline at `bff62570`: 2,372. Applying 50 span-located qualifications: 2,379 (+7).
+Diffing the two diagnostic SETS, rather than comparing totals:
+
+    RESOLVED  -44   NonEmptyStr -12 [zanzibar.dag], -12 [coverage.dag],
+                    ExternalAuthority -4 [dns/domain_name.dag], ...
+    NEW       +51   FilePathParts +10 [rust/cargo.dag], NonEmptyStr +5 [crypto/hash.dag],
+                    ExternalAuthority +2 [zanzibar.dag], +2 [cargo.dag], ...
+
+The edits worked: 44 diagnostics genuinely resolved. Fixing them let the compiler advance
+FURTHER INTO THE SAME FILES and reach 51 errors it could not previously see. The decisive
+detail is `ExternalAuthority +2` in `zanzibar.dag` -- the exact file where 12 `NonEmptyStr`
+rows were fixed. That error was masked by the earlier failure and is pre-existing.
+
+This is the same shape as the closure-widening finding above: residue did not appear in
+`dag/` because anything broke, it appeared because regen started compiling more.
+
+### Consequences
+
+1. **The total is not the oracle, and neither is any single class in isolation.** The signature
+   used to condemn the first pass -- `no field` rising while `unresolved type` fell -- was
+   correct for THAT pass, and generalising it to the span pass was an error. Under span-located
+   editing `no field` stays flat at 371 through 1 edit and 50 edits; the movement is entirely
+   within `unresolved type`, which is exactly what unmasking predicts.
+2. **The correct method is iterative, not one-shot.** Regen, rebuild the owner map from FRESH
+   diagnostics, qualify at spans, repeat. The map must be rebuilt every round: `FilePathParts`
+   and `ExternalAuthority` are not in the original 250-name population; they only become
+   visible once the errors masking them are gone.
+3. **The count rises before it falls** and terminates because the corpus is finite. A single
+   round showing a higher total is the expected intermediate state, not a failed round.
+4. **What the earlier session state cost.** 2,374 -> 6,470 across 1,792 edits is roughly 2.3
+   revealed per fix at that depth, which is why the one-shot result looked catastrophic. It
+   was the deepest single step anyone had taken into this corpus.
+
+### The reasoning error, recorded because it recurred
+
+The total-count oracle was rejected in writing earlier on this branch -- "diagnostic-count
+movement by CLASS is the oracle, never the total" -- and then used twice to revert correct
+work. Having the right rule written down did not prevent applying the wrong one under a
+failing signal. What actually settled it was diffing the two diagnostic SETS, which names
+what resolved and what appeared; no aggregate, by class or total, could have distinguished
+unmasking from corruption.
