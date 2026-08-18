@@ -1208,17 +1208,35 @@ pub fn v1_type_expr_head_is_known(
     (is_container_type(name.clone()) || (v1_rt::map_get(&type_decl_items, name.clone()) != None))
 }
 
+pub fn v1_item_generic_param_name_set(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BTreeSet<String>> {
+    item.params.clone().iter().cloned().fold(
+        v1_rt::rc_empty_set::<String>(),
+        |acc: Rc<BTreeSet<String>>, p: Rc<Node>| {
+            v1_rt::rc_set_insert(
+                acc,
+                generic_param_name_at(p.clone(), source_indices.clone()),
+            )
+        },
+    )
+}
+
 pub fn v1_type_expr_clone_undecided_head(
     type_expr: Rc<Node>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
         if ((type_expr.children.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            if v1_type_expr_head_is_known(name.clone(), type_decl_items.clone()) {
+            if (v1_type_expr_head_is_known(name.clone(), type_decl_items.clone())
+                || v1_rt::set_contains(&item_generic_params, name.clone()))
+            {
                 type_expr.children.clone().iter().cloned().fold(
                     "".to_string(),
                     |acc: String, c: Rc<Node>| {
@@ -1229,6 +1247,7 @@ pub fn v1_type_expr_clone_undecided_head(
                                 child_type_node(c.clone()),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
+                                item_generic_params.clone(),
                             )
                         }
                     },
@@ -1579,20 +1598,25 @@ pub fn v1_item_clone_undecided_head(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-        "".to_string(),
-        |acc: String, te: Rc<Node>| {
-            if (acc.clone() != "".to_string()) {
-                acc.clone()
-            } else {
-                v1_type_expr_clone_undecided_head(
-                    te.clone(),
-                    type_decl_items.clone(),
-                    source_indices.clone(),
-                )
-            }
-        },
-    )
+    {
+        let item_generic_params =
+            v1_item_generic_param_name_set(item.clone(), source_indices.clone());
+        v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
+            "".to_string(),
+            |acc: String, te: Rc<Node>| {
+                if (acc.clone() != "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_type_expr_clone_undecided_head(
+                        te.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                        item_generic_params.clone(),
+                    )
+                }
+            },
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
