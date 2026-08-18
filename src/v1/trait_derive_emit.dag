@@ -262,6 +262,46 @@ fn v1_map_key_fixpoint_loop(
   }
 }
 
+// WHY A HAND-RUST ROSTER EXISTS BESIDE A FIXPOINT THAT IS OTHERWISE DERIVED. The
+// fixpoint above reads type-EXPRESSION positions in the .dag corpus, and its own
+// note already names the residue this roster closes: "a map keyed by a type that
+// appears in NO such position is not discovered ... loud, not silent -- the
+// emitted crate fails the same rustc E0277 it fails today". A map keyed in
+// HAND-WRITTEN Rust is exactly that case, because no .dag type expression
+// mentions it and no amount of corpus reading will find one. So this is not a
+// second authority for map-key requirements; it is the declared inbox for the
+// one input the single authority provably cannot observe, and it feeds the same
+// fixpoint rather than emitting derives of its own.
+//
+// IT REPLACES A HAND-EDIT. Before this row, ItemKind's Eq + Hash reached the
+// generated seed because someone edited the generated file, so regenerating
+// deleted it and the seed stopped compiling -- authority describing something
+// other than what executes, discovered only by regenerating for an unrelated
+// reason. The row makes regeneration reproduce the bytes that are already live.
+//
+// THE CONSUMER IS NAMED POSITIONALLY ON PURPOSE, against the DESIGN section 3
+// rule that citations name symbols. That rule admits a position "where no symbol
+// exists to name", and this consumer is hand-written Rust: it is outside the
+// containment tree the namespace authority walks, so there is no symbol to cite
+// and a path is the honest referent rather than a lazy one.
+type HandRustMapKeyRequirement {
+  type_name: String
+  consumer: String
+  dissolution: DissolutionCondition
+}
+
+data hand_rust_map_key_requirements: List<HandRustMapKeyRequirement> = [
+  HandRustMapKeyRequirement {
+    type_name: "ItemKind",
+    consumer: "src/v1/stage0/src/coproduct_reflection.rs -- StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)> memoizes declaration parsing by (module path, item kind)",
+    dissolution: unbound_dissolution(description: "that hand-written memo stops keying by ItemKind, or coproduct_reflection.rs is deleted with the v1 seed. The row is then removed and the fixpoint answers alone. The obligation is per-row rather than one condition for the roster because each hand-Rust consumer is independently removable, which is the grain DESIGN section 5 requires of a dissolution obligation; a single broad trigger over a growing roster would launder exactly the expansion this roster must not have.")
+  }
+]
+
+fn hand_rust_map_key_required_names() -> List<String> {
+  hand_rust_map_key_requirements |> map(r => r.type_name)
+}
+
 fn v1_map_key_required_type_names(
   seed_type_exprs: List<Node>,
   type_decl_items: Map<String, Node>,
@@ -276,8 +316,14 @@ fn v1_map_key_required_type_names(
         } else { inner }
       )
   )
+  let seeded_with_hand_rust = hand_rust_map_key_required_names()
+    |> fold(init: seeded, f: (inner, key_name) =>
+      if map_has_declared_type(type_decl_items: type_decl_items, name: key_name) {
+        v1_map_key_round_add(round: inner, name: key_name)
+      } else { inner }
+    )
   v1_map_key_fixpoint_loop(
-    round: seeded,
+    round: seeded_with_hand_rust,
     declared_type_names: declared_type_names,
     type_decl_items: type_decl_items,
     remaining: (declared_type_names |> count) + 1,
