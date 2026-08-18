@@ -17,8 +17,8 @@ fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
     run: v2.std.orchestration.Run {
       command: command,
       env: [],
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: Absent,
+      capture: Absent
     }
   }
 }
@@ -87,15 +87,15 @@ fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: std.types.Boo
       run: v2.std.orchestration.Run {
         command: gunbc.live_deploy.operations.dpkg_status_command(package: pkg),
         env: [],
-        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
-        capture: v2.std.collection.Absent
+        redirect: Present { value: v2.std.orchestration.DiscardAll },
+        capture: Absent
       }
     } },
     then_: v2.std.orchestration.Pipeline {
       steps: [deploy_raw(command: gunbc.live_deploy.operations.apt_install_command(package: pkg, privileged: privileged))],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: Absent
   }
 }
 
