@@ -10452,7 +10452,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} budget_refused={}",
+                     known_red_held={} failed={} stale_quarantine={} budget_refused={} \
+                     host_tool_unresolved={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10460,26 +10461,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.known_red_held,
                     outcome.failures.len(),
                     outcome.stale_quarantine.len(),
-                    outcome.budget_refused.len()
+                    outcome.budget_refused.len(),
+                    outcome.host_tool_unresolved.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // THREE CAUSES, THREE COUNTS, ONE STOPPED LINE. All three refuse the run, and
+                // FOUR CAUSES, FOUR COUNTS, ONE STOPPED LINE. All four refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, a BUDGET-REFUSED is a cost to reduce. Summing them into `failed`
-                // would make an un-quarantine indistinguishable from a regression in the alert
-                // signature, which is the conflation `std.witness_admission` rules out.
+                // delete, a BUDGET-REFUSED is a cost to reduce, a HOST-TOOL-UNRESOLVED is an
+                // infra gap to provision (never a witness-cost chase). Summing them into
+                // `failed` would make an un-quarantine indistinguishable from a regression in
+                // the alert signature, which is the conflation `std.witness_admission` rules
+                // out.
                 for stale in &outcome.stale_quarantine {
                     eprintln!("required-floor: STALE-QUARANTINE {stale}");
                 }
                 for refused in &outcome.budget_refused {
                     eprintln!("required-floor: BUDGET-REFUSED {refused}");
                 }
+                for unresolved in &outcome.host_tool_unresolved {
+                    eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+                }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
                     && outcome.budget_refused.is_empty()
+                    && outcome.host_tool_unresolved.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)
                 } else {
