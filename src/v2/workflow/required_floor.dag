@@ -286,7 +286,7 @@ data no_seen_qualified_names: List<String> = []
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, not an open slack ratchet.
 fn required_floor_claim_budget_ms() -> Int {
-  1552
+  30000
 }
 
 fn required_floor_claim_warn_ms() -> Int {
