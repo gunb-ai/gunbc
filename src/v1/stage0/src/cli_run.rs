@@ -29822,11 +29822,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
